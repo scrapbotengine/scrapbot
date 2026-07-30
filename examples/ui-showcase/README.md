@@ -3,7 +3,8 @@
 This project puts two unrelated visual treatments on the same public ECS UI:
 
 - a restrained, almost-black application panel built partly from `reduced_dark` recipes;
-- the saturated **Neon Overdrive** arcade panel built from direct component overrides.
+- the saturated **Neon Overdrive** arcade panel built from a project-owned
+  `scrapbot.ui_theme` resource plus the same ordered public recipes.
 
 Both panels are aligned inside one authored `scrapbot.ui_canvas`. Its `expand` policy
 preserves the 1280×720 reference scale while exposing extra logical space on wider

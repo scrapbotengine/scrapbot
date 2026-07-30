@@ -36,6 +36,30 @@ ui_test_resolve_theme :: proc "c" (
 	return nil
 }
 
+ui_test_resolve_project_theme :: proc "c" (
+	ctx: ^raw.System_Context,
+	theme: raw.UUID,
+	recipes: [^]raw.UI_Theme_Recipe,
+	recipe_count: c.int,
+	payloads: [^]raw.UI_Component_Payload,
+	payload_capacity: c.int,
+	out_payload_count: ^c.int,
+) -> cstring {
+	if ctx == nil ||
+	   theme == (raw.UUID{}) ||
+	   recipes == nil ||
+	   recipe_count != 1 ||
+	   recipes[0] != .Standard_Button ||
+	   payloads == nil ||
+	   payload_capacity < 1 ||
+	   out_payload_count == nil {
+		return "invalid project theme request"
+	}
+	payloads[0] = ui_layout(UI_Layout{size = {210, 72}, corner_radius = 18})
+	out_payload_count^ = 1
+	return nil
+}
+
 @(test)
 test_ui_theme_helper_uses_caller_storage_and_host_resolution :: proc(t: ^testing.T) {
 	ctx := System_Context {
@@ -49,6 +73,21 @@ test_ui_theme_helper_uses_caller_storage_and_host_resolution :: proc(t: ^testing
 	testing.expect(t, payloads[0].component == UI_LAYOUT)
 	testing.expect(t, payloads[0].layout.size == Vec2{80, 30})
 	testing.expect(t, payloads[0].layout.corner_radius == 5)
+}
+
+@(test)
+test_project_ui_theme_helper_uses_uuid_specific_host_resolution :: proc(t: ^testing.T) {
+	ctx := System_Context {
+		resolve_project_ui_theme = ui_test_resolve_project_theme,
+	}
+	theme: UUID
+	theme.bytes[0] = 1
+	recipes := [?]UI_Theme_Recipe{.Standard_Button}
+	buffer: [UI_THEME_PAYLOAD_CAPACITY]UI_Component_Payload
+	payloads, err := ui_theme_resolve_project(&ctx, theme, recipes[:], buffer[:])
+	testing.expect(t, err == nil)
+	testing.expect_value(t, len(payloads), 1)
+	testing.expect_value(t, payloads[0].layout.size, Vec2{210, 72})
 }
 
 @(test)

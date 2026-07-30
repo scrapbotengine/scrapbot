@@ -2,6 +2,7 @@ package script
 
 import ecs "../ecs"
 import project "../project"
+import resources "../resources"
 import shared "../shared"
 import "core:testing"
 
@@ -514,4 +515,49 @@ end)
 	testing.expect(t, panel.ui_layout_index >= 0)
 	testing.expect(t, panel.ui_panel_index >= 0)
 	testing.expect(t, panel.ui_scroll_area_index >= 0)
+}
+
+@(test)
+test_luau_ui_theme_resolver_accepts_project_theme_uuid :: proc(t: ^testing.T) {
+	world: ecs.World
+	defer ecs.destroy_world(&world)
+	resource_registry: resources.Registry
+	resources.init_registry(&resource_registry)
+	defer resources.destroy_registry(&resource_registry)
+	id, _ := shared.resource_uuid_parse("71c20000-0000-4000-8000-000000000001")
+	theme := shared.ui_theme_reduced_dark()
+	theme.palette.accent_soft = {1.4, 0.1, 0.5, 1}
+	theme.font = "Inter"
+	declaration := shared.Project_Resource {
+		id = id,
+		kind = .UI_Theme,
+		name = "Neon",
+		source = "neon.resource.toml",
+		ui_theme = {theme = theme},
+	}
+	testing.expect(
+		t,
+		resources.register_project_ui_themes(
+			&resource_registry,
+			[]shared.Project_Resource{declaration},
+		) ==
+		"",
+	)
+	runtime: Runtime
+	defer destroy_runtime(&runtime)
+	result := run_source_with_options(
+		&runtime,
+		`
+local components = scrapbot.ui.resolve(
+	"71c20000-0000-4000-8000-000000000001",
+	{ "primary_button" }
+)
+assert(components["scrapbot.ui_layout"].background.x > 1.39)
+assert(components["scrapbot.ui_button"].font == "Inter")
+`,
+		"=test",
+		&world,
+		Source_Options{resource_registry = &resource_registry},
+	)
+	testing.expectf(t, result.err == "", "project theme resolution failed: %s", result.err)
 }

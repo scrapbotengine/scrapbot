@@ -104,7 +104,17 @@ prepare_scene_world_save :: proc(
 		}
 		candidate = structural_source
 	}
-	validated_scene, parse_result := project.parse_scene(candidate)
+	project_resources: [dynamic]shared.Project_Resource
+	project_root := project.project_root_for_scene_path(scene_path)
+	if project_root != "" {
+		resource_err: string
+		project_resources, resource_err = project.load_project_resources(project_root)
+		if resource_err != "" {
+			return "", resource_err
+		}
+		defer project.destroy_project_resources(&project_resources)
+	}
+	validated_scene, parse_result := project.parse_scene(candidate, project_resources[:])
 	defer project.destroy_scene(&validated_scene)
 	if parse_result.err != .None {
 		return "", fmt.tprintf(

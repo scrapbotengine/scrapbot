@@ -85,6 +85,7 @@ Project_Resource_Kind :: enum {
 	Icon_Set,
 	Material,
 	Geometry_LOD,
+	UI_Theme,
 }
 
 Texture_Color_Space :: enum {
@@ -156,6 +157,11 @@ Project_Geometry_LOD_Resource :: struct {
 	screen_radii: [MAX_GEOMETRY_LODS - 1]f32,
 }
 
+Project_UI_Theme_Resource :: struct {
+	base: UI_Theme_Name,
+	theme: UI_Theme,
+}
+
 Project_Resource :: struct {
 	id: Resource_UUID,
 	kind: Project_Resource_Kind,
@@ -167,6 +173,7 @@ Project_Resource :: struct {
 	icon_set: Project_Icon_Set_Resource,
 	material: Project_Material_Resource,
 	geometry_lod: Project_Geometry_LOD_Resource,
+	ui_theme: Project_UI_Theme_Resource,
 }
 
 Scene :: struct {
@@ -201,6 +208,7 @@ Scene_Entity :: struct {
 	has_shadow_receiver: bool,
 	has_ui_theme: bool,
 	ui_theme: UI_Theme_Name,
+	ui_theme_resource: Resource_UUID,
 	ui_theme_recipes: [UI_THEME_RECIPE_CAPACITY]UI_Theme_Recipe,
 	ui_theme_recipe_count: int,
 	has_ui_layout: bool,
@@ -273,6 +281,9 @@ Material_Handle :: struct {
 	index, generation: u32,
 }
 Font_Handle :: struct {
+	index, generation: u32,
+}
+UI_Theme_Handle :: struct {
 	index, generation: u32,
 }
 

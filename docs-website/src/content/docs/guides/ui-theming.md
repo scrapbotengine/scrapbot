@@ -14,9 +14,11 @@ The effective appearance therefore remains visible in ECS:
 
 The renderer does not receive a theme name. It consumes the same layout, text, button, input, list, panel, scrollbar, checkbox, progress, and color-picker fields regardless of how their values were chosen.
 
-## Built-in theme and recipe vocabulary
+## Theme resources and recipe vocabulary
 
 The current built-in theme is `reduced_dark`. It is the editor's restrained, almost-black visual language, not a mandatory project look.
+
+Projects can declare UUID-backed `scrapbot.ui_theme` resources that explicitly inherit that baseline and override semantic colors, metrics, and typography. The engine still owns one recipe vocabulary; the resource changes what those recipes resolve to.
 
 Recipes are composable and applied in order:
 
@@ -238,7 +240,73 @@ The returned slice borrows caller storage and contains ordinary typed UI payload
 
 ## Project-defined themes
 
-Projects can already create wholly unrelated interfaces through explicit overrides, as Neon Arcade demonstrates. Named project-defined theme resources are not yet part of the project format. If added, they must resolve through this same recipe-to-component boundary; they will not create a renderer style store or implicit stable-frame cascade.
+Create one standalone file under `resources/`:
+
+```toml
+id = "71c20000-0000-4000-8000-000000000001"
+type = "scrapbot.ui_theme"
+name = "Neon Overdrive"
+
+[theme]
+base = "reduced_dark"
+
+[theme.palette]
+panel = [0.10, 0.015, 0.18, 0.98]
+control = [0.04, 0.64, 0.92, 1]
+accent = [0.35, 1, 0.22, 1]
+accent_text = [1, 1, 1, 1]
+accent_soft = [0.98, 0.12, 0.38, 1]
+selection = [1, 0.24, 0.52, 1]
+
+[theme.metrics]
+text_size = 22
+control_height = 82
+radius = 18
+padding_control = [24, 20, 18, 20]
+
+[theme.typography]
+font = "Inter"
+```
+
+Every section is an override. Omitted tokens inherit from `theme.base`, which is required and currently accepts `reduced_dark`. Palette RGB channels may exceed one for HDR presentation; alpha stays between zero and one. Typography accepts embedded Inter or a font declared in `project.toml`. See the [project file reference](/reference/project-files/#project-resources) for every field.
+
+Use the resource UUID anywhere a built-in name is accepted:
+
+```toml
+[[entities]]
+id = "d4000000-0000-4000-8000-000000000202"
+name = "Arcade Action"
+ui_theme = "71c20000-0000-4000-8000-000000000001"
+ui_recipes = ["primary_button"]
+
+[entities.ui_layout]
+size = [260, 82]
+
+[entities.ui_button]
+text = "BOOST"
+```
+
+```lua
+local components = scrapbot.ui.resolve(
+	"71c20000-0000-4000-8000-000000000001",
+	{ "primary_button" }
+)
+```
+
+Native Odin uses the UUID-specific helper so resource identity never passes through a generic string:
+
+```odin
+components, err := scrapbot.ui_theme_resolve_project(
+	ctx,
+	theme_uuid,
+	recipes[:],
+	storage[:],
+)
+```
+
+Editing a theme participates in whole-project hot reload. The replacement scene and rerun script explicitly resolve the new values. Existing live entities are never traversed or silently restyled when a theme version changes; call the resolver and apply targeted component updates when live recomposition is desired.
+
+`examples/ui-showcase` uses this contract for the saturated Neon Overdrive panel while the neighboring application panel consumes `reduced_dark`. Both end as the same public ECS components.
 
 ## Test a visual system
 

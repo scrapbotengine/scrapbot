@@ -2,6 +2,7 @@ package native
 
 import ecs "../ecs"
 import api "../extension_api"
+import resources "../resources"
 import shared "../shared"
 import c "core:c"
 import "core:testing"
@@ -86,6 +87,50 @@ test_native_ui_theme_api_resolves_list_highlight_radius :: proc(t: ^testing.T) {
 	theme := shared.ui_theme_reduced_dark()
 	testing.expect(t, string(payloads[0].component) == "scrapbot.ui_list")
 	testing.expect(t, payloads[0].list.highlight_corner_radius == theme.metrics.radius_small)
+}
+
+@(test)
+test_native_ui_theme_api_resolves_project_theme_uuid_from_runtime_registry :: proc(t: ^testing.T) {
+	registry: resources.Registry
+	resources.init_registry(&registry)
+	defer resources.destroy_registry(&registry)
+	id, _ := shared.resource_uuid_parse("71c20000-0000-4000-8000-000000000001")
+	theme := shared.ui_theme_reduced_dark()
+	theme.palette.control = {0.04, 0.64, 1.25, 1}
+	theme.font = "Inter"
+	declaration := shared.Project_Resource {
+		id = id,
+		kind = .UI_Theme,
+		name = "Neon",
+		source = "neon.resource.toml",
+		ui_theme = {theme = theme},
+	}
+	testing.expect(
+		t,
+		resources.register_project_ui_themes(&registry, []shared.Project_Resource{declaration}) ==
+		"",
+	)
+	step := Step_Context {
+		resources = &registry,
+	}
+	ctx := api.System_Context {
+		host = &step,
+	}
+	recipes := [?]api.UI_Theme_Recipe{.Standard_Button}
+	payloads: [2]api.UI_Component_Payload
+	payload_count: c.int
+	err := system_resolve_project_ui_theme(
+		&ctx,
+		api_resource_uuid_from_shared(id),
+		raw_data(recipes[:]),
+		c.int(len(recipes)),
+		raw_data(payloads[:]),
+		c.int(len(payloads)),
+		&payload_count,
+	)
+	testing.expect(t, err == nil)
+	testing.expect_value(t, payload_count, c.int(2))
+	testing.expect(t, payloads[0].layout.background == api_vec4_from_shared(theme.palette.control))
 }
 
 @(test)

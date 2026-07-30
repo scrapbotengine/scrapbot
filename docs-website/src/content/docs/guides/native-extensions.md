@@ -227,6 +227,19 @@ return err
 
 Recipe payloads are ordered by component kind, with layout first when present. Prefer selecting the payload by its `component` field in reusable code that composes several recipes. The fixed helper capacity covers every component the current recipe vocabulary can produce.
 
+Project theme resources use the same recipes through a UUID-specific helper:
+
+```odin
+components, theme_err := scrapbot.ui_theme_resolve_project(
+	ctx,
+	theme_uuid,
+	recipes[:],
+	theme_storage[:],
+)
+```
+
+The UUID must identify a live `scrapbot.ui_theme` resource. Resolution is still composition-only and leaves no retained theme state in ECS or the renderer.
+
 ```odin
 layout := scrapbot.ui_layout_default()
 layout.size = {320, 64}

@@ -186,7 +186,11 @@ build_scene_world_structural_source :: proc(
 		if !in_baseline && !structural[entity.uuid] {
 			continue
 		}
-		_ = write_scene_world_entity(&builder, world, entity_index)
+		authoring: ^shared.Scene_Entity
+		if in_baseline {
+			authoring = &baseline.entities[ordinal_plus_one - 1]
+		}
+		_ = write_scene_world_entity(&builder, world, entity_index, authoring)
 		strings.write_rune(&builder, '\n')
 	}
 	result, clone_err := strings.clone(strings.to_string(builder))

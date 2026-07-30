@@ -130,6 +130,58 @@ source = "assets/../icons"
 	testing.expect(t, unsafe.err == .Invalid_Path)
 }
 
+test_project_ui_theme_resource_parser_supports_hdr_tokens_and_inheritance :: proc(t: ^testing.T) {
+	resource, result := parse_project_resource(
+		`id = "71c20000-0000-4000-8000-000000000001"
+type = "scrapbot.ui_theme"
+name = "Neon Overdrive"
+
+[theme]
+base = "reduced_dark"
+
+[theme.palette]
+accent = [1.5, 0.25, 0.75, 1]
+panel = [0.1, 0.01, 0.2, 0.98]
+
+[theme.metrics]
+radius = 18
+control_height = 72
+
+[theme.typography]
+font = "Arcade"
+`,
+	)
+	testing.expect(t, result.err == .None)
+	testing.expect(t, resource.kind == .UI_Theme)
+	testing.expect_value(t, resource.ui_theme.theme.palette.accent.x, f32(1.5))
+	testing.expect_value(t, resource.ui_theme.theme.metrics.radius, f32(18))
+	testing.expect_value(t, resource.ui_theme.theme.font, "Arcade")
+	testing.expect_value(
+		t,
+		resource.ui_theme.theme.palette.warning,
+		shared.ui_theme_reduced_dark().palette.warning,
+	)
+
+	_, missing_base := parse_project_resource(
+		`id = "71c20000-0000-4000-8000-000000000001"
+type = "scrapbot.ui_theme"
+name = "No Base"
+`,
+	)
+	testing.expect(t, missing_base.err == .Missing_Field)
+	_, negative_color := parse_project_resource(
+		`id = "71c20000-0000-4000-8000-000000000001"
+type = "scrapbot.ui_theme"
+name = "Bad Color"
+[theme]
+base = "reduced_dark"
+[theme.palette]
+accent = [-1, 0, 0, 1]
+`,
+	)
+	testing.expect(t, negative_color.err == .Invalid_Field)
+}
+
 @(test)
 test_project_environment_resource_and_render_config :: proc(t: ^testing.T) {
 	resource, result := parse_project_resource(
@@ -1326,6 +1378,52 @@ title = "THEME"
 	testing.expect(t, panel.ui_layout.background == theme.palette.panel)
 	testing.expect(t, panel.ui_panel.title == "THEME")
 	testing.expect(t, panel.ui_scroll_area.scrollbar_thumb_color == theme.palette.border_strong)
+}
+
+test_scene_project_ui_theme_resource_resolves_before_explicit_overrides :: proc(t: ^testing.T) {
+	theme_id, _ := shared.resource_uuid_parse("71c20000-0000-4000-8000-000000000001")
+	theme := shared.ui_theme_reduced_dark()
+	theme.palette.accent_soft = {1.25, 0.1, 0.4, 1}
+	theme.palette.accent_text = {0.95, 1, 0.2, 1}
+	theme.metrics.radius = 24
+	theme.font = "Inter"
+	resources := []shared.Project_Resource {
+		{id = theme_id, kind = .UI_Theme, name = "Neon", ui_theme = {theme = theme}},
+	}
+	scene, result := parse_scene(
+		`[[entities]]
+id = "30000000-0000-4000-8000-000000000001"
+name = "Action"
+ui_theme = "71c20000-0000-4000-8000-000000000001"
+ui_recipes = ["primary_button"]
+
+[entities.ui_layout]
+size = [220, 76]
+
+[entities.ui_button]
+text = "BOOST"
+`,
+		resources,
+	)
+	defer destroy_scene(&scene)
+	testing.expect(t, result.err == .None)
+	testing.expect_value(t, scene.entities[0].ui_theme_resource, theme_id)
+	testing.expect_value(t, scene.entities[0].ui_layout.background, theme.palette.accent_soft)
+	testing.expect_value(t, scene.entities[0].ui_layout.size, shared.Vec2{220, 76})
+	testing.expect_value(t, scene.entities[0].ui_button.text, "BOOST")
+	testing.expect_value(t, scene.entities[0].ui_button.font, "Inter")
+
+	unknown, unknown_result := parse_scene(
+		`[[entities]]
+id = "30000000-0000-4000-8000-000000000001"
+name = "Unknown"
+ui_theme = "71c20000-0000-4000-8000-000000000002"
+ui_recipes = ["primary_button"]
+`,
+		resources,
+	)
+	defer destroy_scene(&unknown)
+	testing.expect(t, unknown_result.err == .Invalid_Field)
 }
 
 @(test)

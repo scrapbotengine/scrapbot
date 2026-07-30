@@ -44,7 +44,7 @@ During development, use `mise build` to compile the optimized CLI and `mise scra
 - GPU-driven pipeline: persistent slot-addressed instance storage, dirty-only transform uploads, a growing retained draw database, compute camera/shadow frustum culling, depth prepass with adaptive Hi-Z occlusion, screen-radius LOD selection, and indexed indirect draws with asynchronous GPU timing readback.
 - HDR lighting and post: shared metallic-roughness GGX materials with mipmapped PBR maps, ambient/directional/point lights, GPU-clustered point lighting, four stabilized shadow cascades, imported image-based lighting with independent diffuse/specular strength or roughness-aware analytic environment lighting from a procedural haze sky via one `scrapbot.world_environment` component, authored global height/distance fog with shadowed directional scattering, half-resolution thickness-aware visibility-bitmask ambient occlusion over indirect diffuse light, temporal antialiasing with reprojection, screen-space reflections, a compute bloom pyramid, and an ACES-style composite.
 - Per-camera render policy: a bounded manual world-resolution scale, optional GPU-budgeted dynamic resolution, TAA, fast AA, AO, SSR, and bloom are authored on `scrapbot.camera`; UI stays native-resolution, AO and SSR have bounded quality tiers, and disabled effects skip their GPU work.
-- UUID-backed resources in `resources/**/*.resource.toml` (materials, textures, glTF models, HDR environments, SVG icon sets, generated LOD chains) with hot reload, targeted reimport, and import diagnostics; scenes serialize stable UUID references that the runtime resolves to generational registry handles.
+- UUID-backed resources in `resources/**/*.resource.toml` (materials, textures, glTF models, HDR environments, SVG icon sets, generated LOD chains, and composition-time UI themes) with hot reload, targeted reimport where applicable, and import diagnostics; scenes serialize stable UUID references that the runtime resolves to generational registry handles.
 
 ### Retained UI
 
@@ -246,6 +246,7 @@ trends; they are not portable performance thresholds.
   - [x] Margins, padding, hidden subtrees, backgrounds, rounded corners, and borders
   - [x] Explicit composition-time theme recipes resolving to ordinary component values
   - [x] Project-facing theme-recipe helpers for Luau, native Odin, and text-first authoring
+  - [x] UUID-backed project themes with HDR semantic palettes, metrics, and typography
 
 ### Editor
 

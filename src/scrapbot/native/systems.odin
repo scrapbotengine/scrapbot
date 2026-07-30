@@ -203,6 +203,7 @@ step_system :: proc(
 	world: ^shared.World,
 	commands: ^ecs.Command_Buffer,
 	registry: ^component.Registry,
+	resource_registry: ^resources.Registry,
 	time: shared.Time_Resource,
 ) -> string {
 	if system == nil || system.callback == nil {
@@ -214,6 +215,7 @@ step_system :: proc(
 		system = system,
 		commands = commands,
 		registry = registry,
+		resources = resource_registry,
 	}
 	ctx := api.System_Context {
 		userdata = system.userdata,
@@ -242,6 +244,7 @@ step_system :: proc(
 		get_ui_component = system_get_ui_component,
 		set_ui_component = system_set_ui_component,
 		resolve_ui_theme = system_resolve_ui_theme,
+		resolve_project_ui_theme = system_resolve_project_ui_theme,
 		spawn = system_spawn,
 		despawn = system_despawn,
 		add_transform = system_add_transform,

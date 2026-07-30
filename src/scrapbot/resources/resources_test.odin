@@ -92,6 +92,47 @@ test_project_material_save_writes_only_its_standalone_resource :: proc(t: ^testi
 	}
 }
 
+test_project_ui_theme_registry_updates_by_uuid_and_retires_missing_entries :: proc(t: ^testing.T) {
+	registry: Registry
+	init_registry(&registry)
+	defer destroy_registry(&registry)
+	id, _ := shared.resource_uuid_parse("71c20000-0000-4000-8000-000000000001")
+	theme := shared.ui_theme_reduced_dark()
+	theme.palette.accent = {1.5, 0.2, 0.8, 1}
+	theme.font = "Inter"
+	declaration := shared.Project_Resource {
+		id = id,
+		kind = .UI_Theme,
+		name = "Neon",
+		source = "neon.resource.toml",
+		ui_theme = {theme = theme},
+	}
+	testing.expect(
+		t,
+		register_project_ui_themes(&registry, []shared.Project_Resource{declaration}) == "",
+	)
+	value, found := ui_theme_by_id(&registry, id)
+	testing.expect(t, found)
+	testing.expect_value(t, value.palette.accent.x, f32(1.5))
+	generation := registry.ui_themes[0].generation
+
+	declaration.ui_theme.theme.metrics.radius = 27
+	testing.expect(
+		t,
+		register_project_ui_themes(&registry, []shared.Project_Resource{declaration}) == "",
+	)
+	value, found = ui_theme_by_id(&registry, id)
+	testing.expect(t, found)
+	testing.expect_value(t, value.metrics.radius, f32(27))
+	testing.expect_value(t, registry.ui_themes[0].generation, generation)
+	testing.expect(t, registry.ui_themes[0].version > 1)
+
+	testing.expect(t, register_project_ui_themes(&registry, nil) == "")
+	_, found = ui_theme_by_id(&registry, id)
+	testing.expect(t, !found)
+	testing.expect(t, registry.ui_themes[0].generation > generation)
+}
+
 @(test)
 test_project_material_registration_preserves_authored_surface_factors :: proc(t: ^testing.T) {
 	registry: Registry

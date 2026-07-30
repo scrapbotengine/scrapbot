@@ -622,6 +622,7 @@ System_Context :: struct {
 	input_key_state: Input_Key_State_Proc,
 	input_pointer: Input_Pointer_Proc,
 	ui_events: UI_Events_Proc,
+	resolve_project_ui_theme: Resolve_Project_UI_Theme_Proc,
 }
 
 System_Proc :: #type proc "c" (ctx: ^System_Context) -> cstring
@@ -762,6 +763,16 @@ UI_Events_Proc :: #type proc "c" (
 Resolve_UI_Theme_Proc :: #type proc "c" (
 	ctx: ^System_Context,
 	theme: UI_Theme_Name,
+	recipes: [^]UI_Theme_Recipe,
+	recipe_count: c.int,
+	payloads: [^]UI_Component_Payload,
+	payload_capacity: c.int,
+	out_payload_count: ^c.int,
+) -> cstring
+
+Resolve_Project_UI_Theme_Proc :: #type proc "c" (
+	ctx: ^System_Context,
+	theme: UUID,
 	recipes: [^]UI_Theme_Recipe,
 	recipe_count: c.int,
 	payloads: [^]UI_Component_Payload,

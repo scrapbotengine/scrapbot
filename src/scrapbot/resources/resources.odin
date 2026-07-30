@@ -28,6 +28,7 @@ Icon_Set_Handle :: shared.Icon_Set_Handle
 Model_Handle :: shared.Model_Handle
 Material_Handle :: shared.Material_Handle
 Font_Handle :: shared.Font_Handle
+UI_Theme_Handle :: shared.UI_Theme_Handle
 
 Vertex :: struct {
 	position: Vec3,
@@ -201,6 +202,16 @@ Font :: struct {
 	alive: bool,
 }
 
+UI_Theme :: struct {
+	id: shared.Resource_UUID,
+	name: string,
+	source: string,
+	value: shared.UI_Theme,
+	generation: u32,
+	version: u32,
+	alive: bool,
+}
+
 Registry :: struct {
 	geometries: [dynamic]Geometry,
 	textures: [dynamic]Texture,
@@ -209,11 +220,13 @@ Registry :: struct {
 	models: [dynamic]Model,
 	materials: [dynamic]Material,
 	fonts: [dynamic]Font,
+	ui_themes: [dynamic]UI_Theme,
 	geometry_topology_revision: u64,
 	texture_revision: u64,
 	environment_revision: u64,
 	icon_set_revision: u64,
 	model_revision: u64,
+	ui_theme_revision: u64,
 	material_revision: u64,
 	active_environment: Environment_Handle,
 	environment_intensity: f32,
@@ -279,6 +292,9 @@ ensure_allocator :: proc(registry: ^Registry) {
 		registry.models = make([dynamic]Model, registry.allocator)
 	}
 	if registry.fonts == nil { registry.fonts = make([dynamic]Font, registry.allocator) }
+	if registry.ui_themes == nil {
+		registry.ui_themes = make([dynamic]UI_Theme, registry.allocator)
+	}
 }
 init_registry :: proc(registry: ^Registry, allocator := context.allocator) {
 	registry^ = {}
@@ -337,6 +353,11 @@ destroy_registry :: proc(registry: ^Registry) {
 		destroy_model(&model, allocator)
 	}
 	for &font in registry.fonts { delete(font.name, allocator); delete(font.desc.pixels, allocator) }
+	for &theme in registry.ui_themes {
+		delete(theme.name, allocator)
+		delete(theme.source, allocator)
+		delete(theme.value.font, allocator)
+	}
 	delete(registry.geometries)
 	delete(registry.materials)
 	delete(registry.textures)
@@ -344,6 +365,7 @@ destroy_registry :: proc(registry: ^Registry) {
 	delete(registry.icon_sets)
 	delete(registry.models)
 	delete(registry.fonts)
+	delete(registry.ui_themes)
 	registry^ = {}
 }
 
@@ -362,6 +384,7 @@ clone_registry :: proc(source: ^Registry, destination: ^Registry) -> string {
 	destination.environment_revision = source.environment_revision
 	destination.icon_set_revision = source.icon_set_revision
 	destination.model_revision = source.model_revision
+	destination.ui_theme_revision = source.ui_theme_revision
 	destination.active_environment = source.active_environment
 	destination.environment_intensity = source.environment_intensity
 	destination.environment_reflection_intensity = source.environment_reflection_intensity
@@ -483,6 +506,17 @@ clone_registry :: proc(source: ^Registry, destination: ^Registry) -> string {
 		cloned.name = name
 		cloned.desc = clone_font_desc(font.desc, allocator)
 		append(&destination.fonts, cloned)
+	}
+	for theme in source.ui_themes {
+		cloned := theme
+		cloned.name, _ = strings.clone(theme.name, allocator)
+		cloned.source, _ = strings.clone(theme.source, allocator)
+		cloned.value.font, _ = strings.clone(theme.value.font, allocator)
+		if cloned.name == "" || cloned.source == "" || cloned.value.font == "" {
+			destroy_registry(destination)
+			return "failed to clone UI theme metadata"
+		}
+		append(&destination.ui_themes, cloned)
 	}
 	return ""
 }

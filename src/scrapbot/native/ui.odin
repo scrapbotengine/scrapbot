@@ -2,7 +2,9 @@ package native
 
 import ecs "../ecs"
 import api "../extension_api"
+import resources "../resources"
 import shared "../shared"
+import base_runtime "base:runtime"
 import c "core:c"
 
 system_resolve_ui_theme :: proc "c" (
@@ -21,6 +23,65 @@ system_resolve_ui_theme :: proc "c" (
 	if theme_name != .Reduced_Dark {
 		return "native UI theme is not supported"
 	}
+	return system_resolve_ui_theme_value(
+		ctx,
+		shared.ui_theme_reduced_dark(),
+		recipes,
+		recipe_count,
+		payloads,
+		payload_capacity,
+		out_payload_count,
+	)
+}
+
+system_resolve_project_ui_theme :: proc "c" (
+	ctx: ^api.System_Context,
+	theme_id: api.UUID,
+	recipes: [^]api.UI_Theme_Recipe,
+	recipe_count: c.int,
+	payloads: [^]api.UI_Component_Payload,
+	payload_capacity: c.int,
+	out_payload_count: ^c.int,
+) -> cstring {
+	context = base_runtime.default_context()
+	if ctx == nil || ctx.host == nil {
+		return "native project UI theme registry is not available"
+	}
+	step := cast(^Step_Context)ctx.host
+	if step.resources == nil {
+		return "native project UI theme registry is not available"
+	}
+	theme, found := resources.ui_theme_by_id(
+		step.resources,
+		shared_resource_uuid_from_api(theme_id),
+	)
+	if !found {
+		return "native project UI theme is not available"
+	}
+	return system_resolve_ui_theme_value(
+		ctx,
+		theme,
+		recipes,
+		recipe_count,
+		payloads,
+		payload_capacity,
+		out_payload_count,
+	)
+}
+
+system_resolve_ui_theme_value :: proc "c" (
+	ctx: ^api.System_Context,
+	theme: shared.UI_Theme,
+	recipes: [^]api.UI_Theme_Recipe,
+	recipe_count: c.int,
+	payloads: [^]api.UI_Component_Payload,
+	payload_capacity: c.int,
+	out_payload_count: ^c.int,
+) -> cstring {
+	if ctx == nil || out_payload_count == nil {
+		return "native UI theme output is not available"
+	}
+	out_payload_count^ = 0
 	if recipes == nil || recipe_count <= 0 || recipe_count > shared.UI_THEME_RECIPE_CAPACITY {
 		return "native UI theme recipes must contain between one and sixteen entries"
 	}
@@ -32,7 +93,7 @@ system_resolve_ui_theme :: proc "c" (
 		}
 		shared_recipes[index] = shared.UI_Theme_Recipe(raw_recipe)
 	}
-	resolved := shared.ui_theme_resolve(.Reduced_Dark, shared_recipes[:int(recipe_count)])
+	resolved := shared.ui_theme_resolve_value(theme, shared_recipes[:int(recipe_count)])
 	required := 0
 	if resolved.has_layout { required += 1 }
 	if resolved.has_scroll_area { required += 1 }

@@ -114,6 +114,38 @@ texture = "b1000000-0000-4000-8000-000000000002"
 
 `base_color` defaults to white, `emissive` defaults to black and accepts finite non-negative HDR values, `metallic` defaults to `0`, and `roughness` defaults to `0.8`. Metallic and roughness are finite factors from `0` to `1`. `texture` is optional. Scrapbot loads authored resources into its runtime registry before resolving scene entities. A changed resource preserves its runtime handle and increments its content version; removal invalidates old handles. Resource files participate in hot reload and host-native packaging.
 
+UI-theme resources customize the shared semantic recipe vocabulary:
+
+```toml
+id = "71c20000-0000-4000-8000-000000000001"
+type = "scrapbot.ui_theme"
+name = "Neon Overdrive"
+
+[theme]
+base = "reduced_dark"
+
+[theme.palette]
+panel = [0.10, 0.015, 0.18, 0.98]
+accent = [0.35, 1, 0.22, 1]
+accent_soft = [1.4, 0.08, 0.38, 1]
+text_secondary = [0.25, 0.92, 1, 1]
+
+[theme.metrics]
+control_height = 82
+radius = 18
+radius_large = 40
+padding_control = [24, 20, 18, 20]
+
+[theme.typography]
+font = "Inter"
+```
+
+`theme.base` is required and currently accepts `reduced_dark`. Omitted palette, metric, and typography fields inherit from that baseline. RGB channels are finite non-negative HDR values; alpha remains from zero to one. Metrics are finite and non-negative, with positive text sizes and container heights. `font` is embedded `Inter` or a name declared in `project.toml`.
+
+The complete palette fields are `canvas`, `region`, `panel`, `raised`, `control`, `overlay`, `border`, `border_strong`, `text`, `text_secondary`, `text_muted`, `accent`, `accent_text`, `accent_soft`, `hover`, `active`, `selection`, `focus`, `warning`, `warning_soft`, `danger`, `danger_soft`, `data_engine`, `data_native`, `data_script`, `axis_x`, `axis_y`, `axis_z`, `axis_w`, `light_overlay`, and `dark_overlay`.
+
+The complete metric fields are `text_size`, `small_text_size`, `control_height`, `row_height`, `title_height`, `radius_small`, `radius`, `radius_large`, `border_width`, `gap_small`, `gap`, `gap_large`, `padding_small`, `padding_control`, and `padding_panel`.
+
 Static glTF model resources point at `.gltf` or `.glb` sources:
 
 ```toml
@@ -150,7 +182,7 @@ screen_radii = [0.15, 0.04]
 
 `subdivisions` contains one to four icosphere subdivision levels from most detailed to least detailed; each value must be between `0` and `4`. `screen_radii` has one fewer value and must be positive and strictly descending. The WGPU visibility pass projects each instance's bounding sphere and selects the next level whenever its normalized screen radius falls below the corresponding threshold. The CPU-culling reference path uses the same rule. Editing the file and hot reloading preserves the stable base geometry handle while advancing renderer topology.
 
-The live editor's Resources browser creates, duplicates, renames, moves, and deletes material resources as stopped-mode in-memory authoring transactions. Scene references remain stable because these operations preserve the resource UUID. Delete is unavailable while a live entity references the UUID. Explicit Save derives the required file writes and deletions from the disk baseline, rejects destination conflicts, and commits the complete project file set through the recoverable Save transaction. Geometry LOD resources are text-authored in this slice; editor creation and inline level editing remain follow-up work.
+The live editor's Resources browser creates, duplicates, renames, moves, and deletes material resources as stopped-mode in-memory authoring transactions. Scene references remain stable because these operations preserve the resource UUID. Delete is unavailable while a live entity references the UUID. Explicit Save derives the required file writes and deletions from the disk baseline, rejects destination conflicts, and commits the complete project file set through the recoverable Save transaction. Geometry LOD and UI-theme resources are text-authored in this slice; the editor lists and inspects themes read-only.
 
 ## Scene entities
 
@@ -164,7 +196,7 @@ name = "Main Camera"
 
 Every entity must have a unique, non-zero RFC UUID in `id` and a `name`. The ID is stable project identity; the name is an editable display label.
 
-UI entities may also resolve a built-in theme through ordered composition recipes:
+UI entities may resolve a built-in theme name or declared UI-theme UUID through ordered composition recipes:
 
 ```toml
 [[entities]]
@@ -181,7 +213,7 @@ corner_radius = 24
 text = "BOOST"
 ```
 
-`ui_theme` and `ui_recipes` must appear together in the entity table. Recipes create the relevant ordinary `ui_*` component values in array order; component sections then override any field. An entity may compose up to 16 recipes. The supported theme and recipe names are listed in [UI theming](/guides/ui-theming/).
+`ui_theme` and `ui_recipes` must appear together in the entity table. A UUID must resolve to a declared `scrapbot.ui_theme` resource. Recipes create the relevant ordinary `ui_*` component values in array order; component sections then override any field. An entity may compose up to 16 recipes. The supported built-in theme and recipe names are listed in [UI theming](/guides/ui-theming/).
 
 Reusable controls can carry semantic project meaning without changing their visual or interaction components:
 

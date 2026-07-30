@@ -88,6 +88,8 @@ scrapbot.spawn({
 })
 ```
 
+The first argument is either the built-in name `reduced_dark` or a declared `scrapbot.ui_theme` resource UUID. Unknown UUIDs fail immediately. Theme resolution reads no ECS component and retains no theme dependency; a changed resource affects the next explicit resolution or whole-project reload, not already-spawned entities.
+
 The generated types constrain built-in theme and recipe names. Resolution itself does not require component access, but spawning or attaching the returned components requires the same declared writes as hand-authored payloads. See [UI theming](/guides/ui-theming/) for the complete recipe vocabulary and override rules.
 
 `scrapbot.ui_canvas` is a singleton root component whose reference size,

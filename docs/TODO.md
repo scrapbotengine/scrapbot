@@ -17,10 +17,6 @@ This file tracks current actionable engineering work. The broad product roadmap 
 - [ ] Extend `scrapbot.volumetric_fog` with local fog volumes and explicit quality controls; evaluate a froxel path beyond the current half-resolution integration. See [ADR-038](adr/ADR-038-author-scene-environments-as-ecs-components.md).
 - [ ] Add Hi-Z, visibility, and LOD debug views.
 
-## ECS UI
-
-- [ ] Add project-defined named theme resources only if they can resolve explicitly without renderer state or stable-frame traversal. See [ADR-040](adr/ADR-040-resolve-ui-themes-into-component-values.md).
-
 ## Project Runtime And Scripting
 
 - [ ] Layer persistent action maps, rebinding, focus/consumption, and controller devices over the ECS input singleton snapshots.

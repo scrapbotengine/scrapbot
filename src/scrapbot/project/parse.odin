@@ -30,9 +30,11 @@ parse_project_resource :: proc(
 	resource.material.base_color = {1, 1, 1, 1}
 	resource.material.roughness = 0.8
 	resource.geometry_lod.radius = 0.5
+	resource.ui_theme.theme = shared.ui_theme_reduced_dark()
 	section := ""
 	type_name := ""
 	geometry_screen_radius_count := 0
+	ui_theme_base_found := false
 	text := source
 	for raw_line in strings.split_lines_iterator(&text) {
 		line := strip_comment(strings.trim_space(raw_line))
@@ -61,6 +63,22 @@ parse_project_resource :: proc(
 		}
 		if line == "[geometry_lod]" {
 			section = "geometry_lod"
+			continue
+		}
+		if line == "[theme]" {
+			section = "theme"
+			continue
+		}
+		if line == "[theme.palette]" {
+			section = "theme.palette"
+			continue
+		}
+		if line == "[theme.metrics]" {
+			section = "theme.metrics"
+			continue
+		}
+		if line == "[theme.typography]" {
+			section = "theme.typography"
 			continue
 		}
 		if len(line) > 0 && line[0] == '[' {
@@ -227,6 +245,165 @@ parse_project_resource :: proc(
 			}
 			continue
 		}
+		if section == "theme" {
+			switch key {
+				case "base":
+					base_name: string
+					base_name, found = parse_basic_string(value)
+					if found {
+						resource.ui_theme.base, found = shared.ui_theme_name_parse(base_name)
+					}
+					if found {
+						ui_theme_base_found = true
+					}
+				case:
+					return resource, fail(
+						.Invalid_Field,
+						fmt.tprintf("unknown theme field '%s'", key),
+					)
+			}
+			if !found {
+				return resource, fail(.Invalid_Field, fmt.tprintf("invalid theme.%s", key))
+			}
+			continue
+		}
+		if section == "theme.palette" {
+			switch key {
+				case "canvas":
+					resource.ui_theme.theme.palette.canvas, found = parse_vec4(value)
+				case "region":
+					resource.ui_theme.theme.palette.region, found = parse_vec4(value)
+				case "panel":
+					resource.ui_theme.theme.palette.panel, found = parse_vec4(value)
+				case "raised":
+					resource.ui_theme.theme.palette.raised, found = parse_vec4(value)
+				case "control":
+					resource.ui_theme.theme.palette.control, found = parse_vec4(value)
+				case "overlay":
+					resource.ui_theme.theme.palette.overlay, found = parse_vec4(value)
+				case "border":
+					resource.ui_theme.theme.palette.border, found = parse_vec4(value)
+				case "border_strong":
+					resource.ui_theme.theme.palette.border_strong, found = parse_vec4(value)
+				case "text":
+					resource.ui_theme.theme.palette.text, found = parse_vec4(value)
+				case "text_secondary":
+					resource.ui_theme.theme.palette.text_secondary, found = parse_vec4(value)
+				case "text_muted":
+					resource.ui_theme.theme.palette.text_muted, found = parse_vec4(value)
+				case "accent":
+					resource.ui_theme.theme.palette.accent, found = parse_vec4(value)
+				case "accent_text":
+					resource.ui_theme.theme.palette.accent_text, found = parse_vec4(value)
+				case "accent_soft":
+					resource.ui_theme.theme.palette.accent_soft, found = parse_vec4(value)
+				case "hover":
+					resource.ui_theme.theme.palette.hover, found = parse_vec4(value)
+				case "active":
+					resource.ui_theme.theme.palette.active, found = parse_vec4(value)
+				case "selection":
+					resource.ui_theme.theme.palette.selection, found = parse_vec4(value)
+				case "focus":
+					resource.ui_theme.theme.palette.focus, found = parse_vec4(value)
+				case "warning":
+					resource.ui_theme.theme.palette.warning, found = parse_vec4(value)
+				case "warning_soft":
+					resource.ui_theme.theme.palette.warning_soft, found = parse_vec4(value)
+				case "danger":
+					resource.ui_theme.theme.palette.danger, found = parse_vec4(value)
+				case "danger_soft":
+					resource.ui_theme.theme.palette.danger_soft, found = parse_vec4(value)
+				case "data_engine":
+					resource.ui_theme.theme.palette.data_engine, found = parse_vec4(value)
+				case "data_native":
+					resource.ui_theme.theme.palette.data_native, found = parse_vec4(value)
+				case "data_script":
+					resource.ui_theme.theme.palette.data_script, found = parse_vec4(value)
+				case "axis_x":
+					resource.ui_theme.theme.palette.axis_x, found = parse_vec4(value)
+				case "axis_y":
+					resource.ui_theme.theme.palette.axis_y, found = parse_vec4(value)
+				case "axis_z":
+					resource.ui_theme.theme.palette.axis_z, found = parse_vec4(value)
+				case "axis_w":
+					resource.ui_theme.theme.palette.axis_w, found = parse_vec4(value)
+				case "light_overlay":
+					resource.ui_theme.theme.palette.light_overlay, found = parse_vec4(value)
+				case "dark_overlay":
+					resource.ui_theme.theme.palette.dark_overlay, found = parse_vec4(value)
+				case:
+					return resource, fail(
+						.Invalid_Field,
+						fmt.tprintf("unknown theme.palette field '%s'", key),
+					)
+			}
+			if !found {
+				return resource, fail(.Invalid_Field, fmt.tprintf("invalid theme.palette.%s", key))
+			}
+			continue
+		}
+		if section == "theme.metrics" {
+			switch key {
+				case "text_size":
+					resource.ui_theme.theme.metrics.text_size, found = parse_f32(value)
+				case "small_text_size":
+					resource.ui_theme.theme.metrics.small_text_size, found = parse_f32(value)
+				case "control_height":
+					resource.ui_theme.theme.metrics.control_height, found = parse_f32(value)
+				case "row_height":
+					resource.ui_theme.theme.metrics.row_height, found = parse_f32(value)
+				case "title_height":
+					resource.ui_theme.theme.metrics.title_height, found = parse_f32(value)
+				case "radius_small":
+					resource.ui_theme.theme.metrics.radius_small, found = parse_f32(value)
+				case "radius":
+					resource.ui_theme.theme.metrics.radius, found = parse_f32(value)
+				case "radius_large":
+					resource.ui_theme.theme.metrics.radius_large, found = parse_f32(value)
+				case "border_width":
+					resource.ui_theme.theme.metrics.border_width, found = parse_f32(value)
+				case "gap_small":
+					resource.ui_theme.theme.metrics.gap_small, found = parse_f32(value)
+				case "gap":
+					resource.ui_theme.theme.metrics.gap, found = parse_f32(value)
+				case "gap_large":
+					resource.ui_theme.theme.metrics.gap_large, found = parse_f32(value)
+				case "padding_small":
+					resource.ui_theme.theme.metrics.padding_small, found = parse_vec4(value)
+				case "padding_control":
+					resource.ui_theme.theme.metrics.padding_control, found = parse_vec4(value)
+				case "padding_panel":
+					resource.ui_theme.theme.metrics.padding_panel, found = parse_vec4(value)
+				case:
+					return resource, fail(
+						.Invalid_Field,
+						fmt.tprintf("unknown theme.metrics field '%s'", key),
+					)
+			}
+			if !found {
+				return resource, fail(.Invalid_Field, fmt.tprintf("invalid theme.metrics.%s", key))
+			}
+			continue
+		}
+		if section == "theme.typography" {
+			switch key {
+				case "font":
+					resource.ui_theme.theme.font, found = parse_basic_string(value)
+					found = found && resource.ui_theme.theme.font != ""
+				case:
+					return resource, fail(
+						.Invalid_Field,
+						fmt.tprintf("unknown theme.typography field '%s'", key),
+					)
+			}
+			if !found {
+				return resource, fail(
+					.Invalid_Field,
+					fmt.tprintf("invalid theme.typography.%s", key),
+				)
+			}
+			continue
+		}
 		switch key {
 			case "id":
 				raw_id, string_ok := parse_basic_string(value)
@@ -268,6 +445,8 @@ parse_project_resource :: proc(
 			resource.kind = .Material
 		case "scrapbot.geometry_lod":
 			resource.kind = .Geometry_LOD
+		case "scrapbot.ui_theme":
+			resource.kind = .UI_Theme
 		case:
 			return resource, fail(
 				.Invalid_Field,
@@ -324,7 +503,7 @@ parse_project_resource :: proc(
 				"material.roughness must be finite and between zero and one",
 			)
 		}
-	} else {
+	} else if resource.kind == .Geometry_LOD {
 		geometry := resource.geometry_lod
 		if math.is_nan(geometry.radius) || math.is_inf(geometry.radius) || geometry.radius <= 0 {
 			return resource, fail(
@@ -361,6 +540,16 @@ parse_project_resource :: proc(
 				)
 			}
 			previous = radius
+		}
+	} else {
+		if !ui_theme_base_found {
+			return resource, fail(.Missing_Field, "theme.base is required")
+		}
+		if !valid_ui_theme(resource.ui_theme.theme) {
+			return resource, fail(
+				.Invalid_Field,
+				"theme colors and metrics must be finite, colors must be non-negative with alpha between zero and one, and metrics must be non-negative",
+			)
 		}
 	}
 	return resource, ok()
@@ -644,7 +833,13 @@ valid_font_source_path :: proc(path: string) -> bool {
 	return strings.equal_fold(extension, ".ttf") || strings.equal_fold(extension, ".otf")
 }
 
-parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
+parse_scene :: proc(
+	source: string,
+	project_resources: []shared.Project_Resource = nil,
+) -> (
+	scene: Scene,
+	result: Parse_Result,
+) {
 	section := ""
 	current: ^Scene_Entity
 	current_component: ^Custom_Component
@@ -849,18 +1044,29 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 						raw_theme, string_ok := parse_basic_string(value)
 						if string_ok {
 							current.ui_theme, found = shared.ui_theme_name_parse(raw_theme)
+							if !found {
+								current.ui_theme_resource, found = shared.resource_uuid_parse(
+									raw_theme,
+								)
+								if found {
+									_, found = project_ui_theme(
+										project_resources,
+										current.ui_theme_resource,
+									)
+								}
+							}
 						} else {
 							found = false
 						}
 						if !found {
 							return scene, fail(
 								.Invalid_Field,
-								"entity ui_theme must name a supported built-in UI theme",
+								"entity ui_theme must name a built-in theme or declared UI theme resource UUID",
 							)
 						}
 						current.has_ui_theme = true
 						if current.ui_theme_recipe_count > 0 {
-							apply_scene_ui_theme(current)
+							apply_scene_ui_theme(current, project_resources)
 						}
 					case "ui_recipes":
 						current.ui_theme_recipe_count, found = parse_ui_theme_recipes(
@@ -874,7 +1080,7 @@ parse_scene :: proc(source: string) -> (scene: Scene, result: Parse_Result) {
 							)
 						}
 						if current.has_ui_theme {
-							apply_scene_ui_theme(current)
+							apply_scene_ui_theme(current, project_resources)
 						}
 					case:
 						return scene, fail(
@@ -2263,12 +2469,38 @@ parse_ui_theme_recipes :: proc(
 	return len(parts), true
 }
 
-apply_scene_ui_theme :: proc(entity: ^Scene_Entity) {
+project_ui_theme :: proc(
+	resources: []shared.Project_Resource,
+	id: shared.Resource_UUID,
+) -> (
+	shared.UI_Theme,
+	bool,
+) {
+	for resource in resources {
+		if resource.kind == .UI_Theme && resource.id == id {
+			return resource.ui_theme.theme, true
+		}
+	}
+	return {}, false
+}
+
+apply_scene_ui_theme :: proc(
+	entity: ^Scene_Entity,
+	project_resources: []shared.Project_Resource = nil,
+) {
 	if entity == nil || !entity.has_ui_theme || entity.ui_theme_recipe_count <= 0 {
 		return
 	}
-	resolved := shared.ui_theme_resolve(
-		entity.ui_theme,
+	theme := shared.ui_theme_builtin(entity.ui_theme)
+	if entity.ui_theme_resource != (shared.Resource_UUID{}) {
+		found: bool
+		theme, found = project_ui_theme(project_resources, entity.ui_theme_resource)
+		if !found {
+			return
+		}
+	}
+	resolved := shared.ui_theme_resolve_value(
+		theme,
 		entity.ui_theme_recipes[:entity.ui_theme_recipe_count],
 	)
 	if resolved.has_layout {
@@ -2640,5 +2872,98 @@ finite_vec4 :: proc(value: Vec4) -> bool {
 		finite_vec3({value.x, value.y, value.z}) &&
 		!math.is_nan(value.w) &&
 		!math.is_inf(value.w) \
+	)
+}
+
+valid_ui_theme_color :: proc(value: Vec4) -> bool {
+	return(
+		finite_vec4(value) &&
+		value.x >= 0 &&
+		value.y >= 0 &&
+		value.z >= 0 &&
+		value.w >= 0 &&
+		value.w <= 1 \
+	)
+}
+
+valid_ui_theme :: proc(theme: shared.UI_Theme) -> bool {
+	palette := theme.palette
+	colors := [?]Vec4 {
+		palette.canvas,
+		palette.region,
+		palette.panel,
+		palette.raised,
+		palette.control,
+		palette.overlay,
+		palette.border,
+		palette.border_strong,
+		palette.text,
+		palette.text_secondary,
+		palette.text_muted,
+		palette.accent,
+		palette.accent_text,
+		palette.accent_soft,
+		palette.hover,
+		palette.active,
+		palette.selection,
+		palette.focus,
+		palette.warning,
+		palette.warning_soft,
+		palette.danger,
+		palette.danger_soft,
+		palette.data_engine,
+		palette.data_native,
+		palette.data_script,
+		palette.axis_x,
+		palette.axis_y,
+		palette.axis_z,
+		palette.axis_w,
+		palette.light_overlay,
+		palette.dark_overlay,
+	}
+	for color in colors {
+		if !valid_ui_theme_color(color) {
+			return false
+		}
+	}
+	metrics := theme.metrics
+	numbers := [?]f32 {
+		metrics.text_size,
+		metrics.small_text_size,
+		metrics.control_height,
+		metrics.row_height,
+		metrics.title_height,
+		metrics.radius_small,
+		metrics.radius,
+		metrics.radius_large,
+		metrics.border_width,
+		metrics.gap_small,
+		metrics.gap,
+		metrics.gap_large,
+		metrics.padding_small.x,
+		metrics.padding_small.y,
+		metrics.padding_small.z,
+		metrics.padding_small.w,
+		metrics.padding_control.x,
+		metrics.padding_control.y,
+		metrics.padding_control.z,
+		metrics.padding_control.w,
+		metrics.padding_panel.x,
+		metrics.padding_panel.y,
+		metrics.padding_panel.z,
+		metrics.padding_panel.w,
+	}
+	for value in numbers {
+		if math.is_nan(value) || math.is_inf(value) || value < 0 {
+			return false
+		}
+	}
+	return(
+		theme.font != "" &&
+		metrics.text_size > 0 &&
+		metrics.small_text_size > 0 &&
+		metrics.control_height > 0 &&
+		metrics.row_height > 0 &&
+		metrics.title_height > 0 \
 	)
 }

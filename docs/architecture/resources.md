@@ -28,6 +28,7 @@ Scrapbot resources live outside ECS. Persistent project files use stable UUIDs; 
 | `Icon_Set` | `scrapbot.icon_set` | Icon Set | `scrapbot.ui_icon` and icon-bearing controls reference set UUID plus symbol | Incrementally imported and inspectable; source directory remains text-authored |
 | `Material` | `scrapbot.material` | Material | `scrapbot.material` | Create, duplicate, rename/move, edit, delete, Undo/Redo, Save/Revert |
 | `Geometry_LOD` | `scrapbot.geometry_lod` | Geometry plus internal LOD Geometry entries | `scrapbot.geometry` | Loaded/hot-reloaded and referenceable; full inline authoring is not yet symmetric with materials |
+| `UI_Theme` | `scrapbot.ui_theme` | UI Theme | Scene/Luau/native/editor composition resolves UUID plus recipes into ordinary `scrapbot.ui_*` values | Text-authored; listed and inspected read-only |
 <!-- inventory:project-resource-kinds:end -->
 
 The recursive project loader rejects duplicate UUIDs. Scene validation resolves Material, Model, authored Geometry, World Environment, and UI icon-set UUID references; materials validate Texture UUIDs. Resource file paths are relative to `resources/`; Texture, Model, Environment, and Icon Set import sources are safe paths under `assets/`.
@@ -44,6 +45,7 @@ The recursive project loader rejects duplicate UUIDs. Scene validation resolves 
 | `Model` | UUID/source when authored | `Model_Handle`, generation, entry version | Model-root reconciliation into derived node/primitive ECS entities |
 | `Material` | Optional UUID/source when authored; name for transient/built-in registration | `Material_Handle`, generation, entry version | Render-instance extraction, material/texture GPU cache, world shading and bloom |
 | `Font` | Project-config font name/source; generated atlas is derived | `Font_Handle`, generation, entry version | UI measurement, glyph lookup, MTSDF atlas upload and UI rendering |
+| `UI_Theme` | UUID/source when authored | `UI_Theme_Handle`, generation, entry version, registry-wide UI-theme revision | Scene parsing, Luau/native recipe resolution, editor resource inspection; never layout or paint |
 <!-- inventory:runtime-resource-families:end -->
 
 ## Registration contracts
@@ -102,6 +104,15 @@ The recursive project loader rejects duplicate UUIDs. Scene validation resolves 
 - Inter remains the baked fallback when a project font is absent or unavailable.
 - Source/tests: `project/fonts.odin`, `resources/resources.odin`, `ui/font_data.odin`; `project/project_test.odin`, `resources/resources_test.odin`, `ui/ui_test.odin`.
 
+### UI Theme
+
+- A `scrapbot.ui_theme` declaration explicitly names the `reduced_dark` built-in baseline, then overrides any semantic palette, metric, or typography token.
+- RGB palette channels are finite non-negative HDR values. Alpha remains between zero and one. Metrics are finite and non-negative; text and container heights are positive. The font is embedded Inter or a project-config font.
+- Reload updates a surviving UUID in place and increments its entry version and registry revision. Removal marks the entry dead and increments generation/version without compacting slots.
+- Scene parsing validates UUIDs against loaded declarations and resolves recipes before explicit component sections. Luau and native callbacks resolve against the runtime registry. Existing entities retain their already-resolved component values.
+- The UI-theme revision refreshes editor resource presentation only. Renderer, retained UI, layout, and paint code have no theme lookup, dependency, or stable-frame work.
+- Source/tests: `shared/ui_theme.odin`, `project/parse.odin`, `resources/themes.odin`, `script/ui_theme.odin`, `native/ui.odin`; `project/project_test.odin`, `resources/resources_test.odin`, `script/ui_components_test.odin`, `native/ui_test.odin`.
+
 ## Resolution and invalidation
 
 ```text
@@ -131,6 +142,6 @@ resources.Registry slot ── {index, generation} ──> ECS component
 - **Play** captures authored Material base color, emissive, metallic, and roughness values in the in-memory playback baseline alongside authored scene entities.
 - **Stop** restores those captured surface values by UUID and increments a material version only when restored content differs. It does not reread resource files or reload Luau/native code.
 - **Explicit Reimport** forces one UUID (or all imported resources), mutates live registry entries, retires stale generated model outputs, and reconciles Model roots without reloading the world, Luau, or native extensions.
-- **Hot reload** ensures imports and re-registers fonts, textures, environments, icon sets, models, materials, and LOD geometry before replacing the world/runtime. Failed project/world reload keeps or restores the last-good runtime path. Its current aggregate asset stamp remains intentionally coarser than explicit Reimport until platform file watching lands.
+- **Hot reload** ensures imports and re-registers fonts, textures, environments, icon sets, models, materials, LOD geometry, and UI themes before replacing the world/runtime. Scene replacement and script re-execution explicitly recompose theme consumers. Failed project/world reload keeps or restores the last-good runtime path. Its current aggregate asset stamp remains intentionally coarser than explicit Reimport until platform file watching lands.
 
 See [Lifecycle matrix](lifecycle.md), [State ownership](state-ownership.md), [FDR-009](../fdr/FDR-009-project-resources.md), and [ADR-030](../adr/ADR-030-identify-project-resources-by-uuid-outside-the-ecs.md).

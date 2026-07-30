@@ -1,7 +1,7 @@
 # FDR-007: ECS UI
 
 **Status:** Active
-**Last reviewed:** 2026-07-29
+**Last reviewed:** 2026-07-30
 
 ## Overview
 
@@ -10,7 +10,7 @@ ECS UI lets projects describe screen-space interfaces with ordinary entities and
 ## Behavior
 
 - Every UI entity describes a rectangular box with an explicit size, optional minimum size, per-axis fill and fit-to-content policies, optional position, per-edge margin and padding, background color, SDF border color and width, corner radius, and hidden state.
-- Themes are explicit composition-time palettes, metrics, semantic tokens, and composable named recipes that resolve into those ordinary component fields. Surface, text, button, control, container, edge-to-edge chrome-bar, and semantic-frame recipes share one vocabulary across editor and project composition. Scene entities use `ui_theme` plus ordered `ui_recipes`; Luau resolves a mutable spawn-component map; native Odin resolves bounded typed payloads through the host. Applying a theme never creates renderer-owned cascading style state, and every resolved value remains individually overridable.
+- Themes are explicit composition-time palettes, metrics, typography, semantic tokens, and composable named recipes that resolve into those ordinary component fields. `reduced_dark` is built in; UUID-backed `scrapbot.ui_theme` project resources explicitly inherit that baseline and override any palette, metric, or font token. HDR RGB tokens are preserved. Surface, text, button, control, container, edge-to-edge chrome-bar, and semantic-frame recipes share one vocabulary across editor and project composition. Scene entities use a built-in name or theme UUID plus ordered `ui_recipes`; Luau resolves a mutable spawn-component map; native Odin resolves bounded typed payloads through built-in-name or project-UUID host callbacks. Applying a theme never creates renderer-owned cascading style state, and every resolved value remains individually overridable.
 - Standalone icon entities select a UUID-backed icon set and symbolic icon name, apply an HDR tint, and fit the result inside an ordinary layout rectangle. Project-local SVG icon sets compile into cached MTSDF atlas products before runtime; the packaged runtime never parses SVG. Project loading rejects unknown icon-set UUIDs. A missing runtime set or symbol emits no paint command, so transient programmatic mutations remain safe without substituting misleading artwork.
 - A hidden box removes its complete descendant subtree from retained layout, painting, and pointer interaction without despawning any entities.
 - UI entities form a parent-by-UUID hierarchy validated when the scene loads. Entity names remain editable labels.
@@ -127,9 +127,9 @@ Tree mode is an opt-in extension of the same list rather than a second widget. D
 
 ### 13. Resolve themes before ECS storage
 
-**Decision:** Let UI composition apply ordered named recipes to canonical public component defaults, then apply entity-specific overrides and store the complete result in ECS. Give scene TOML, Luau, native Odin, and editor composition the same recipe vocabulary and engine-owned resolver. Keep application chrome, selection, warnings, and semantic frames in that public vocabulary, and keep first-party semantic colors in the engine-owned theme palette instead of local consumer constants. The retained hierarchy and renderer consume only those resolved component values, following ADR-040.
+**Decision:** Let UI composition apply ordered named recipes to canonical public component defaults, then apply entity-specific overrides and store the complete result in ECS. Give scene TOML, Luau, native Odin, and editor composition the same recipe vocabulary and engine-owned resolver. Let UUID-backed project theme resources override the baseline semantic palette, metrics, and font without defining a second recipe language. Keep application chrome, selection, warnings, and semantic frames in that public vocabulary, and keep first-party semantic colors in the engine-owned theme palette instead of local consumer constants. The retained hierarchy and renderer consume only those resolved component values, following ADR-040.
 **Why:** Applications need coherent palettes, typography, spacing, radii, and control states without turning the editor's appearance into UI mechanics or hiding effective state behind a cascade.
-**Tradeoff:** Existing entities do not automatically restyle when a recipe changes. The current public resolver offers the built-in reduced-dark theme; projects create unrelated looks through ordinary explicit overrides while project-defined named theme resources remain future work.
+**Tradeoff:** Existing entities do not automatically restyle when a recipe or project resource changes. Whole-project reload explicitly recomposes the replacement scene and script-created UI; targeted live restyling remains the caller's responsibility. Project theme resources currently inherit the one built-in baseline and are text-authored rather than edited inline.
 
 ## Related
 

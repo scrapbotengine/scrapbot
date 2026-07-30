@@ -73,6 +73,7 @@ Step_Context :: struct {
 	system: ^Native_System,
 	commands: ^ecs.Command_Buffer,
 	registry: ^component.Registry,
+	resources: ^resources.Registry,
 }
 
 Source_Target :: struct {

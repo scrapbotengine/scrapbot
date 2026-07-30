@@ -1,11 +1,11 @@
 # FDR-009: Project resources
 
 **Status:** Active
-**Last reviewed:** 2026-07-29
+**Last reviewed:** 2026-07-30
 
 ## Overview
 
-Project resources are reusable, typed bags of authored data stored outside the ECS. Supported types include renderer resources and compiled UI icon sets.
+Project resources are reusable, typed bags of authored data stored outside the ECS. Supported types include renderer resources, compiled UI icon sets, and composition-time UI themes.
 
 ## Behavior
 
@@ -13,11 +13,12 @@ Project resources are reusable, typed bags of authored data stored outside the E
 - Every resource declares a unique non-zero UUID, type, and editable display name.
 - An icon-set resource names a safe source directory under `assets/`. Each SVG filename defines a symbolic monochrome icon; runtime UI references the resource UUID plus that symbol rather than a mutable resource name.
 - A material resource stores base color, HDR emissive color, metallic and roughness factors, and an optional Texture resource reference.
+- A UI-theme resource explicitly inherits a built-in theme and overrides semantic HDR palette colors, metric scales, and a declared project font or embedded Inter. It resolves only at scene, Luau, native, or editor composition boundaries.
 - Scene material components reference a resource UUID, never its name or source path.
 - Project loading rejects malformed resources, duplicate UUIDs, unsafe paths, invalid material data, and unresolved scene material references.
 - Authored resources load before scene render reconciliation. Content reload preserves runtime handle identity and increments the resource version; removal invalidates old handles; reappearance reuses the registry slot with a new generation.
 - Runtime-created Luau or native materials remain transient, name-addressed resources and cannot overwrite authored project materials.
-- A reusable ECS-built resource browser lists authored materials, textures, environments, and models alongside the Scene browser. It composes a public input with a public uniformly virtualized list and scroll area, filters names case-insensitively, and keeps its fixed authoring toolbar outside row flow. Selecting a resource opens the ordinary inspector stack with editable name and relative source path, inline base-color, emissive, metallic, and roughness controls, texture metadata, usage count, deletion availability, and Find Usage.
+- A reusable ECS-built resource browser lists authored materials, textures, environments, models, icon sets, and UI themes alongside the Scene browser. It composes a public input with a public uniformly virtualized list and scroll area, filters names case-insensitively, and keeps its fixed authoring toolbar outside row flow. UI themes are currently text-authored and inspected read-only; material authoring retains its richer editable controls.
 - While stopped, the browser can create, duplicate, rename, move, and delete resources. These operations preserve UUID references, enter bounded structural Undo/Redo history, and remain in memory until Save. Deletion is blocked while any live non-editor entity references the resource UUID.
 - The entity material panel presents the referenced resource, stable UUID, and inline numeric controls for base color, emissive color, metallic, and roughness. A reusable ECS-built popup switches references between known authored materials.
 - Inline material values use the ordinary numeric input contract during every playback state. Running or paused edits preview immediately as disposable runtime changes and Stop restores the captured authoring resource values. Stopped edits become authoring transactions with Undo/Redo. Resource-reference changes remain stopped-mode structural authoring. Save validates every dirty resource and scene candidate, then commits their standalone files together through one recoverable project transaction. Revert reloads project resources and scene entities without reloading Luau or Odin.
@@ -63,5 +64,5 @@ Project resources are reusable, typed bags of authored data stored outside the E
 ## Open Questions
 
 - Which resource types should follow materials next?
-- When should Scrapbot expose authored resource lookup directly to Luau and native extensions?
+- Which resource families besides UI themes should expose authored UUID lookup directly to Luau and native extensions?
 - How should nested resource references and dependency cycles be represented?

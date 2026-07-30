@@ -200,10 +200,11 @@ Post-run tools consume the artifact without engine access. The analyzer ranks GP
 ## ECS UI and editor
 
 ```text
-shared built-in theme + ordered named recipes
-                         │
-     ┌───────────────────┼───────────────────┐
-scene TOML          Luau component map   native host callback
+shared built-in theme ─────┐
+UUID-backed project theme ─┼─ engine-owned ordered recipes
+                           │
+     ┌─────────────────────┼─────────────────────┐
+scene TOML            Luau component map   native host callback
      └───────────────────┼───────────────────┘
               editor composition
                          │
@@ -224,7 +225,7 @@ scene TOML          Luau component map   native host callback
  read-only ui_state + system cursor intent + independent GPU vertex streams
 ```
 
-Theme recipes are consumed only while loading, composing, or explicitly restyling entities. Scene directives create typed component defaults before component sections override fields. Luau returns a mutable component map; native Odin delegates to a host callback that fills caller-owned ABI payloads. All paths share the engine-owned recipe vocabulary, preserve hierarchy and behavior fields, and leave no retained theme dependency. The editor selects reduced-dark surface, chrome-bar, control-state, semantic-frame, and named semantic-color tokens from that same contract; it adds geometry, content, and project meaning but owns no separate visual constants.
+Theme recipes are consumed only while loading, composing, or explicitly restyling entities. Scene directives select a built-in name or validated project UUID and create typed component defaults before component sections override fields. Luau resolves against the same runtime registry and returns a mutable component map; native Odin delegates built-in and project UUID resolution to distinct typed host callbacks that fill caller-owned ABI payloads. All paths share the engine-owned recipe vocabulary, preserve hierarchy and behavior fields, and leave no retained theme dependency. Theme registry versions refresh editor resource inspection, never layout or paint. The editor selects reduced-dark surface, chrome-bar, control-state, semantic-frame, and named semantic-color tokens from that same contract; it adds geometry, content, and project meaning but owns no separate visual constants.
 
 Visible `ui_viewport` nodes additionally populate a compact retained target list. WGPU assigns each visible node an independently sized pooled target. Texture UUIDs use an aspect-preserving GPU pass; Model and Material UUIDs build isolated renderer-owned preview scenes; empty resource UUIDs render the retained active World. The UI shader samples those targets as ordinary clipped paint commands. Shared UI interaction mutates orbit/distance directly on the component; static resources redraw only when target state, quantized size/aspect, exact resource version, or relevant registry revisions change.
 

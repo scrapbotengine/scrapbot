@@ -1,0 +1,52 @@
+id = "71c20000-0000-4000-8000-000000000001"
+type = "scrapbot.ui_theme"
+name = "Neon Overdrive"
+
+[theme]
+base = "reduced_dark"
+
+[theme.palette]
+canvas = [0.025, 0.003, 0.06, 1]
+region = [0.055, 0.008, 0.11, 1]
+panel = [0.10, 0.015, 0.18, 0.98]
+raised = [1, 0.82, 0.05, 1]
+control = [0.04, 0.64, 0.92, 1]
+overlay = [0.055, 0.01, 0.11, 1]
+border = [0.98, 0.18, 0.72, 1]
+border_strong = [1, 0.68, 0.16, 1]
+text = [0.10, 0.015, 0.18, 1]
+text_secondary = [0.25, 0.92, 1, 1]
+text_muted = [0.48, 0.53, 0.61, 1]
+accent = [0.35, 1, 0.22, 1]
+accent_text = [1, 1, 1, 1]
+accent_soft = [0.98, 0.12, 0.38, 1]
+hover = [0.20, 0.88, 1, 1]
+active = [0.02, 0.38, 0.70, 1]
+selection = [1, 0.24, 0.52, 1]
+focus = [0.30, 1, 0.88, 1]
+warning = [1, 0.82, 0.05, 1]
+warning_soft = [0.22, 0.08, 0.28, 1]
+danger = [1.4, 0.08, 0.38, 1]
+danger_soft = [0.25, 0.01, 0.08, 1]
+light_overlay = [1, 1, 1, 0.14]
+dark_overlay = [0, 0, 0, 0.24]
+
+[theme.metrics]
+text_size = 22
+small_text_size = 16
+control_height = 82
+row_height = 70
+title_height = 54
+radius_small = 0
+radius = 18
+radius_large = 40
+border_width = 4
+gap_small = 8
+gap = 14
+gap_large = 22
+padding_small = [8, 12, 8, 12]
+padding_control = [24, 20, 18, 20]
+padding_panel = [38, 42, 38, 42]
+
+[theme.typography]
+font = "Inter"

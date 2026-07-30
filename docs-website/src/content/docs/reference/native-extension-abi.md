@@ -116,7 +116,7 @@ The context includes:
 - `get_transform` and `set_transform`;
 - scalar Number/Vec2/Vec3/Vec4 field reads and writes for schema-backed custom components;
 - `get_ui_component` and `set_ui_component` for complete public ECS UI value and style payloads;
-- `resolve_ui_theme` for host-owned named recipe resolution into caller-provided UI payload storage;
+- `resolve_ui_theme` and `resolve_project_ui_theme` for host-owned built-in-name or project-UUID recipe resolution into caller-provided UI payload storage;
 - full indexed geometry and shared material registration;
 - linear HDR emission through the material descriptor's `emissive` vector;
 
@@ -166,7 +166,7 @@ Text content, icon symbols, font resource names, and input prefixes use separate
 
 UI mutation and removal are deferred through the callback's command buffer. A `Spawn_Options` value can include up to eight UI payloads and an optional output UUID pointer. The UUID is filled when the spawn command is accepted, allowing other entities in the same deferred batch to refer to the new UI entity by stable identity.
 
-`UI_Theme_Name` and `UI_Theme_Recipe` are fixed-layout enums shared with scene and Luau recipe names. `resolve_ui_theme` accepts one theme plus 1–16 ordered recipes and fills caller-owned `UI_Component_Payload` storage. It performs no ECS mutation and requires no component access; the later spawn or set operation enforces ordinary declared writes. The Odin wrapper exposes this callback as `scrapbot.ui_theme_resolve`.
+`UI_Theme_Name` and `UI_Theme_Recipe` are fixed-layout enums shared with scene and Luau recipe names. `resolve_ui_theme` accepts one built-in theme plus 1–16 ordered recipes. `resolve_project_ui_theme` accepts a typed resource UUID plus the same recipe array; the UUID has its own callback parameter rather than reusing a generic string buffer. Both fill caller-owned `UI_Component_Payload` storage, perform no ECS mutation, and require no component access. The later spawn or set operation enforces ordinary declared writes. The Odin wrapper exposes `scrapbot.ui_theme_resolve` and `scrapbot.ui_theme_resolve_project`.
 
 ## Current limits
 

@@ -1,18 +1,32 @@
 package script
 
+import resources "../resources"
 import shared "../shared"
+import base_runtime "base:runtime"
 import c "core:c"
 
 scrapbot_ui_theme_resolve :: proc "c" (L: Lua_State) -> c.int {
+	context = base_runtime.default_context()
 	if lua_type(L, 1) != LUA_TSTRING {
-		return luau_push_error(L, "scrapbot.ui.resolve expects a built-in theme name")
+		return luau_push_error(L, "scrapbot.ui.resolve expects a theme name or resource UUID")
 	}
 	name_length: c.size_t
 	name_data := lua_tolstring(L, 1, &name_length)
 	if name_data == nil {
-		return luau_push_error(L, "scrapbot.ui.resolve expects a built-in theme name")
+		return luau_push_error(L, "scrapbot.ui.resolve expects a theme name or resource UUID")
 	}
-	theme_name, theme_ok := shared.ui_theme_name_parse(luau_string(name_data, name_length))
+	raw_theme := luau_string(name_data, name_length)
+	theme_name, theme_ok := shared.ui_theme_name_parse(raw_theme)
+	theme := shared.UI_Theme{}
+	if theme_ok {
+		theme = shared.ui_theme_builtin(theme_name)
+	} else {
+		theme_id, id_ok := shared.resource_uuid_parse(raw_theme)
+		runtime := cast(^Runtime)lua_getthreaddata(L)
+		if id_ok && runtime != nil && runtime.resource_registry != nil {
+			theme, theme_ok = resources.ui_theme_by_id(runtime.resource_registry, theme_id)
+		}
+	}
 	if !theme_ok {
 		return luau_push_error(L, "scrapbot.ui.resolve references an unsupported theme")
 	}
@@ -56,7 +70,7 @@ scrapbot_ui_theme_resolve :: proc "c" (L: Lua_State) -> c.int {
 		return luau_push_error(L, "scrapbot.ui.resolve accepts at most sixteen recipes")
 	}
 
-	resolved := shared.ui_theme_resolve(theme_name, recipes[:recipe_count])
+	resolved := shared.ui_theme_resolve_value(theme, recipes[:recipe_count])
 	lua_createtable(L, 0, 9)
 	if resolved.has_layout {
 		push_ui_layout_table(L, resolved.layout)

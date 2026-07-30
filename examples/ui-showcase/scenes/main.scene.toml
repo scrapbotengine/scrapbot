@@ -455,13 +455,13 @@ size = 16
 [[entities]]
 id = "30000000-0000-4000-8000-000000000021"
 name = "Arcade Theme"
+ui_theme = "71c20000-0000-4000-8000-000000000001"
+ui_recipes = ["panel_surface"]
 
 [entities.ui_layout]
 parent = "30000000-0000-4000-8000-000000000030"
 size = [590, 600]
 padding = [38, 42, 38, 42]
-background = [0.10, 0.015, 0.18, 0.98]
-border_color = [0.98, 0.18, 0.72, 1]
 border_width = 4
 corner_radius = 40
 horizontal_alignment = "end"
@@ -473,6 +473,8 @@ gap = 22
 [[entities]]
 id = "30000000-0000-4000-8000-000000000022"
 name = "Arcade Title"
+ui_theme = "71c20000-0000-4000-8000-000000000001"
+ui_recipes = ["accent_text"]
 
 [entities.ui_layout]
 parent = "30000000-0000-4000-8000-000000000021"
@@ -480,12 +482,13 @@ size = [506, 72]
 
 [entities.ui_text]
 text = "NEON OVERDRIVE"
-color = [0.35, 1, 0.22, 1]
 size = 42
 
 [[entities]]
 id = "30000000-0000-4000-8000-000000000023"
 name = "Arcade Subtitle"
+ui_theme = "71c20000-0000-4000-8000-000000000001"
+ui_recipes = ["secondary_text"]
 
 [entities.ui_layout]
 parent = "30000000-0000-4000-8000-000000000021"
@@ -493,23 +496,22 @@ size = [506, 34]
 
 [entities.ui_text]
 text = "SAME COMPONENTS. ZERO EDITOR ASSUMPTIONS."
-color = [0.25, 0.92, 1, 1]
 size = 16
 
 [[entities]]
 id = "30000000-0000-4000-8000-000000000024"
 name = "Arcade Status"
+ui_theme = "71c20000-0000-4000-8000-000000000001"
+ui_recipes = ["raised", "primary_text"]
 
 [entities.ui_layout]
 parent = "30000000-0000-4000-8000-000000000021"
 size = [506, 92]
 padding = [24, 28, 18, 28]
-background = [1, 0.82, 0.05, 1]
 corner_radius = 0
 
 [entities.ui_text]
 text = "PLAYER 1 READY"
-color = [0.10, 0.015, 0.18, 1]
 size = 30
 
 [[entities]]
@@ -527,22 +529,18 @@ fill = true
 [[entities]]
 id = "30000000-0000-4000-8000-000000000026"
 name = "Arcade Primary"
+ui_theme = "71c20000-0000-4000-8000-000000000001"
+ui_recipes = ["primary_button"]
 
 [entities.ui_layout]
 parent = "30000000-0000-4000-8000-000000000025"
 size = [3, 82]
 padding = [24, 20, 18, 20]
-background = [0.98, 0.12, 0.38, 1]
-border_color = [1, 0.68, 0.16, 1]
-border_width = 4
 corner_radius = 28
 
 [entities.ui_button]
 text = "BOOST"
-color = [1, 1, 1, 1]
 size = 24
-hover_background = [1, 0.24, 0.52, 1]
-active_background = [0.72, 0.04, 0.24, 1]
 
 [entities.ui_action]
 action = "arcade.boost"
@@ -551,22 +549,19 @@ payload = "player-one"
 [[entities]]
 id = "30000000-0000-4000-8000-000000000027"
 name = "Arcade Secondary"
+ui_theme = "71c20000-0000-4000-8000-000000000001"
+ui_recipes = ["standard_button"]
 
 [entities.ui_layout]
 parent = "30000000-0000-4000-8000-000000000025"
 size = [2, 82]
 padding = [24, 18, 18, 18]
-background = [0.04, 0.64, 0.92, 1]
-border_color = [0.30, 1, 0.88, 1]
-border_width = 4
 corner_radius = 0
 
 [entities.ui_button]
 text = "DRIFT"
 color = [0.02, 0.04, 0.12, 1]
 size = 22
-hover_background = [0.20, 0.88, 1, 1]
-active_background = [0.02, 0.38, 0.70, 1]
 
 [entities.ui_action]
 action = "arcade.drift"
@@ -575,23 +570,18 @@ payload = "player-one"
 [[entities]]
 id = "30000000-0000-4000-8000-000000000028"
 name = "Arcade Checkbox"
+ui_theme = "71c20000-0000-4000-8000-000000000001"
+ui_recipes = ["control", "checkbox"]
 
 [entities.ui_layout]
 parent = "30000000-0000-4000-8000-000000000021"
 size = [506, 70]
 padding = [14, 16, 14, 16]
-background = [0.18, 0.04, 0.31, 1]
 corner_radius = 18
 
 [entities.ui_checkbox]
 checked = true
 box_size = 34
-background = [0.08, 0.02, 0.14, 1]
-checked_background = [0.35, 1, 0.22, 1]
-border_color = [0.98, 0.18, 0.72, 1]
-check_color = [0.10, 0.015, 0.18, 1]
-hover_background = [0.25, 0.92, 1, 1]
-active_background = [1, 0.82, 0.05, 1]
 corner_radius = 12
 border_width = 3
 
@@ -602,17 +592,16 @@ payload = "player-one"
 [[entities]]
 id = "30000000-0000-4000-8000-000000000029"
 name = "Arcade Event Monitor"
+ui_theme = "71c20000-0000-4000-8000-000000000001"
+ui_recipes = ["overlay", "accent_text"]
 
 [entities.ui_layout]
 parent = "30000000-0000-4000-8000-000000000021"
 size = [506, 64]
 padding = [18, 20, 14, 20]
-background = [0.055, 0.01, 0.11, 1]
-border_color = [0.35, 1, 0.22, 0.34]
 border_width = 3
 corner_radius = 18
 
 [entities.ui_text]
 text = "EVENT BUS  /  AWAITING INPUT"
-color = [0.35, 1, 0.22, 1]
 size = 14

@@ -9,12 +9,20 @@ write_scene_world_entity :: proc(
 	builder: ^strings.Builder,
 	world: ^shared.World,
 	entity_index: int,
+	authoring: ^shared.Scene_Entity = nil,
 ) -> bool {
 	snapshot, ok := ecs.capture_entity_snapshot(world, entity_index)
 	if !ok {
 		return false
 	}
 	defer ecs.destroy_entity_snapshot(&snapshot)
+	if authoring != nil && authoring.has_ui_theme {
+		snapshot.entity.has_ui_theme = true
+		snapshot.entity.ui_theme = authoring.ui_theme
+		snapshot.entity.ui_theme_resource = authoring.ui_theme_resource
+		snapshot.entity.ui_theme_recipes = authoring.ui_theme_recipes
+		snapshot.entity.ui_theme_recipe_count = authoring.ui_theme_recipe_count
+	}
 	write_scene_entity(builder, &snapshot.entity)
 	return true
 }
@@ -23,6 +31,21 @@ write_scene_entity :: proc(builder: ^strings.Builder, entity: ^shared.Scene_Enti
 	strings.write_string(builder, "[[entities]]\n")
 	write_scene_string(builder, "id", scene_uuid(entity.id))
 	write_scene_string(builder, "name", entity.name)
+	if entity.has_ui_theme && entity.ui_theme_recipe_count > 0 {
+		if entity.ui_theme_resource != (shared.Resource_UUID{}) {
+			write_scene_string(builder, "ui_theme", scene_resource_uuid(entity.ui_theme_resource))
+		} else {
+			write_scene_string(builder, "ui_theme", shared.ui_theme_name(entity.ui_theme))
+		}
+		strings.write_string(builder, "ui_recipes = [")
+		for recipe, index in entity.ui_theme_recipes[:entity.ui_theme_recipe_count] {
+			if index > 0 {
+				strings.write_string(builder, ", ")
+			}
+			fmt.sbprintf(builder, "%q", shared.ui_theme_recipe_name(recipe))
+		}
+		strings.write_string(builder, "]\n")
+	}
 	if entity.has_transform {
 		write_scene_section(builder, "transform")
 		if entity.transform.parent != (shared.Entity_UUID{}) {

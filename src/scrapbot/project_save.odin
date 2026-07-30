@@ -87,7 +87,7 @@ validate_project_save_references :: proc(
 			continue
 		}
 		parse_result: project.Parse_Result
-		candidate, parse_result = project.parse_scene(file.source)
+		candidate, parse_result = project.parse_scene(file.source, loaded.resources[:])
 		if parse_result.err != .None {
 			return "prepared scene became invalid before project save"
 		}
@@ -96,6 +96,11 @@ validate_project_save_references :: proc(
 	}
 	candidate_resources: [dynamic]shared.Project_Resource
 	defer delete(candidate_resources)
+	for resource in loaded.resources {
+		if resource.kind != .Material {
+			append(&candidate_resources, resource)
+		}
+	}
 	if registry != nil {
 		for material in registry.materials {
 			if !material.alive || !material.authored {

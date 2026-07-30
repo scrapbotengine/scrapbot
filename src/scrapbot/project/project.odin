@@ -365,6 +365,10 @@ load_project :: proc(root: string) -> Project_Load_Result {
 		return result
 	}
 	result.config = config_result.config
+	result.resources, result.err = load_project_resources(root)
+	if result.err != "" {
+		return result
+	}
 
 	scene_path, join_scene_err := filepath.join({root, result.config.default_scene})
 	if join_scene_err != nil {
@@ -378,18 +382,19 @@ load_project :: proc(root: string) -> Project_Load_Result {
 		return result
 	}
 
-	scene, scene_parse_result := parse_scene(string(scene_bytes))
+	scene, scene_parse_result := parse_scene(string(scene_bytes), result.resources[:])
 	if scene_parse_result.err != .None {
 		result.err = fmt.tprintf("%s: %s", result.config.default_scene, scene_parse_result.message)
 		return result
 	}
 
 	result.scene = scene
-	result.resources, result.err = load_project_resources(root)
-	if result.err != "" {
+	if font_err := validate_scene_font_references(&result.scene, &result.config); font_err != "" {
+		result.err = font_err
 		return result
 	}
-	if font_err := validate_scene_font_references(&result.scene, &result.config); font_err != "" {
+	if font_err := validate_project_ui_theme_font_references(result.resources[:], &result.config);
+	   font_err != "" {
 		result.err = font_err
 		return result
 	}
@@ -507,7 +512,18 @@ load_scene_file :: proc(path: string) -> Scene_Load_Result {
 		result.err = fmt.tprintf("failed to read %s: %v", path, scene_err)
 		return result
 	}
-	scene, parse_result := parse_scene(string(scene_bytes))
+	project_resources: [dynamic]shared.Project_Resource
+	project_root := project_root_for_scene_path(path)
+	if project_root != "" {
+		load_err: string
+		project_resources, load_err = load_project_resources(project_root)
+		if load_err != "" {
+			result.err = load_err
+			return result
+		}
+		defer destroy_project_resources(&project_resources)
+	}
+	scene, parse_result := parse_scene(string(scene_bytes), project_resources[:])
 	if parse_result.err != .None {
 		destroy_scene(&scene)
 		result.err = fmt.tprintf("%s: %s", path, parse_result.message)
@@ -515,6 +531,26 @@ load_scene_file :: proc(path: string) -> Scene_Load_Result {
 	}
 	result.scene = scene
 	return result
+}
+
+project_root_for_scene_path :: proc(path: string) -> string {
+	candidate := filepath.dir(path)
+	for _ in 0 ..< 64 {
+		project_path, join_err := filepath.join({candidate, PROJECT_FILE})
+		if join_err == nil {
+			found := os.exists(project_path)
+			delete(project_path)
+			if found {
+				return candidate
+			}
+		}
+		parent := filepath.dir(candidate)
+		if parent == candidate || parent == "" {
+			break
+		}
+		candidate = parent
+	}
+	return ""
 }
 
 destroy_scene_load_result :: proc(result: ^Scene_Load_Result) {
@@ -532,7 +568,7 @@ validate_scene_font_references :: proc(scene: ^Scene, config: ^Project_Config) -
 			entity.ui_input.font,
 		}
 		for font_name in font_names {
-			if font_name == "" { continue }
+			if font_name == "" || font_name == "Inter" { continue }
 			found := false
 			for font in config.fonts {
 				if font.name == font_name { found = true; break }
@@ -544,6 +580,39 @@ validate_scene_font_references :: proc(scene: ^Scene, config: ^Project_Config) -
 					font_name,
 				)
 			}
+		}
+	}
+	return ""
+}
+
+validate_project_ui_theme_font_references :: proc(
+	project_resources: []shared.Project_Resource,
+	config: ^Project_Config,
+) -> string {
+	if config == nil {
+		return ""
+	}
+	for resource in project_resources {
+		if resource.kind != .UI_Theme {
+			continue
+		}
+		font_name := resource.ui_theme.theme.font
+		if font_name == "Inter" {
+			continue
+		}
+		found := false
+		for font in config.fonts {
+			if font.name == font_name {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.tprintf(
+				"UI theme resource '%s' references undeclared font '%s'",
+				resource.name,
+				font_name,
+			)
 		}
 	}
 	return ""

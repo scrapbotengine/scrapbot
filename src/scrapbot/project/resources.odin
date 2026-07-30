@@ -146,6 +146,19 @@ clone_project_resource_strings :: proc(
 		}
 		icon_set_source = icon_set_source_value
 	}
+	theme_font := ""
+	if resource.kind == .UI_Theme {
+		theme_font_value, theme_font_err := strings.clone(resource.ui_theme.theme.font)
+		if theme_font_err != nil {
+			delete(name)
+			delete(texture_source)
+			delete(model_source)
+			delete(environment_source)
+			delete(icon_set_source)
+			return "failed to allocate project UI theme font"
+		}
+		theme_font = theme_font_value
+	}
 	source_value, source_err := strings.clone(source)
 	if source_err != nil {
 		delete(name)
@@ -153,6 +166,7 @@ clone_project_resource_strings :: proc(
 		delete(model_source)
 		delete(environment_source)
 		delete(icon_set_source)
+		delete(theme_font)
 		return "failed to allocate project resource source path"
 	}
 	resource.name = name
@@ -160,6 +174,7 @@ clone_project_resource_strings :: proc(
 	resource.model.source = model_source
 	resource.environment.source = environment_source
 	resource.icon_set.source = icon_set_source
+	resource.ui_theme.theme.font = theme_font
 	resource.source = source_value
 	return ""
 }
@@ -175,6 +190,9 @@ destroy_project_resources :: proc(resources: ^[dynamic]shared.Project_Resource) 
 		delete(resource.model.source)
 		delete(resource.environment.source)
 		delete(resource.icon_set.source)
+		if resource.kind == .UI_Theme {
+			delete(resource.ui_theme.theme.font)
+		}
 	}
 	delete(resources^)
 	resources^ = nil
@@ -198,6 +216,8 @@ validate_scene_resource_references :: proc(
 	known_icon_sets := make(map[shared.Resource_UUID]bool)
 	defer delete(known_icon_sets)
 	known_icon_sets[shared.builtin_icon_set_uuid()] = true
+	known_ui_themes := make(map[shared.Resource_UUID]bool)
+	defer delete(known_ui_themes)
 	for resource in resources {
 		if resource.kind == .Material {
 			known_materials[resource.id] = true
@@ -209,6 +229,8 @@ validate_scene_resource_references :: proc(
 			known_models[resource.id] = true
 		} else if resource.kind == .Icon_Set {
 			known_icon_sets[resource.id] = true
+		} else if resource.kind == .UI_Theme {
+			known_ui_themes[resource.id] = true
 		}
 	}
 	for resource in resources {
@@ -224,6 +246,15 @@ validate_scene_resource_references :: proc(
 		}
 	}
 	for entity in scene.entities {
+		if entity.ui_theme_resource != (shared.Resource_UUID{}) &&
+		   !known_ui_themes[entity.ui_theme_resource] {
+			id_buffer: [36]u8
+			return fmt.tprintf(
+				"scene entity '%s' references unknown UI theme resource '%s'",
+				entity.name,
+				shared.resource_uuid_to_string(entity.ui_theme_resource, id_buffer[:]),
+			)
+		}
 		icon_set := shared.Resource_UUID{}
 		if entity.has_ui_icon {
 			icon_set = entity.ui_icon.icon_set

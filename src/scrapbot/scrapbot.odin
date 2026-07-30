@@ -134,6 +134,7 @@ Native_Work_Context :: struct {
 	world: ^shared.World,
 	commands: ^ecs.Command_Buffer,
 	registry: ^component.Registry,
+	resource_registry: ^resources.Registry,
 	time: shared.Time_Resource,
 	err: string,
 	duration_ns: i64,
@@ -767,6 +768,9 @@ init_render_resources :: proc(
 		return err
 	}
 	if err := resources.register_project_materials(registry, root, project_resources); err != "" {
+		return err
+	}
+	if err := resources.register_project_ui_themes(registry, project_resources); err != "" {
 		return err
 	}
 	if config != nil {
@@ -1486,6 +1490,7 @@ step_frame_runtime_parts :: proc(
 				work_context.world = world
 				work_context.commands = commands
 				work_context.registry = &script_runtime.registry
+				work_context.resource_registry = script_runtime.resource_registry
 				work_context.time = frame_time
 				work_context.system_index = system_index
 				native_work[native_count] = schedule.Work {
@@ -1550,7 +1555,14 @@ step_frame_runtime_parts :: proc(
 run_native_work :: proc(data: rawptr) {
 	work := cast(^Native_Work_Context)data
 	start := time.tick_now()
-	work.err = native.step_system(work.system, work.world, work.commands, work.registry, work.time)
+	work.err = native.step_system(
+		work.system,
+		work.world,
+		work.commands,
+		work.registry,
+		work.resource_registry,
+		work.time,
+	)
 	finish := time.tick_now()
 	work.duration_ns = time.duration_nanoseconds(time.tick_diff(start, finish))
 }

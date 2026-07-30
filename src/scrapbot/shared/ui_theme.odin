@@ -117,6 +117,7 @@ UI_Theme_Metrics :: struct {
 UI_Theme :: struct {
 	palette: UI_Theme_Palette,
 	metrics: UI_Theme_Metrics,
+	font: string,
 }
 
 UI_Theme_Resolved :: struct {
@@ -282,6 +283,7 @@ ui_theme_reduced_dark :: proc "contextless" () -> UI_Theme {
 			padding_control = {7, 9, 6, 9},
 			padding_panel = {10, 12, 12, 12},
 		},
+		font = "Inter",
 	}
 }
 
@@ -348,6 +350,7 @@ ui_theme_text :: proc "contextless" (
 	result := ui_text_default()
 	result.text = text
 	result.color = ui_theme_text_color(theme, role)
+	result.font = theme.font
 	result.size = size
 	if result.size <= 0 {
 		result.size = theme.metrics.text_size
@@ -369,6 +372,7 @@ ui_theme_button :: proc "contextless" (
 	layout.border_color = theme.palette.border
 	layout.border_width = 0
 	button = ui_button_default()
+	button.font = theme.font
 	button.size = theme.metrics.text_size
 	button.color = theme.palette.text_secondary
 	button.hover_background = theme.palette.hover
@@ -442,6 +446,7 @@ ui_theme_input :: proc "contextless" (
 	layout.border_width = 0
 	layout.corner_radius = theme.metrics.radius_small
 	input = ui_input_default()
+	input.font = theme.font
 	input.color = theme.palette.text
 	input.icon_color = theme.palette.text_muted
 	input.prefix_color = theme.palette.text_muted
@@ -467,6 +472,7 @@ ui_theme_panel :: proc "contextless" (
 	layout.border_color = theme.palette.border
 	layout.corner_radius = theme.metrics.radius
 	panel = ui_panel_default()
+	panel.font = theme.font
 	panel.title_color = theme.palette.text_secondary
 	panel.title_background = theme.palette.raised
 	panel.title_size = theme.metrics.small_text_size
@@ -615,8 +621,15 @@ ui_theme_resolve :: proc "contextless" (
 	name: UI_Theme_Name,
 	recipes: []UI_Theme_Recipe,
 ) -> UI_Theme_Resolved {
-	resolved: UI_Theme_Resolved
 	theme := ui_theme_builtin(name)
+	return ui_theme_resolve_value(theme, recipes)
+}
+
+ui_theme_resolve_value :: proc "contextless" (
+	theme: UI_Theme,
+	recipes: []UI_Theme_Recipe,
+) -> UI_Theme_Resolved {
+	resolved: UI_Theme_Resolved
 	for recipe in recipes {
 		ui_theme_apply_recipe(&resolved, theme, recipe)
 	}

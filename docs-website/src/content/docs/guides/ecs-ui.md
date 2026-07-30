@@ -354,4 +354,4 @@ Headless runs normally have no platform pointer, but `--ui-script` can semantica
 
 ## Current limits
 
-The current text/input slice is printable ASCII and single-line. List filtering folds ASCII case only, and virtualized rows require one uniform item height. Clipboard operations, IME composition, Unicode shaping, multiline editing, project-defined named theme resources, accessibility semantics, and general command-event routing remain future work.
+The current text/input slice is printable ASCII and single-line. List filtering folds ASCII case only, and virtualized rows require one uniform item height. Clipboard operations, IME composition, Unicode shaping, multiline editing, inline theme-resource editing, accessibility semantics, and general command-event routing remain future work.

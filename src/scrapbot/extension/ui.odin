@@ -319,6 +319,43 @@ ui_theme_resolve :: proc "contextless" (
 	return buffer[:int(payload_count)], nil
 }
 
+ui_theme_resolve_project :: proc "contextless" (
+	ctx: ^System_Context,
+	theme: UUID,
+	recipes: []UI_Theme_Recipe,
+	buffer: []UI_Component_Payload,
+) -> (
+	payloads: []UI_Component_Payload,
+	err: cstring,
+) {
+	if ctx == nil || ctx.resolve_project_ui_theme == nil {
+		return nil, "Scrapbot project UI theme API is not available"
+	}
+	if len(recipes) == 0 {
+		return nil, "Scrapbot UI theme recipes must not be empty"
+	}
+	if len(buffer) == 0 {
+		return nil, "Scrapbot UI theme payload buffer is not available"
+	}
+	payload_count: c.int
+	err = ctx.resolve_project_ui_theme(
+		ctx,
+		theme,
+		raw_data(recipes),
+		c.int(len(recipes)),
+		raw_data(buffer),
+		c.int(len(buffer)),
+		&payload_count,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if payload_count < 0 || payload_count > c.int(len(buffer)) {
+		return nil, "Scrapbot project UI theme API returned an invalid payload count"
+	}
+	return buffer[:int(payload_count)], nil
+}
+
 ui_layout :: proc "contextless" (value: UI_Layout) -> UI_Component_Payload {
 	return {component = UI_LAYOUT, layout = value}
 }

@@ -14,6 +14,40 @@ scene_persistence_failing_writer :: proc(path, source: string) -> string {
 	return "injected scene write failure"
 }
 
+@(test)
+test_structural_scene_serialization_preserves_theme_authoring_directives :: proc(t: ^testing.T) {
+	theme_id, _ := shared.resource_uuid_parse("71c20000-0000-4000-8000-000000000001")
+	entity := shared.Scene_Entity {
+		id = shared.entity_uuid_from_engine_name("themed-structural-save"),
+		name = "Themed",
+		has_ui_theme = true,
+		ui_theme_resource = theme_id,
+		ui_theme_recipe_count = 2,
+		has_ui_layout = true,
+		ui_layout = shared.ui_layout_default(),
+		has_ui_button = true,
+		ui_button = shared.ui_button_default(),
+	}
+	entity.ui_theme_recipes[0] = .Primary_Button
+	entity.ui_theme_recipes[1] = .Warning_Frame
+	scene := shared.Scene {
+		entities = make([dynamic]shared.Scene_Entity),
+	}
+	defer delete(scene.entities)
+	append(&scene.entities, entity)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	builder := strings.builder_make()
+	defer strings.builder_destroy(&builder)
+	testing.expect(t, write_scene_world_entity(&builder, &world, 0, &entity))
+	source := strings.to_string(builder)
+	testing.expect(
+		t,
+		strings.contains(source, `ui_theme = "71c20000-0000-4000-8000-000000000001"`),
+	)
+	testing.expect(t, strings.contains(source, `ui_recipes = ["primary_button", "warning_frame"]`))
+}
+
 scene_persistence_fixture :: proc(count: int) -> string {
 	builder := strings.builder_make()
 	defer strings.builder_destroy(&builder)
