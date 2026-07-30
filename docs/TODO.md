@@ -15,7 +15,7 @@ This file tracks current actionable engineering work. The broad product roadmap 
 - [ ] Add hierarchical-Z ray marching, rough-reflection filtering, and temporal confidence accumulation to screen-space reflections; keep the current bounded linear ray march as the portable baseline.
 - [ ] Add per-object motion vectors so temporal antialiasing can reproject animated geometry exactly instead of relying on depth rejection and neighborhood clamping.
 - [ ] Extend `scrapbot.volumetric_fog` with local fog volumes and explicit quality controls; evaluate a froxel path beyond the current half-resolution integration. See [ADR-038](adr/ADR-038-author-scene-environments-as-ecs-components.md).
-- [ ] Extend camera debug views with Hi-Z, object/meshlet visibility classification, and selected LOD.
+- [ ] Extend camera debug views with Hi-Z pyramid and mip inspection.
 
 ## Project Runtime And Scripting
 

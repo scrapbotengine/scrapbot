@@ -102,6 +102,7 @@ Render_Stats :: struct {
 	frustum_culled_meshlets: u32,
 	cone_culled_meshlets: u32,
 	occlusion_culled_meshlets: u32,
+	meshlet_debug_records: u32,
 	lod0_visible_instances: u32,
 	lod1_visible_instances: u32,
 	lod2_visible_instances: u32,

@@ -145,4 +145,5 @@ wgpu_publish_visibility :: proc(renderer: ^WGPU_Renderer, stats: ^Render_Stats) 
 	stats.frustum_culled_meshlets = renderer.gpu_visibility_counters.frustum_culled_meshlets
 	stats.cone_culled_meshlets = renderer.gpu_visibility_counters.cone_culled_meshlets
 	stats.occlusion_culled_meshlets = renderer.gpu_visibility_counters.occlusion_culled_meshlets
+	stats.meshlet_debug_records = renderer.gpu_visibility_counters.meshlet_debug_records
 }

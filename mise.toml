@@ -415,6 +415,7 @@ ATMOSPHERE_BASELINE_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-world-environment-baseli
 ATMOSPHERE_DUMP="${TMPDIR:-/tmp}/scrapbot-gpu-world-environment.json"
 LOD_COMPUTE_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-lod-compute.png"
 LOD_CPU_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-lod-cpu.png"
+MESHLET_VISIBILITY_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-meshlet-visibility.png"
 TRANSFORM_COMPUTE_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-transform-compute.png"
 TRANSFORM_CPU_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-transform-cpu.png"
 MASK_FRAME="${TMPDIR:-/tmp}/scrapbot-gltf-mask.png"
@@ -426,7 +427,7 @@ CLUSTER_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-cluster-capacity.png"
 CLUSTER_PAUSED_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-cluster-paused.png"
 CLUSTER_STOPPED_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-cluster-stopped.png"
 CLUSTER_RESTART_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-cluster-restart.png"
-trap 'rm -f "$COMPUTE_FRAME" "$CPU_FRAME" "$UI_FRAME" "$RESPONSIVE_UI_FRAME" "$RESPONSIVE_UI_DUMP" "$OVERLAY_FRAME" "$OVERLAY_DUMP" "$ATMOSPHERE_FRAME" "$ATMOSPHERE_BASELINE_FRAME" "$ATMOSPHERE_DUMP" "$LOD_COMPUTE_FRAME" "$LOD_CPU_FRAME" "$TRANSFORM_COMPUTE_FRAME" "$TRANSFORM_CPU_FRAME" "$MASK_FRAME" "$LIGHTING_FRAME" "$PBR_FRAME" "$TAA_FRAME_A" "$TAA_FRAME_B" "$CLUSTER_FRAME" "$CLUSTER_PAUSED_FRAME" "$CLUSTER_STOPPED_FRAME" "$CLUSTER_RESTART_FRAME"' EXIT
+trap 'rm -f "$COMPUTE_FRAME" "$CPU_FRAME" "$UI_FRAME" "$RESPONSIVE_UI_FRAME" "$RESPONSIVE_UI_DUMP" "$OVERLAY_FRAME" "$OVERLAY_DUMP" "$ATMOSPHERE_FRAME" "$ATMOSPHERE_BASELINE_FRAME" "$ATMOSPHERE_DUMP" "$LOD_COMPUTE_FRAME" "$LOD_CPU_FRAME" "$MESHLET_VISIBILITY_FRAME" "$TRANSFORM_COMPUTE_FRAME" "$TRANSFORM_CPU_FRAME" "$MASK_FRAME" "$LIGHTING_FRAME" "$PBR_FRAME" "$TAA_FRAME_A" "$TAA_FRAME_B" "$CLUSTER_FRAME" "$CLUSTER_PAUSED_FRAME" "$CLUSTER_STOPPED_FRAME" "$CLUSTER_RESTART_FRAME"' EXIT
 COMPUTE_JSON="$(bin/scrapbot run tests/fixtures/gpu-driven --headless --no-hot-reload --frames 20 --framegrab "$COMPUTE_FRAME" --json)"
 CPU_JSON="$(bin/scrapbot run tests/fixtures/gpu-driven --headless --no-hot-reload --cpu-culling --frames 20 --framegrab "$CPU_FRAME" --json)"
 UI_JSON="$(bin/scrapbot run examples/ecs-showcase --headless --editor --no-hot-reload --frames 2 --framegrab "$UI_FRAME" --json)"
@@ -436,6 +437,7 @@ ATMOSPHERE_BASELINE_JSON="$(bin/scrapbot run examples/ecs-showcase --headless --
 ATMOSPHERE_JSON="$(bin/scrapbot run examples/ecs-showcase --headless --editor --no-hot-reload --frames 80 --ui-script tests/fixtures/ui/world-environment.json --ui-dump "$ATMOSPHERE_DUMP" --framegrab "$ATMOSPHERE_FRAME" --json)"
 LOD_COMPUTE_JSON="$(bin/scrapbot run tests/fixtures/gpu-lod --headless --no-hot-reload --frames 5 --framegrab "$LOD_COMPUTE_FRAME" --json)"
 LOD_CPU_JSON="$(bin/scrapbot run tests/fixtures/gpu-lod --headless --no-hot-reload --cpu-culling --frames 5 --framegrab "$LOD_CPU_FRAME" --json)"
+MESHLET_VISIBILITY_JSON="$(bin/scrapbot run examples/ecs-showcase --headless --editor --no-hot-reload --frames 20 --ui-script tests/fixtures/ui/game-debug-visibility.json --framegrab "$MESHLET_VISIBILITY_FRAME" --json)"
 TRANSFORM_COMPUTE_JSON="$(bin/scrapbot run examples/minimal --headless --no-hot-reload --frames 20 --framegrab "$TRANSFORM_COMPUTE_FRAME" --json)"
 TRANSFORM_CPU_JSON="$(bin/scrapbot run examples/minimal --headless --no-hot-reload --cpu-culling --frames 20 --framegrab "$TRANSFORM_CPU_FRAME" --json)"
 MASK_JSON="$(bin/scrapbot run tests/fixtures/gltf-materials --headless --no-hot-reload --frames 2 --framegrab "$MASK_FRAME" --json)"
@@ -605,6 +607,25 @@ for (const [label, raw, expectedCompute] of [["compute", process.argv[1], true],
   }
 }
 ' "$LOD_COMPUTE_JSON" "$LOD_CPU_JSON"
+node -e '
+const result = JSON.parse(process.argv[1]);
+const stats = result.result?.render_stats;
+const rejected =
+  stats?.frustum_culled_meshlets +
+  stats?.cone_culled_meshlets +
+  stats?.occlusion_culled_meshlets;
+if (result.schema_version !== 1 || result.command !== "run" || result.ok !== true ||
+    !stats?.meshlet_culling || stats.meshlet_debug_records <= 0 ||
+    stats.meshlet_debug_records < rejected ||
+    stats.gpu_ambient_occlusion_ms !== 0 ||
+    stats.gpu_screen_space_reflections_ms !== 0 ||
+    stats.gpu_volumetric_fog_ms !== 0 ||
+    stats.gpu_bloom_ms !== 0 ||
+    stats.gpu_automatic_exposure_ms !== 0) {
+  console.error("meshlet visibility debug stream did not cover GPU rejection results");
+  process.exit(1);
+}
+' "$MESHLET_VISIBILITY_JSON"
 node -e '
 for (const [label, raw, expectedCompute] of [["compute", process.argv[1], true], ["cpu", process.argv[2], false]]) {
   const result = JSON.parse(raw);

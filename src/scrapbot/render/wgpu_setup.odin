@@ -443,6 +443,21 @@ wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
 	if renderer.gpu_driven_shader != nil {
 		wgpu.ShaderModuleRelease(renderer.gpu_driven_shader)
 	}
+	if renderer.gpu_meshlet_debug_bind_group != nil {
+		wgpu.BindGroupRelease(renderer.gpu_meshlet_debug_bind_group)
+	}
+	if renderer.gpu_meshlet_debug_pipeline != nil {
+		wgpu.RenderPipelineRelease(renderer.gpu_meshlet_debug_pipeline)
+	}
+	if renderer.gpu_meshlet_debug_pipeline_layout != nil {
+		wgpu.PipelineLayoutRelease(renderer.gpu_meshlet_debug_pipeline_layout)
+	}
+	if renderer.gpu_meshlet_debug_bind_group_layout != nil {
+		wgpu.BindGroupLayoutRelease(renderer.gpu_meshlet_debug_bind_group_layout)
+	}
+	if renderer.gpu_meshlet_debug_shader != nil {
+		wgpu.ShaderModuleRelease(renderer.gpu_meshlet_debug_shader)
+	}
 	if renderer.gpu_cluster_bind_group != nil {
 		wgpu.BindGroupRelease(renderer.gpu_cluster_bind_group)
 	}
@@ -471,6 +486,7 @@ wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
 		renderer.gpu_meshlet_info_buffer,
 		renderer.gpu_meshlet_visible_buffer,
 		renderer.gpu_meshlet_identity_buffer,
+		renderer.gpu_meshlet_debug_indirect_buffer,
 		renderer.gpu_meshlet_shadow_visible_buffer,
 		renderer.gpu_meshlet_indirect_template_buffer,
 		renderer.gpu_meshlet_indirect_buffer,

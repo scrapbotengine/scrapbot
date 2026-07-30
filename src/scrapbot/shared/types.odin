@@ -313,6 +313,8 @@ Render_Debug_View :: enum u32 {
 	Metallic,
 	Depth,
 	Meshlets,
+	LOD,
+	Meshlet_Visibility,
 }
 
 Camera_Component :: struct {

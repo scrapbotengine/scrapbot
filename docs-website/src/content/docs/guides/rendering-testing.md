@@ -24,7 +24,9 @@ Every registered Geometry also owns deterministic meshlets capped at 64 vertices
 
 When a native adapter exposes indirect-first-instance, WGPU retains one indexed-indirect command and aligned visible-instance slice per meshlet. After whole-object rejection and LOD selection, compute tests camera meshlets against the frustum, single-sided normal cone, and Hi-Z; shadow lanes test each cascade frustum. World, depth, and shadow then submit the CPU-known meshlet ranges with one fixed multi-draw per retained geometry/material/LOD batch.
 
-Set `scrapbot.camera.debug_view` to `base_color`, `world_normals`, `roughness`, `metallic`, `depth`, or `meshlets` to capture the same diagnostics without opening the editor. The checked-in semantic replay `tests/fixtures/ui/game-debug-meshlets.json` drives the editor selector and captures only the Game viewport; pair it with `examples/ecs-showcase` for a compact meshlet smoke or `examples/sponza` for the highest-payoff architectural view.
+Set `scrapbot.camera.debug_view` to `base_color`, `world_normals`, `roughness`, `metallic`, `depth`, `meshlets`, `lod`, or `meshlet_visibility` to capture the same diagnostics without opening the editor. The checked-in semantic replays `tests/fixtures/ui/game-debug-meshlets.json`, `game-debug-lod.json`, and `game-debug-visibility.json` drive the editor selector and capture only the Game viewport. Pair LOD with `tests/fixtures/gpu-lod`, visibility with `examples/ecs-showcase`, or either meshlet view with `examples/sponza` for the highest-payoff architectural view.
+
+Visibility diagnostics remain GPU-native. The culling pass emits rejected meshlet bounds into an aligned diagnostic range only while the view is active, copies its count into an indirect line draw, and publishes `meshlet_debug_records` in structured render statistics. No CPU readback or topology rebuild is required.
 
 `--cpu-culling`, adapters without indirect-first-instance, and layouts exceeding 1,048,576 meshlet-visible entries use the whole-primitive indexed-indirect path. This is a capability and memory fallback, not a different project-facing geometry format.
 

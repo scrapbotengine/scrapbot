@@ -102,7 +102,8 @@ WGPU_GPU_Visibility_Counters :: struct {
 	frustum_culled_meshlets: u32,
 	cone_culled_meshlets: u32,
 	occlusion_culled_meshlets: u32,
-	_padding: [3]u32,
+	meshlet_debug_records: u32,
+	_padding: [2]u32,
 }
 
 WGPU_GPU_Visibility_Readback :: struct {
@@ -325,7 +326,7 @@ WGPU_GPU_Cull_Uniform :: struct {
 	shadow_visible_stride: u32,
 	meshlet_enabled: u32,
 	meshlet_shadow_visible_stride: u32,
-	_padding: u32,
+	meshlet_debug_record_offset: u32,
 }
 #assert(size_of(WGPU_GPU_Cull_Uniform) == 672)
 
@@ -337,6 +338,23 @@ WGPU_Draw_Indexed_Indirect :: struct {
 	first_instance: u32,
 }
 #assert(size_of(WGPU_Draw_Indexed_Indirect) == 20)
+
+WGPU_Draw_Indirect :: struct {
+	vertex_count: u32,
+	instance_count: u32,
+	first_vertex: u32,
+	first_instance: u32,
+}
+#assert(size_of(WGPU_Draw_Indirect) == 16)
+
+WGPU_GPU_Meshlet_Debug_Record :: struct {
+	bounds: [4]f32,
+	classification: u32,
+	lod_level: u32,
+	meshlet_identity: u32,
+	_padding: u32,
+}
+#assert(size_of(WGPU_GPU_Meshlet_Debug_Record) == 32)
 
 WGPU_GPU_Batch_Info :: struct {
 	visible_offset: u32,
@@ -596,6 +614,11 @@ WGPU_Renderer :: struct {
 	gpu_cull_bind_group_layout: wgpu.BindGroupLayout,
 	gpu_cull_bind_group: wgpu.BindGroup,
 	gpu_meshlet_cull_bind_group: wgpu.BindGroup,
+	gpu_meshlet_debug_shader: wgpu.ShaderModule,
+	gpu_meshlet_debug_pipeline: wgpu.RenderPipeline,
+	gpu_meshlet_debug_pipeline_layout: wgpu.PipelineLayout,
+	gpu_meshlet_debug_bind_group_layout: wgpu.BindGroupLayout,
+	gpu_meshlet_debug_bind_group: wgpu.BindGroup,
 	gpu_transform_shader: wgpu.ShaderModule,
 	gpu_transform_pipeline: wgpu.ComputePipeline,
 	gpu_transform_pipeline_layout: wgpu.PipelineLayout,
@@ -634,6 +657,7 @@ WGPU_Renderer :: struct {
 	gpu_meshlet_info_buffer: wgpu.Buffer,
 	gpu_meshlet_visible_buffer: wgpu.Buffer,
 	gpu_meshlet_identity_buffer: wgpu.Buffer,
+	gpu_meshlet_debug_indirect_buffer: wgpu.Buffer,
 	gpu_meshlet_shadow_visible_buffer: wgpu.Buffer,
 	gpu_meshlet_indirect_template_buffer: wgpu.Buffer,
 	gpu_meshlet_indirect_buffer: wgpu.Buffer,
@@ -2399,6 +2423,10 @@ wgpu_encode_render_pass :: proc(
 	} else {
 		renderer.gpu_hiz_valid = false
 		renderer.gpu_hiz_occlusion_enabled = false
+	}
+	if err := wgpu_encode_meshlet_debug_overlay(renderer, encoder, layout.render_viewport);
+	   err != "" {
+		return err
 	}
 	if err := wgpu_encode_embedded_viewports(
 		renderer,

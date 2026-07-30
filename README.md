@@ -212,7 +212,8 @@ trends; they are not portable performance thresholds.
   - [x] Compiled UUID-backed SVG icon-set resources and embedded control catalog
 - Tooling
   - [x] Resource hot reload
-  - [ ] Hi-Z, object/meshlet visibility classification, and LOD debug views
+  - [x] GPU-selected LOD heatmap and object/meshlet visibility-classification overlays
+  - [ ] Hi-Z pyramid and mip inspection
 
 ### Input And UI
 

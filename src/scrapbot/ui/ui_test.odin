@@ -4372,9 +4372,17 @@ test_editor_game_view_debug_selector_is_transient_public_ui :: proc(t: ^testing.
 		.Debug_View_Item,
 		int(shared.Render_Debug_View.Meshlets),
 	)
+	visibility, visibility_found := editor_ui_entity(
+		&world,
+		.Debug_View_Item,
+		int(shared.Render_Debug_View.Meshlet_Visibility),
+	)
 	camera_item, camera_item_found := editor_ui_entity(&world, .Debug_View_Item, -1)
-	testing.expect(t, button_found && menu_found && meshlets_found && camera_item_found)
-	if !button_found || !menu_found || !meshlets_found || !camera_item_found {
+	testing.expect(
+		t,
+		button_found && menu_found && meshlets_found && visibility_found && camera_item_found,
+	)
+	if !button_found || !menu_found || !meshlets_found || !visibility_found || !camera_item_found {
 		return
 	}
 	testing.expect(t, world.entities[button].ui_button_index >= 0)
@@ -4399,6 +4407,14 @@ test_editor_game_view_debug_selector_is_transient_public_ui :: proc(t: ^testing.
 		"VIEW / MESHLETS",
 	)
 	testing.expect(t, world.cameras[0].debug_view == .Lit)
+
+	editor_ui_handle_activation(state, &world, world.entities[visibility].id, {})
+	testing.expect(t, state.editor_render_debug_view == .Meshlet_Visibility)
+	testing.expect_value(
+		t,
+		world.ui_buttons[world.entities[button].ui_button_index].text,
+		"VIEW / MESHLET VISIBILITY",
+	)
 
 	editor_ui_handle_activation(state, &world, world.entities[camera_item].id, {})
 	testing.expect(t, !state.editor_render_debug_view_override)

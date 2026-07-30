@@ -229,7 +229,30 @@ struct Vertex_Output {
 	@location(6) emissive: vec3<f32>,
 	@location(7) world_tangent: vec4<f32>,
 	@location(8) @interpolate(flat) meshlet_identity: u32,
+	@location(9) @interpolate(flat) lod_level: u32,
 };
+
+fn selected_lod(instance: GPU_Instance) -> u32 {
+	if (instance.lod_count == 0u) {
+		return 0u;
+	}
+	let clip = render.view_projection * vec4<f32>(instance.bounds.xyz, 1.0);
+	if (clip.w <= 0.0001) {
+		return 0u;
+	}
+	let screen_radius = abs(instance.bounds.w * render.view_projection[1][1] / clip.w) * 0.5;
+	var level = 0u;
+	for (
+		var threshold_index = 0u;
+		threshold_index < instance.lod_count;
+		threshold_index = threshold_index + 1u
+	) {
+		if (screen_radius < instance.lod_screen_radii[threshold_index]) {
+			level = threshold_index + 1u;
+		}
+	}
+	return level;
+}
 
 @vertex
 fn vs_main(input: Vertex_Input, @builtin(instance_index) visible_index: u32) -> Vertex_Output {
@@ -249,8 +272,12 @@ fn vs_main(input: Vertex_Input, @builtin(instance_index) visible_index: u32) -> 
 	output.shadow_receiver = instance.shadow_flags.y;
 	output.uv = input.uv;
 	output.meshlet_identity = 0u;
-	if (render.debug.x == 6u && render.debug.y != 0u) {
+	output.lod_level = 0u;
+	if ((render.debug.x == 6u || render.debug.x == 8u) && render.debug.y != 0u) {
 		output.meshlet_identity = meshlet_identities[visible_index];
+	}
+	if (render.debug.x == 7u) {
+		output.lod_level = selected_lod(instance);
 	}
 	return output;
 }
@@ -702,6 +729,27 @@ fn fs_main(
 					);
 				}
 			}
+			case 7u: {
+				let lod_colors = array<vec3<f32>, 4>(
+					vec3<f32>(0.22, 0.86, 0.62),
+					vec3<f32>(0.20, 0.58, 1.0),
+					vec3<f32>(0.76, 0.40, 1.0),
+					vec3<f32>(1.0, 0.42, 0.18),
+				);
+				debug_color = lod_colors[min(input.lod_level, 3u)];
+			}
+			case 8u: {
+				if (render.debug.y != 0u && input.meshlet_identity != 0u) {
+					debug_color = vec3<f32>(0.18, 0.82, 0.48);
+				} else {
+					let checker = u32(input.position.x / 12.0) ^ u32(input.position.y / 12.0);
+					debug_color = select(
+						vec3<f32>(0.08, 0.09, 0.11),
+						vec3<f32>(0.48, 0.12, 0.24),
+						(checker & 1u) != 0u,
+					);
+				}
+			}
 			default: {}
 		}
 		var output: Fragment_Output;
@@ -911,7 +959,7 @@ struct Cull_Uniform {
 	shadow_visible_stride: u32,
 	meshlet_enabled: u32,
 	meshlet_shadow_visible_stride: u32,
-	padding_0: u32,
+	meshlet_debug_record_offset: u32,
 };
 
 struct Visibility_Counters {
@@ -926,7 +974,8 @@ struct Visibility_Counters {
 	frustum_culled_meshlets: atomic<u32>,
 	cone_culled_meshlets: atomic<u32>,
 	occlusion_culled_meshlets: atomic<u32>,
-	padding: array<u32, 3>,
+	meshlet_debug_records: atomic<u32>,
+	padding: array<u32, 2>,
 };
 
 @group(0) @binding(0) var<storage, read> instances: array<GPU_Instance>;
@@ -1050,6 +1099,53 @@ fn select_lod(instance: GPU_Instance) -> u32 {
 	return level;
 }
 
+fn append_meshlet_debug(
+	bounds: vec4<f32>,
+	classification: u32,
+	lod_level: u32,
+	meshlet_identity: u32,
+) {
+	if (cull.meshlet_debug_record_offset == 0u) {
+		return;
+	}
+	let record_index = atomicAdd(&counters.meshlet_debug_records, 1u);
+	let base = cull.meshlet_debug_record_offset + record_index * 8u;
+	if (base + 7u < arrayLength(&visible_instances)) {
+		visible_instances[base] = bitcast<u32>(bounds.x);
+		visible_instances[base + 1u] = bitcast<u32>(bounds.y);
+		visible_instances[base + 2u] = bitcast<u32>(bounds.z);
+		visible_instances[base + 3u] = bitcast<u32>(bounds.w);
+		visible_instances[base + 4u] = classification;
+		visible_instances[base + 5u] = lod_level;
+		visible_instances[base + 6u] = meshlet_identity;
+		visible_instances[base + 7u] = 0u;
+	}
+}
+
+fn append_batch_meshlet_debug(
+	instance: GPU_Instance,
+	batch: Batch_Info,
+	classification: u32,
+	lod_level: u32,
+) {
+	if (cull.meshlet_debug_record_offset == 0u || cull.meshlet_enabled == 0u) {
+		return;
+	}
+	for (
+		var local_meshlet = 0u;
+		local_meshlet < batch.meshlet_count;
+		local_meshlet = local_meshlet + 1u
+	) {
+		let meshlet_index = batch.meshlet_offset + local_meshlet;
+		append_meshlet_debug(
+			world_meshlet_bounds(instance, meshlets[meshlet_index]),
+			classification,
+			lod_level,
+			meshlet_index + 1u,
+		);
+	}
+}
+
 @compute @workgroup_size(64)
 fn cull_instances(@builtin(global_invocation_id) invocation: vec3<u32>) {
 	let slot = invocation.x;
@@ -1068,6 +1164,7 @@ fn cull_instances(@builtin(global_invocation_id) invocation: vec3<u32>) {
 		atomicAdd(&counters.frustum_candidates, 1u);
 		if (camera_sphere_occluded(instance.bounds)) {
 			atomicAdd(&counters.occlusion_culled_instances, 1u);
+			append_batch_meshlet_debug(instance, batch, 3u, lod_level);
 		} else if (cull.meshlet_enabled != 0u) {
 			for (
 				var local_meshlet = 0u;
@@ -1079,14 +1176,17 @@ fn cull_instances(@builtin(global_invocation_id) invocation: vec3<u32>) {
 				let bounds = world_meshlet_bounds(instance, meshlet);
 				if (!camera_sphere_visible(bounds)) {
 					atomicAdd(&counters.frustum_culled_meshlets, 1u);
+					append_meshlet_debug(bounds, 4u, lod_level, meshlet_index + 1u);
 					continue;
 				}
 				if (meshlet_cone_culled(instance, meshlet, bounds)) {
 					atomicAdd(&counters.cone_culled_meshlets, 1u);
+					append_meshlet_debug(bounds, 5u, lod_level, meshlet_index + 1u);
 					continue;
 				}
 				if (camera_sphere_occluded(bounds)) {
 					atomicAdd(&counters.occlusion_culled_meshlets, 1u);
+					append_meshlet_debug(bounds, 6u, lod_level, meshlet_index + 1u);
 					continue;
 				}
 				let local_index =
@@ -1108,6 +1208,7 @@ fn cull_instances(@builtin(global_invocation_id) invocation: vec3<u32>) {
 		}
 	} else if (cascade_index == 0u) {
 		atomicAdd(&counters.frustum_culled_instances, 1u);
+		append_batch_meshlet_debug(instance, batch, 2u, lod_level);
 	}
 	if (instance.shadow_flags.x > 0.5 && shadow_sphere_visible(instance.bounds, cascade_index)) {
 		if (cull.meshlet_enabled != 0u) {
@@ -1182,5 +1283,88 @@ fn downsample_depth(@builtin(global_invocation_id) invocation: vec3<u32>) {
 	let c = textureLoad(source_hiz, min(base + vec2<i32>(0, 1), limit), 0).x;
 	let d = textureLoad(source_hiz, min(base + vec2<i32>(1, 1), limit), 0).x;
 	textureStore(destination_hiz, invocation.xy, vec4<f32>(max(max(a, b), max(c, d))));
+}
+`
+
+WGPU_MESHLET_DEBUG_SHADER :: `
+struct Render_Uniform {
+	view_projection: mat4x4<f32>,
+	view: mat4x4<f32>,
+	shadow_view_projections: array<mat4x4<f32>, 4>,
+	ambient: vec4<f32>,
+	directional_direction_intensity: array<vec4<f32>, 4>,
+	directional_color: array<vec4<f32>, 4>,
+	light_counts: vec4<u32>,
+	camera_position: vec4<f32>,
+	shadow_cascade_splits: vec4<f32>,
+	shadow_cascade_texel_sizes: vec4<f32>,
+	debug: vec4<u32>,
+	camera_clip: vec4<f32>,
+};
+
+struct Meshlet_Debug_Record {
+	bounds: vec4<f32>,
+	classification: u32,
+	lod_level: u32,
+	meshlet_identity: u32,
+	padding: u32,
+};
+
+@group(0) @binding(0) var<uniform> render: Render_Uniform;
+@group(0) @binding(1) var<storage, read> records: array<Meshlet_Debug_Record>;
+
+struct Vertex_Output {
+	@builtin(position) position: vec4<f32>,
+	@location(0) @interpolate(flat) classification: u32,
+};
+
+@vertex
+fn debug_vs(
+	@builtin(vertex_index) vertex_index: u32,
+	@builtin(instance_index) instance_index: u32,
+) -> Vertex_Output {
+	let record = records[instance_index];
+	let circle_vertex = vertex_index % 48u;
+	let circle = vertex_index / 48u;
+	let segment = circle_vertex / 2u;
+	let endpoint = circle_vertex & 1u;
+	let angle = 6.28318530718 * f32(segment + endpoint) / 24.0;
+	let sine = sin(angle);
+	let cosine = cos(angle);
+	var unit = vec3<f32>(cosine, sine, 0.0);
+	if (circle == 1u) {
+		unit = vec3<f32>(cosine, 0.0, sine);
+	} else if (circle == 2u) {
+		unit = vec3<f32>(0.0, cosine, sine);
+	}
+	var output: Vertex_Output;
+	output.position = render.view_projection *
+		vec4<f32>(record.bounds.xyz + unit * record.bounds.w, 1.0);
+	output.classification = record.classification;
+	return output;
+}
+
+@fragment
+fn debug_fs(input: Vertex_Output) -> @location(0) vec4<f32> {
+	var color = vec3<f32>(1.0, 0.18, 0.18);
+	switch input.classification {
+		case 2u: {
+			color = vec3<f32>(1.0, 0.22, 0.16);
+		}
+		case 3u: {
+			color = vec3<f32>(0.78, 0.25, 1.0);
+		}
+		case 4u: {
+			color = vec3<f32>(1.0, 0.62, 0.12);
+		}
+		case 5u: {
+			color = vec3<f32>(0.14, 0.72, 1.0);
+		}
+		case 6u: {
+			color = vec3<f32>(1.0, 0.18, 0.68);
+		}
+		default: {}
+	}
+	return vec4<f32>(color, 1.0);
 }
 `

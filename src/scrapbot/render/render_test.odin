@@ -1513,9 +1513,20 @@ test_wgpu_meshlet_visibility_capacity_is_aligned_and_bounded :: proc(t: ^testing
 	capacity, ok := wgpu_meshlet_batch_visible_capacity(3, 65)
 	testing.expect(t, ok)
 	testing.expect_value(t, capacity, u32(384))
+	testing.expect_value(
+		t,
+		wgpu_meshlet_visible_buffer_bytes(int(capacity)),
+		u64(capacity) * (u64(size_of(u32)) + u64(size_of(WGPU_GPU_Meshlet_Debug_Record))),
+	)
 
 	_, ok = wgpu_meshlet_batch_visible_capacity(u32(WGPU_MAX_MESHLET_VISIBLE_ENTRIES), 2)
 	testing.expect(t, !ok)
+
+	camera := shared.camera_defaults()
+	testing.expect_value(t, wgpu_meshlet_debug_record_offset(camera, true, 4096), u32(0))
+	camera.debug_view = .Meshlet_Visibility
+	testing.expect_value(t, wgpu_meshlet_debug_record_offset(camera, false, 4096), u32(0))
+	testing.expect_value(t, wgpu_meshlet_debug_record_offset(camera, true, 4096), u32(4096))
 }
 
 @(test)

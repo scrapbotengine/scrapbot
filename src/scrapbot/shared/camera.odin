@@ -18,6 +18,10 @@ render_debug_view_name :: proc "contextless" (view: Render_Debug_View) -> string
 			return "depth"
 		case .Meshlets:
 			return "meshlets"
+		case .LOD:
+			return "lod"
+		case .Meshlet_Visibility:
+			return "meshlet_visibility"
 	}
 	return "lit"
 }
@@ -38,6 +42,10 @@ render_debug_view_from_name :: proc "contextless" (name: string) -> (Render_Debu
 			return .Depth, true
 		case "meshlets":
 			return .Meshlets, true
+		case "lod":
+			return .LOD, true
+		case "meshlet_visibility":
+			return .Meshlet_Visibility, true
 	}
 	return .Lit, false
 }

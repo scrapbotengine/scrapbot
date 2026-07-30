@@ -204,7 +204,7 @@ editor_ui_handle_activation :: proc(
 				case .Debug_View_Item:
 					if binding.slot < 0 {
 						state.editor_render_debug_view_override = false
-					} else if binding.slot <= int(shared.Render_Debug_View.Meshlets) {
+					} else if binding.slot <= int(shared.Render_Debug_View.Meshlet_Visibility) {
 						state.editor_render_debug_view_override = true
 						state.editor_render_debug_view = shared.Render_Debug_View(binding.slot)
 					}
@@ -1641,6 +1641,8 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		"METALLIC",
 		"DEPTH",
 		"MESHLETS",
+		"LOD",
+		"MESHLET VISIBILITY",
 	}
 	for label, index in debug_view_names {
 		slot := index - 1
@@ -1676,7 +1678,7 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		EDITOR_UI_DEBUG_VIEW_TOOLBAR_NAME,
 		.Debug_View_Button,
 		{
-			size = {148, 30},
+			size = {210, 30},
 			padding = {4, 10, 4, 10},
 			background = theme.palette.overlay,
 			corner_radius = theme.metrics.radius,
@@ -2348,6 +2350,10 @@ editor_ui_update_debug_view_button :: proc(state: ^State, world: ^shared.World) 
 				label = "DEPTH"
 			case .Meshlets:
 				label = "MESHLETS"
+			case .LOD:
+				label = "LOD"
+			case .Meshlet_Visibility:
+				label = "MESHLET VISIBILITY"
 		}
 	}
 	value := world.ui_buttons[entity.ui_button_index]
