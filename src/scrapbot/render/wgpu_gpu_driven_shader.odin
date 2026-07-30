@@ -1286,6 +1286,71 @@ fn downsample_depth(@builtin(global_invocation_id) invocation: vec3<u32>) {
 }
 `
 
+WGPU_HIZ_DEBUG_SHADER :: `
+struct Render_Uniform {
+	view_projection: mat4x4<f32>,
+	view: mat4x4<f32>,
+	shadow_view_projections: array<mat4x4<f32>, 4>,
+	ambient: vec4<f32>,
+	directional_direction_intensity: array<vec4<f32>, 4>,
+	directional_color: array<vec4<f32>, 4>,
+	light_counts: vec4<u32>,
+	camera_position: vec4<f32>,
+	shadow_cascade_splits: vec4<f32>,
+	shadow_cascade_texel_sizes: vec4<f32>,
+	debug: vec4<u32>,
+	camera_clip: vec4<f32>,
+};
+
+@group(0) @binding(0) var<uniform> render: Render_Uniform;
+@group(0) @binding(1) var hiz_depth: texture_2d<f32>;
+
+struct Fullscreen_Output {
+	@builtin(position) position: vec4<f32>,
+};
+
+@vertex
+fn fullscreen_vs(@builtin(vertex_index) index: u32) -> Fullscreen_Output {
+	var positions = array<vec2<f32>, 3>(
+		vec2<f32>(-1.0, -1.0),
+		vec2<f32>(3.0, -1.0),
+		vec2<f32>(-1.0, 3.0),
+	);
+	var output: Fullscreen_Output;
+	output.position = vec4<f32>(positions[index], 0.0, 1.0);
+	return output;
+}
+
+fn depth_color(depth: f32) -> vec3<f32> {
+	let near_weight = pow(clamp(1.0 - depth, 0.0, 1.0), 0.35);
+	let far_color = vec3<f32>(0.015, 0.025, 0.055);
+	let middle_color = vec3<f32>(0.08, 0.38, 0.52);
+	let near_color = vec3<f32>(0.44, 1.0, 0.72);
+	return mix(
+		mix(far_color, middle_color, min(near_weight * 2.0, 1.0)),
+		near_color,
+		max(near_weight * 2.0 - 1.0, 0.0),
+	);
+}
+
+@fragment
+fn hiz_debug_fs(input: Fullscreen_Output) -> @location(0) vec4<f32> {
+	let mip_count = textureNumLevels(hiz_depth);
+	let mip = min(render.debug.z, mip_count - 1u);
+	let scale = 1u << mip;
+	let mip_size = vec2<u32>(textureDimensions(hiz_depth, i32(mip)));
+	let pixel = min(vec2<u32>(input.position.xy) / scale, mip_size - vec2<u32>(1u));
+	let depth = textureLoad(hiz_depth, vec2<i32>(pixel), i32(mip)).x;
+	var color = depth_color(depth);
+	if (mip > 0u) {
+		let local = vec2<u32>(input.position.xy) & vec2<u32>(scale - 1u);
+		let edge = local.x == 0u || local.y == 0u;
+		color = select(color, color * 0.42, edge);
+	}
+	return vec4<f32>(color, 1.0);
+}
+`
+
 WGPU_MESHLET_DEBUG_SHADER :: `
 struct Render_Uniform {
 	view_projection: mat4x4<f32>,

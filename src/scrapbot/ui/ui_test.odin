@@ -4377,12 +4377,29 @@ test_editor_game_view_debug_selector_is_transient_public_ui :: proc(t: ^testing.
 		.Debug_View_Item,
 		int(shared.Render_Debug_View.Meshlet_Visibility),
 	)
+	hiz, hiz_found := editor_ui_entity(&world, .Debug_View_Item, int(shared.Render_Debug_View.HiZ))
+	hiz_increase, hiz_increase_found := editor_ui_entity(&world, .Debug_HiZ_Mip_Increase)
+	hiz_label, hiz_label_found := editor_ui_entity(&world, .Debug_HiZ_Mip_Label)
 	camera_item, camera_item_found := editor_ui_entity(&world, .Debug_View_Item, -1)
 	testing.expect(
 		t,
-		button_found && menu_found && meshlets_found && visibility_found && camera_item_found,
+		button_found &&
+		menu_found &&
+		meshlets_found &&
+		visibility_found &&
+		hiz_found &&
+		hiz_increase_found &&
+		hiz_label_found &&
+		camera_item_found,
 	)
-	if !button_found || !menu_found || !meshlets_found || !visibility_found || !camera_item_found {
+	if !button_found ||
+	   !menu_found ||
+	   !meshlets_found ||
+	   !visibility_found ||
+	   !hiz_found ||
+	   !hiz_increase_found ||
+	   !hiz_label_found ||
+	   !camera_item_found {
 		return
 	}
 	testing.expect(t, world.entities[button].ui_button_index >= 0)
@@ -4395,7 +4412,9 @@ test_editor_game_view_debug_selector_is_transient_public_ui :: proc(t: ^testing.
 	testing.expect(t, !state.editor_render_debug_view_override)
 	project_camera := world.cameras[0]
 	project_camera.debug_view = .Depth
+	project_camera.debug_hiz_mip = 3
 	testing.expect(t, effective_render_debug_view(state, project_camera) == .Depth)
+	testing.expect_value(t, effective_render_debug_hiz_mip(state, project_camera), u32(3))
 
 	editor_ui_handle_activation(state, &world, world.entities[meshlets].id, {})
 	testing.expect(t, state.editor_render_debug_view_override)
@@ -4416,9 +4435,19 @@ test_editor_game_view_debug_selector_is_transient_public_ui :: proc(t: ^testing.
 		"VIEW / MESHLET VISIBILITY",
 	)
 
+	editor_ui_handle_activation(state, &world, world.entities[hiz].id, {})
+	testing.expect(t, state.editor_render_debug_view == .HiZ)
+	testing.expect(t, !world.ui_layouts[world.entities[hiz_label].ui_layout_index].hidden)
+	editor_ui_handle_activation(state, &world, world.entities[hiz_increase].id, {})
+	editor_ui_handle_activation(state, &world, world.entities[hiz_increase].id, {})
+	testing.expect_value(t, effective_render_debug_hiz_mip(state, project_camera), u32(2))
+	testing.expect_value(t, world.ui_texts[world.entities[hiz_label].ui_text_index].text, "MIP 2")
+
 	editor_ui_handle_activation(state, &world, world.entities[camera_item].id, {})
 	testing.expect(t, !state.editor_render_debug_view_override)
 	testing.expect(t, effective_render_debug_view(state, project_camera) == .Depth)
+	testing.expect(t, world.ui_layouts[world.entities[hiz_label].ui_layout_index].hidden)
+	testing.expect_value(t, effective_render_debug_hiz_mip(state, project_camera), u32(3))
 }
 
 @(test)
@@ -6757,8 +6786,8 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 	testing.expect(t, input_count > cell_count / 2)
 	testing.expect(t, checkbox_count >= 2)
 	testing.expect(t, found_bound_checkbox)
-	testing.expect(t, camera_definition.field_count == 20)
-	testing.expect(t, camera_input_count == 12)
+	testing.expect(t, camera_definition.field_count == 21)
+	testing.expect(t, camera_input_count == 13)
 	testing.expect(t, found_transform && found_button && found_shadow)
 	testing.expect(t, shadow_field_control_count == 0)
 	testing.expect(t, found_position)

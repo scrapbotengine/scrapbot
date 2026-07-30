@@ -46,6 +46,7 @@ During development, use `mise build` to compile the optimized CLI and `mise scra
 - Per-camera render policy: a bounded manual world-resolution scale, optional GPU-budgeted dynamic resolution, TAA, fast AA, AO, SSR, and bloom are authored on `scrapbot.camera`; UI stays native-resolution, AO and SSR have bounded quality tiers, and disabled effects skip their GPU work.
 - UUID-backed resources in `resources/**/*.resource.toml` (materials, textures, glTF models, HDR environments, SVG icon sets, generated LOD chains, and composition-time UI themes) with hot reload, targeted reimport where applicable, and import diagnostics; scenes serialize stable UUID references that the runtime resolves to generational registry handles.
 - Every registered geometry owns deterministic meshoptimizer-built meshlets with bounded local vertex/triangle streams, conservative sphere bounds, and normal cones. Capable WGPU adapters cull those clusters by frustum, normal cone, and Hi-Z, then reuse the resulting indirect counts across world, depth, and shadow multi-draw submission. Unsupported adapters and `--cpu-culling` retain whole-primitive indexed draws.
+- Camera debug views expose material inputs, meshlet identity, selected LOD, GPU visibility decisions, and false-color inspection of every retained Hi-Z pyramid mip through the same project/editor contract.
 
 ### Retained UI
 
@@ -213,7 +214,7 @@ trends; they are not portable performance thresholds.
 - Tooling
   - [x] Resource hot reload
   - [x] GPU-selected LOD heatmap and object/meshlet visibility-classification overlays
-  - [ ] Hi-Z pyramid and mip inspection
+  - [x] Hi-Z pyramid and mip inspection
 
 ### Input And UI
 

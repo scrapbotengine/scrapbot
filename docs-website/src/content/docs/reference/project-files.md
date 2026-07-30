@@ -275,6 +275,8 @@ Camera:
 fov = 60
 near = 0.1
 far = 100
+debug_view = "lit"
+debug_hiz_mip = 0
 exposure = 1
 automatic_exposure = false
 automatic_exposure_min = 0.125

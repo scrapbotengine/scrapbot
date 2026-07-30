@@ -315,6 +315,7 @@ Render_Debug_View :: enum u32 {
 	Meshlets,
 	LOD,
 	Meshlet_Visibility,
+	HiZ,
 }
 
 Camera_Component :: struct {
@@ -322,6 +323,7 @@ Camera_Component :: struct {
 	near: f32,
 	far: f32,
 	debug_view: Render_Debug_View,
+	debug_hiz_mip: f32,
 	resolution_scale: f32,
 	dynamic_resolution: bool,
 	dynamic_resolution_min_scale: f32,
@@ -1491,6 +1493,9 @@ Editor_UI_Role :: enum {
 	Debug_View_Menu,
 	Debug_View_Menu_Content,
 	Debug_View_Item,
+	Debug_HiZ_Mip_Decrease,
+	Debug_HiZ_Mip_Label,
+	Debug_HiZ_Mip_Increase,
 	Transport_Play,
 	Transport_Pause,
 	Transport_Stop,

@@ -67,6 +67,11 @@ write_scene_entity :: proc(builder: ^strings.Builder, entity: ^shared.Scene_Enti
 		)
 		write_scene_value(
 			builder,
+			"debug_hiz_mip",
+			scene_f32(f32(shared.camera_debug_hiz_mip(entity.camera))),
+		)
+		write_scene_value(
+			builder,
 			"resolution_scale",
 			scene_f32(shared.camera_resolution_scale(entity.camera)),
 		)

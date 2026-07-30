@@ -37,6 +37,9 @@ EDITOR_UI_DEBUG_VIEW_TOOLBAR_NAME :: "__scrapbot_editor_debug_view_toolbar"
 EDITOR_UI_DEBUG_VIEW_BUTTON_NAME :: "__scrapbot_editor_debug_view_button"
 EDITOR_UI_DEBUG_VIEW_MENU_NAME :: "__scrapbot_editor_debug_view_menu"
 EDITOR_UI_DEBUG_VIEW_MENU_CONTENT_NAME :: "__scrapbot_editor_debug_view_menu_content"
+EDITOR_UI_DEBUG_HIZ_MIP_DECREASE_NAME :: "__scrapbot_editor_debug_hiz_mip_decrease"
+EDITOR_UI_DEBUG_HIZ_MIP_LABEL_NAME :: "__scrapbot_editor_debug_hiz_mip_label"
+EDITOR_UI_DEBUG_HIZ_MIP_INCREASE_NAME :: "__scrapbot_editor_debug_hiz_mip_increase"
 EDITOR_UI_RIGHT_NAME :: "__scrapbot_editor_right"
 EDITOR_UI_RIGHT_DOCK_ITEM_NAME :: "__scrapbot_editor_right_dock_item"
 EDITOR_UI_RIGHT_CONTENT_NAME :: "__scrapbot_editor_right_content"
@@ -204,10 +207,23 @@ editor_ui_handle_activation :: proc(
 				case .Debug_View_Item:
 					if binding.slot < 0 {
 						state.editor_render_debug_view_override = false
-					} else if binding.slot <= int(shared.Render_Debug_View.Meshlet_Visibility) {
+					} else if binding.slot <= int(shared.Render_Debug_View.HiZ) {
 						state.editor_render_debug_view_override = true
 						state.editor_render_debug_view = shared.Render_Debug_View(binding.slot)
 					}
+					editor_ui_update_debug_view_button(state, world)
+					return
+				case .Debug_HiZ_Mip_Decrease:
+					if state.editor_render_debug_hiz_mip > 0 {
+						state.editor_render_debug_hiz_mip -= 1
+					}
+					editor_ui_update_debug_view_button(state, world)
+					return
+				case .Debug_HiZ_Mip_Increase:
+					state.editor_render_debug_hiz_mip = min(
+						state.editor_render_debug_hiz_mip + 1,
+						15,
+					)
 					editor_ui_update_debug_view_button(state, world)
 					return
 				case .Entity_Create:
@@ -379,6 +395,7 @@ editor_ui_handle_activation :: proc(
 				     .Debug_View_Button,
 				     .Debug_View_Menu,
 				     .Debug_View_Menu_Content,
+				     .Debug_HiZ_Mip_Label,
 				     .Diagnostics_Panel,
 				     .Diagnostics_Label,
 				     .Diagnostics_Value,
@@ -1607,7 +1624,7 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		"",
 		.Debug_View_Menu,
 		{
-			size = {190, 238},
+			size = {190, 266},
 			padding = {5, 5, 5, 5},
 			background = theme.palette.overlay,
 			corner_radius = theme.metrics.radius_large,
@@ -1643,6 +1660,7 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		"MESHLETS",
 		"LOD",
 		"MESHLET VISIBILITY",
+		"HI-Z",
 	}
 	for label, index in debug_view_names {
 		slot := index - 1
@@ -1694,6 +1712,45 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 	debug_button.active_background = theme.palette.active
 	debug_button.popup = world.entities[debug_view_menu].uuid
 	_ = ecs.set_ui_button(world, debug_view_button, debug_button)
+	hiz_mip_decrease := editor_ui_create_transport_button(
+		world,
+		EDITOR_UI_DEBUG_HIZ_MIP_DECREASE_NAME,
+		EDITOR_UI_DEBUG_VIEW_TOOLBAR_NAME,
+		"",
+		.Debug_HiZ_Mip_Decrease,
+		"minus",
+	)
+	hiz_mip_label := editor_ui_create_box(
+		world,
+		EDITOR_UI_DEBUG_HIZ_MIP_LABEL_NAME,
+		EDITOR_UI_DEBUG_VIEW_TOOLBAR_NAME,
+		.Debug_HiZ_Mip_Label,
+		{
+			size = {58, 30},
+			padding = {4, 8, 4, 8},
+			background = theme.palette.overlay,
+			corner_radius = theme.metrics.radius,
+			fixed_in_fill = true,
+			hidden = true,
+		},
+	)
+	editor_ui_add_text(world, hiz_mip_label, "MIP 0", theme.palette.text, EDITOR_TEXT_SIZE)
+	hiz_mip_increase := editor_ui_create_transport_button(
+		world,
+		EDITOR_UI_DEBUG_HIZ_MIP_INCREASE_NAME,
+		EDITOR_UI_DEBUG_VIEW_TOOLBAR_NAME,
+		"",
+		.Debug_HiZ_Mip_Increase,
+		"plus",
+	)
+	hiz_mip_buttons := [?]int{hiz_mip_decrease, hiz_mip_increase}
+	for item in hiz_mip_buttons {
+		layout := &world.ui_layouts[world.entities[item].ui_layout_index]
+		layout.size.x = 30
+		layout.fill_width = false
+		layout.fixed_in_fill = true
+		layout.hidden = true
+	}
 	editor_ui_add_hstack(world, gizmo_toolbar, {gap = 2})
 	world_button := editor_ui_create_transport_button(
 		world,
@@ -2354,15 +2411,43 @@ editor_ui_update_debug_view_button :: proc(state: ^State, world: ^shared.World) 
 				label = "LOD"
 			case .Meshlet_Visibility:
 				label = "MESHLET VISIBILITY"
+			case .HiZ:
+				label = "HI-Z"
 		}
 	}
 	value := world.ui_buttons[entity.ui_button_index]
 	next_text := fmt.tprintf("VIEW / %s", label)
-	if value.text == next_text {
-		return
+	if value.text != next_text {
+		value.text = next_text
+		_ = ecs.set_ui_button(world, button_index, value)
 	}
-	value.text = next_text
-	_ = ecs.set_ui_button(world, button_index, value)
+	show_hiz_mip :=
+		state.editor_render_debug_view_override && state.editor_render_debug_view == .HiZ
+	hiz_mip_roles := [?]shared.Editor_UI_Role {
+		.Debug_HiZ_Mip_Decrease,
+		.Debug_HiZ_Mip_Label,
+		.Debug_HiZ_Mip_Increase,
+	}
+	for role in hiz_mip_roles {
+		if index, ok := editor_ui_entity(world, role); ok {
+			layout := world.ui_layouts[world.entities[index].ui_layout_index]
+			if layout.hidden == show_hiz_mip {
+				layout.hidden = !show_hiz_mip
+				_ = ecs.set_ui_layout(world, index, layout)
+			}
+		}
+	}
+	if mip_label, ok := editor_ui_entity(world, .Debug_HiZ_Mip_Label); ok {
+		mip_entity := world.entities[mip_label]
+		if mip_entity.ui_text_index >= 0 && mip_entity.ui_text_index < len(world.ui_texts) {
+			text := world.ui_texts[mip_entity.ui_text_index]
+			next_mip_text := fmt.tprintf("MIP %d", state.editor_render_debug_hiz_mip)
+			if text.text != next_mip_text {
+				text.text = next_mip_text
+				_ = ecs.set_ui_text(world, mip_label, text)
+			}
+		}
+	}
 }
 
 editor_ui_refresh_system_profile :: proc(state: ^State, world: ^shared.World) {

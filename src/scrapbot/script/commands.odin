@@ -516,6 +516,10 @@ read_full_camera_table :: proc "c" (
 		return
 	}
 	value.debug_view = debug_view
+	if err = read_ui_number_field(L, payload_index, "debug_hiz_mip", &value.debug_hiz_mip);
+	   err != "" {
+		return
+	}
 	if err = read_ui_number_field(L, payload_index, "resolution_scale", &value.resolution_scale);
 	   err != "" {
 		return
@@ -624,6 +628,10 @@ read_full_camera_table :: proc "c" (
 	   math.is_nan(value.far) ||
 	   math.is_inf(value.far) ||
 	   value.far <= value.near ||
+	   math.is_nan(value.debug_hiz_mip) ||
+	   math.is_inf(value.debug_hiz_mip) ||
+	   value.debug_hiz_mip < 0 ||
+	   value.debug_hiz_mip > 15 ||
 	   math.is_nan(value.resolution_scale) ||
 	   math.is_inf(value.resolution_scale) ||
 	   value.resolution_scale < 0.5 ||

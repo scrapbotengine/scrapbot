@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "timeout_frames": 180,
+  "actions": [
+    {"action": "click", "target": {"text": "VIEW / CAMERA", "origin": "editor"}},
+    {"action": "click", "target": {"text": "HI-Z", "origin": "editor"}},
+    {"action": "click", "target": {"name": "__scrapbot_editor_debug_hiz_mip_increase", "origin": "editor"}},
+    {"action": "click", "target": {"name": "__scrapbot_editor_debug_hiz_mip_increase", "origin": "editor"}},
+    {"action": "click", "target": {"name": "__scrapbot_editor_debug_hiz_mip_increase", "origin": "editor"}},
+    {"action": "wait", "frames": 8},
+    {"action": "expect", "target": {"text": "VIEW / HI-Z", "origin": "editor"}, "expect": "visible"},
+    {"action": "expect", "target": {"text": "MIP 3", "origin": "editor"}, "expect": "visible"},
+    {"action": "capture", "target": {"name": "__scrapbot_editor_viewport", "origin": "editor"}, "padding": 4}
+  ]
+}

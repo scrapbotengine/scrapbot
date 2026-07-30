@@ -148,6 +148,18 @@ init_registry :: proc(registry: ^Registry) {
 			Field_Definition{name = "far", field_type = .Number},
 			Field_Definition{name = "debug_view", field_type = .String},
 			Field_Definition {
+				name = "debug_hiz_mip",
+				field_type = .Number,
+				editor = {
+					draggable = true,
+					step = 1,
+					has_minimum = true,
+					minimum = 0,
+					has_maximum = true,
+					maximum = 15,
+				},
+			},
+			Field_Definition {
 				name = "resolution_scale",
 				field_type = .Number,
 				editor = {

@@ -626,17 +626,22 @@ WGPU_Renderer :: struct {
 	gpu_transform_bind_group: wgpu.BindGroup,
 	gpu_hiz_shader: wgpu.ShaderModule,
 	gpu_hiz_downsample_shader: wgpu.ShaderModule,
+	gpu_hiz_debug_shader: wgpu.ShaderModule,
 	gpu_hiz_first_pipeline: wgpu.ComputePipeline,
 	gpu_hiz_downsample_pipeline: wgpu.ComputePipeline,
+	gpu_hiz_debug_pipeline: wgpu.RenderPipeline,
 	gpu_hiz_first_bind_group_layout: wgpu.BindGroupLayout,
 	gpu_hiz_downsample_bind_group_layout: wgpu.BindGroupLayout,
+	gpu_hiz_debug_bind_group_layout: wgpu.BindGroupLayout,
 	gpu_hiz_first_pipeline_layout: wgpu.PipelineLayout,
 	gpu_hiz_downsample_pipeline_layout: wgpu.PipelineLayout,
+	gpu_hiz_debug_pipeline_layout: wgpu.PipelineLayout,
 	gpu_hiz_texture: wgpu.Texture,
 	gpu_hiz_view: wgpu.TextureView,
 	gpu_hiz_mip_views: [WGPU_MAX_HIZ_LEVELS]wgpu.TextureView,
 	gpu_hiz_first_bind_group: wgpu.BindGroup,
 	gpu_hiz_downsample_bind_groups: [WGPU_MAX_HIZ_LEVELS]wgpu.BindGroup,
+	gpu_hiz_debug_bind_group: wgpu.BindGroup,
 	gpu_hiz_width: u32,
 	gpu_hiz_height: u32,
 	gpu_hiz_mip_count: int,
@@ -886,6 +891,9 @@ wgpu_apply_render_debug_override :: proc(render_list: ^Render_List, ui_state: ^u
 	render_list.camera.camera.debug_view = ui.effective_render_debug_view(
 		ui_state,
 		render_list.camera.camera,
+	)
+	render_list.camera.camera.debug_hiz_mip = f32(
+		ui.effective_render_debug_hiz_mip(ui_state, render_list.camera.camera),
 	)
 }
 
@@ -2423,6 +2431,9 @@ wgpu_encode_render_pass :: proc(
 	} else {
 		renderer.gpu_hiz_valid = false
 		renderer.gpu_hiz_occlusion_enabled = false
+	}
+	if err := wgpu_encode_hiz_debug_view(renderer, encoder, layout.render_viewport); err != "" {
+		return err
 	}
 	if err := wgpu_encode_meshlet_debug_overlay(renderer, encoder, layout.render_viewport);
 	   err != "" {

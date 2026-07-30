@@ -160,6 +160,8 @@ Before layout, WGPU drains any completed asynchronous timestamp readbacks. Dynam
 
 WGPU derives one output layout and one effective world-render layout after that control step. The world, depth, Hi-Z, and post chain use the scaled layout. Final composition maps the complete scaled grid back onto the native output target. The native-resolution UI pass then paints project UI, editor-world overlays clipped to the Game viewport, and editor chrome in that order. Editor tabs and panels therefore occlude gizmos and camera visualizers when they cover the Game surface.
 
+When the camera selects Hi-Z inspection, WGPU builds the ordinary current-frame pyramid and then samples the requested mip directly into the HDR world target. The debug pass expands each stored texel to its exact screen footprint; selecting another mip changes only the compact render uniform.
+
 Global volumetric fog is scene-owned rather than camera-owned. It composes before temporal resolution and bloom, stops at scene depth or its authored distance bound, and becomes a shader no-op when absent or at zero density.
 
 World shading writes:

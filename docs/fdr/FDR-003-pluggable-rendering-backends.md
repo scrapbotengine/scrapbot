@@ -30,7 +30,7 @@ Pluggable rendering backends allow Scrapbot to start with `wgpu-native` while ke
 - WGPU keeps a persistent slot-addressed GPU instance table, separates static source state from hot Transform state, sends Transform-only changes through one dense update upload, coalesces nearby static slot changes into bounded uploads, retains compact render/culling uniforms and instance-to-LOD batch mappings, computes camera and shadow frustum visibility into compacted batch slices, and obtains instance counts from indexed indirect draw arguments.
 - The retained draw database grows geometrically past the original 64-batch limit. It rebuilds only when render membership, geometry LOD topology, or required capacity changes.
 - Every Geometry version owns bounded meshlets. Adapters with indirect-first-instance support retain one indirect command and aligned visible-instance slice per meshlet. Compute culls camera meshlets by sphere, normal cone, and Hi-Z and shadow meshlets by cascade sphere, then world, depth, and shadow issue one native fixed multi-draw per retained batch. Unsupported adapters, `--cpu-culling`, and layouts above the bounded visibility capacity use the whole-primitive path.
-- The active camera selects a backend-neutral debug view: lit output, base color, mapped world normals, perceptual roughness, metallic, logarithmic camera depth, retained meshlet identity, exact GPU-selected LOD, or object/meshlet visibility classification. Non-lit views skip temporal jitter, AO, SSR, volumetric fog, automatic exposure, bloom, tone mapping, and temporal/fast AA so diagnostics remain direct and stable. Meshlet identity is topology-owned and uploaded only when retained meshlet layout changes. Visibility mode emits rejected bounds into an opt-in GPU diagnostic stream and draws it indirectly without CPU readback. An explicit diagnostic pattern reports when the active backend is using whole-primitive submission.
+- The active camera selects a backend-neutral debug view: lit output, material inputs, mapped world normals, logarithmic depth, retained meshlet identity, exact GPU-selected LOD, object/meshlet visibility classification, or one retained Hi-Z mip. Non-lit views skip presentation effects so diagnostics remain direct and stable. Hi-Z false color and texel boundaries expose the exact conservative max-depth hierarchy without readback or rebuilding it.
 - Large stable scenes run a depth prepass, build a max-depth Hi-Z pyramid, and conservatively reject occluded bounding spheres from the following frame. Camera or persistent-instance changes disable stale-pyramid rejection for that frame. Hi-Z queries cover the complete coarse-mip footprint; camera-plane crossings and large near-field bounds remain visible rather than risking a false rejection.
 - UUID-backed `scrapbot.geometry_lod` project resources declare generated icosphere levels and descending projected screen-radius thresholds. The GPU visibility pass selects the geometry batch; the CPU-reference path implements the same result.
 - `--cpu-culling` runs the same conservative camera/shadow visibility contract on the CPU and uploads its compacted lists and counts; it is a compatibility and correctness-reference path, not the performance default.
@@ -185,6 +185,11 @@ exact GPU-selected LOD directly and bypasses presentation effects that would alt
 Meshlet layout owns a parallel identity stream aligned with its visible-instance slices; topology
 rebuilds upload it, while stable frames only read it.
 
+Hi-Z mode samples the selected mip of the current retained max-depth pyramid after it is built.
+It expands each mip texel across its exact screen-space footprint and draws boundaries between
+cells. The authored camera and transient editor override both clamp the requested level to the
+available pyramid.
+
 Visibility mode colors submitted meshlets green. While active, the existing culling pass also
 classifies rejected object and meshlet bounds into an aligned tail of the meshlet visibility
 allocation, copies the resulting GPU counter into an indirect draw, and overlays procedural sphere
@@ -200,7 +205,8 @@ Diagnostics must describe actual retained renderer data, and inspecting a scene 
 
 **Tradeoff:** Meshlet modes require active meshlet submission. Visibility mode deliberately adds
 diagnostic writes and one indirect overlay pass while selected, and overlapping rejected bounds
-can become dense in large scenes. Hi-Z pyramid and mip inspection remain follow-up work.
+can become dense in large scenes. Hi-Z inspection shows conservative stored depth rather than
+linear camera distance and adds one fullscreen diagnostic pass while selected.
 
 ### 16. Compose the imported environment as the HDR sky and support camera exposure
 

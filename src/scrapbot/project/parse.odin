@@ -1143,6 +1143,8 @@ parse_scene :: proc(
 								name,
 							)
 						}
+					case "debug_hiz_mip":
+						current.camera.debug_hiz_mip, found = parse_f32(value)
 					case "resolution_scale":
 						current.camera.resolution_scale, found = parse_f32(value)
 					case "dynamic_resolution":
@@ -2194,6 +2196,10 @@ parse_scene :: proc(
 			   math.is_inf(dynamic_resolution_target_ms) ||
 			   dynamic_resolution_target_ms < 1 ||
 			   dynamic_resolution_target_ms > 100 ||
+			   math.is_nan(entity.camera.debug_hiz_mip) ||
+			   math.is_inf(entity.camera.debug_hiz_mip) ||
+			   entity.camera.debug_hiz_mip < 0 ||
+			   entity.camera.debug_hiz_mip > 15 ||
 			   math.is_nan(automatic_exposure_min) ||
 			   math.is_inf(automatic_exposure_min) ||
 			   automatic_exposure_min <= 0 ||

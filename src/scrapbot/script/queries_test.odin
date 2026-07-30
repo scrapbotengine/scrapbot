@@ -452,7 +452,8 @@ fov = 60
 scrapbot.system(Cameras, {
 	writes = { scrapbot.camera },
 }, function(time, entity, camera)
-	camera.debug_view = "meshlets"
+	camera.debug_view = "hiz"
+	camera.debug_hiz_mip = 4
 	camera.resolution_scale = 0.75
 	camera.dynamic_resolution = true
 	camera.dynamic_resolution_min_scale = 0.6
@@ -477,7 +478,8 @@ end)
 	testing.expectf(t, result.err == "", "script registration failed: %s", result.err)
 	step_err := step_runtime(&runtime, &world, 0.5)
 	testing.expectf(t, step_err == "", "camera writeback failed: %s", step_err)
-	testing.expect(t, world.cameras[0].debug_view == .Meshlets)
+	testing.expect(t, world.cameras[0].debug_view == .HiZ)
+	testing.expect_value(t, world.cameras[0].debug_hiz_mip, f32(4))
 	testing.expect_value(t, world.cameras[0].resolution_scale, f32(0.75))
 	testing.expect(t, world.cameras[0].dynamic_resolution)
 	testing.expect_value(t, world.cameras[0].dynamic_resolution_min_scale, f32(0.6))

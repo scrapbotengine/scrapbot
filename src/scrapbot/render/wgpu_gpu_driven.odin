@@ -985,6 +985,9 @@ wgpu_create_gpu_driven_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 	if debug_err := wgpu_rebuild_meshlet_debug_bind_group(renderer); debug_err != "" {
 		return debug_err
 	}
+	if debug_err := wgpu_rebuild_hiz_debug_bind_group(renderer); debug_err != "" {
+		return debug_err
+	}
 	renderer.gpu_cull_bind_group = wgpu_make_cull_bind_group(
 		renderer,
 		renderer.gpu_batch_info_buffer,
@@ -2576,7 +2579,7 @@ wgpu_prepare_gpu_draw_batches :: proc(
 	uniform.debug = {
 		u32(camera.debug_view),
 		1 if renderer.gpu_meshlet_submission_active else 0,
-		0,
+		min(shared.camera_debug_hiz_mip(camera), u32(max(renderer.gpu_hiz_mip_count - 1, 0))),
 		0,
 	}
 	uniform.camera_clip = {camera.near, camera.far, 0, 0}
@@ -2793,7 +2796,8 @@ wgpu_prepare_gpu_draw_batches :: proc(
 	wgpu_upload_dirty_instance_ranges(renderer, renderer.gpu_dirty_indices[:])
 	wgpu_upload_transform_updates(renderer)
 	renderer.gpu_slot_count = slot_count
-	renderer.gpu_hiz_requested = wgpu_hiz_build_requested(slot_count, instance_data_changed)
+	renderer.gpu_hiz_requested =
+		camera.debug_view == .HiZ || wgpu_hiz_build_requested(slot_count, instance_data_changed)
 	hiz_reusable := wgpu_hiz_reuse_allowed(
 		renderer.gpu_hiz_requested,
 		renderer.gpu_hiz_valid,

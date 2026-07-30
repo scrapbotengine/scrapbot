@@ -694,6 +694,7 @@ far = 100
 	testing.expect(t, default_result.err == .None)
 	testing.expect_value(t, default_exposure.entities[0].camera.exposure, f32(1))
 	testing.expect(t, default_exposure.entities[0].camera.debug_view == .Lit)
+	testing.expect_value(t, default_exposure.entities[0].camera.debug_hiz_mip, f32(0))
 	testing.expect_value(
 		t,
 		shared.camera_resolution_scale(default_exposure.entities[0].camera),
@@ -748,7 +749,8 @@ id = "a6000000-0000-4000-8000-000000000093"
 name = "Camera"
 
 [entities.camera]
-debug_view = "world_normals"
+debug_view = "hiz"
+debug_hiz_mip = 5
 resolution_scale = 0.75
 dynamic_resolution = true
 dynamic_resolution_min_scale = 0.6
@@ -768,7 +770,8 @@ bloom = false
 	)
 	defer destroy_scene(&configured)
 	testing.expect(t, configured_result.err == .None)
-	testing.expect(t, configured.entities[0].camera.debug_view == .World_Normals)
+	testing.expect(t, configured.entities[0].camera.debug_view == .HiZ)
+	testing.expect_value(t, configured.entities[0].camera.debug_hiz_mip, f32(5))
 	testing.expect_value(t, configured.entities[0].camera.resolution_scale, f32(0.75))
 	testing.expect(t, configured.entities[0].camera.dynamic_resolution)
 	testing.expect_value(t, configured.entities[0].camera.dynamic_resolution_min_scale, f32(0.6))

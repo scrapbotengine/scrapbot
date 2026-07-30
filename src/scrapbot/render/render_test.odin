@@ -325,6 +325,8 @@ test_camera_render_feature_defaults_preserve_current_renderer_policy :: proc(t: 
 	}
 	_, invalid_debug_view := shared.render_debug_view_from_name("triangles")
 	testing.expect(t, !invalid_debug_view)
+	camera.debug_hiz_mip = 6.9
+	testing.expect_value(t, shared.camera_debug_hiz_mip(camera), u32(6))
 	testing.expect(t, !camera.automatic_exposure)
 	testing.expect_value(t, camera.automatic_exposure_min, f32(0.125))
 	testing.expect_value(t, camera.automatic_exposure_max, f32(8))

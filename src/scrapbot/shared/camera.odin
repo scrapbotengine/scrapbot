@@ -22,6 +22,8 @@ render_debug_view_name :: proc "contextless" (view: Render_Debug_View) -> string
 			return "lod"
 		case .Meshlet_Visibility:
 			return "meshlet_visibility"
+		case .HiZ:
+			return "hiz"
 	}
 	return "lit"
 }
@@ -46,6 +48,8 @@ render_debug_view_from_name :: proc "contextless" (name: string) -> (Render_Debu
 			return .LOD, true
 		case "meshlet_visibility":
 			return .Meshlet_Visibility, true
+		case "hiz":
+			return .HiZ, true
 	}
 	return .Lit, false
 }
@@ -80,6 +84,7 @@ camera_copy_render_features :: proc "contextless" (
 	}
 	destination.resolution_scale = source.resolution_scale
 	destination.debug_view = source.debug_view
+	destination.debug_hiz_mip = source.debug_hiz_mip
 	destination.dynamic_resolution = source.dynamic_resolution
 	destination.dynamic_resolution_min_scale = source.dynamic_resolution_min_scale
 	destination.dynamic_resolution_target_ms = source.dynamic_resolution_target_ms
@@ -95,6 +100,13 @@ camera_copy_render_features :: proc "contextless" (
 	destination.screen_space_reflections = source.screen_space_reflections
 	destination.screen_space_reflections_quality = source.screen_space_reflections_quality
 	destination.bloom = source.bloom
+}
+
+camera_debug_hiz_mip :: proc "contextless" (camera: Camera_Component) -> u32 {
+	if math.is_nan(camera.debug_hiz_mip) || math.is_inf(camera.debug_hiz_mip) {
+		return 0
+	}
+	return u32(math.floor(clamp(camera.debug_hiz_mip, 0, 15)))
 }
 
 camera_resolution_scale :: proc "contextless" (camera: Camera_Component) -> f32 {

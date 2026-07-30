@@ -1,5 +1,7 @@
 package render
 
+import shared "../shared"
+import ui "../ui"
 import "vendor:wgpu"
 
 wgpu_hiz_mip_count :: proc(width, height: u32) -> int {
@@ -37,6 +39,20 @@ wgpu_create_hiz_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 	)
 	if renderer.gpu_hiz_downsample_shader == nil {
 		return "failed to create Hi-Z downsample shader"
+	}
+	debug_chain := wgpu.ShaderSourceWGSL {
+		chain = {sType = .ShaderSourceWGSL},
+		code = WGPU_HIZ_DEBUG_SHADER,
+	}
+	renderer.gpu_hiz_debug_shader = wgpu.DeviceCreateShaderModule(
+		renderer.device,
+		&wgpu.ShaderModuleDescriptor {
+			nextInChain = &debug_chain,
+			label = "Scrapbot Hi-Z Debug Shader",
+		},
+	)
+	if renderer.gpu_hiz_debug_shader == nil {
+		return "failed to create Hi-Z debug shader"
 	}
 	first_entries := [?]wgpu.BindGroupLayoutEntry {
 		{
@@ -82,6 +98,29 @@ wgpu_create_hiz_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 	   renderer.gpu_hiz_downsample_bind_group_layout == nil {
 		return "failed to create Hi-Z bind group layouts"
 	}
+	debug_entries := [?]wgpu.BindGroupLayoutEntry {
+		{
+			binding = 0,
+			visibility = {.Fragment},
+			buffer = {type = .Uniform, minBindingSize = u64(size_of(WGPU_GPU_Render_Uniform))},
+		},
+		{
+			binding = 1,
+			visibility = {.Fragment},
+			texture = {sampleType = .UnfilterableFloat, viewDimension = ._2D},
+		},
+	}
+	renderer.gpu_hiz_debug_bind_group_layout = wgpu.DeviceCreateBindGroupLayout(
+		renderer.device,
+		&wgpu.BindGroupLayoutDescriptor {
+			label = "Scrapbot Hi-Z Debug Bind Group Layout",
+			entryCount = uint(len(debug_entries)),
+			entries = raw_data(debug_entries[:]),
+		},
+	)
+	if renderer.gpu_hiz_debug_bind_group_layout == nil {
+		return "failed to create Hi-Z debug bind group layout"
+	}
 	renderer.gpu_hiz_first_pipeline_layout = wgpu.DeviceCreatePipelineLayout(
 		renderer.device,
 		&wgpu.PipelineLayoutDescriptor {
@@ -101,6 +140,17 @@ wgpu_create_hiz_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 	if renderer.gpu_hiz_first_pipeline_layout == nil ||
 	   renderer.gpu_hiz_downsample_pipeline_layout == nil {
 		return "failed to create Hi-Z pipeline layouts"
+	}
+	renderer.gpu_hiz_debug_pipeline_layout = wgpu.DeviceCreatePipelineLayout(
+		renderer.device,
+		&wgpu.PipelineLayoutDescriptor {
+			label = "Scrapbot Hi-Z Debug Pipeline Layout",
+			bindGroupLayoutCount = 1,
+			bindGroupLayouts = &renderer.gpu_hiz_debug_bind_group_layout,
+		},
+	)
+	if renderer.gpu_hiz_debug_pipeline_layout == nil {
+		return "failed to create Hi-Z debug pipeline layout"
 	}
 	renderer.gpu_hiz_first_pipeline = wgpu.DeviceCreateComputePipeline(
 		renderer.device,
@@ -124,6 +174,51 @@ wgpu_create_hiz_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 	if renderer.gpu_hiz_first_pipeline == nil || renderer.gpu_hiz_downsample_pipeline == nil {
 		return "failed to create Hi-Z compute pipelines"
 	}
+	renderer.gpu_hiz_debug_pipeline = wgpu_create_fullscreen_pipeline(
+		renderer,
+		renderer.gpu_hiz_debug_shader,
+		renderer.gpu_hiz_debug_pipeline_layout,
+		"hiz_debug_fs",
+		.RGBA16Float,
+		"Scrapbot Hi-Z Debug Pipeline",
+	)
+	if renderer.gpu_hiz_debug_pipeline == nil {
+		return "failed to create Hi-Z debug pipeline"
+	}
+	return ""
+}
+
+wgpu_rebuild_hiz_debug_bind_group :: proc(renderer: ^WGPU_Renderer) -> string {
+	if renderer == nil ||
+	   renderer.gpu_render_uniform_buffer == nil ||
+	   renderer.gpu_hiz_view == nil {
+		return ""
+	}
+	if renderer.gpu_hiz_debug_bind_group != nil {
+		wgpu.BindGroupRelease(renderer.gpu_hiz_debug_bind_group)
+		renderer.gpu_hiz_debug_bind_group = nil
+	}
+	entries := [?]wgpu.BindGroupEntry {
+		{
+			binding = 0,
+			buffer = renderer.gpu_render_uniform_buffer,
+			offset = 0,
+			size = u64(size_of(WGPU_GPU_Render_Uniform)),
+		},
+		{binding = 1, textureView = renderer.gpu_hiz_view},
+	}
+	renderer.gpu_hiz_debug_bind_group = wgpu.DeviceCreateBindGroup(
+		renderer.device,
+		&wgpu.BindGroupDescriptor {
+			label = "Scrapbot Hi-Z Debug Bind Group",
+			layout = renderer.gpu_hiz_debug_bind_group_layout,
+			entryCount = uint(len(entries)),
+			entries = raw_data(entries[:]),
+		},
+	)
+	if renderer.gpu_hiz_debug_bind_group == nil {
+		return "failed to create Hi-Z debug bind group"
+	}
 	return ""
 }
 
@@ -134,6 +229,10 @@ wgpu_release_hiz_targets :: proc(renderer: ^WGPU_Renderer) {
 	if renderer.gpu_hiz_first_bind_group != nil {
 		wgpu.BindGroupRelease(renderer.gpu_hiz_first_bind_group)
 		renderer.gpu_hiz_first_bind_group = nil
+	}
+	if renderer.gpu_hiz_debug_bind_group != nil {
+		wgpu.BindGroupRelease(renderer.gpu_hiz_debug_bind_group)
+		renderer.gpu_hiz_debug_bind_group = nil
 	}
 	for index in 0 ..< WGPU_MAX_HIZ_LEVELS {
 		if renderer.gpu_hiz_downsample_bind_groups[index] != nil {
@@ -168,11 +267,17 @@ wgpu_release_hiz :: proc(renderer: ^WGPU_Renderer) {
 	if renderer.gpu_hiz_downsample_pipeline != nil {
 		wgpu.ComputePipelineRelease(renderer.gpu_hiz_downsample_pipeline)
 	}
+	if renderer.gpu_hiz_debug_pipeline != nil {
+		wgpu.RenderPipelineRelease(renderer.gpu_hiz_debug_pipeline)
+	}
 	if renderer.gpu_hiz_first_pipeline_layout != nil {
 		wgpu.PipelineLayoutRelease(renderer.gpu_hiz_first_pipeline_layout)
 	}
 	if renderer.gpu_hiz_downsample_pipeline_layout != nil {
 		wgpu.PipelineLayoutRelease(renderer.gpu_hiz_downsample_pipeline_layout)
+	}
+	if renderer.gpu_hiz_debug_pipeline_layout != nil {
+		wgpu.PipelineLayoutRelease(renderer.gpu_hiz_debug_pipeline_layout)
 	}
 	if renderer.gpu_hiz_first_bind_group_layout != nil {
 		wgpu.BindGroupLayoutRelease(renderer.gpu_hiz_first_bind_group_layout)
@@ -180,11 +285,17 @@ wgpu_release_hiz :: proc(renderer: ^WGPU_Renderer) {
 	if renderer.gpu_hiz_downsample_bind_group_layout != nil {
 		wgpu.BindGroupLayoutRelease(renderer.gpu_hiz_downsample_bind_group_layout)
 	}
+	if renderer.gpu_hiz_debug_bind_group_layout != nil {
+		wgpu.BindGroupLayoutRelease(renderer.gpu_hiz_debug_bind_group_layout)
+	}
 	if renderer.gpu_hiz_shader != nil {
 		wgpu.ShaderModuleRelease(renderer.gpu_hiz_shader)
 	}
 	if renderer.gpu_hiz_downsample_shader != nil {
 		wgpu.ShaderModuleRelease(renderer.gpu_hiz_downsample_shader)
+	}
+	if renderer.gpu_hiz_debug_shader != nil {
+		wgpu.ShaderModuleRelease(renderer.gpu_hiz_debug_shader)
 	}
 }
 
@@ -239,6 +350,9 @@ wgpu_ensure_hiz_targets :: proc(renderer: ^WGPU_Renderer, width, height: u32) ->
 	renderer.gpu_hiz_mip_count = mip_count
 	if cull_err := wgpu_rebuild_cull_bind_group(renderer); cull_err != "" {
 		return cull_err
+	}
+	if debug_err := wgpu_rebuild_hiz_debug_bind_group(renderer); debug_err != "" {
+		return debug_err
 	}
 	return ""
 }
@@ -356,5 +470,56 @@ wgpu_encode_hiz_pyramid :: proc(
 	renderer.gpu_previous_view_projection = renderer.gpu_current_view_projection
 	renderer.gpu_previous_depth_view_projection = renderer.temporal_current_view_projection
 	renderer.gpu_hiz_valid = true
+	return ""
+}
+
+wgpu_encode_hiz_debug_view :: proc(
+	renderer: ^WGPU_Renderer,
+	encoder: wgpu.CommandEncoder,
+	viewport: ui.Rect,
+) -> string {
+	if renderer == nil ||
+	   renderer.gpu_render_uniform.debug.x != u32(shared.Render_Debug_View.HiZ) ||
+	   renderer.gpu_hiz_debug_bind_group == nil {
+		return ""
+	}
+	attachment := wgpu.RenderPassColorAttachment {
+		view = renderer.hdr_view,
+		depthSlice = wgpu.DEPTH_SLICE_UNDEFINED,
+		loadOp = .Load,
+		storeOp = .Store,
+	}
+	pass := wgpu.CommandEncoderBeginRenderPass(
+		encoder,
+		&wgpu.RenderPassDescriptor {
+			label = "Scrapbot Hi-Z Debug View Pass",
+			colorAttachmentCount = 1,
+			colorAttachments = &attachment,
+		},
+	)
+	if pass == nil {
+		return "failed to begin Hi-Z debug view pass"
+	}
+	defer wgpu.RenderPassEncoderRelease(pass)
+	wgpu.RenderPassEncoderSetViewport(
+		pass,
+		viewport.x,
+		viewport.y,
+		viewport.width,
+		viewport.height,
+		0,
+		1,
+	)
+	wgpu.RenderPassEncoderSetScissorRect(
+		pass,
+		u32(viewport.x),
+		u32(viewport.y),
+		u32(viewport.width),
+		u32(viewport.height),
+	)
+	wgpu.RenderPassEncoderSetPipeline(pass, renderer.gpu_hiz_debug_pipeline)
+	wgpu.RenderPassEncoderSetBindGroup(pass, 0, renderer.gpu_hiz_debug_bind_group)
+	wgpu.RenderPassEncoderDraw(pass, 3, 1, 0, 0)
+	wgpu.RenderPassEncoderEnd(pass)
 	return ""
 }

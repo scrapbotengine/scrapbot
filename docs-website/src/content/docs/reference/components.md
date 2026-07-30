@@ -101,7 +101,8 @@ Parent UUIDs must resolve to another entity with a Transform and may not form a 
 | `fov` | number | Vertical field of view in degrees. The editor constrains authored values to 1–179. |
 | `near` | number | Positive near clipping plane. |
 | `far` | number | Far clipping plane, greater than `near`. |
-| `debug_view` | string | Backend-neutral output view. Defaults to `"lit"`; supported values are `"lit"`, `"base_color"`, `"world_normals"`, `"roughness"`, `"metallic"`, `"depth"`, `"meshlets"`, `"lod"`, and `"meshlet_visibility"`. |
+| `debug_view` | string | Backend-neutral output view. Defaults to `"lit"`; supported values are `"lit"`, `"base_color"`, `"world_normals"`, `"roughness"`, `"metallic"`, `"depth"`, `"meshlets"`, `"lod"`, `"meshlet_visibility"`, and `"hiz"`. |
+| `debug_hiz_mip` | number | Hi-Z pyramid mip shown by the `"hiz"` debug view, from `0` through `15`. WGPU clamps it to the retained pyramid's highest available mip. Defaults to `0`. |
 | `resolution_scale` | number | World/depth/post render-grid scale from `0.5` to `1`. Defaults to native resolution (`1`). When dynamic resolution is enabled, this is its maximum scale. |
 | `dynamic_resolution` | boolean | Lets WGPU lower and recover world resolution against a GPU-time budget. Defaults to `false`. |
 | `dynamic_resolution_min_scale` | number | Dynamic-resolution floor from `0.5` through `resolution_scale`. Defaults to `0.5`. |
@@ -136,6 +137,8 @@ AO and SSR quality change only bounded shader work; neither reallocates a target
 Non-lit debug views display renderer inputs directly. They disable temporal jitter, AO, SSR, volumetric fog, automatic exposure, bloom, tone mapping, and temporal/fast AA for a stable diagnostic image. Depth uses a logarithmic mapping from the camera's near plane (white) toward its far plane (black). Meshlets colors the actual retained meshlet identity. LOD colors the exact GPU-selected level from green through blue, purple, and orange.
 
 Meshlet Visibility colors submitted meshlets green and overlays rejected meshlet bounds without CPU readback. Object-frustum and object-Hi-Z rejection use red and purple; meshlet-frustum, normal-cone, and meshlet-Hi-Z rejection use orange, cyan, and magenta. Meshlets and Meshlet Visibility show a red/slate diagnostic checker during whole-primitive fallback instead of presenting unrelated triangles as clusters.
+
+Hi-Z displays the current max-depth pyramid in false color. Near occluders appear mint, distant depth trends toward dark blue, and selected mip texel boundaries are drawn directly over the expanded cells. Mip `0` is the full render-grid depth copy; each subsequent mip conservatively stores the farthest depth from a 2×2 block.
 
 The editor Game-view selector is transient. `Camera` follows this authored field, while another selection changes only the editor preview and does not dirty or persist the scene.
 
