@@ -31,14 +31,15 @@ Transform/Geometry/Material entities. Later duplication, Undo/Redo, or resource 
 increments a model-instance revision; reconciliation waits for that structural signal.
 
 Resource descriptions remain outside ECS. Components store resolved runtime handles. Geometry
-registration derives bounded meshlet streams and local culling bounds once from canonical indexed
-triangles, including every imported LOD level; the arrays remain owned and versioned with the
-Geometry entry.
-WGPU consumes a changed Geometry version into aligned ranges of shared vertex/index arenas;
-canonical and meshlet-ordered indices share the index arena. Capable adapters retain cluster
-metadata and arena-global indirect templates, then select classic or meshlet submission
-for each retained batch from its membership. Unsupported adapters ignore that derived cache and
-keep whole-primitive submission.
+registration derives bounded meshlet streams and a crack-aware cluster hierarchy once from
+canonical indexed triangles, including every imported LOD level. The hierarchy keeps canonical
+vertex IDs plus monotonic group errors and remains owned and versioned with the Geometry entry.
+
+WGPU consumes a changed Geometry version into aligned ranges of shared vertex/index arenas.
+Canonical, meshlet-ordered, and hierarchy-cluster indices share the index arena. Capable adapters
+retain cluster metadata and arena-global indirect templates, select one fully resident geometric-
+error frontier, then apply camera/shadow cluster visibility. Unsupported adapters ignore that
+derived cache and keep whole-primitive submission.
 
 Hot reload stages the resource registry, world, script/native runtime, source set, and playback baseline independently. Failure destroys the staged bundle; success swaps it atomically.
 

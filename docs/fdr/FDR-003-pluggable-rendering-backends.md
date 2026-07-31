@@ -29,8 +29,8 @@ Pluggable rendering backends allow Scrapbot to start with `wgpu-native` while ke
 - Shared geometry/material pairs use one instanced draw batch. Geometry versions occupy aligned ranges in shared WGPU vertex/index arenas, while material texture uploads remain cached by handle and version.
 - WGPU keeps a persistent slot-addressed GPU instance table, separates static source state from hot Transform state, sends Transform-only changes through one dense update upload, coalesces nearby static slot changes into bounded uploads, retains compact render/culling uniforms and instance-to-LOD batch mappings, computes camera and shadow frustum visibility into compacted batch slices, and obtains instance counts from indexed indirect draw arguments.
 - The retained draw database grows geometrically past the original 64-batch limit. It rebuilds only when render membership, geometry LOD topology, or required capacity changes.
-- Every Geometry version owns bounded meshlets. Adapters with indirect-first-instance support retain one indirect command and aligned visible-instance slice per meshlet. Each retained batch chooses whole-primitive or meshlet submission from its membership; meshlet-selected batches use sphere, normal-cone, Hi-Z, and cascade tests before fixed multi-draw. Meshlet debug views force the detailed path. Unsupported adapters, `--cpu-culling`, low-instance batches, and layouts above the bounded visibility capacity use whole-primitive draws.
-- The active camera selects a backend-neutral debug view: lit output, material inputs, mapped world normals, logarithmic depth, retained meshlet identity, exact GPU-selected LOD, object/meshlet visibility classification, one retained Hi-Z mip, or exact screen-space Hi-Z query footprints. Non-lit views skip presentation effects so diagnostics remain direct and stable.
+- Every Geometry version owns bounded meshlets and a crack-aware cluster hierarchy. Adapters with indirect-first-instance and native multi-draw retain one indirect command and aligned visible-instance slice per submitted hierarchy cluster. Hierarchy batches select a fully resident geometric-error frontier on the GPU before sphere, normal-cone, Hi-Z, and cascade tests. Unsupported adapters and `--cpu-culling` retain whole-primitive imported LOD selection rather than expanding cluster ranges into CPU-encoded commands.
+- The active camera selects a backend-neutral debug view: lit output, material inputs, mapped world normals, logarithmic depth, retained meshlet identity, exact GPU-selected LOD, selected virtual-geometry clusters and hierarchy depth, object/meshlet visibility classification, one retained Hi-Z mip, or exact screen-space Hi-Z query footprints. Non-lit views skip presentation effects so diagnostics remain direct and stable.
 - Hi-Z false color and texel boundaries expose the exact conservative max-depth hierarchy without readback or rebuilding it. Occlusion Queries records each tested rectangle, selected mip, bound depth, sampled farthest depth, identity, and visible/culled decision in a bounded GPU-native stream.
 - The camera can freeze the latest valid occlusion-query records while that view remains selected. Freeze preserves only diagnostic records and their indirect draw count; ordinary culling continues from current safe Hi-Z state.
 - Large stable scenes run a depth prepass, build a max-depth Hi-Z pyramid, and conservatively reject occluded bounding spheres from the following frame. Camera or persistent-instance changes disable stale-pyramid rejection for that frame. Hi-Z queries cover the complete coarse-mip footprint; camera-plane crossings and large near-field bounds remain visible rather than risking a false rejection.
@@ -171,8 +171,9 @@ independently culled shadow cascades.
 boundaries, expand meshlet-local triangles into a meshlet-ordered index buffer and retain one
 indexed-indirect template plus aligned instance slice per meshlet. After object rejection and LOD
 selection, compute camera cluster visibility from sphere, normal cone, and Hi-Z tests and shadow
-cluster visibility from cascade spheres. Select meshlet submission independently for batches with
-at least two instances; retain one whole-primitive command for single-instance batches. Meshlet
+cluster visibility from cascade spheres. Select ordinary meshlet submission independently for
+batches with at least two instances; retain one whole-primitive command for single-instance
+non-hierarchical batches. Meshlet
 debug views force eligible batches through the cluster path. Submit selected CPU-known command
 ranges through native fixed multi-draw. See ADR-046.
 
@@ -274,9 +275,30 @@ future virtual-geometry residency.
 resident bytes and rebuilds dependent bindings at an explicit mutation boundary. Adapters without
 indirect-first-instance share the memory arenas but retain single-batch submission semantics.
 
+### 19. Select a fully resident virtual-geometry frontier
+
+**Decision:** Derive a crack-aware cluster hierarchy for every Geometry at registration. Retain
+group depth, conservative bounds, monotonic geometric error, refined-group links, and cluster-local
+indices with that exact resource version. On WGPU adapters with indirect-first-instance and native
+multi-draw, project group error into pixels and submit the unique cluster frontier surrounding a
+one-pixel threshold before ordinary cluster culling. Use the same frontier for camera and shadow
+work. See ADR-049.
+
+The `virtual_geometry` camera view colors selected clusters by identity and hierarchy depth.
+Structured results report resident hierarchy commands, visible virtual clusters, and clusters
+rejected because another level owns their screen-space region.
+
+**Why:** Geometry detail must vary below object granularity without cracks, importer-specific draw
+paths, or CPU decisions per cluster.
+
+**Tradeoff:** All hierarchy data is resident and generated at the resource boundary. Paging,
+streaming, eviction, and pinned root clusters remain separate follow-up work. Adapters without
+native multi-draw keep the existing classic indexed and imported-LOD fallback because emulated
+fixed multi-draw would multiply CPU encoding work across render passes.
+
 ## Related
 
-- **ADRs:** ADR-003, ADR-005, ADR-010, ADR-011, ADR-029, ADR-034, ADR-038, ADR-039, ADR-046, ADR-047, ADR-048
+- **ADRs:** ADR-003, ADR-005, ADR-010, ADR-011, ADR-029, ADR-034, ADR-038, ADR-039, ADR-046, ADR-047, ADR-048, ADR-049
 - **FDRs:** FDR-001, FDR-002, FDR-008
 
 ## Open Questions

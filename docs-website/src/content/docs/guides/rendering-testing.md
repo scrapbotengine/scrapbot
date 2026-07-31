@@ -29,11 +29,15 @@ Every registered Geometry also owns deterministic meshlets capped at 64 vertices
 
 Imported models compile eligible primitives into up to three deterministic compact LOD Geometry resources before runtime bootstrap. Their semantic handles survive harmless source reordering and reimport. The base resource publishes the same thresholds and alternate handles as procedural LOD resources, so CPU/GPU selection and debug views have no importer-specific path.
 
-When a native adapter exposes indirect-first-instance, WGPU retains one indexed-indirect command and aligned visible-instance slice per meshlet. A batch with at least two instances selects meshlet submission; a single-instance batch keeps one whole-primitive command so fine-grained culling cannot multiply driver command cost without reuse.
+When a native adapter exposes indirect-first-instance and native multi-draw, WGPU retains one indexed-indirect command and aligned visible-instance slice per hierarchy cluster. It projects each hierarchy group's monotonic geometric error into pixels and selects the unique fully resident frontier surrounding a one-pixel threshold. Camera and shadow visibility consume that same frontier.
+
+Small Geometry whose hierarchy cannot simplify retains ordinary meshlets. Those batches require at least two instances to amortize their command range; a single-instance batch keeps one whole-primitive command.
 
 After whole-object rejection and LOD selection, compute tests camera meshlets against the frustum, single-sided normal cone, and Hi-Z; shadow lanes test each cascade frustum. World, depth, and shadow can mix whole-primitive indirect draws with fixed meshlet multi-draws in the same pass. Arena-global offsets also let adjacent same-material LOD commands share one fixed multi-draw span without merging their visibility records. Meshlets, Meshlet Visibility, and Occlusion Queries force eligible batches through meshlet submission so diagnostics cover the complete retained cluster layout.
 
-Set `scrapbot.camera.debug_view` to `base_color`, `world_normals`, `roughness`, `metallic`, `depth`, `meshlets`, `lod`, `meshlet_visibility`, `hiz`, or `occlusion_queries` to capture the same diagnostics without opening the editor. `debug_hiz_mip` selects the retained pyramid level for `hiz`; `debug_occlusion_freeze` preserves the latest valid query records for `occlusion_queries`.
+Set `scrapbot.camera.debug_view` to `base_color`, `world_normals`, `roughness`, `metallic`, `depth`, `meshlets`, `lod`, `meshlet_visibility`, `hiz`, `occlusion_queries`, or `virtual_geometry` to capture the same diagnostics without opening the editor.
+
+`virtual_geometry` colors the GPU-selected, fully resident cluster frontier by cluster identity and hierarchy depth. `debug_hiz_mip` selects the retained pyramid level for `hiz`; `debug_occlusion_freeze` preserves the latest valid query records for `occlusion_queries`.
 
 The checked-in semantic replays `tests/fixtures/ui/game-debug-meshlets.json`, `game-debug-lod.json`, `game-debug-visibility.json`, `game-debug-hiz.json`, and `game-debug-occlusion.json` drive the editor selector and capture only Game. Pair LOD with `tests/fixtures/gpu-lod` for exact three-level CPU/GPU parity or `examples/sponza` for importer-generated levels. Pair visibility or Hi-Z with `examples/ecs-showcase`, either meshlet view with `examples/sponza`, and Occlusion Queries with the dense `examples/clustered-lights` cathedral.
 
@@ -41,7 +45,7 @@ Visibility diagnostics remain GPU-native. The culling pass emits records into an
 
 Freeze stops replacing only the diagnostic range and indirect count. It does not pause simulation or reuse stale Hi-Z for real visibility decisions. Leaving the view invalidates the retained evidence. No topology rebuild or synchronous CPU readback is required.
 
-`--cpu-culling`, adapters without indirect-first-instance, single-instance batches, and layouts exceeding 1,048,576 meshlet-visible entries use whole-primitive indexed-indirect submission. This is a policy, capability, or memory fallback, not a different project-facing geometry format.
+`--cpu-culling`, adapters without indirect-first-instance or native multi-draw, non-hierarchical single-instance batches, and layouts exceeding 1,048,576 cluster-visible entries use whole-primitive indexed-indirect submission. This is a policy, capability, or memory fallback, not a different project-facing geometry format. In particular, requiring native multi-draw prevents fixed cluster ranges from becoming thousands of CPU-encoded indirect calls.
 
 Pass `--cpu-culling` to run the same bounding-sphere tests, screen-radius LOD selection, and compaction on the CPU while retaining WGPU storage-buffer shaders and indirect draws. This is useful as a correctness oracle and compatibility diagnostic; compute culling remains the default. Hi-Z rejection is GPU-only and therefore disabled on the reference path. The compute path also disables previous-frame Hi-Z rejection whenever the camera or a persistent instance record changes, then rebuilds the pyramid from the current conservative frustum result.
 

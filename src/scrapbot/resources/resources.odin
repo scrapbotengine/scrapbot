@@ -122,6 +122,11 @@ Geometry :: struct {
 	meshlets: []Meshlet,
 	meshlet_vertices: []u32,
 	meshlet_triangles: []u8,
+	cluster_groups: []Geometry_Cluster_Group,
+	clusters: []Geometry_Cluster,
+	cluster_vertices: []u32,
+	cluster_triangles: []u8,
+	cluster_max_depth: u32,
 	bounds: Bounds,
 	lod_handles: [shared.MAX_GEOMETRY_LODS - 1]Geometry_Handle,
 	lod_screen_radii: [shared.MAX_GEOMETRY_LODS - 1]f32,
@@ -332,6 +337,10 @@ destroy_registry :: proc(registry: ^Registry) {
 		delete(geometry.meshlets, allocator)
 		delete(geometry.meshlet_vertices, allocator)
 		delete(geometry.meshlet_triangles, allocator)
+		delete(geometry.cluster_groups, allocator)
+		delete(geometry.clusters, allocator)
+		delete(geometry.cluster_vertices, allocator)
+		delete(geometry.cluster_triangles, allocator)
 	}
 	for &material in registry.materials {
 		delete(material.name, allocator)
@@ -433,6 +442,10 @@ clone_registry :: proc(source: ^Registry, destination: ^Registry) -> string {
 		cloned.meshlets = clone_slice(geometry.meshlets, allocator)
 		cloned.meshlet_vertices = clone_slice(geometry.meshlet_vertices, allocator)
 		cloned.meshlet_triangles = clone_slice(geometry.meshlet_triangles, allocator)
+		cloned.cluster_groups = clone_slice(geometry.cluster_groups, allocator)
+		cloned.clusters = clone_slice(geometry.clusters, allocator)
+		cloned.cluster_vertices = clone_slice(geometry.cluster_vertices, allocator)
+		cloned.cluster_triangles = clone_slice(geometry.cluster_triangles, allocator)
 		append(&destination.geometries, cloned)
 	}
 	for material in source.materials {
@@ -707,10 +720,16 @@ register_geometry :: proc(
 	if meshlet_err != "" {
 		return {}, meshlet_err
 	}
+	hierarchy, hierarchy_err := build_geometry_hierarchy(desc, registry.allocator)
+	if hierarchy_err != "" {
+		destroy_meshlet_data(&meshlet_data, registry.allocator)
+		return {}, hierarchy_err
+	}
 	if index, found := geometry_index_by_name(registry, name); found {
 		geometry := &registry.geometries[index]
 		if geometry.authored {
 			destroy_meshlet_data(&meshlet_data, registry.allocator)
+			destroy_geometry_hierarchy(&hierarchy, registry.allocator)
 			return {}, fmt.tprintf("geometry name '%s' belongs to a project resource and cannot be replaced at runtime", name)
 		}
 		had_lods := geometry.lod_count > 0
@@ -719,11 +738,20 @@ register_geometry :: proc(
 		delete(geometry.meshlets, registry.allocator)
 		delete(geometry.meshlet_vertices, registry.allocator)
 		delete(geometry.meshlet_triangles, registry.allocator)
+		delete(geometry.cluster_groups, registry.allocator)
+		delete(geometry.clusters, registry.allocator)
+		delete(geometry.cluster_vertices, registry.allocator)
+		delete(geometry.cluster_triangles, registry.allocator)
 		geometry.vertices = clone_slice(desc.vertices, registry.allocator)
 		geometry.indices = clone_slice(desc.indices, registry.allocator)
 		geometry.meshlets = meshlet_data.meshlets
 		geometry.meshlet_vertices = meshlet_data.vertices
 		geometry.meshlet_triangles = meshlet_data.triangles
+		geometry.cluster_groups = hierarchy.groups
+		geometry.clusters = hierarchy.clusters
+		geometry.cluster_vertices = hierarchy.vertices
+		geometry.cluster_triangles = hierarchy.triangles
+		geometry.cluster_max_depth = hierarchy.max_depth
 		geometry.bounds = calculate_bounds(desc.vertices)
 		geometry.lod_handles = {}
 		geometry.lod_screen_radii = {}
@@ -738,6 +766,7 @@ register_geometry :: proc(
 	cloned_name, clone_err := strings.clone(name, registry.allocator)
 	if clone_err != nil {
 		destroy_meshlet_data(&meshlet_data, registry.allocator)
+		destroy_geometry_hierarchy(&hierarchy, registry.allocator)
 		return {}, "failed to allocate geometry name"
 	}
 	append(
@@ -749,6 +778,11 @@ register_geometry :: proc(
 			meshlets = meshlet_data.meshlets,
 			meshlet_vertices = meshlet_data.vertices,
 			meshlet_triangles = meshlet_data.triangles,
+			cluster_groups = hierarchy.groups,
+			clusters = hierarchy.clusters,
+			cluster_vertices = hierarchy.vertices,
+			cluster_triangles = hierarchy.triangles,
+			cluster_max_depth = hierarchy.max_depth,
 			bounds = calculate_bounds(desc.vertices),
 			generation = 1,
 			version = 1,
@@ -849,22 +883,33 @@ register_project_lod_geometry :: proc(
 	if base_meshlet_err != "" {
 		return {}, base_meshlet_err
 	}
+	base_hierarchy, base_hierarchy_err := build_geometry_hierarchy(
+		descriptions[0],
+		registry.allocator,
+	)
+	if base_hierarchy_err != "" {
+		destroy_meshlet_data(&base_meshlets, registry.allocator)
+		return {}, base_hierarchy_err
+	}
 	base_index, existing := geometry_index_by_uuid_any(registry, declaration.id)
 	if !existing {
 		if collision, found := geometry_index_by_name(registry, declaration.name);
 		   found && registry.geometries[collision].id != declaration.id {
 			destroy_meshlet_data(&base_meshlets, registry.allocator)
+			destroy_geometry_hierarchy(&base_hierarchy, registry.allocator)
 			return {}, fmt.tprintf("geometry name '%s' is already registered", declaration.name)
 		}
 		cloned_name, name_err := strings.clone(declaration.name, registry.allocator)
 		if name_err != nil {
 			destroy_meshlet_data(&base_meshlets, registry.allocator)
+			destroy_geometry_hierarchy(&base_hierarchy, registry.allocator)
 			return {}, "failed to allocate project geometry name"
 		}
 		cloned_source, source_err := strings.clone(declaration.source, registry.allocator)
 		if source_err != nil {
 			delete(cloned_name, registry.allocator)
 			destroy_meshlet_data(&base_meshlets, registry.allocator)
+			destroy_geometry_hierarchy(&base_hierarchy, registry.allocator)
 			return {}, "failed to allocate project geometry source"
 		}
 		append(
@@ -879,6 +924,11 @@ register_project_lod_geometry :: proc(
 				meshlets = base_meshlets.meshlets,
 				meshlet_vertices = base_meshlets.vertices,
 				meshlet_triangles = base_meshlets.triangles,
+				cluster_groups = base_hierarchy.groups,
+				clusters = base_hierarchy.clusters,
+				cluster_vertices = base_hierarchy.vertices,
+				cluster_triangles = base_hierarchy.triangles,
+				cluster_max_depth = base_hierarchy.max_depth,
 				bounds = calculate_bounds(descriptions[0].vertices),
 				generation = 1,
 				version = 1,
@@ -892,17 +942,20 @@ register_project_lod_geometry :: proc(
 		if collision, found := geometry_index_by_name(registry, declaration.name);
 		   found && collision != base_index {
 			destroy_meshlet_data(&base_meshlets, registry.allocator)
+			destroy_geometry_hierarchy(&base_hierarchy, registry.allocator)
 			return {}, fmt.tprintf("geometry name '%s' is already registered", declaration.name)
 		}
 		cloned_name, name_err := strings.clone(declaration.name, registry.allocator)
 		if name_err != nil {
 			destroy_meshlet_data(&base_meshlets, registry.allocator)
+			destroy_geometry_hierarchy(&base_hierarchy, registry.allocator)
 			return {}, "failed to allocate project geometry name"
 		}
 		cloned_source, source_err := strings.clone(declaration.source, registry.allocator)
 		if source_err != nil {
 			delete(cloned_name, registry.allocator)
 			destroy_meshlet_data(&base_meshlets, registry.allocator)
+			destroy_geometry_hierarchy(&base_hierarchy, registry.allocator)
 			return {}, "failed to allocate project geometry source"
 		}
 		delete(geometry.name, registry.allocator)
@@ -912,6 +965,10 @@ register_project_lod_geometry :: proc(
 		delete(geometry.meshlets, registry.allocator)
 		delete(geometry.meshlet_vertices, registry.allocator)
 		delete(geometry.meshlet_triangles, registry.allocator)
+		delete(geometry.cluster_groups, registry.allocator)
+		delete(geometry.clusters, registry.allocator)
+		delete(geometry.cluster_vertices, registry.allocator)
+		delete(geometry.cluster_triangles, registry.allocator)
 		geometry.name = cloned_name
 		geometry.source = cloned_source
 		geometry.vertices = clone_slice(descriptions[0].vertices, registry.allocator)
@@ -919,6 +976,11 @@ register_project_lod_geometry :: proc(
 		geometry.meshlets = base_meshlets.meshlets
 		geometry.meshlet_vertices = base_meshlets.vertices
 		geometry.meshlet_triangles = base_meshlets.triangles
+		geometry.cluster_groups = base_hierarchy.groups
+		geometry.clusters = base_hierarchy.clusters
+		geometry.cluster_vertices = base_hierarchy.vertices
+		geometry.cluster_triangles = base_hierarchy.triangles
+		geometry.cluster_max_depth = base_hierarchy.max_depth
 		geometry.bounds = calculate_bounds(descriptions[0].vertices)
 		geometry.authored = true
 		geometry.alive = true

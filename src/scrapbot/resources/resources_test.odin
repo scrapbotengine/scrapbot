@@ -469,6 +469,34 @@ test_registered_geometry_builds_bounded_meshlets :: proc(t: ^testing.T) {
 		total_triangles += int(meshlet.triangle_count)
 	}
 	testing.expect_value(t, total_triangles, len(geometry.indices) / 3)
+	testing.expect(t, len(geometry.cluster_groups) > 1)
+	testing.expect(t, len(geometry.clusters) > len(geometry.meshlets))
+	testing.expect(t, geometry.cluster_max_depth > 0)
+	leaf_triangles := 0
+	for group, group_index in geometry.cluster_groups {
+		testing.expect(t, group.cluster_count > 0)
+		testing.expect(t, group.depth <= geometry.cluster_max_depth)
+		cluster_start := int(group.cluster_offset)
+		cluster_end := cluster_start + int(group.cluster_count)
+		testing.expect(t, cluster_end <= len(geometry.clusters))
+		if cluster_end > len(geometry.clusters) {
+			continue
+		}
+		for cluster in geometry.clusters[cluster_start:cluster_end] {
+			testing.expect_value(t, cluster.group, i32(group_index))
+			testing.expect(t, cluster.refined_group < i32(group_index))
+			testing.expect(t, cluster.vertex_count <= MESHLET_MAX_VERTICES)
+			testing.expect(t, cluster.triangle_count <= MESHLET_MAX_TRIANGLES)
+			vertex_end := int(cluster.vertex_offset + cluster.vertex_count)
+			triangle_end := int(cluster.triangle_offset + cluster.triangle_count * 3)
+			testing.expect(t, vertex_end <= len(geometry.cluster_vertices))
+			testing.expect(t, triangle_end <= len(geometry.cluster_triangles))
+			if cluster.refined_group == -1 {
+				leaf_triangles += int(cluster.triangle_count)
+			}
+		}
+	}
+	testing.expect_value(t, leaf_triangles, len(geometry.indices) / 3)
 }
 
 @(test)

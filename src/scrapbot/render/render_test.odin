@@ -1616,6 +1616,26 @@ test_wgpu_batch_membership_invalidates_layout_only_for_policy_or_capacity_change
 
 @(test)
 test_wgpu_meshlet_submission_policy_amortizes_indirect_commands :: proc(t: ^testing.T) {
+	testing.expect(t, !wgpu_geometry_uses_virtual_clusters(nil))
+	groups: [2]resources.Geometry_Cluster_Group
+	one_group := resources.Geometry {
+		cluster_groups = groups[:1],
+	}
+	testing.expect(t, !wgpu_geometry_uses_virtual_clusters(&one_group))
+	one_group.cluster_max_depth = 1
+	testing.expect(t, !wgpu_geometry_uses_virtual_clusters(&one_group))
+	one_group.cluster_groups = groups[:]
+	testing.expect(t, wgpu_geometry_uses_virtual_clusters(&one_group))
+	testing.expect(t, !wgpu_virtual_geometry_submission(nil, &one_group))
+	renderer := WGPU_Renderer {
+		gpu_meshlet_supported = true,
+	}
+	testing.expect(t, !wgpu_virtual_geometry_submission(&renderer, &one_group))
+	renderer.gpu_meshlet_native_multi_draw = true
+	testing.expect(t, wgpu_virtual_geometry_submission(&renderer, &one_group))
+	renderer.gpu_meshlet_supported = false
+	testing.expect(t, !wgpu_virtual_geometry_submission(&renderer, &one_group))
+
 	testing.expect(t, !wgpu_meshlet_batch_submission(0, 8))
 	testing.expect(t, !wgpu_meshlet_batch_submission(16, 1))
 	testing.expect(t, wgpu_meshlet_batch_submission(16, 2))
@@ -1625,7 +1645,7 @@ test_wgpu_meshlet_submission_policy_amortizes_indirect_commands :: proc(t: ^test
 	testing.expect(t, wgpu_meshlet_debug_forces_submission(.Meshlet_Visibility))
 	testing.expect(t, wgpu_meshlet_debug_forces_submission(.Occlusion_Queries))
 
-	renderer := WGPU_Renderer {
+	renderer = WGPU_Renderer {
 		gpu_meshlet_submission_active = true,
 		gpu_meshlet_selected_draw_count = 12,
 		gpu_meshlet_draw_count = 28,

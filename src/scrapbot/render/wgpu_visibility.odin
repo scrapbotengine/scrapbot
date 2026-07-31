@@ -141,6 +141,8 @@ wgpu_publish_visibility :: proc(renderer: ^WGPU_Renderer, stats: ^Render_Stats) 
 	stats.visible_instances = renderer.gpu_visibility_counters.visible_instances
 	stats.visible_batches = renderer.gpu_visibility_counters.visible_batches
 	stats.visible_meshlet_draws = renderer.gpu_visibility_counters.visible_meshlet_draws
+	stats.visible_virtual_clusters = renderer.gpu_visibility_counters.visible_virtual_clusters
+	stats.virtual_rejected_clusters = renderer.gpu_visibility_counters.virtual_rejected_clusters
 	stats.shadow_visible_instances = renderer.gpu_visibility_counters.shadow_visible_instances
 	stats.frustum_candidates = renderer.gpu_visibility_counters.frustum_candidates
 	stats.frustum_culled_instances = renderer.gpu_visibility_counters.frustum_culled_instances

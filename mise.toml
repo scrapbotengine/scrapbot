@@ -238,9 +238,14 @@ fi
 
 [tasks.meshoptimizer]
 description = "Build the pinned meshoptimizer library for offline meshlet generation"
-sources = ["third_party/meshoptimizer/src/**/*", "third_party/meshoptimizer/Makefile"]
+sources = ["third_party/meshoptimizer/src/**/*", "third_party/meshoptimizer/Makefile", "native/clusterlod/clusterlod.cpp"]
 outputs = ["third_party/meshoptimizer/build/release/libmeshoptimizer.a"]
-run = "make -C third_party/meshoptimizer config=release build/release/libmeshoptimizer.a"
+run = '''
+make -C third_party/meshoptimizer config=release build/release/libmeshoptimizer.a
+mkdir -p third_party/meshoptimizer/build/release/scrapbot
+${CXX:-c++} -O3 -std=c++11 -Ithird_party/meshoptimizer/src -c native/clusterlod/clusterlod.cpp -o third_party/meshoptimizer/build/release/scrapbot/clusterlod.o
+ar rcs third_party/meshoptimizer/build/release/libmeshoptimizer.a third_party/meshoptimizer/build/release/scrapbot/clusterlod.o
+'''
 
 [tasks.wgpu]
 description = "Install Odin's pinned wgpu-native vendor library when absent"

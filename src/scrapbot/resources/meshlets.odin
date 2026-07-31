@@ -22,6 +22,47 @@ Meshlet_Data :: struct {
 	triangles: []u8,
 }
 
+Geometry_Cluster_Group :: struct {
+	bounds: [4]f32,
+	error: f32,
+	depth: u32,
+	cluster_offset: u32,
+	cluster_count: u32,
+}
+#assert(size_of(Geometry_Cluster_Group) == 32)
+
+Geometry_Cluster :: struct {
+	vertex_offset: u32,
+	triangle_offset: u32,
+	vertex_count: u32,
+	triangle_count: u32,
+	bounds: [4]f32,
+	cone_axis_cutoff: [4]f32,
+	group: i32,
+	refined_group: i32,
+}
+#assert(size_of(Geometry_Cluster) == 56)
+
+Geometry_Hierarchy :: struct {
+	groups: []Geometry_Cluster_Group,
+	clusters: []Geometry_Cluster,
+	vertices: []u32,
+	triangles: []u8,
+	max_depth: u32,
+}
+
+Clod_Result :: struct {
+	groups: [^]Geometry_Cluster_Group,
+	clusters: [^]Geometry_Cluster,
+	vertices: [^]u32,
+	triangles: [^]u8,
+	group_count: c.size_t,
+	cluster_count: c.size_t,
+	vertex_count: c.size_t,
+	triangle_byte_count: c.size_t,
+	max_depth: u32,
+}
+
 Meshopt_Meshlet :: struct {
 	vertex_offset: u32,
 	triangle_offset: u32,
@@ -53,6 +94,50 @@ foreign meshoptimizer {
 
 	@(link_name = "meshopt_computeMeshletBounds")
 	meshopt_compute_meshlet_bounds :: proc(meshlet_vertices: [^]u32, meshlet_triangles: [^]u8, triangle_count: c.size_t, vertex_positions: [^]f32, vertex_count, vertex_positions_stride: c.size_t) -> Meshopt_Bounds ---
+
+	@(link_name = "scrapbot_clod_build")
+	clod_build :: proc(indices: [^]u32, index_count: c.size_t, vertices: [^]f32, vertex_count, vertex_stride: c.size_t) -> Clod_Result ---
+
+	@(link_name = "scrapbot_clod_free")
+	clod_free :: proc(result: Clod_Result) ---
+}
+
+build_geometry_hierarchy :: proc(
+	desc: Geometry_Desc,
+	allocator: mem.Allocator,
+) -> (
+	Geometry_Hierarchy,
+	string,
+) {
+	if len(desc.indices) == 0 || len(desc.vertices) == 0 {
+		return {}, "cluster hierarchy source geometry is empty"
+	}
+	result := clod_build(
+		raw_data(desc.indices),
+		c.size_t(len(desc.indices)),
+		cast([^]f32)raw_data(desc.vertices),
+		c.size_t(len(desc.vertices)),
+		c.size_t(size_of(Vertex)),
+	)
+	defer clod_free(result)
+	if result.group_count == 0 ||
+	   result.cluster_count == 0 ||
+	   result.vertex_count == 0 ||
+	   result.triangle_byte_count == 0 {
+		return {}, "failed to build geometry cluster hierarchy"
+	}
+	group_count := int(result.group_count)
+	cluster_count := int(result.cluster_count)
+	vertex_count := int(result.vertex_count)
+	triangle_byte_count := int(result.triangle_byte_count)
+	return Geometry_Hierarchy {
+			groups = clone_slice(result.groups[:group_count], allocator),
+			clusters = clone_slice(result.clusters[:cluster_count], allocator),
+			vertices = clone_slice(result.vertices[:vertex_count], allocator),
+			triangles = clone_slice(result.triangles[:triangle_byte_count], allocator),
+			max_depth = result.max_depth,
+		},
+		""
 }
 
 build_meshlets :: proc(desc: Geometry_Desc, allocator: mem.Allocator) -> (Meshlet_Data, string) {
@@ -142,6 +227,17 @@ destroy_meshlet_data :: proc(data: ^Meshlet_Data, allocator: mem.Allocator) {
 		return
 	}
 	delete(data.meshlets, allocator)
+	delete(data.vertices, allocator)
+	delete(data.triangles, allocator)
+	data^ = {}
+}
+
+destroy_geometry_hierarchy :: proc(data: ^Geometry_Hierarchy, allocator: mem.Allocator) {
+	if data == nil {
+		return
+	}
+	delete(data.groups, allocator)
+	delete(data.clusters, allocator)
 	delete(data.vertices, allocator)
 	delete(data.triangles, allocator)
 	data^ = {}

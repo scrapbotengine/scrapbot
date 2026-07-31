@@ -26,6 +26,8 @@ render_debug_view_name :: proc "contextless" (view: Render_Debug_View) -> string
 			return "hiz"
 		case .Occlusion_Queries:
 			return "occlusion_queries"
+		case .Virtual_Geometry:
+			return "virtual_geometry"
 	}
 	return "lit"
 }
@@ -54,6 +56,8 @@ render_debug_view_from_name :: proc "contextless" (name: string) -> (Render_Debu
 			return .HiZ, true
 		case "occlusion_queries":
 			return .Occlusion_Queries, true
+		case "virtual_geometry":
+			return .Virtual_Geometry, true
 	}
 	return .Lit, false
 }

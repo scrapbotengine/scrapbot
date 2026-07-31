@@ -105,6 +105,8 @@ WGPU_GPU_Visibility_Counters :: struct {
 	meshlet_debug_records: u32,
 	visible_batches: u32,
 	visible_meshlet_draws: u32,
+	visible_virtual_clusters: u32,
+	virtual_rejected_clusters: u32,
 }
 WGPU_GPU_VISIBLE_BATCH_WORD_COUNT :: (WGPU_MAX_GPU_INSTANCES * shared.MAX_GEOMETRY_LODS + 31) / 32
 #assert(WGPU_GPU_VISIBLE_BATCH_WORD_COUNT == 16_384)
@@ -272,6 +274,7 @@ WGPU_Draw_Batch :: struct {
 	first_instance: u32,
 	instance_count: u32,
 	meshlet_submission: bool,
+	virtual_geometry: bool,
 	visible_offset: u32,
 	visible_capacity: u32,
 	meshlet_draw_offset: u32,
@@ -334,7 +337,8 @@ WGPU_GPU_Cull_Uniform :: struct {
 	meshlet_debug_record_offset: u32,
 	debug_view: u32,
 	meshlet_force_enabled: u32,
-	_padding: [2]u32,
+	virtual_error_pixels: f32,
+	projection_y: f32,
 }
 #assert(size_of(WGPU_GPU_Cull_Uniform) == 688)
 
@@ -378,12 +382,18 @@ WGPU_GPU_Batch_Info :: struct {
 WGPU_GPU_Meshlet_Info :: struct {
 	bounds: [4]f32,
 	cone_axis_cutoff: [4]f32,
+	group_bounds: [4]f32,
+	refined_bounds: [4]f32,
 	visible_offset: u32,
 	visible_capacity: u32,
 	flags: u32,
-	_padding: u32,
+	group_depth: u32,
+	group_error: f32,
+	refined_error: f32,
+	max_depth: u32,
+	virtual_geometry: u32,
 }
-#assert(size_of(WGPU_GPU_Meshlet_Info) == 48)
+#assert(size_of(WGPU_GPU_Meshlet_Info) == 96)
 
 WGPU_Instance_Source_State :: struct {
 	geometry: shared.Geometry_Handle,
@@ -735,6 +745,7 @@ WGPU_Renderer :: struct {
 	gpu_meshlet_draw_count: int,
 	gpu_meshlet_selected_draw_count: int,
 	gpu_meshlet_selected_batch_count: int,
+	gpu_virtual_cluster_draw_count: int,
 	gpu_classic_batch_count: int,
 	gpu_meshlet_visible_capacity: int,
 	gpu_meshlet_supported: bool,
@@ -2345,7 +2356,11 @@ wgpu_geometry_cache :: proc(
 	}
 	if renderer.gpu_meshlet_supported {
 		meshlet_err: string
-		meshlet_indices, meshlet_err = wgpu_expand_meshlet_indices(geometry)
+		if wgpu_virtual_geometry_submission(renderer, geometry) {
+			meshlet_indices, meshlet_err = wgpu_expand_cluster_indices(geometry)
+		} else {
+			meshlet_indices, meshlet_err = wgpu_expand_meshlet_indices(geometry)
+		}
 		if meshlet_err != "" {
 			return nil, meshlet_err
 		}
@@ -3308,6 +3323,8 @@ wgpu_draw_frame :: proc(
 		config.stats.meshlet_native_multi_draw =
 			renderer.gpu_meshlet_submission_active && renderer.gpu_meshlet_native_multi_draw
 		config.stats.meshlet_draws = wgpu_active_meshlet_draw_count(renderer)
+		config.stats.virtual_geometry = renderer.gpu_virtual_cluster_draw_count > 0
+		config.stats.virtual_cluster_draws = renderer.gpu_virtual_cluster_draw_count
 		config.stats.meshlet_visible_capacity = renderer.gpu_meshlet_visible_capacity
 		config.stats.clustered_lighting = true
 		config.stats.shadow_cascades =
@@ -3563,6 +3580,8 @@ wgpu_render_offscreen_frame :: proc(
 		config.stats.meshlet_native_multi_draw =
 			renderer.gpu_meshlet_submission_active && renderer.gpu_meshlet_native_multi_draw
 		config.stats.meshlet_draws = wgpu_active_meshlet_draw_count(renderer)
+		config.stats.virtual_geometry = renderer.gpu_virtual_cluster_draw_count > 0
+		config.stats.virtual_cluster_draws = renderer.gpu_virtual_cluster_draw_count
 		config.stats.meshlet_visible_capacity = renderer.gpu_meshlet_visible_capacity
 		config.stats.clustered_lighting = true
 		config.stats.shadow_cascades =

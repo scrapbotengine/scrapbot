@@ -25,6 +25,22 @@ WGPU_Draw_Submission_Span :: struct {
 	meshlets: bool,
 }
 
+wgpu_geometry_uses_virtual_clusters :: proc "contextless" (geometry: ^resources.Geometry) -> bool {
+	return geometry != nil && len(geometry.cluster_groups) > 1 && geometry.cluster_max_depth > 0
+}
+
+wgpu_virtual_geometry_submission :: proc "contextless" (
+	renderer: ^WGPU_Renderer,
+	geometry: ^resources.Geometry,
+) -> bool {
+	return(
+		renderer != nil &&
+		renderer.gpu_meshlet_supported &&
+		renderer.gpu_meshlet_native_multi_draw &&
+		wgpu_geometry_uses_virtual_clusters(geometry) \
+	)
+}
+
 wgpu_meshlet_batch_submission :: proc "contextless" (meshlet_count, instance_count: u32) -> bool {
 	return meshlet_count > 0 && instance_count >= WGPU_MESHLET_MIN_BATCH_INSTANCES
 }
@@ -33,7 +49,7 @@ wgpu_meshlet_debug_forces_submission :: proc "contextless" (
 	debug_view: shared.Render_Debug_View,
 ) -> bool {
 	#partial switch debug_view {
-		case .Meshlets, .Meshlet_Visibility, .Occlusion_Queries:
+		case .Meshlets, .Meshlet_Visibility, .Occlusion_Queries, .Virtual_Geometry:
 			return true
 		case:
 			return false
@@ -176,6 +192,44 @@ wgpu_expand_meshlet_indices :: proc(
 				return nil, "meshlet vertex stream is out of bounds"
 			}
 			indices[cursor] = geometry.meshlet_vertices[vertex_index]
+			cursor += 1
+		}
+	}
+	return
+}
+
+wgpu_expand_cluster_indices :: proc(
+	geometry: ^resources.Geometry,
+	allocator := context.temp_allocator,
+) -> (
+	indices: []u32,
+	err: string,
+) {
+	if geometry == nil {
+		return nil, "cluster geometry is not available"
+	}
+	index_count := 0
+	for cluster in geometry.clusters {
+		index_count += int(cluster.triangle_count * 3)
+	}
+	if index_count <= 0 {
+		return nil, "cluster hierarchy has no triangle indices"
+	}
+	indices = make([]u32, index_count, allocator)
+	cursor := 0
+	for cluster in geometry.clusters {
+		vertex_start := int(cluster.vertex_offset)
+		triangle_start := int(cluster.triangle_offset)
+		for local_index in 0 ..< int(cluster.triangle_count * 3) {
+			triangle_index := triangle_start + local_index
+			if triangle_index < 0 || triangle_index >= len(geometry.cluster_triangles) {
+				return nil, "cluster triangle stream is out of bounds"
+			}
+			vertex_index := vertex_start + int(geometry.cluster_triangles[triangle_index])
+			if vertex_index < 0 || vertex_index >= len(geometry.cluster_vertices) {
+				return nil, "cluster vertex stream is out of bounds"
+			}
+			indices[cursor] = geometry.cluster_vertices[vertex_index]
 			cursor += 1
 		}
 	}
@@ -1753,6 +1807,7 @@ wgpu_refresh_gpu_batch_layout :: proc(
 	meshlet_capacity_valid := true
 	meshlet_selected_draw_count := 0
 	meshlet_selected_batch_count := 0
+	virtual_cluster_draw_count := 0
 	for batch_index in 0 ..< cache.batch_count {
 		batch := &cache.batches[batch_index]
 		batch.visible_offset = visible_offset
@@ -1763,14 +1818,19 @@ wgpu_refresh_gpu_batch_layout :: proc(
 			return "GPU draw batch references unavailable geometry"
 		}
 		batch.meshlet_draw_offset = meshlet_draw_offset
-		batch.meshlet_draw_count = u32(len(geometry.meshlets))
-		batch.meshlet_submission = wgpu_meshlet_batch_submission(
-			batch.meshlet_draw_count,
-			batch.instance_count,
+		batch.virtual_geometry = wgpu_virtual_geometry_submission(renderer, geometry)
+		batch.meshlet_draw_count = u32(
+			len(geometry.clusters) if batch.virtual_geometry else len(geometry.meshlets),
 		)
+		batch.meshlet_submission =
+			batch.virtual_geometry ||
+			wgpu_meshlet_batch_submission(batch.meshlet_draw_count, batch.instance_count)
 		if batch.meshlet_submission {
 			meshlet_selected_draw_count += int(batch.meshlet_draw_count)
 			meshlet_selected_batch_count += 1
+		}
+		if batch.virtual_geometry {
+			virtual_cluster_draw_count += int(batch.meshlet_draw_count)
 		}
 		batch.meshlet_visible_offset = meshlet_visible_offset
 		batch_capacity, batch_capacity_ok := wgpu_meshlet_batch_visible_capacity(
@@ -1867,35 +1927,80 @@ wgpu_refresh_gpu_batch_layout :: proc(
 		first_index := u32(geometry.meshlet_index_range.offset / u64(size_of(u32)))
 		base_vertex := i32(geometry.vertex_range.offset / u64(size_of(resources.Vertex)))
 		per_meshlet_capacity := wgpu_align_visible_capacity(batch.instance_count)
-		for meshlet, local_meshlet_index in geometry_resource.meshlets {
-			meshlet_index := int(batch.meshlet_draw_offset) + local_meshlet_index
-			local_visible_offset := u32(local_meshlet_index) * per_meshlet_capacity
-			renderer.gpu_meshlet_infos[meshlet_index] = {
-				bounds = meshlet.bounds,
-				cone_axis_cutoff = meshlet.cone_axis_cutoff,
-				visible_offset = batch.meshlet_visible_offset + local_visible_offset,
-				visible_capacity = per_meshlet_capacity,
-				flags = 1 if material.desc.double_sided else 0,
-			}
-			renderer.gpu_meshlet_indirect_templates[meshlet_index] = {
-				index_count = meshlet.triangle_count * 3,
-				first_index = first_index,
-				base_vertex = base_vertex,
-				first_instance = batch.meshlet_visible_offset + local_visible_offset,
-			}
-			if renderer.gpu_meshlet_layout_valid {
-				for identity_index in 0 ..< int(per_meshlet_capacity) {
-					meshlet_identities[int(batch.meshlet_visible_offset + local_visible_offset) + identity_index] =
-						u32(meshlet_index + 1)
+		if batch.virtual_geometry {
+			for cluster, local_meshlet_index in geometry_resource.clusters {
+				meshlet_index := int(batch.meshlet_draw_offset) + local_meshlet_index
+				local_visible_offset := u32(local_meshlet_index) * per_meshlet_capacity
+				group := geometry_resource.cluster_groups[cluster.group]
+				refined_bounds: [4]f32
+				refined_error: f32
+				if cluster.refined_group >= 0 {
+					refined := geometry_resource.cluster_groups[cluster.refined_group]
+					refined_bounds = refined.bounds
+					refined_error = refined.error
 				}
+				renderer.gpu_meshlet_infos[meshlet_index] = {
+					bounds = cluster.bounds,
+					cone_axis_cutoff = cluster.cone_axis_cutoff,
+					group_bounds = group.bounds,
+					refined_bounds = refined_bounds,
+					visible_offset = batch.meshlet_visible_offset + local_visible_offset,
+					visible_capacity = per_meshlet_capacity,
+					flags = 1 if material.desc.double_sided else 0,
+					group_depth = group.depth,
+					group_error = group.error,
+					refined_error = refined_error,
+					max_depth = geometry_resource.cluster_max_depth,
+					virtual_geometry = 1,
+				}
+				renderer.gpu_meshlet_indirect_templates[meshlet_index] = {
+					index_count = cluster.triangle_count * 3,
+					first_index = first_index,
+					base_vertex = base_vertex,
+					first_instance = batch.meshlet_visible_offset + local_visible_offset,
+				}
+				if renderer.gpu_meshlet_layout_valid {
+					level_byte := group.depth * 255 / max(geometry_resource.cluster_max_depth, 1)
+					identity := (level_byte << 24) | (u32(meshlet_index + 1) & 0x00ff_ffff)
+					for identity_index in 0 ..< int(per_meshlet_capacity) {
+						meshlet_identities[int(batch.meshlet_visible_offset + local_visible_offset) + identity_index] =
+							identity
+					}
+				}
+				first_index += cluster.triangle_count * 3
 			}
-			first_index += meshlet.triangle_count * 3
+		} else {
+			for meshlet, local_meshlet_index in geometry_resource.meshlets {
+				meshlet_index := int(batch.meshlet_draw_offset) + local_meshlet_index
+				local_visible_offset := u32(local_meshlet_index) * per_meshlet_capacity
+				renderer.gpu_meshlet_infos[meshlet_index] = {
+					bounds = meshlet.bounds,
+					cone_axis_cutoff = meshlet.cone_axis_cutoff,
+					visible_offset = batch.meshlet_visible_offset + local_visible_offset,
+					visible_capacity = per_meshlet_capacity,
+					flags = 1 if material.desc.double_sided else 0,
+				}
+				renderer.gpu_meshlet_indirect_templates[meshlet_index] = {
+					index_count = meshlet.triangle_count * 3,
+					first_index = first_index,
+					base_vertex = base_vertex,
+					first_instance = batch.meshlet_visible_offset + local_visible_offset,
+				}
+				if renderer.gpu_meshlet_layout_valid {
+					for identity_index in 0 ..< int(per_meshlet_capacity) {
+						meshlet_identities[int(batch.meshlet_visible_offset + local_visible_offset) + identity_index] =
+							u32(meshlet_index + 1)
+					}
+				}
+				first_index += meshlet.triangle_count * 3
+			}
 		}
 	}
 	renderer.gpu_visible_capacity = int(visible_offset)
 	renderer.gpu_meshlet_draw_count = int(meshlet_draw_offset)
 	renderer.gpu_meshlet_selected_draw_count = meshlet_selected_draw_count
 	renderer.gpu_meshlet_selected_batch_count = meshlet_selected_batch_count
+	renderer.gpu_virtual_cluster_draw_count = virtual_cluster_draw_count
 	renderer.gpu_classic_batch_count = cache.batch_count - meshlet_selected_batch_count
 	renderer.gpu_meshlet_visible_capacity = int(meshlet_visible_offset)
 	wgpu.QueueWriteBuffer(
@@ -3096,6 +3201,8 @@ wgpu_prepare_gpu_draw_batches :: proc(
 		),
 		debug_view = u32(camera.debug_view),
 		meshlet_force_enabled = 1 if renderer.gpu_meshlet_force_enabled else 0,
+		virtual_error_pixels = 1.0,
+		projection_y = projection[5],
 	}
 	for cascade_index in 0 ..< WGPU_SHADOW_CASCADE_COUNT {
 		cull_uniform.shadow_planes[cascade_index] = wgpu_extract_frustum_planes(

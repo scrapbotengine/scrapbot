@@ -13,7 +13,7 @@ Scrapbot separates authoritative project/runtime state from derived indexes, cac
 | Compiled native chunk plans | Each `native.Native_System` | Derived query/storage/field resolution | Bounded cache keyed by chunk terms and bindings; invalidated by World UUID, component-registry revision, newly appearing storage families, or extension-set replacement. Ordinary component membership churn retains the plan. |
 | Entity identity and component values | `shared.World` / `ecs` | Active runtime authority | Typed ECS mutation, deferred command application, playback restore, or world replacement. |
 | Frame time | `world.time` | Current runtime resource | Advanced once per permitted simulation step. |
-| Geometry/material/environment/icon-set descriptions and handles | `resources.Registry` | Runtime shared-resource authority | Generational handles plus content/topology versions. Geometry content includes LOD handles/threshold/error metadata plus registration-built meshlet streams and bounds; they rebuild only with that exact Geometry version, never on stable frames. See [Resource render state](#resource-render-state). |
+| Geometry/material/environment/icon-set descriptions and handles | `resources.Registry` | Runtime shared-resource authority | Generational handles plus content/topology versions. Geometry content includes LOD metadata, meshlets, and a registration-built crack-aware cluster hierarchy with monotonic group errors; they rebuild only with that exact Geometry version, never on stable frames. See [Resource render state](#resource-render-state). |
 | Texture/Model/Environment/Icon Set imported products | `asset_import` products plus `resources.Registry` | Derived from authored UUID recipes and asset/dependency contents | Ensured at import/check/build/run or asset hot reload; schema/content/settings fingerprints reuse unchanged products and atomic writes preserve last-good files. Model LOD simplification and compaction run only on invalidation. Generated semantic handles update at registration, while model-root revisions reconcile derived ECS children at bootstrap/reload or an explicit structural edit. |
 | Authoring history and dirty UUID candidates | Editor UI state | In-memory authoring authority until Save/Revert | One transaction per completed gesture or structural operation; playback mutations remain disposable. |
 | UI theme palettes, metrics, typography, and named recipes | Shared UI composition contract plus UUID-backed `resources.Registry.ui_themes` | Ephemeral composition input with versioned lookup, not retained UI authority | Scene parsing, Luau resolution, UUID-specific native host resolution, and editor composition consume the same engine-owned recipe vocabulary before typed ECS attachment or update. The resolved `ui_*` values are authoritative for layout and paint; the registry revision refreshes resource inspection only. No theme identity, ancestry cascade, stable-frame traversal, or renderer-side style store remains. |
@@ -53,15 +53,22 @@ If lifecycle churn exposes a retained render slot whose GPU slot is inactive, on
 
 Static instance fields remain separately retained. Batch topology, geometry capacity, and exact structural changes drive their updates.
 
-Adapters with indirect-first-instance additionally retain meshlet metadata, meshlet-ordered index
-buffers, aligned camera/shadow visibility slices, a parallel debug-identity stream, and indirect
-templates. Geometry versions define meshlet command topology. Batch membership capacity defines
-visibility allocation.
+Adapters with indirect-first-instance additionally retain meshlet metadata, expanded index ranges,
+aligned camera/shadow visibility slices, a parallel debug-identity stream, and indirect templates.
+Adapters must also expose native multi-draw before hierarchy clusters enter that submission state;
+otherwise the renderer retains whole-primitive object LODs to avoid CPU command expansion.
+Geometry versions define command topology. Batch membership capacity defines visibility allocation.
 
-Each retained batch selects meshlets when at least two instances can amortize its command range;
-single-instance batches use the whole-primitive database. Membership crossing that threshold
-invalidates only the retained batch layout. Meshlet-oriented debug views transiently force all
-eligible batches through the detailed path without rewriting topology.
+Hierarchy-bearing batches always use cluster submission on adapters with both capabilities because
+they select geometric detail even for one instance. Ordinary meshlet batches retain the two-instance
+amortization threshold. Membership crossing that threshold invalidates only the retained batch
+layout. Meshlet-oriented debug views transiently force remaining eligible batches through the
+detailed path without rewriting topology.
+
+The compute culler projects monotonic hierarchy-group errors into pixels and accepts a cluster when
+its group exceeds one pixel while its refined group is absent or is at or below one pixel. This
+selects one complete frontier. Camera and cascade visibility then apply their ordinary sphere,
+normal-cone, and Hi-Z tests to that same frontier.
 
 Stable frames copy active templates, run one object-first compute cull whose batches branch into
 classic or cluster visibility, and submit matching command ranges. Mixed frames encode separate
@@ -71,11 +78,11 @@ Stable frames do not rescan resources, rebuild cluster metadata, or upload debug
 Unsupported adapters and layouts above the bounded visibility capacity use the retained whole-
 primitive database.
 
-The retained batch count follows topology invalidation. Camera-visible batches and nonempty meshlet
-draws are frame-valued GPU counters. The first surviving object atomically sets its selected
-batch's bit in fixed counter-buffer storage. The first surviving instance for a meshlet command
-advances that indirect count from zero. CPU-reference culling derives visible batches from its
-existing per-batch counts and reports zero meshlet draws.
+The retained batch count follows topology invalidation. Camera-visible batches, nonempty meshlet
+draws, selected virtual clusters, and hierarchy-threshold rejections are frame-valued GPU counters.
+The first surviving object atomically sets its selected batch's bit. The first surviving instance
+for a cluster command advances that indirect count from zero. CPU-reference culling derives visible
+batches from existing per-batch counts and reports no virtual-cluster selection.
 
 ### Resource caches
 
@@ -87,6 +94,9 @@ mutation counters. Exact version hits do no allocator or upload work. Replacemen
 ranges only after all uploads succeed; stale handles are reclaimed when the registry's geometry
 topology revision changes. Growth is geometric and copies retained bytes before replacing the
 backing buffer. Stable frames never scan, compact, hash, or upload the arenas.
+
+The current hierarchy is fully resident. Paging, request feedback, upload budgets, eviction, and
+pinned root clusters are not yet derived state.
 
 Batch bind groups are released before cache storage is cleared. Exact lighting/background handle or content-version changes rebuild only the shared environment binding. The sky camera/projection uniform uploads only after an exact value change.
 

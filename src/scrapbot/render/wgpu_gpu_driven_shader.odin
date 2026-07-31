@@ -273,7 +273,7 @@ fn vs_main(input: Vertex_Input, @builtin(instance_index) visible_index: u32) -> 
 	output.uv = input.uv;
 	output.meshlet_identity = 0u;
 	output.lod_level = 0u;
-	if ((render.debug.x == 6u || render.debug.x == 8u) && render.debug.y != 0u) {
+	if ((render.debug.x == 6u || render.debug.x == 8u || render.debug.x == 11u) && render.debug.y != 0u) {
 		output.meshlet_identity = meshlet_identities[visible_index];
 	}
 	if (render.debug.x == 7u) {
@@ -762,6 +762,22 @@ fn fs_main(
 					);
 				}
 			}
+			case 11u: {
+				if (render.debug.y != 0u && input.meshlet_identity != 0u) {
+					let level = f32(input.meshlet_identity >> 24u) / 255.0;
+					let level_color = mix(
+						vec3<f32>(0.18, 0.82, 0.68),
+						vec3<f32>(1.0, 0.26, 0.56),
+						level,
+					);
+					let cluster_color = meshlet_debug_color(
+						input.meshlet_identity & 0x00ffffffu,
+					);
+					debug_color = mix(level_color, cluster_color, 0.38);
+				} else {
+					debug_color = vec3<f32>(0.05, 0.055, 0.07);
+				}
+			}
 			default: {}
 		}
 		var output: Fragment_Output;
@@ -944,10 +960,16 @@ struct Batch_Info {
 struct Meshlet_Info {
 	bounds: vec4<f32>,
 	cone_axis_cutoff: vec4<f32>,
+	group_bounds: vec4<f32>,
+	refined_bounds: vec4<f32>,
 	visible_offset: u32,
 	visible_capacity: u32,
 	flags: u32,
-	padding: u32,
+	group_depth: u32,
+	group_error: f32,
+	refined_error: f32,
+	max_depth: u32,
+	virtual_geometry: u32,
 };
 
 struct Draw_Indexed_Indirect {
@@ -975,8 +997,8 @@ struct Cull_Uniform {
 	meshlet_debug_record_offset: u32,
 	debug_view: u32,
 	meshlet_force_enabled: u32,
-	padding_0: u32,
-	padding_1: u32,
+	virtual_error_pixels: f32,
+	projection_y: f32,
 };
 
 struct Visibility_Counters {
@@ -994,6 +1016,8 @@ struct Visibility_Counters {
 	meshlet_debug_records: atomic<u32>,
 	visible_batches: atomic<u32>,
 	visible_meshlet_draws: atomic<u32>,
+	visible_virtual_clusters: atomic<u32>,
+	virtual_rejected_clusters: atomic<u32>,
 	visible_batch_words: array<atomic<u32>, 16384>,
 };
 
@@ -1033,6 +1057,48 @@ fn world_meshlet_bounds(instance: GPU_Instance, meshlet: Meshlet_Info) -> vec4<f
 		length(instance.model[2].xyz),
 	);
 	return vec4<f32>(center.xyz, meshlet.bounds.w * scale);
+}
+
+fn world_virtual_bounds(instance: GPU_Instance, bounds: vec4<f32>) -> vec4<f32> {
+	let center = instance.model * vec4<f32>(bounds.xyz, 1.0);
+	let scale = max(
+		max(length(instance.model[0].xyz), length(instance.model[1].xyz)),
+		length(instance.model[2].xyz),
+	);
+	return vec4<f32>(center.xyz, bounds.w * scale);
+}
+
+fn virtual_projected_error(
+	instance: GPU_Instance,
+	bounds: vec4<f32>,
+	error: f32,
+) -> f32 {
+	if (error > 1.0e30) {
+		return error;
+	}
+	let world_bounds = world_virtual_bounds(instance, bounds);
+	let scale = max(
+		max(length(instance.model[0].xyz), length(instance.model[1].xyz)),
+		length(instance.model[2].xyz),
+	);
+	let distance = max(
+		length(world_bounds.xyz - cull.camera_position.xyz) - world_bounds.w,
+		0.0001,
+	);
+	return error * scale / distance * abs(cull.projection_y) * 0.5 * cull.viewport.w;
+}
+
+fn virtual_cluster_selected(instance: GPU_Instance, meshlet: Meshlet_Info) -> bool {
+	if (meshlet.virtual_geometry == 0u) {
+		return true;
+	}
+	let group_over_threshold =
+		virtual_projected_error(instance, meshlet.group_bounds, meshlet.group_error) >
+		cull.virtual_error_pixels;
+	let refined_under_threshold = meshlet.refined_error <= 0.0 ||
+		virtual_projected_error(instance, meshlet.refined_bounds, meshlet.refined_error) <=
+		cull.virtual_error_pixels;
+	return group_over_threshold && refined_under_threshold;
 }
 
 fn meshlet_cone_culled(
@@ -1241,6 +1307,9 @@ fn append_batch_meshlet_debug(
 		local_meshlet = local_meshlet + 1u
 	) {
 		let meshlet_index = batch.meshlet_offset + local_meshlet;
+		if (!virtual_cluster_selected(instance, meshlets[meshlet_index])) {
+			continue;
+		}
 		append_meshlet_debug(
 			world_meshlet_bounds(instance, meshlets[meshlet_index]),
 			classification,
@@ -1285,6 +1354,12 @@ fn cull_instances(invocation: vec3<u32>, meshlet_pass: bool) {
 			) {
 				let meshlet_index = batch.meshlet_offset + local_meshlet;
 				let meshlet = meshlets[meshlet_index];
+				if (!virtual_cluster_selected(instance, meshlet)) {
+					if (meshlet.virtual_geometry != 0u) {
+						atomicAdd(&counters.virtual_rejected_clusters, 1u);
+					}
+					continue;
+				}
 				let bounds = world_meshlet_bounds(instance, meshlet);
 				if (!camera_sphere_visible(bounds)) {
 					atomicAdd(&counters.frustum_culled_meshlets, 1u);
@@ -1316,6 +1391,9 @@ fn cull_instances(invocation: vec3<u32>, meshlet_pass: bool) {
 					atomicAdd(&indirect[meshlet_index].instance_count, 1u);
 				if (local_index == 0u) {
 					atomicAdd(&counters.visible_meshlet_draws, 1u);
+					if (meshlet.virtual_geometry != 0u) {
+						atomicAdd(&counters.visible_virtual_clusters, 1u);
+					}
 				}
 				if (local_index < meshlet.visible_capacity) {
 					visible_instances[meshlet.visible_offset + local_index] = slot;
@@ -1346,6 +1424,9 @@ fn cull_instances(invocation: vec3<u32>, meshlet_pass: bool) {
 			) {
 				let meshlet_index = batch.meshlet_offset + local_meshlet;
 				let meshlet = meshlets[meshlet_index];
+				if (!virtual_cluster_selected(instance, meshlet)) {
+					continue;
+				}
 				let bounds = world_meshlet_bounds(instance, meshlet);
 				if (!shadow_sphere_visible(bounds, cascade_index)) {
 					continue;

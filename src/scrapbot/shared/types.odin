@@ -321,6 +321,7 @@ Render_Debug_View :: enum u32 {
 	Meshlet_Visibility,
 	HiZ,
 	Occlusion_Queries,
+	Virtual_Geometry,
 }
 
 HiZ_Occlusion_Status :: enum u32 {

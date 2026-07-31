@@ -209,7 +209,7 @@ editor_ui_handle_activation :: proc(
 				case .Debug_View_Item:
 					if binding.slot < 0 {
 						state.editor_render_debug_view_override = false
-					} else if binding.slot <= int(shared.Render_Debug_View.Occlusion_Queries) {
+					} else if binding.slot <= int(shared.Render_Debug_View.Virtual_Geometry) {
 						state.editor_render_debug_view_override = true
 						state.editor_render_debug_view = shared.Render_Debug_View(binding.slot)
 					}
@@ -1675,6 +1675,7 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		"MESHLET VISIBILITY",
 		"HI-Z",
 		"OCCLUSION QUERIES",
+		"VIRTUAL GEOMETRY",
 	}
 	for label, index in debug_view_names {
 		slot := index - 1
@@ -2451,6 +2452,8 @@ editor_ui_update_debug_view_button :: proc(state: ^State, world: ^shared.World) 
 				label = "HI-Z"
 			case .Occlusion_Queries:
 				label = "OCCLUSION QUERIES"
+			case .Virtual_Geometry:
+				label = "VIRTUAL GEOMETRY"
 		}
 	}
 	value := world.ui_buttons[entity.ui_button_index]
