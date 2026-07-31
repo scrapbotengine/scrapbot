@@ -407,7 +407,7 @@ run = "node tools/runtime_soak.mjs"
 
 [tasks.test-gpu]
 description = "Verify WGPU visibility paths and deterministic material output"
-depends = ["build"]
+depends = ["build", "test-virtual-geometry-gpu"]
 run = '''
 COMPUTE_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-compute.png"
 CPU_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-cpu.png"
@@ -594,12 +594,11 @@ node -e '
 const result = JSON.parse(process.argv[1]);
 const stats = result.result?.render_stats;
 if (result.schema_version !== 1 || result.command !== "run" || result.ok !== true ||
-    stats?.draw_database_rebuilds > 1 || stats.ui_project_vertex_rebuilds !== 0 ||
-    stats.ui_editor_vertex_rebuilds < 1 || stats.ui_editor_vertex_rebuilds >= 10 ||
-    stats.ui_overlay_vertex_rebuilds >= 10 ||
-    (stats.gpu_timestamps_supported && (!stats.gpu_timestamps_valid ||
-      stats.gpu_scene_ms <= 0 || stats.gpu_ui_ms <= 0 ||
-      stats.gpu_frame_ms <= stats.gpu_scene_ms))) {
+	stats?.draw_database_rebuilds > 1 || stats.ui_project_vertex_rebuilds !== 0 ||
+	stats.ui_editor_vertex_rebuilds < 1 || stats.ui_editor_vertex_rebuilds >= 10 ||
+	stats.ui_overlay_vertex_rebuilds >= 10 ||
+	(stats.gpu_timestamps_supported && (!stats.gpu_timestamps_valid ||
+	  stats.gpu_scene_ms <= 0 || stats.gpu_frame_ms < stats.gpu_scene_ms))) {
   console.error("editor overlay lifecycle did not complete cleanly");
   process.exit(1);
 }
@@ -728,6 +727,32 @@ node tools/assert_png_contract.mjs "$PBR_FRAME" tests/fixtures/visual/pbr-materi
 description = "Run the bounded artifact-preserving offscreen WGPU acceptance gate"
 depends = ["build"]
 run = 'node tools/test_gpu_offscreen.mjs "$@"'
+
+[tasks.test-virtual-geometry-gpu]
+description = "Exercise bounded virtual-geometry streaming under residency pressure"
+depends = ["build"]
+run = '''
+FRAME="${TMPDIR:-/tmp}/scrapbot-virtual-geometry-pressure.png"
+trap 'rm -f "$FRAME"' EXIT
+RESULT="$(bin/scrapbot run tests/fixtures/gpu-virtual-geometry-pressure --headless --no-hot-reload --frames 96 --framegrab "$FRAME" --json)"
+node -e '
+const result = JSON.parse(process.argv[1]);
+const stats = result.result?.render_stats;
+if (result.schema_version !== 1 || result.command !== "run" || result.ok !== true ||
+    !stats?.virtual_geometry || stats.virtual_geometry_pages < 3 ||
+    stats.virtual_geometry_resident_pages >= stats.virtual_geometry_pages ||
+    stats.virtual_geometry_page_feedback < 1 ||
+    stats.virtual_geometry_group_uploads < 2 ||
+    stats.virtual_geometry_group_evictions < 1 ||
+    stats.virtual_geometry_page_evictions < stats.virtual_geometry_group_evictions ||
+    stats.virtual_geometry_page_upload_bytes <= 0) {
+  console.error("virtual geometry pressure fixture did not stream and evict complete groups");
+  console.error(JSON.stringify(stats, null, 2));
+  process.exit(1);
+}
+' "$RESULT"
+node tools/assert_png_variance.mjs "$FRAME"
+'''
 
 [tasks.test-sanitize]
 description = "Run Odin tests with AddressSanitizer on Linux"

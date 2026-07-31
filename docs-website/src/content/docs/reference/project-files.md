@@ -39,7 +39,7 @@ Fields:
 | `window.width` | No | Positive logical width up to 16384. |
 | `window.height` | No | Positive logical height up to 16384. |
 | `[render]` | No | Renderer-wide project policy. |
-| `render.virtual_geometry_index_budget_mb` | No | Budget for resident expanded virtual-geometry cluster indices, from 0.125 to 16384 MiB. Defaults to 64 MiB. Pinned coarse fallback pages may exceed it. |
+| `render.virtual_geometry_index_budget_mb` | No | Budget for resident expanded virtual-geometry cluster indices, from 0.015625 to 16384 MiB. Defaults to 64 MiB. Pinned coarse fallback pages may exceed it. |
 | `[[native_extensions]]` | No | Repeated table for project-local native extension targets. |
 | `native_extensions.name` | Yes | Build output base name. Must be an identifier token. |
 | `native_extensions.source` | Yes | Safe relative path to an Odin package directory. |

@@ -5,7 +5,6 @@ This file tracks current actionable engineering work. The broad product roadmap 
 ## Rendering
 
 - [ ] Re-evaluate Metal multi-draw and benchmark virtual geometry after wgpu's native ICB paths land ([issue #61](https://github.com/scrapbotengine/scrapbot/issues/61)).
-- [ ] Add a dedicated bounded virtual-geometry residency-pressure fixture with scripted camera movement and upload, fallback, and eviction assertions; keep representative showcases on normal renderer budgets. See [ADR-050](adr/ADR-050-page-virtual-geometry-index-streams.md).
 - [ ] Design baked/captured local reflection-probe resources, ECS volume components, probe selection/blending, and an editor bake workflow on top of global imported IBL.
 - [ ] Add GPU-native compressed texture products for imported images.
 - [ ] Extend virtual Geometry paging from expanded cluster indices to canonical vertex payloads and direct asynchronous product-page I/O. See [ADR-050](adr/ADR-050-page-virtual-geometry-index-streams.md).

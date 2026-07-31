@@ -1,0 +1,33 @@
+[[entities]]
+id = "94000000-0000-4000-8000-000000000001"
+name = "Pressure Camera"
+
+[entities.transform]
+position = [-154, 0, 8]
+rotation = [0, 0, 0]
+scale = [1, 1, 1]
+
+[entities.camera]
+fov = 50
+near = 0.1
+far = 100
+resolution_scale = 1
+dynamic_resolution = false
+temporal_antialiasing = false
+ambient_occlusion = false
+screen_space_reflections = false
+bloom = false
+
+[entities.components.virtual_geometry_pressure_camera]
+start_x = -154
+step_x = 44
+position_count = 8
+dwell_frames = 12
+
+[[entities]]
+id = "94000000-0000-4000-8000-000000000002"
+name = "Ambient"
+
+[entities.ambient_light]
+color = [1, 1, 1]
+intensity = 1

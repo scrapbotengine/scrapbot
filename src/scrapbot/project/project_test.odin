@@ -322,6 +322,17 @@ virtual_geometry_index_budget_mb = 0
 	defer destroy_project_config(&invalid_budget)
 	testing.expect(t, invalid_budget_result.err == .Invalid_Field)
 
+	tiny_budget, tiny_budget_result := parse_project_config(
+		`name = "Tiny Valid Budget"
+default_scene = "scenes/main.scene.toml"
+[render]
+virtual_geometry_index_budget_mb = 0.015625
+`,
+	)
+	defer destroy_project_config(&tiny_budget)
+	testing.expect(t, tiny_budget_result.err == .None)
+	testing.expect_value(t, tiny_budget.render.virtual_geometry_index_budget_mb, f32(0.015625))
+
 	missing_background, missing_background_result := parse_project_config(
 		`name = "Missing Background"
 default_scene = "scenes/main.scene.toml"

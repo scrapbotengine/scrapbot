@@ -1810,6 +1810,34 @@ test_wgpu_expands_meshlet_local_indices_for_indexed_submission :: proc(t: ^testi
 }
 
 @(test)
+test_wgpu_expands_selected_cluster_pages_into_one_upload :: proc(t: ^testing.T) {
+	geometry := resources.Geometry {
+		cluster_groups = []resources.Geometry_Cluster_Group{{page_offset = 0, page_count = 2}},
+		clusters = []resources.Geometry_Cluster {
+			{vertex_offset = 0, triangle_offset = 0, triangle_count = 1},
+			{vertex_offset = 3, triangle_offset = 3, triangle_count = 1},
+		},
+		cluster_pages = []resources.Geometry_Cluster_Page {
+			{cluster_offset = 0, cluster_count = 1, index_count = 3},
+			{cluster_offset = 1, cluster_count = 1, index_count = 3},
+		},
+		cluster_vertices = []u32{8, 3, 5, 1, 4, 7},
+		cluster_triangles = []u8{0, 2, 1, 2, 1, 0},
+	}
+	indices, page_offsets, err := wgpu_expand_cluster_pages_indices(&geometry, []u32{0, 1})
+	testing.expect_value(t, err, "")
+	testing.expect_value(t, len(indices), 6)
+	testing.expect_value(t, len(page_offsets), 3)
+	testing.expect_value(t, page_offsets[0], u32(0))
+	testing.expect_value(t, page_offsets[1], u32(3))
+	testing.expect_value(t, page_offsets[2], u32(6))
+	expected := [?]u32{8, 5, 3, 7, 4, 1}
+	for value, index in expected {
+		testing.expect_value(t, indices[index], value)
+	}
+}
+
+@(test)
 test_wgpu_meshlet_visibility_capacity_is_aligned_and_bounded :: proc(t: ^testing.T) {
 	capacity, ok := wgpu_meshlet_batch_visible_capacity(3, 65)
 	testing.expect(t, ok)
@@ -1839,10 +1867,11 @@ test_wgpu_meshlet_visibility_capacity_is_aligned_and_bounded :: proc(t: ^testing
 test_wgpu_culling_shader_stays_within_portable_storage_binding_floor :: proc(t: ^testing.T) {
 	testing.expect_value(t, strings.count(WGPU_GPU_CULL_SHADER, "var<storage"), 8)
 	testing.expect(t, !strings.contains(WGPU_GPU_CULL_SHADER, "@binding(10)"))
-	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "virtual_page_requests"))
+	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "virtual_page_feedback"))
+	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "append_virtual_page_feedback"))
 	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "meshlet.refined_resident == 0u"))
-	testing.expect(t, strings.count(WGPU_GPU_DRIVEN_SHADER, "_padding: vec2<u32>") == 1)
-	testing.expect(t, strings.count(WGPU_GPU_CULL_SHADER, "_padding: vec2<u32>") == 1)
+	testing.expect(t, strings.count(WGPU_GPU_DRIVEN_SHADER, "_padding: u32") == 1)
+	testing.expect(t, strings.count(WGPU_GPU_CULL_SHADER, "_padding: u32") == 1)
 	testing.expect_value(t, size_of(WGPU_GPU_Meshlet_Info) % 16, 0)
 }
 
@@ -1863,11 +1892,60 @@ test_wgpu_virtual_group_residency_requires_every_page :: proc(t: ^testing.T) {
 	resident, missing, has_missing = wgpu_cluster_group_residency(&geometry, &cache, 0)
 	testing.expect(t, !resident)
 	testing.expect(t, has_missing)
-	testing.expect_value(t, missing, u32(1))
+	testing.expect_value(t, missing, u32(0))
 	cache.cluster_pages[1].resident = true
 	resident, _, has_missing = wgpu_cluster_group_residency(&geometry, &cache, 0)
 	testing.expect(t, resident)
 	testing.expect(t, !has_missing)
+}
+
+@(test)
+test_wgpu_virtual_geometry_touches_and_evicts_complete_groups :: proc(t: ^testing.T) {
+	geometry := resources.Geometry {
+		cluster_groups = []resources.Geometry_Cluster_Group {
+			{page_offset = 0, page_count = 2},
+			{page_offset = 2, page_count = 2},
+		},
+		cluster_pages = make([]resources.Geometry_Cluster_Page, 4),
+	}
+	defer delete(geometry.cluster_pages)
+	cache := WGPU_Geometry_Cache {
+		handle = {index = 4, generation = 2},
+		cluster_pages = make([dynamic]WGPU_Cluster_Page_Cache, 4),
+	}
+	defer delete(cache.cluster_pages)
+	for index in 0 ..< 4 {
+		cache.cluster_pages[index] = {
+			range = {offset = u64(index * 4), size = 4},
+			last_used_frame = 1 if index < 2 else 8,
+			group_index = 0 if index < 2 else 1,
+			resident = true,
+		}
+	}
+	page_offset, page_count, range_ok := wgpu_virtual_group_page_range(&geometry, 1)
+	testing.expect(t, range_ok)
+	testing.expect_value(t, page_offset, u32(2))
+	testing.expect_value(t, page_count, u32(2))
+	wgpu_touch_virtual_group(&cache, &geometry, 1, 12)
+	testing.expect_value(t, cache.cluster_pages[2].last_used_frame, u64(12))
+	testing.expect_value(t, cache.cluster_pages[3].last_used_frame, u64(12))
+
+	renderer := WGPU_Renderer {
+		geometry_cache = make([dynamic]WGPU_Geometry_Cache, 0, 1),
+		virtual_geometry_index_resident_bytes = 16,
+	}
+	defer delete(renderer.geometry_cache)
+	defer delete(renderer.geometry_index_arena.allocator.free_ranges)
+	append(&renderer.geometry_cache, cache)
+	handle, evicted := wgpu_evict_virtual_group(&renderer, 40)
+	testing.expect(t, evicted)
+	testing.expect_value(t, handle, cache.handle)
+	testing.expect(t, !renderer.geometry_cache[0].cluster_pages[0].resident)
+	testing.expect(t, !renderer.geometry_cache[0].cluster_pages[1].resident)
+	testing.expect(t, renderer.geometry_cache[0].cluster_pages[2].resident)
+	testing.expect(t, renderer.geometry_cache[0].cluster_pages[3].resident)
+	testing.expect_value(t, renderer.virtual_geometry_page_eviction_count, u64(2))
+	testing.expect_value(t, renderer.virtual_geometry_group_eviction_count, u64(1))
 }
 
 @(test)
@@ -2017,6 +2095,9 @@ test_profile_reports_per_frame_counter_deltas_after_warmup :: proc(t: ^testing.T
 		virtual_geometry_page_uploads = 5,
 		virtual_geometry_page_upload_bytes = 2048,
 		virtual_geometry_page_evictions = 1,
+		virtual_geometry_group_uploads = 3,
+		virtual_geometry_group_evictions = 1,
+		virtual_geometry_deferred_groups = 4,
 		ui_vertex_rebuilds = 5,
 		ui_vertex_upload_bytes = 2048,
 	}
@@ -2031,6 +2112,9 @@ test_profile_reports_per_frame_counter_deltas_after_warmup :: proc(t: ^testing.T
 	stats.virtual_geometry_page_uploads += 2
 	stats.virtual_geometry_page_upload_bytes += 512
 	stats.virtual_geometry_page_evictions += 1
+	stats.virtual_geometry_group_uploads += 1
+	stats.virtual_geometry_group_evictions += 1
+	stats.virtual_geometry_deferred_groups += 2
 	stats.ui_vertex_rebuilds += 1
 	profile_record_frame(&collector, 1, 0, 0, 100, 100, 1, {}, &stats)
 
@@ -2045,6 +2129,9 @@ test_profile_reports_per_frame_counter_deltas_after_warmup :: proc(t: ^testing.T
 	testing.expect_value(t, first.virtual_geometry_page_uploads, u64(2))
 	testing.expect_value(t, first.virtual_geometry_page_upload_bytes, u64(512))
 	testing.expect_value(t, first.virtual_geometry_page_evictions, u64(1))
+	testing.expect_value(t, first.virtual_geometry_group_uploads, u64(1))
+	testing.expect_value(t, first.virtual_geometry_group_evictions, u64(1))
+	testing.expect_value(t, first.virtual_geometry_deferred_groups, u64(2))
 	testing.expect_value(t, first.ui_vertex_rebuilds, u64(1))
 	testing.expect_value(t, first.ui_vertex_upload_bytes, u64(0))
 

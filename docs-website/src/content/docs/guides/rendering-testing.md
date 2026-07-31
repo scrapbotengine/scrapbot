@@ -36,9 +36,13 @@ When an adapter exposes indirect-first-instance, WGPU projects each hierarchy gr
 geometric error into pixels. A Geometry's complete page set is admitted immediately when it fits
 the remaining project budget. For larger resources, coarsest pages remain pinned; if finer pages
 are absent, the GPU draws the nearest resident frontier and requests refinement through
-asynchronous visibility feedback.
-The CPU loads requested pages and evicts least-recently-requested non-pinned pages under
-`render.virtual_geometry_index_budget_mb`.
+asynchronous visibility feedback. Feedback includes projected-error priority for missing groups
+and actual use touches from visible instances. Deterministic hashing spreads resident touches over
+16 frames; missing-group requests remain immediate.
+
+The CPU processes the highest-priority groups first. It admits and evicts complete groups under
+`render.virtual_geometry_index_budget_mb`, with fixed per-frame byte and group limits. One group
+admission or complete-resource preload uses one combined arena transfer.
 
 Native multi-draw adapters retain one indexed-indirect command and aligned visible-instance slice per hierarchy cluster, and use that frontier for shadows too. Other capable adapters append selected `{instance slot, cluster index}` records into a bounded camera stream. Compatible same-material batches share one record span and indirect command; the vertex shader pulls cluster indices and attributes directly from the shared geometry arenas. Their shadow cascades reuse the GPU-selected object LOD through classic indexed-indirect commands. Selection, compaction, cascade visibility, and command counts remain GPU-produced.
 
@@ -71,6 +75,10 @@ Freeze stops replacing only the diagnostic range and indirect count. It does not
 Pass `--cpu-culling` to run the same bounding-sphere tests, screen-radius LOD selection, and compaction on the CPU while retaining WGPU storage-buffer shaders and indirect draws. This is useful as a correctness oracle and compatibility diagnostic; compute culling remains the default. Hi-Z rejection is GPU-only and therefore disabled on the reference path. The compute path also disables previous-frame Hi-Z rejection whenever the camera or a persistent instance record changes, then rebuilds the pyramid from the current conservative frustum result.
 
 Run `mise test-gpu` for the complete bounded GPU regression suite. It drives a greater-than-64-batch stress scene through compute and CPU visibility. It also verifies adaptive Hi-Z rejection plus asynchronous timestamps and counters.
+
+Run `mise test-virtual-geometry-gpu` for the dedicated residency-pressure gate. Its scripted camera
+steps across distinct procedural 48-page resources under a 16 KiB budget and requires streaming,
+whole-group eviction, fallback residency, bounded feedback, and a nonblank framegrab.
 
 Whole-primitive compute/CPU comparisons permit at most one 8-bit channel step in sixteen channels across a complete frame. This covers harmless backend rounding without accepting a visible mismatch. The LOD fixture instead requires 44 dB PSNR: both paths must choose the same imported object LOD, while the compute path may additionally select its sub-object virtual-geometry frontier.
 
@@ -349,7 +357,10 @@ Each row includes active CPU time, exact per-pass GPU time, their summed GPU fra
 
 The `workload` object records the dispatch size, render extent, encoded draw-submission spans, instances, or sample count behind each pass. It makes a timing actionable: for example, it distinguishes an expensive shader at a modest resolution from expected cost at a HiDPI physical resolution.
 
-`counter_deltas` turns cumulative upload, rebuild, dispatch, resize, redraw, cache-hit, and geometry-arena mutation totals into the work attributable to that frame. Stable measured rows should report zero geometry arena uploads and growths.
+`counter_deltas` turns cumulative upload, rebuild, dispatch, resize, redraw, cache-hit, geometry-
+arena mutation, and virtual page/group totals into the work attributable to that frame. Stable
+measured rows should report zero geometry arena uploads, growths, page/group uploads, evictions,
+and deferred admissions.
 
 GPU timestamps arrive asynchronously. Scrapbot tags every readback with its originating frame and merges it into that exact row. Check `gpu_timing_valid` before using a row.
 

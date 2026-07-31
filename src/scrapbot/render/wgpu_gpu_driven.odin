@@ -87,8 +87,8 @@ wgpu_cluster_group_residency :: proc "contextless" (
 	group_index: i32,
 ) -> (
 	resident: bool,
-	first_missing_page: u32,
-	has_missing_page: bool,
+	requested_group: u32,
+	has_missing_group: bool,
 ) {
 	if geometry == nil ||
 	   cache == nil ||
@@ -103,7 +103,7 @@ wgpu_cluster_group_residency :: proc "contextless" (
 	}
 	for page_index in group.page_offset ..< u32(page_end) {
 		if !cache.cluster_pages[page_index].resident {
-			return false, page_index, true
+			return false, u32(group_index), true
 		}
 	}
 	return true, 0, false
@@ -451,6 +451,48 @@ wgpu_expand_cluster_page_indices :: proc(
 	if cursor != len(indices) {
 		return nil, "cluster page index count does not match its clusters"
 	}
+	return
+}
+
+wgpu_expand_cluster_pages_indices :: proc(
+	geometry: ^resources.Geometry,
+	page_indices: []u32,
+	allocator := context.temp_allocator,
+) -> (
+	indices: []u32,
+	page_offsets: []u32,
+	err: string,
+) {
+	if geometry == nil || len(page_indices) == 0 {
+		return nil, nil, "cluster page selection is empty"
+	}
+	total_indices: u64
+	for page_index in page_indices {
+		if int(page_index) >= len(geometry.cluster_pages) {
+			return nil, nil, "cluster page selection is out of bounds"
+		}
+		total_indices += u64(geometry.cluster_pages[page_index].index_count)
+	}
+	if total_indices == 0 || total_indices > u64(~u32(0)) {
+		return nil, nil, "cluster page selection size is invalid"
+	}
+	indices = make([]u32, int(total_indices), allocator)
+	page_offsets = make([]u32, len(page_indices) + 1, allocator)
+	cursor: u32
+	for page_index, selection_index in page_indices {
+		page_offsets[selection_index] = cursor
+		page_indices_data, page_err := wgpu_expand_cluster_page_indices(
+			geometry,
+			int(page_index),
+			allocator,
+		)
+		if page_err != "" {
+			return nil, nil, page_err
+		}
+		copy(indices[int(cursor):], page_indices_data)
+		cursor += u32(len(page_indices_data))
+	}
+	page_offsets[len(page_indices)] = cursor
 	return
 }
 
@@ -2448,7 +2490,7 @@ wgpu_refresh_gpu_batch_layout :: proc(
 				page_resident :=
 					int(cluster.page) < len(geometry.cluster_pages) &&
 					geometry.cluster_pages[cluster.page].resident
-				refined_resident, request_page, request_enabled := wgpu_cluster_group_residency(
+				refined_resident, request_group, request_enabled := wgpu_cluster_group_residency(
 					geometry_resource,
 					geometry,
 					cluster.refined_group,
@@ -2479,7 +2521,8 @@ wgpu_refresh_gpu_batch_layout :: proc(
 					refined_resident = 1 if refined_resident else 0,
 					request_geometry_index = batch.geometry.index,
 					request_geometry_generation = batch.geometry.generation,
-					request_page_index = request_page,
+					group_index = u32(cluster.group),
+					request_group_index = request_group,
 					request_enabled = 1 if request_enabled else 0,
 				}
 				level_byte := group.depth * 255 / max(geometry_resource.cluster_max_depth, 1)
@@ -3778,6 +3821,7 @@ wgpu_prepare_gpu_draw_batches :: proc(
 		meshlet_force_enabled = 1 if renderer.gpu_meshlet_force_enabled else 0,
 		virtual_error_pixels = 1.0,
 		projection_y = projection[5],
+		virtual_feedback_epoch = u32(renderer.profile_frame_index),
 	}
 	for cascade_index in 0 ..< WGPU_SHADOW_CASCADE_COUNT {
 		cull_uniform.shadow_planes[cascade_index] = wgpu_extract_frustum_planes(

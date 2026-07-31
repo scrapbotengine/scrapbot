@@ -38,8 +38,10 @@ errors, page identities, and pinned fallback flags remain versioned with the Geo
 
 WGPU consumes a changed Geometry version into aligned ranges of shared vertex/index arenas.
 Canonical and ordinary meshlet streams remain resident. A complete hierarchy page set enters the
-arena immediately when it fits the remaining budget. Otherwise the coarsest pages are pinned and
-finer pages enter through asynchronous GPU request feedback.
+arena through one combined upload when it fits the remaining budget. Otherwise the coarsest pages
+are pinned. GPU feedback identifies wanted groups with projected-error priority and touches groups
+used by visible instances. Completed feedback admits and evicts whole groups under bounded
+per-frame work and the project residency budget.
 
 Capable adapters retain cluster metadata and arena-global indirect templates. They select the
 desired resident frontier and draw a coarse fallback while refinement is missing. Native

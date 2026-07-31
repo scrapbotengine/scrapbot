@@ -287,10 +287,17 @@ Geometry page set immediately when it fits the remaining budget; otherwise pin i
 frontier. On WGPU adapters with indirect-first-instance, project group error into pixels and submit
 the unique cluster frontier surrounding a one-pixel threshold before ordinary cluster culling.
 
-When finer detail is wanted but missing, submit the resident coarse cluster and append the first
-missing page to the existing visibility-feedback buffer. Asynchronous CPU processing deduplicates
-requests, uploads pages, and evicts the least-recently-requested non-pinned page under the project
-index budget. Residency mutations update affected Geometry batches; stable frames do no page work.
+When finer detail is wanted but missing, submit the resident coarse cluster and append its group
+identity plus projected-error priority to the visibility-feedback buffer. Visible instances append
+resident-group usage touches through the same bounded channel. Deterministic hashing spreads those
+touches across 16 frames; missing-group requests remain immediate.
+
+Asynchronous CPU processing applies touches, deduplicates and prioritizes group requests, then
+admits or evicts complete non-pinned groups under the project index budget.
+
+Per-frame byte and group limits bound streaming work. One admitted group or complete-resource
+preload becomes one combined arena transfer. Residency mutations update affected Geometry batches;
+stable frames do no page work.
 
 Native multi-draw adapters submit the retained indexed-indirect command range for camera and
 shadow work. Other capable adapters compact selected `{instance slot, cluster index}` records into
@@ -302,7 +309,8 @@ command generation, or geometry upload.
 
 The `virtual_geometry` camera view colors selected clusters by identity and hierarchy depth. Amber
 marks a branch whose finer group is not completely resident. Structured results report the index
-budget, residency, requests, uploads, evictions, selected clusters, and threshold rejections.
+budget, residency, feedback, requests, page/group uploads and evictions, deferred groups, selected
+clusters, and threshold rejections.
 
 **Why:** Geometry detail must vary below object granularity without cracks, importer-specific draw
 paths, or CPU decisions per cluster.

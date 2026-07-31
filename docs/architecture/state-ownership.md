@@ -101,10 +101,13 @@ ranges only after all uploads succeed; stale handles are reclaimed when the regi
 topology revision changes. Growth is geometric and copies retained bytes before replacing the
 backing buffer. Stable frames never scan, compact, hash, or upload the arenas.
 
-Hierarchy metadata is resource-owned. WGPU owns page allocation ranges, residency, request age,
-and the configured expanded-index budget. Coarsest pages are pinned. GPU requests arrive through
-the asynchronous visibility ring; only completed requests trigger upload, eviction, and affected-
-Geometry command updates. Stable frames do no page scan or mutation.
+Hierarchy metadata is resource-owned. WGPU owns page allocation ranges, residency, visible-use
+age, and the configured expanded-index budget. Coarsest pages are pinned.
+
+GPU group requests and cadence-sampled visible-use touches arrive through the bounded asynchronous
+visibility ring. Completed feedback drives priority-ordered, group-atomic admission and least-
+recently-used group eviction within per-frame byte/group limits. Only affected Geometry commands
+update. Stable frames do no page scan or mutation.
 
 Batch bind groups are released before cache storage is cleared. Exact lighting/background handle or content-version changes rebuild only the shared environment binding. The sky camera/projection uniform uploads only after an exact value change.
 

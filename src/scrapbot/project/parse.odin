@@ -804,7 +804,7 @@ parse_project_config :: proc(source: string) -> (config: Project_Config, result:
 					)
 			}
 			if !found ||
-			   config.render.virtual_geometry_index_budget_mb < 0.125 ||
+			   config.render.virtual_geometry_index_budget_mb < 0.015625 ||
 			   config.render.virtual_geometry_index_budget_mb > 16_384 ||
 			   !finite_render_config(config.render) ||
 			   config.render.environment_intensity < 0 ||
@@ -816,7 +816,7 @@ parse_project_config :: proc(source: string) -> (config: Project_Config, result:
 			   config.render.background_blur > 1 {
 				return config, fail(
 					.Invalid_Field,
-					"render values must be finite; the virtual geometry index budget must be 0.125..16384 MiB, intensities non-negative, exposures positive, and background blur between 0 and 1",
+					"render values must be finite; the virtual geometry index budget must be 0.015625..16384 MiB, intensities non-negative, exposures positive, and background blur between 0 and 1",
 				)
 			}
 			continue

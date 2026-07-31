@@ -33,18 +33,30 @@ GPU frontier selection follows these rules:
 1. A cluster can draw only while its own page is resident.
 2. If finer detail is wanted and its complete group is resident, selection descends normally.
 3. If finer detail is wanted but any group page is missing, the resident coarse cluster draws and
-   emits the first missing page identity.
+   emits its missing group identity and projected-error priority.
 
-Page requests use a bounded tail in the existing visibility counter buffer. This preserves the
-portable eight-storage-binding floor. Asynchronous visibility readback carries request identities
-without stalling the rendering submission.
+Requests and resident-group touches use a bounded tail in the existing visibility counter buffer.
+Every visible instance can contribute feedback; deterministic identity hashing spreads resident
+touches across a 16-frame cadence while missing-group requests remain immediate. Overflow is
+explicit telemetry.
 
-The CPU deduplicates requests by Geometry handle, generation, page, and frame. Requested pages are
-uploaded into the shared index arena. Non-pinned pages use deterministic least-recently-requested
-eviction when the project budget would be exceeded.
+This preserves the portable eight-storage-binding floor. Asynchronous visibility readback carries
+feedback without stalling rendering submission.
+
+The CPU applies touches before admission, deduplicates requests by Geometry handle, generation,
+and group, then processes the highest projected error first. Admission and eviction are group
+atomic: a refinement group is either completely resident or absent.
+
+Ordinary frames admit at most 512 KiB and 16 groups. All missing pages for one admitted group are
+expanded into one contiguous transfer. Complete Geometry preloads likewise combine their selected
+pages into one arena upload instead of issuing one queue write per page.
+
+When the project budget would be exceeded, the CPU evicts the least-recently-used complete
+non-pinned group outside a short feedback-readback grace period. Actual visible-group touches,
+rather than request age, define recency.
 
 `[render].virtual_geometry_index_budget_mb` configures the expanded cluster-index budget. It
-defaults to 64 MiB and accepts 0.125 through 16384 MiB.
+defaults to 64 MiB and accepts 0.015625 through 16384 MiB.
 
 Residency changes update only affected Geometry batches. Stable frames perform no hierarchy scan,
 page upload, eviction, or meshlet-layout rewrite.
@@ -56,12 +68,13 @@ under pressure because pinned coarse pages are selected while requested refineme
 
 The `virtual_geometry` debug view colors branches with missing finer pages amber. Structured render
 statistics expose budget, resident bytes, total/resident/pinned page counts, request overflow, and
-cumulative uploads, bytes, and evictions. Profile rows expose the cumulative values and frame-local
-deltas for page uploads and eviction.
+cumulative page/group uploads, bytes, evictions, and deferred admissions. Profile rows expose the
+cumulative values and frame-local deltas.
 
 Sponza uses the normal project budget so the representative showcase converges to its intended
-detail. Residency-pressure coverage belongs in a dedicated bounded fixture. The renderer contains
-no Sponza-specific behavior.
+detail. The dedicated `gpu-virtual-geometry-pressure` fixture steps a camera across distinct
+procedural multi-page resources under a 16 KiB budget and asserts streaming, fallback, group
+eviction, and nonblank output. The renderer contains no fixture- or Sponza-specific behavior.
 
 This phase does not page canonical vertices, source indices, hierarchy metadata, or material data.
 Those remain ordinary Geometry resources. Future work may move imported page payloads into a
