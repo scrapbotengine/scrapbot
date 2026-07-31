@@ -4,6 +4,7 @@ This file tracks current actionable engineering work. The broad product roadmap 
 
 ## Rendering
 
+- [ ] Re-evaluate Metal multi-draw and benchmark virtual geometry after wgpu's native ICB paths land ([fixed-count MDI #9640](https://github.com/gfx-rs/wgpu/pull/9640), [count-buffer MDI #9679](https://github.com/gfx-rs/wgpu/pull/9679)).
 - [ ] Design baked/captured local reflection-probe resources, ECS volume components, probe selection/blending, and an editor bake workflow on top of global imported IBL.
 - [ ] Add GPU-native compressed texture products for imported images.
 - [ ] Persist resource-owned cluster hierarchies in versioned import products, then add page identifiers, bounded GPU residency, pinned fallback roots, request feedback, eviction, and residency/page debug views. See [ADR-049](adr/ADR-049-select-fully-resident-virtual-geometry-frontiers-on-the-gpu.md).
