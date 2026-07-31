@@ -34,11 +34,16 @@ first-instance and native multi-draw retain one indexed-indirect command per clu
 compatible command ranges together.
 
 Adapters with indirect-first-instance but no native multi-draw instead append selected
-`{instance slot, cluster index}` records into bounded camera and per-cascade storage streams. A
-compatible run of clusters sharing one material owns one retained record span and one non-indexed
-indirect command. Its vertex shader pulls cluster indices and packed attributes directly from the
-shared geometry arenas. Every selected record renders the fixed maximum cluster vertex count;
-invocations beyond the cluster's triangle count degenerate to its first vertex.
+`{instance slot, cluster index}` records into a bounded camera storage stream. A compatible run of
+clusters sharing one material owns one retained record span and one non-indexed indirect command.
+Its vertex shader pulls cluster indices and packed attributes directly from the shared geometry
+arenas. Every selected record renders the fixed maximum cluster vertex count; invocations beyond
+the cluster's triangle count degenerate to its first vertex.
+
+The portable path renders directional shadows from the already GPU-selected object LOD through
+classic indexed-indirect commands. It retains a separate indexed shadow template because the
+camera template is non-indexed. This keeps cascade visibility GPU-produced while avoiding four
+repeated hierarchy traversals and fixed-maximum vertex pulling for depth-only shadow work.
 
 Both submission modes are GPU-produced. Ordinary frames neither read selected clusters back nor
 expand their command topology on the CPU.
@@ -49,10 +54,11 @@ cluster exactly when:
 1. its owning group exceeds the one-pixel error threshold; and
 2. its refined group is absent or is at or below that threshold.
 
-That rule selects one complete frontier. Camera and shadow visibility use the same selected
-frontier before applying sphere, normal-cone, and Hi-Z tests. A hierarchy-bearing batch uses this
-path even with one instance because geometric-detail selection does not require instance-count
-amortization.
+That rule selects one complete frontier for camera rendering. Native multi-draw adapters also use
+that frontier for shadows before applying cascade sphere and normal-cone tests. The portable path
+uses the camera-selected object LOD for conservative cascade visibility. A hierarchy-bearing batch
+uses cluster camera submission even with one instance because geometric-detail selection does not
+require instance-count amortization.
 
 Adapters without indirect-first-instance, capacity-limited layouts, and `--cpu-culling` retain
 classic indexed drawing and the existing object-level imported LOD contract. The backend exposes
@@ -68,8 +74,10 @@ hierarchy path. Sponza is evidence for the feature, not a special renderer input
 Virtual Geometry now operates on Metal adapters that expose indirect-first-instance even though
 their WGPU implementation does not expose native multi-draw. Compatible material runs amortize
 submission without requiring mesh shaders, backend-specific argument buffers, or one encoded draw
-per cluster. The portable path spends extra GPU culling and vertex-pulling work to preserve stable
-CPU frame cost.
+per cluster. The portable camera path spends extra GPU culling and vertex-pulling work to preserve
+stable CPU frame cost. Its indexed shadow fallback preserves that CPU behavior while reducing GPU
+work on adapters where fixed-vertex compact shadow records are more expensive than indexed
+geometry.
 
 The first implementation is fully resident. Hierarchy metadata and every cluster index stream are
 uploaded with the Geometry version, so large resources can consume more index-arena memory than

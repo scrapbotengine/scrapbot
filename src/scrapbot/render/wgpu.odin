@@ -711,6 +711,7 @@ WGPU_Renderer :: struct {
 	gpu_visible_buffer: wgpu.Buffer,
 	gpu_shadow_visible_buffer: wgpu.Buffer,
 	gpu_indirect_template_buffer: wgpu.Buffer,
+	gpu_shadow_indirect_template_buffer: wgpu.Buffer,
 	gpu_indirect_buffer: wgpu.Buffer,
 	gpu_shadow_indirect_buffer: wgpu.Buffer,
 	gpu_meshlet_info_buffer: wgpu.Buffer,
@@ -767,6 +768,7 @@ WGPU_Renderer :: struct {
 	gpu_cpu_visible: [dynamic]u32,
 	gpu_cpu_shadow_visible: [dynamic]u32,
 	gpu_indirect_templates: [dynamic]WGPU_Draw_Indexed_Indirect,
+	gpu_shadow_indirect_templates: [dynamic]WGPU_Draw_Indexed_Indirect,
 	gpu_meshlet_infos: [dynamic]WGPU_GPU_Meshlet_Info,
 	gpu_meshlet_indirect_templates: [dynamic]WGPU_Draw_Indexed_Indirect,
 	gpu_draw_capacity: int,
@@ -1180,12 +1182,22 @@ wgpu_profile_workload :: proc(
 	viewport_width := u32(max(viewport.width, 0))
 	viewport_height := u32(max(viewport.height, 0))
 	geometry_draws := u64(0)
+	shadow_draws := u64(0)
 	visible_instances := u64(0)
 	shadow_instances := u64(0)
 	if stats != nil {
 		geometry_draws = u64(max(stats.draw_submissions, 0))
+		shadow_draws = geometry_draws
 		visible_instances = u64(stats.visible_instances)
 		shadow_instances = u64(stats.shadow_visible_instances)
+	}
+	if renderer.draw_batch_cache.valid {
+		shadow_draws = u64(
+			wgpu_shadow_draw_submission_count(
+				renderer,
+				renderer.draw_batch_cache.batches[:renderer.draw_batch_cache.batch_count],
+			),
+		)
 	}
 	instance_expansion := Profile_Pass_Workload{}
 	if len(renderer.gpu_transform_updates) > 1 {
@@ -1200,17 +1212,18 @@ wgpu_profile_workload :: proc(
 	}
 	cull := Profile_Pass_Workload{}
 	if stats != nil && stats.compute_culling && renderer.gpu_slot_count > 0 {
-		cull_dispatches := u32(0)
-		if wgpu_active_classic_batch_count(renderer) > 0 {
-			cull_dispatches += 1
+		workgroups_per_lane := u64((renderer.gpu_slot_count + 63) / 64)
+		workgroups := u64(0)
+		if wgpu_active_classic_batch_count(renderer) > 0 ||
+		   renderer.gpu_compact_submission_active {
+			workgroups += workgroups_per_lane * u64(WGPU_SHADOW_CASCADE_COUNT)
 		}
-		if renderer.gpu_meshlet_submission_active {
-			cull_dispatches += 1
+		if renderer.gpu_native_meshlet_submission_active {
+			workgroups += workgroups_per_lane * u64(WGPU_SHADOW_CASCADE_COUNT)
 		}
-		workgroups :=
-			u64((renderer.gpu_slot_count + 63) / 64) *
-			u64(WGPU_SHADOW_CASCADE_COUNT) *
-			u64(cull_dispatches)
+		if renderer.gpu_compact_submission_active {
+			workgroups += workgroups_per_lane
+		}
 		cull = {
 			enabled = true,
 			passes = 1,
@@ -1238,7 +1251,7 @@ wgpu_profile_workload :: proc(
 			width = WGPU_SHADOW_MAP_SIZE,
 			height = WGPU_SHADOW_MAP_SIZE,
 			passes = shadow_cascades,
-			draws = geometry_draws * u64(shadow_cascades),
+			draws = shadow_draws * u64(shadow_cascades),
 			instances = shadow_instances,
 		}
 	}
@@ -3236,7 +3249,7 @@ wgpu_encode_shadow_cascade_pass :: proc(
 		batch_index := 0
 		for batch_index < len(batches) {
 			batch := batches[batch_index]
-			span := wgpu_draw_submission_span(renderer, batches, batch_index)
+			span := wgpu_shadow_draw_submission_span(renderer, batches, batch_index)
 			material, material_alive := resources.get_material(registry, batch.material)
 			if !material_alive {
 				return "render material handle is stale during shadow pass"

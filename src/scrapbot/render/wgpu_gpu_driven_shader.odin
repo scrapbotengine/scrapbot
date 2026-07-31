@@ -1449,10 +1449,13 @@ fn cull_instances(invocation: vec3<u32>, submission_mode: u32) {
 		return;
 	}
 	let batch = batches[batch_index];
-	if (batch_submission_mode(batch) != submission_mode) {
+	let active_submission_mode = batch_submission_mode(batch);
+	let compact_shadow_fallback = submission_mode == 0u && active_submission_mode == 2u;
+	if (active_submission_mode != submission_mode && !compact_shadow_fallback) {
 		return;
 	}
-	if (cascade_index == 0u && camera_sphere_visible(instance.bounds)) {
+	let owns_camera = active_submission_mode == submission_mode;
+	if (owns_camera && cascade_index == 0u && camera_sphere_visible(instance.bounds)) {
 		atomicAdd(&counters.frustum_candidates, 1u);
 		let instance_occlusion = camera_sphere_occlusion(instance.bounds);
 		if (instance_occlusion.occluded != 0u) {
@@ -1545,12 +1548,13 @@ fn cull_instances(invocation: vec3<u32>, submission_mode: u32) {
 				atomicAdd(&counters.lod_visible_instances[lod_level], 1u);
 			}
 		}
-	} else if (cascade_index == 0u) {
+	} else if (owns_camera && cascade_index == 0u) {
 		atomicAdd(&counters.frustum_culled_instances, 1u);
 		append_batch_meshlet_debug(instance, batch, 2u, lod_level);
 	}
-	if (instance.shadow_flags.x > 0.5 && shadow_sphere_visible(instance.bounds, cascade_index)) {
-		if (batch_uses_meshlets(batch)) {
+	let owns_shadow = active_submission_mode != 2u || compact_shadow_fallback;
+	if (owns_shadow && instance.shadow_flags.x > 0.5 && shadow_sphere_visible(instance.bounds, cascade_index)) {
+		if (batch_uses_meshlets(batch) && !compact_shadow_fallback) {
 			for (
 				var local_meshlet = 0u;
 				local_meshlet < batch.meshlet_count;

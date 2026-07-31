@@ -351,6 +351,7 @@ wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
 	delete(renderer.gpu_cpu_visible)
 	delete(renderer.gpu_cpu_shadow_visible)
 	delete(renderer.gpu_indirect_templates)
+	delete(renderer.gpu_shadow_indirect_templates)
 	delete(renderer.gpu_meshlet_infos)
 	delete(renderer.gpu_meshlet_indirect_templates)
 	delete(renderer.gpu_point_lights)
@@ -519,6 +520,7 @@ wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
 		renderer.gpu_visible_buffer,
 		renderer.gpu_shadow_visible_buffer,
 		renderer.gpu_indirect_template_buffer,
+		renderer.gpu_shadow_indirect_template_buffer,
 		renderer.gpu_indirect_buffer,
 		renderer.gpu_shadow_indirect_buffer,
 		renderer.gpu_meshlet_info_buffer,

@@ -171,6 +171,66 @@ wgpu_draw_submission_count :: proc "contextless" (
 	return count
 }
 
+wgpu_shadow_batch_submission_mode :: proc "contextless" (
+	renderer: ^WGPU_Renderer,
+	batch: WGPU_Draw_Batch,
+) -> WGPU_Submission_Mode {
+	mode := wgpu_batch_submission_mode(renderer, batch)
+	if mode == .Compact {
+		return .Classic
+	}
+	return mode
+}
+
+wgpu_shadow_draw_submission_span :: proc "contextless" (
+	renderer: ^WGPU_Renderer,
+	batches: []WGPU_Draw_Batch,
+	start: int,
+) -> WGPU_Draw_Submission_Span {
+	if renderer == nil || start < 0 || start >= len(batches) {
+		return {next_batch = start + 1}
+	}
+	first := batches[start]
+	mode := wgpu_shadow_batch_submission_mode(renderer, first)
+	span := WGPU_Draw_Submission_Span {
+		next_batch = start + 1,
+		first_indirect = first.meshlet_draw_offset if mode == .Meshlet else u32(start),
+		indirect_count = first.meshlet_draw_count if mode == .Meshlet else 1,
+		mode = mode,
+	}
+	if !renderer.gpu_meshlet_supported {
+		return span
+	}
+	for batch_index in start + 1 ..< len(batches) {
+		batch := batches[batch_index]
+		if batch.material != first.material ||
+		   wgpu_shadow_batch_submission_mode(renderer, batch) != mode {
+			break
+		}
+		span.next_batch = batch_index + 1
+		if mode == .Meshlet {
+			span.indirect_count += batch.meshlet_draw_count
+		} else if mode == .Classic {
+			span.indirect_count += 1
+		}
+	}
+	return span
+}
+
+wgpu_shadow_draw_submission_count :: proc "contextless" (
+	renderer: ^WGPU_Renderer,
+	batches: []WGPU_Draw_Batch,
+) -> int {
+	count := 0
+	batch_index := 0
+	for batch_index < len(batches) {
+		span := wgpu_shadow_draw_submission_span(renderer, batches, batch_index)
+		batch_index = span.next_batch
+		count += 1
+	}
+	return count
+}
+
 wgpu_assign_compact_submission_spans :: proc "contextless" (batches: []WGPU_Draw_Batch) {
 	batch_index := 0
 	for batch_index < len(batches) {
@@ -1196,6 +1256,12 @@ wgpu_create_gpu_driven_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 		{.CopySrc, .CopyDst},
 		indirect_bytes,
 	)
+	renderer.gpu_shadow_indirect_template_buffer = wgpu_create_gpu_buffer(
+		renderer,
+		"Scrapbot GPU Shadow Indirect Template",
+		{.CopySrc, .CopyDst},
+		indirect_bytes,
+	)
 	renderer.gpu_indirect_buffer = wgpu_create_gpu_buffer(
 		renderer,
 		"Scrapbot GPU Indirect Draws",
@@ -1315,6 +1381,7 @@ wgpu_create_gpu_driven_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 	   renderer.gpu_visible_buffer == nil ||
 	   renderer.gpu_shadow_visible_buffer == nil ||
 	   renderer.gpu_indirect_template_buffer == nil ||
+	   renderer.gpu_shadow_indirect_template_buffer == nil ||
 	   renderer.gpu_indirect_buffer == nil ||
 	   renderer.gpu_shadow_indirect_buffer == nil ||
 	   renderer.gpu_meshlet_info_buffer == nil ||
@@ -1543,6 +1610,12 @@ wgpu_ensure_gpu_draw_buffers :: proc(
 		{.CopySrc, .CopyDst},
 		indirect_bytes,
 	)
+	shadow_indirect_template_buffer := wgpu_create_gpu_buffer(
+		renderer,
+		"Scrapbot GPU Shadow Indirect Template",
+		{.CopySrc, .CopyDst},
+		indirect_bytes,
+	)
 	indirect_buffer := wgpu_create_gpu_buffer(
 		renderer,
 		"Scrapbot GPU Indirect Draws",
@@ -1560,6 +1633,7 @@ wgpu_ensure_gpu_draw_buffers :: proc(
 		visible_buffer,
 		shadow_visible_buffer,
 		indirect_template_buffer,
+		shadow_indirect_template_buffer,
 		indirect_buffer,
 		shadow_indirect_buffer,
 	}
@@ -1640,6 +1714,7 @@ wgpu_ensure_gpu_draw_buffers :: proc(
 		renderer.gpu_visible_buffer,
 		renderer.gpu_shadow_visible_buffer,
 		renderer.gpu_indirect_template_buffer,
+		renderer.gpu_shadow_indirect_template_buffer,
 		renderer.gpu_indirect_buffer,
 		renderer.gpu_shadow_indirect_buffer,
 	}
@@ -1652,6 +1727,7 @@ wgpu_ensure_gpu_draw_buffers :: proc(
 	renderer.gpu_visible_buffer = visible_buffer
 	renderer.gpu_shadow_visible_buffer = shadow_visible_buffer
 	renderer.gpu_indirect_template_buffer = indirect_template_buffer
+	renderer.gpu_shadow_indirect_template_buffer = shadow_indirect_template_buffer
 	renderer.gpu_indirect_buffer = indirect_buffer
 	renderer.gpu_shadow_indirect_buffer = shadow_indirect_buffer
 	renderer.gpu_cull_bind_group = cull_bind_group
@@ -1661,6 +1737,7 @@ wgpu_ensure_gpu_draw_buffers :: proc(
 	renderer.gpu_visible_buffer_capacity = visible_capacity
 	renderer.gpu_draw_database_rebuild_count += 1
 	clear(&renderer.gpu_indirect_templates)
+	clear(&renderer.gpu_shadow_indirect_templates)
 	return ""
 }
 
@@ -2396,16 +2473,21 @@ wgpu_update_indirect_template_cache :: proc(
 		resize(&renderer.gpu_indirect_templates, cache.batch_count)
 		changed = true
 	}
+	if len(renderer.gpu_shadow_indirect_templates) != cache.batch_count {
+		resize(&renderer.gpu_shadow_indirect_templates, cache.batch_count)
+		changed = true
+	}
 	for batch, batch_index in cache.batches[:cache.batch_count] {
 		geometry, geometry_err := wgpu_geometry_cache(renderer, registry, batch.geometry)
 		if geometry_err != "" {
 			return false, geometry_err
 		}
-		template := wgpu_geometry_indirect_template(
+		shadow_template := wgpu_geometry_indirect_template(
 			geometry,
 			batch.visible_offset,
 			renderer.gpu_meshlet_supported,
 		)
+		template := shadow_template
 		if batch.compact_submission {
 			template = {
 				index_count = WGPU_COMPACT_CLUSTER_VERTEX_COUNT,
@@ -2414,6 +2496,10 @@ wgpu_update_indirect_template_cache :: proc(
 		}
 		if renderer.gpu_indirect_templates[batch_index] != template {
 			renderer.gpu_indirect_templates[batch_index] = template
+			changed = true
+		}
+		if renderer.gpu_shadow_indirect_templates[batch_index] != shadow_template {
+			renderer.gpu_shadow_indirect_templates[batch_index] = shadow_template
 			changed = true
 		}
 	}
@@ -2454,6 +2540,13 @@ wgpu_refresh_indirect_templates :: proc(
 		0,
 		raw_data(renderer.gpu_indirect_templates[:]),
 		uint(len(renderer.gpu_indirect_templates) * size_of(WGPU_Draw_Indexed_Indirect)),
+	)
+	wgpu.QueueWriteBuffer(
+		renderer.queue,
+		renderer.gpu_shadow_indirect_template_buffer,
+		0,
+		raw_data(renderer.gpu_shadow_indirect_templates[:]),
+		uint(len(renderer.gpu_shadow_indirect_templates) * size_of(WGPU_Draw_Indexed_Indirect)),
 	)
 	return ""
 }
@@ -3658,7 +3751,7 @@ wgpu_encode_gpu_culling :: proc(
 	)
 	wgpu.CommandEncoderCopyBufferToBuffer(
 		encoder,
-		renderer.gpu_indirect_template_buffer,
+		renderer.gpu_shadow_indirect_template_buffer,
 		0,
 		renderer.gpu_shadow_indirect_buffer,
 		0,
@@ -3667,7 +3760,7 @@ wgpu_encode_gpu_culling :: proc(
 	for cascade_index in 1 ..< WGPU_SHADOW_CASCADE_COUNT {
 		wgpu.CommandEncoderCopyBufferToBuffer(
 			encoder,
-			renderer.gpu_indirect_template_buffer,
+			renderer.gpu_shadow_indirect_template_buffer,
 			0,
 			renderer.gpu_shadow_indirect_buffer,
 			u64(cascade_index) * copy_size,
@@ -3715,7 +3808,7 @@ wgpu_encode_gpu_culling :: proc(
 	}
 	defer wgpu.ComputePassEncoderRelease(pass)
 	workgroups := u32((renderer.gpu_slot_count + 63) / 64)
-	if wgpu_active_classic_batch_count(renderer) > 0 {
+	if wgpu_active_classic_batch_count(renderer) > 0 || renderer.gpu_compact_submission_active {
 		wgpu.ComputePassEncoderSetPipeline(pass, renderer.gpu_cull_pipeline)
 		wgpu.ComputePassEncoderSetBindGroup(pass, 0, renderer.gpu_cull_bind_group)
 		wgpu.ComputePassEncoderDispatchWorkgroups(pass, workgroups, WGPU_SHADOW_CASCADE_COUNT, 1)
@@ -3728,7 +3821,7 @@ wgpu_encode_gpu_culling :: proc(
 	if renderer.gpu_compact_submission_active {
 		wgpu.ComputePassEncoderSetPipeline(pass, renderer.gpu_compact_cull_pipeline)
 		wgpu.ComputePassEncoderSetBindGroup(pass, 0, renderer.gpu_compact_cull_bind_group)
-		wgpu.ComputePassEncoderDispatchWorkgroups(pass, workgroups, WGPU_SHADOW_CASCADE_COUNT, 1)
+		wgpu.ComputePassEncoderDispatchWorkgroups(pass, workgroups, 1, 1)
 	}
 	wgpu.ComputePassEncoderEnd(pass)
 	if capture_debug_evidence {

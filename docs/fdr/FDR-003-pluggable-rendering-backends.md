@@ -29,7 +29,7 @@ Pluggable rendering backends allow Scrapbot to start with `wgpu-native` while ke
 - Shared geometry/material pairs use one instanced draw batch. Geometry versions occupy aligned ranges in shared WGPU vertex/index arenas, while material texture uploads remain cached by handle and version.
 - WGPU keeps a persistent slot-addressed GPU instance table, separates static source state from hot Transform state, sends Transform-only changes through one dense update upload, coalesces nearby static slot changes into bounded uploads, retains compact render/culling uniforms and instance-to-LOD batch mappings, computes camera and shadow frustum visibility into compacted batch slices, and obtains instance counts from indexed indirect draw arguments.
 - The retained draw database grows geometrically past the original 64-batch limit. It rebuilds only when render membership, geometry LOD topology, or required capacity changes.
-- Every Geometry version owns bounded meshlets and a crack-aware cluster hierarchy. Hierarchy batches select a fully resident geometric-error frontier on the GPU before sphere, normal-cone, Hi-Z, and cascade tests. Native multi-draw adapters retain one indirect command per hierarchy cluster. Other indirect-first-instance adapters append selected instance/cluster records into bounded GPU streams and vertex-pull compatible material spans through one indirect command. Adapters without indirect-first-instance and `--cpu-culling` retain whole-primitive imported LOD selection.
+- Every Geometry version owns bounded meshlets and a crack-aware cluster hierarchy. Hierarchy batches select a fully resident geometric-error frontier on the GPU before camera sphere, normal-cone, and Hi-Z tests. Native multi-draw adapters retain one indirect command per hierarchy cluster and use that frontier for shadows. Other indirect-first-instance adapters append selected instance/cluster records into a bounded camera stream and vertex-pull compatible material spans through one indirect command, while shadows reuse the GPU-selected object LOD through indexed-indirect draws. Adapters without indirect-first-instance and `--cpu-culling` retain whole-primitive imported LOD selection.
 - The active camera selects a backend-neutral debug view: lit output, material inputs, mapped world normals, logarithmic depth, retained meshlet identity, exact GPU-selected LOD, selected virtual-geometry clusters and hierarchy depth, object/meshlet visibility classification, one retained Hi-Z mip, or exact screen-space Hi-Z query footprints. Non-lit views skip presentation effects so diagnostics remain direct and stable.
 - Hi-Z false color and texel boundaries expose the exact conservative max-depth hierarchy without readback or rebuilding it. Occlusion Queries records each tested rectangle, selected mip, bound depth, sampled farthest depth, identity, and visible/culled decision in a bounded GPU-native stream.
 - The camera can freeze the latest valid occlusion-query records while that view remains selected. Freeze preserves only diagnostic records and their indirect draw count; ordinary culling continues from current safe Hi-Z state.
@@ -281,13 +281,15 @@ indirect-first-instance share the memory arenas but retain single-batch submissi
 group depth, conservative bounds, monotonic geometric error, refined-group links, and cluster-local
 indices with that exact resource version. On WGPU adapters with indirect-first-instance, project
 group error into pixels and submit the unique cluster frontier surrounding a one-pixel threshold
-before ordinary cluster culling. Use the same frontier for camera and shadow work. See ADR-049.
+before ordinary cluster culling. See ADR-049.
 
-Native multi-draw adapters submit the retained indexed-indirect command range. Other capable
-adapters compact selected `{instance slot, cluster index}` records into bounded camera and cascade
-streams. Compatible same-material batches share one record span and one non-indexed indirect
-command; the vertex shader pulls cluster indices and attributes from the shared geometry arenas.
-Stable frames perform no CPU readback, per-cluster command generation, or geometry upload.
+Native multi-draw adapters submit the retained indexed-indirect command range for camera and
+shadow work. Other capable adapters compact selected `{instance slot, cluster index}` records into
+a bounded camera stream. Compatible same-material batches share one record span and one
+non-indexed indirect command; the vertex shader pulls cluster indices and attributes from the
+shared geometry arenas. Their four shadow cascades reuse the GPU-selected object LOD through
+separate retained indexed-indirect templates. Stable frames perform no CPU readback, per-cluster
+command generation, or geometry upload.
 
 The `virtual_geometry` camera view colors selected clusters by identity and hierarchy depth.
 Structured results report resident hierarchy commands, visible virtual clusters, and clusters
@@ -297,8 +299,10 @@ rejected because another level owns their screen-space region.
 paths, or CPU decisions per cluster.
 
 **Tradeoff:** All hierarchy data is resident and generated at the resource boundary. Paging,
-streaming, eviction, and pinned root clusters remain separate follow-up work. The compact path
-trades additional GPU culling and vertex-pulling cost for portable, bounded CPU submission.
+streaming, eviction, and pinned root clusters remain separate follow-up work. The compact camera
+path trades additional GPU culling and vertex-pulling cost for portable, bounded CPU submission;
+portable shadows deliberately use conservative whole-object LOD geometry to avoid multiplying
+that cost across four cascades.
 Adapters without indirect-first-instance and capacity-limited layouts keep the existing classic
 indexed and imported-LOD fallback.
 

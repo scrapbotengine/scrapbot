@@ -88,15 +88,15 @@ These are the engine-owned rows published to the editor's Systems panel. They ar
 
 - **Phase/order:** First WGPU render-encoding phase after preparation.
 - **Inputs:** GPU instance/draw database, camera frustum/projection, retained hierarchy groups and cluster commands, previous valid Hi-Z state, LOD/visibility configuration.
-- **Outputs:** One geometric-error frontier, visible instance lists or compact instance/cluster streams, indirect draw arguments, explicit hierarchy/frustum/occlusion rejection counters, LOD counters, and next-pass state.
-- **Stable-frame behavior:** Does not rebuild membership, hierarchy products, shared geometry arenas, or submission policy; it encodes bounded GPU work over retained draw capacity. Hierarchy batches select their frontier before camera and cascade cluster tests. Native multi-draw adapters share compatible arena-global command ranges. Other indirect-first-instance adapters append selected records into compatible material spans and increment one retained command per span without CPU readback or command generation. Diagnostics can transiently force the detailed native/emulated branch. Hi-Z samples a coarse mip covering the complete projected sphere footprint and skips unsafe camera-crossing or large near-field projections. CPU-reference mode is an explicit whole-primitive diagnostic substitute.
+- **Outputs:** One geometric-error camera frontier, visible instance lists or a compact camera instance/cluster stream, indirect draw arguments, explicit hierarchy/frustum/occlusion rejection counters, LOD counters, and next-pass state.
+- **Stable-frame behavior:** Does not rebuild membership, hierarchy products, shared geometry arenas, or submission policy; it encodes bounded GPU work over retained draw capacity. Native multi-draw adapters use the selected frontier for camera and cascade tests and share compatible arena-global command ranges. Other indirect-first-instance adapters append selected camera records into compatible material spans, increment one retained command per span, and produce classic indexed shadow lists from the selected object LOD without CPU readback or command generation. Diagnostics can transiently force the detailed native/emulated branch. Hi-Z samples a coarse mip covering the complete projected sphere footprint and skips unsafe camera-crossing or large near-field projections. CPU-reference mode is an explicit whole-primitive diagnostic substitute.
 - **Boundary:** WGPU compute/encoding phase with CPU fallback for reference testing.
 - **Source/tests:** `render/wgpu_visibility.odin`, `render/wgpu_hiz.odin`, `render/wgpu_gpu_driven.odin`; `render/render_test.odin`, `render/wgpu_math.odin` reference tests.
 
 ### `scrapbot.render.shadow`
 
 - **Phase/order:** After visibility preparation and before depth/world shading.
-- **Inputs:** Four stabilized directional-light views, per-cascade GPU/CPU-reference shadow-visible indirect draws, retained geometry/material pipeline state.
+- **Inputs:** Four stabilized directional-light views, per-cascade GPU/CPU-reference shadow-visible indirect draws, retained camera and shadow indirect templates, retained geometry/material pipeline state.
 - **Outputs:** Four-layer directional shadow depth texture consumed by receivers through cascade selection, PCF, and 10% adjacent-cascade transition bands.
 - **Stable-frame behavior:** Reuses pipelines, buffers, and batch membership; only frame commands and explicitly dirty records are encoded/uploaded.
 - **Boundary:** WGPU render-pass encoding; absent/inapplicable shadow state keeps the phase bounded or empty.

@@ -55,11 +55,12 @@ Static instance fields remain separately retained. Batch topology, geometry capa
 
 Adapters with indirect-first-instance additionally retain meshlet metadata, expanded index ranges,
 aligned camera/shadow visibility slices, a parallel debug-identity stream, and indirect templates.
-Native multi-draw adapters address those templates directly. Other capable adapters retain bounded
-camera and cascade streams of compact `{instance slot, cluster index}` records plus one non-indexed
+Native multi-draw adapters address those templates directly. Other capable adapters retain a
+bounded camera stream of compact `{instance slot, cluster index}` records plus one non-indexed
 indirect command per compatible material span. Their vertex shaders pull cluster indices and
-packed attributes from the shared geometry arenas. Geometry versions define command topology.
-Batch membership capacity defines visibility allocation.
+packed attributes from the shared geometry arenas. A separate indexed shadow template lets those
+adapters reuse the GPU-selected object LOD in four conservative cascade lists. Geometry versions
+define command topology. Batch membership capacity defines visibility allocation.
 
 Hierarchy-bearing batches always use cluster submission on indirect-first-instance adapters because
 they select geometric detail even for one instance. Ordinary meshlet batches retain the two-instance
@@ -69,17 +70,19 @@ detailed path without rewriting topology.
 
 The compute culler projects monotonic hierarchy-group errors into pixels and accepts a cluster when
 its group exceeds one pixel while its refined group is absent or is at or below one pixel. This
-selects one complete frontier. Camera and cascade visibility then apply their ordinary sphere,
-normal-cone, and Hi-Z tests to that same frontier.
+selects one complete camera frontier. Native multi-draw cascade visibility applies its ordinary
+sphere and normal-cone tests to that frontier. Portable cascade visibility instead uses the
+camera-selected whole-object LOD and classic indexed-indirect output.
 
-Stable frames copy active templates, run one object-first compute cull whose batches branch into
-classic or cluster visibility, and submit matching command ranges. The portable cluster branch
-appends records and increments its retained span command entirely on the GPU. Mixed frames encode
-separate classic and cluster dispatches inside that pass so each stays within the portable storage-
-binding limit; instances return immediately from the dispatch that does not own their selected
-batch. Stable frames do not rescan resources, rebuild cluster metadata, upload debug identities, or
-regenerate compact records on the CPU. Adapters without indirect-first-instance and layouts above
-the bounded visibility capacity use the retained whole-primitive database.
+Stable frames copy separate active camera and shadow templates, run object-first compute culling,
+and submit matching command ranges. The portable camera branch appends records and increments its
+retained span command entirely on the GPU. Its classic dispatch owns the four indexed shadow lanes;
+its compact dispatch owns one camera lane. Mixed frames encode separate classic and cluster
+dispatches inside that pass so each stays within the portable storage-binding limit; instances
+return immediately from the dispatch that does not own their selected batch. Stable frames do not
+rescan resources, rebuild cluster metadata, upload debug identities, or regenerate compact records
+on the CPU. Adapters without indirect-first-instance and layouts above the bounded visibility
+capacity use the retained whole-primitive database.
 
 The retained batch count follows topology invalidation. Camera-visible batches, nonempty meshlet
 draws, selected virtual clusters, and hierarchy-threshold rejections are frame-valued GPU counters.

@@ -740,6 +740,15 @@ test_wgpu_geometry_arena_submission_spans_merge_compatible_lod_batches :: proc(t
 	testing.expect_value(t, span.first_indirect, u32(0))
 	testing.expect_value(t, span.indirect_count, u32(1))
 	testing.expect_value(t, span.mode, WGPU_Submission_Mode.Compact)
+	for &batch in batches[:3] {
+		batch.compact_submission = true
+	}
+	shadow_span := wgpu_shadow_draw_submission_span(&renderer, batches[:], 0)
+	testing.expect_value(t, shadow_span.next_batch, 3)
+	testing.expect_value(t, shadow_span.first_indirect, u32(0))
+	testing.expect_value(t, shadow_span.indirect_count, u32(3))
+	testing.expect_value(t, shadow_span.mode, WGPU_Submission_Mode.Classic)
+	testing.expect_value(t, wgpu_shadow_draw_submission_count(&renderer, batches[:]), 2)
 	renderer.gpu_meshlet_force_enabled = true
 	span = wgpu_draw_submission_span(&renderer, batches[:], 0)
 	testing.expect_value(t, span.mode, WGPU_Submission_Mode.Meshlet)
