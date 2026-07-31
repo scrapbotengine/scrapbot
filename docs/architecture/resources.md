@@ -59,7 +59,7 @@ The recursive project loader rejects duplicate UUIDs. Scene validation resolves 
 - Clone, replacement, generated-LOD registration, retirement, and destruction move or release meshlet arrays with the rest of the Geometry entry. Construction occurs only at explicit registration/replacement boundaries; stable frames do no cluster work.
 - Missing authored declarations mark prior entries dead, increment generation/version, and invalidate old handles without compacting registry indexes.
 - Render preparation and the WGPU backend consume exact handle/version/topology changes; stable geometry is neither re-extracted nor re-uploaded.
-- WGPU builds a meshlet-ordered index buffer only when that exact Geometry version enters its cache. Capable adapters consume the retained bounds and cones through feature-gated compute culling and fixed multi-draw submission; unsupported/capacity-limited layouts retain whole-primitive indexed-indirect submission.
+- WGPU uploads an exact Geometry version into shared aligned vertex and index arena ranges. Canonical and meshlet-ordered indices share the index arena. Capable adapters consume the retained bounds and cones through feature-gated compute culling and fixed multi-draw submission; unsupported/capacity-limited layouts retain whole-primitive indexed-indirect submission over the same arenas.
 - Source/tests: `resources/meshlets.odin`, `resources/resources.odin`; `resources/resources_test.odin`, `render/render_test.odin`.
 
 ### Material

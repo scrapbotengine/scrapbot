@@ -34,8 +34,9 @@ Resource descriptions remain outside ECS. Components store resolved runtime hand
 registration derives bounded meshlet streams and local culling bounds once from canonical indexed
 triangles, including every imported LOD level; the arrays remain owned and versioned with the
 Geometry entry.
-WGPU consumes a changed Geometry version into canonical and meshlet-ordered index buffers. Capable
-adapters retain cluster metadata and indirect templates, then select classic or meshlet submission
+WGPU consumes a changed Geometry version into aligned ranges of shared vertex/index arenas;
+canonical and meshlet-ordered indices share the index arena. Capable adapters retain cluster
+metadata and arena-global indirect templates, then select classic or meshlet submission
 for each retained batch from its membership. Unsupported adapters ignore that derived cache and
 keep whole-primitive submission.
 
@@ -203,7 +204,11 @@ spawn/despawn-maintained entity-origin counts ─────────┘    
 
 The editor formats values only when the snapshot revision changes. GPU timestamp and visibility values are asynchronous. `GPU FRAME` runs from the earliest executed timed pass boundary through the final executed timed pass boundary, including UI when present. `GPU SCENE` shares that beginning and ends after final composition, before UI. Individual pass spans remain attribution and are not added to manufacture either duration.
 
-Retained batches describe geometry/material/LOD topology. Camera-visible batches count selected batches with at least one object surviving object-level visibility. Visible meshlet draws count indirect meshlet commands with at least one surviving instance. These camera counters remain separate from shadow-cascade visibility and from the number of API commands encoded across all passes.
+Retained batches describe geometry/material/LOD topology. Draw submissions count compatible
+command spans encoded for one pass. Camera-visible batches count selected batches with at least one
+object surviving object-level visibility. Visible meshlet draws count indirect meshlet commands
+with at least one surviving instance. These camera counters remain separate from shadow-cascade
+visibility and from repeated API work across depth, shadow, and world passes.
 
 Hi-Z state is an explicit enum: unavailable, below threshold, scene changed, camera changed, warming up, or active. Object and meshlet occlusion counts remain separate so a zero can be interpreted without guessing which eligibility or safety gate applied.
 

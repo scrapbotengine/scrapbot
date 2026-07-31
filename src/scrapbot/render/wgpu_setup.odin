@@ -449,6 +449,7 @@ wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
 	if renderer.gpu_meshlet_debug_bind_group != nil {
 		wgpu.BindGroupRelease(renderer.gpu_meshlet_debug_bind_group)
 	}
+	wgpu_release_submission_bind_groups(renderer)
 	if renderer.gpu_meshlet_debug_pipeline != nil {
 		wgpu.RenderPipelineRelease(renderer.gpu_meshlet_debug_pipeline)
 	}
@@ -525,13 +526,8 @@ wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
 	if renderer.uniform_buffer != nil {
 		wgpu.BufferRelease(renderer.uniform_buffer)
 	}
-	for &cached in renderer.geometry_cache {
-		if cached.vertex_buffer != nil { wgpu.BufferRelease(cached.vertex_buffer) }
-		if cached.index_buffer != nil { wgpu.BufferRelease(cached.index_buffer) }
-		if cached.meshlet_index_buffer != nil {
-			wgpu.BufferRelease(cached.meshlet_index_buffer)
-		}
-	}
+	wgpu_destroy_geometry_arena(&renderer.geometry_vertex_arena)
+	wgpu_destroy_geometry_arena(&renderer.geometry_index_arena)
 	delete(renderer.geometry_cache)
 	for &cached in renderer.texture_cache {
 		if cached.view != nil { wgpu.TextureViewRelease(cached.view) }

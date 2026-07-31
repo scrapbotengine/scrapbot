@@ -280,8 +280,6 @@ WGPU_Draw_Batch :: struct {
 	meshlet_visible_capacity: u32,
 	world_bind_group: wgpu.BindGroup,
 	shadow_bind_groups: [WGPU_SHADOW_CASCADE_COUNT]wgpu.BindGroup,
-	meshlet_world_bind_group: wgpu.BindGroup,
-	meshlet_shadow_bind_groups: [WGPU_SHADOW_CASCADE_COUNT]wgpu.BindGroup,
 }
 
 WGPU_Draw_Batch_Cache :: struct {
@@ -402,9 +400,10 @@ WGPU_Instance_Source_State :: struct {
 WGPU_Geometry_Cache :: struct {
 	handle: shared.Geometry_Handle,
 	version: u32,
-	vertex_buffer: wgpu.Buffer,
-	index_buffer: wgpu.Buffer,
-	meshlet_index_buffer: wgpu.Buffer,
+	vertex_range: WGPU_Arena_Range,
+	index_range: WGPU_Arena_Range,
+	meshlet_index_range: WGPU_Arena_Range,
+	vertex_count: u32,
 	index_count: u32,
 	valid: bool,
 }
@@ -685,6 +684,10 @@ WGPU_Renderer :: struct {
 	gpu_meshlet_indirect_template_buffer: wgpu.Buffer,
 	gpu_meshlet_indirect_buffer: wgpu.Buffer,
 	gpu_meshlet_shadow_indirect_buffer: wgpu.Buffer,
+	gpu_world_bind_group: wgpu.BindGroup,
+	gpu_shadow_bind_groups: [WGPU_SHADOW_CASCADE_COUNT]wgpu.BindGroup,
+	gpu_meshlet_world_bind_group: wgpu.BindGroup,
+	gpu_meshlet_shadow_bind_groups: [WGPU_SHADOW_CASCADE_COUNT]wgpu.BindGroup,
 	gpu_cull_uniform_buffer: wgpu.Buffer,
 	gpu_render_uniform_buffer: wgpu.Buffer,
 	gpu_point_light_buffer: wgpu.Buffer,
@@ -861,6 +864,8 @@ WGPU_Renderer :: struct {
 	render_depth_width: u32,
 	render_depth_height: u32,
 	geometry_cache: [dynamic]WGPU_Geometry_Cache,
+	geometry_vertex_arena: WGPU_Geometry_Arena,
+	geometry_index_arena: WGPU_Geometry_Arena,
 	texture_cache: [dynamic]WGPU_Texture_Cache,
 	material_cache: [dynamic]WGPU_Material_Cache,
 	uniform_buffer: wgpu.Buffer,
@@ -1129,18 +1134,11 @@ wgpu_profile_workload :: proc(
 	camera = apply_render_feature_overrides(camera, render_feature_overrides)
 	viewport_width := u32(max(viewport.width, 0))
 	viewport_height := u32(max(viewport.height, 0))
-	batches := u64(0)
 	geometry_draws := u64(0)
 	visible_instances := u64(0)
 	shadow_instances := u64(0)
 	if stats != nil {
-		batches = u64(max(stats.draw_batches, 0))
-		geometry_draws = batches
-		if stats.meshlet_culling {
-			geometry_draws =
-				u64(max(wgpu_active_classic_batch_count(renderer), 0)) +
-				u64(max(stats.meshlet_draws, 0))
-		}
+		geometry_draws = u64(max(stats.draw_submissions, 0))
 		visible_instances = u64(stats.visible_instances)
 		shadow_instances = u64(stats.shadow_visible_instances)
 	}
@@ -1264,7 +1262,7 @@ wgpu_profile_workload :: proc(
 		clustered_lighting = clustered,
 		shadow = shadow,
 		depth = {
-			enabled = batches > 0,
+			enabled = geometry_draws > 0,
 			width = viewport_width,
 			height = viewport_height,
 			passes = 1,
@@ -1272,7 +1270,7 @@ wgpu_profile_workload :: proc(
 			instances = visible_instances,
 		},
 		world = {
-			enabled = batches > 0,
+			enabled = geometry_draws > 0,
 			width = viewport_width,
 			height = viewport_height,
 			passes = 1,
@@ -2236,6 +2234,9 @@ wgpu_ensure_draw_batch_cache :: proc(
 		return nil
 	}
 	cache := &renderer.draw_batch_cache
+	if registry != nil && cache.geometry_topology_revision != registry.geometry_topology_revision {
+		wgpu_reclaim_stale_geometry_cache(renderer, registry)
+	}
 	if !cache.valid ||
 	   cache.world_uuid != render_list.world_uuid ||
 	   cache.topology_revision != render_list.topology_revision ||
@@ -2244,6 +2245,38 @@ wgpu_ensure_draw_batch_cache :: proc(
 		wgpu_rebuild_draw_batch_cache(cache, render_list, registry)
 	}
 	return cache
+}
+
+wgpu_release_geometry_cache_ranges :: proc(
+	renderer: ^WGPU_Renderer,
+	cached: ^WGPU_Geometry_Cache,
+) {
+	if renderer == nil || cached == nil || !cached.valid {
+		return
+	}
+	wgpu_arena_release(&renderer.geometry_vertex_arena.allocator, cached.vertex_range)
+	wgpu_arena_release(&renderer.geometry_index_arena.allocator, cached.index_range)
+	wgpu_arena_release(&renderer.geometry_index_arena.allocator, cached.meshlet_index_range)
+	cached^ = {}
+}
+
+wgpu_reclaim_stale_geometry_cache :: proc(
+	renderer: ^WGPU_Renderer,
+	registry: ^resources.Registry,
+) {
+	if renderer == nil || registry == nil {
+		return
+	}
+	for index in 0 ..< len(renderer.geometry_cache) {
+		cached := &renderer.geometry_cache[index]
+		if !cached.valid {
+			continue
+		}
+		if _, alive := resources.get_geometry(registry, cached.handle); alive {
+			continue
+		}
+		wgpu_release_geometry_cache_ranges(renderer, cached)
+	}
 }
 
 wgpu_geometry_cache :: proc(
@@ -2265,44 +2298,123 @@ wgpu_geometry_cache :: proc(
 	if cached.valid && cached.handle == handle && cached.version == geometry.version {
 		return cached, ""
 	}
-	if cached.vertex_buffer != nil { wgpu.BufferRelease(cached.vertex_buffer) }
-	if cached.index_buffer != nil { wgpu.BufferRelease(cached.index_buffer) }
-	if cached.meshlet_index_buffer != nil { wgpu.BufferRelease(cached.meshlet_index_buffer) }
-	cached^ = {
-		handle = handle,
-		version = geometry.version,
-		index_count = u32(len(geometry.indices)),
+	if renderer.geometry_vertex_arena.initial_size == 0 {
+		renderer.geometry_vertex_arena.initial_size = WGPU_GEOMETRY_VERTEX_ARENA_INITIAL_BYTES
+		renderer.geometry_vertex_arena.usage = {.Vertex}
+		renderer.geometry_vertex_arena.label = "Scrapbot Shared Geometry Vertex Arena"
 	}
-	cached.vertex_buffer = wgpu.DeviceCreateBufferWithData(
-		renderer.device,
-		&wgpu.BufferWithDataDescriptor{label = "Scrapbot Geometry Vertices", usage = {.Vertex}},
-		geometry.vertices,
-	)
-	cached.index_buffer = wgpu.DeviceCreateBufferWithData(
-		renderer.device,
-		&wgpu.BufferWithDataDescriptor{label = "Scrapbot Geometry Indices", usage = {.Index}},
-		geometry.indices,
-	)
+	if renderer.geometry_index_arena.initial_size == 0 {
+		renderer.geometry_index_arena.initial_size = WGPU_GEOMETRY_INDEX_ARENA_INITIAL_BYTES
+		renderer.geometry_index_arena.usage = {.Index}
+		renderer.geometry_index_arena.label = "Scrapbot Shared Geometry Index Arena"
+	}
+	vertex_bytes := u64(len(geometry.vertices)) * u64(size_of(resources.Vertex))
+	index_bytes := u64(len(geometry.indices)) * u64(size_of(u32))
+	vertex_range := cached.vertex_range
+	vertex_range_reused := vertex_range.size >= vertex_bytes && vertex_range.size > 0
+	if !vertex_range_reused {
+		vertex_range = wgpu_arena_allocate(
+			&renderer.geometry_vertex_arena.allocator,
+			wgpu_align_arena_offset(vertex_bytes, u64(size_of(resources.Vertex))),
+			u64(size_of(resources.Vertex)),
+		)
+	}
+	index_range := cached.index_range
+	index_range_reused := index_range.size >= index_bytes && index_range.size > 0
+	if !index_range_reused {
+		index_range = wgpu_arena_allocate(
+			&renderer.geometry_index_arena.allocator,
+			wgpu_align_arena_offset(index_bytes, u64(size_of(u32))),
+			u64(size_of(u32)),
+		)
+	}
+	meshlet_indices: []u32
+	meshlet_index_range := cached.meshlet_index_range
+	meshlet_range_reused := true
+	committed := false
+	defer if !committed {
+		if !vertex_range_reused {
+			wgpu_arena_release(&renderer.geometry_vertex_arena.allocator, vertex_range)
+		}
+		if !index_range_reused {
+			wgpu_arena_release(&renderer.geometry_index_arena.allocator, index_range)
+		}
+		if !meshlet_range_reused {
+			wgpu_arena_release(&renderer.geometry_index_arena.allocator, meshlet_index_range)
+		}
+	}
 	if renderer.gpu_meshlet_supported {
-		meshlet_indices, meshlet_err := wgpu_expand_meshlet_indices(geometry)
+		meshlet_err: string
+		meshlet_indices, meshlet_err = wgpu_expand_meshlet_indices(geometry)
 		if meshlet_err != "" {
 			return nil, meshlet_err
 		}
-		cached.meshlet_index_buffer = wgpu.DeviceCreateBufferWithData(
-			renderer.device,
-			&wgpu.BufferWithDataDescriptor {
-				label = "Scrapbot Geometry Meshlet Indices",
-				usage = {.Index},
-			},
-			meshlet_indices,
-		)
+		meshlet_bytes := u64(len(meshlet_indices)) * u64(size_of(u32))
+		meshlet_range_reused =
+			meshlet_index_range.size >= meshlet_bytes && meshlet_index_range.size > 0
+		if !meshlet_range_reused {
+			meshlet_index_range = wgpu_arena_allocate(
+				&renderer.geometry_index_arena.allocator,
+				wgpu_align_arena_offset(meshlet_bytes, u64(size_of(u32))),
+				u64(size_of(u32)),
+			)
+		}
 	}
-	if cached.vertex_buffer == nil ||
-	   cached.index_buffer == nil ||
-	   (renderer.gpu_meshlet_supported && cached.meshlet_index_buffer == nil) {
-		return nil, "failed to upload geometry buffers"
+	if vertex_range.offset / u64(size_of(resources.Vertex)) > 0x7fff_ffff ||
+	   index_range.offset / u64(size_of(u32)) > 0xffff_ffff ||
+	   meshlet_index_range.offset / u64(size_of(u32)) > 0xffff_ffff {
+		return nil, "shared geometry arena offsets exceed indexed-draw limits"
 	}
-	cached.valid = true
+	if upload_err := wgpu_geometry_arena_upload(
+		renderer,
+		&renderer.geometry_vertex_arena,
+		vertex_range,
+		raw_data(geometry.vertices),
+		vertex_bytes,
+	); upload_err != "" {
+		return nil, upload_err
+	}
+	if upload_err := wgpu_geometry_arena_upload(
+		renderer,
+		&renderer.geometry_index_arena,
+		index_range,
+		raw_data(geometry.indices),
+		index_bytes,
+	); upload_err != "" {
+		return nil, upload_err
+	}
+	if renderer.gpu_meshlet_supported {
+		meshlet_bytes := u64(len(meshlet_indices)) * u64(size_of(u32))
+		if upload_err := wgpu_geometry_arena_upload(
+			renderer,
+			&renderer.geometry_index_arena,
+			meshlet_index_range,
+			raw_data(meshlet_indices),
+			meshlet_bytes,
+		); upload_err != "" {
+			return nil, upload_err
+		}
+	}
+	if !vertex_range_reused {
+		wgpu_arena_release(&renderer.geometry_vertex_arena.allocator, cached.vertex_range)
+	}
+	if !index_range_reused {
+		wgpu_arena_release(&renderer.geometry_index_arena.allocator, cached.index_range)
+	}
+	if !meshlet_range_reused {
+		wgpu_arena_release(&renderer.geometry_index_arena.allocator, cached.meshlet_index_range)
+	}
+	cached^ = {
+		handle = handle,
+		version = geometry.version,
+		vertex_range = vertex_range,
+		index_range = index_range,
+		meshlet_index_range = meshlet_index_range,
+		vertex_count = u32(len(geometry.vertices)),
+		index_count = u32(len(geometry.indices)),
+		valid = true,
+	}
+	committed = true
 	return cached, ""
 }
 
@@ -2406,9 +2518,24 @@ wgpu_encode_render_pass :: proc(
 	)
 	if len(batches) > 0 {
 		wgpu.RenderPassEncoderSetBindGroup(render_pass, 2, renderer.environment_bind_group)
-		for batch, batch_index in batches {
-			cached, cache_err := wgpu_geometry_cache(renderer, registry, batch.geometry)
-			if cache_err != "" { return cache_err }
+		wgpu.RenderPassEncoderSetVertexBuffer(
+			render_pass,
+			0,
+			renderer.geometry_vertex_arena.buffer,
+			0,
+			wgpu.WHOLE_SIZE,
+		)
+		wgpu.RenderPassEncoderSetIndexBuffer(
+			render_pass,
+			renderer.geometry_index_arena.buffer,
+			.Uint32,
+			0,
+			wgpu.WHOLE_SIZE,
+		)
+		batch_index := 0
+		for batch_index < len(batches) {
+			batch := batches[batch_index]
+			span := wgpu_draw_submission_span(renderer, batches, batch_index)
 			material_cached, material_err := wgpu_material_cache(
 				renderer,
 				registry,
@@ -2420,42 +2547,36 @@ wgpu_encode_render_pass :: proc(
 				pipeline = renderer.gpu_driven_double_sided_pipeline
 			}
 			wgpu.RenderPassEncoderSetPipeline(render_pass, pipeline)
-			world_bind_group := batch.world_bind_group
-			index_buffer := cached.index_buffer
-			if wgpu_batch_uses_meshlets(renderer, batch) {
-				world_bind_group = batch.meshlet_world_bind_group
-				index_buffer = cached.meshlet_index_buffer
+			world_bind_group := renderer.gpu_world_bind_group
+			if !renderer.gpu_meshlet_supported {
+				world_bind_group = batch.world_bind_group
+			} else if span.meshlets {
+				world_bind_group = renderer.gpu_meshlet_world_bind_group
 			}
 			wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, world_bind_group)
 			wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, material_cached.bind_group)
-			wgpu.RenderPassEncoderSetVertexBuffer(
-				render_pass,
-				0,
-				cached.vertex_buffer,
-				0,
-				wgpu.WHOLE_SIZE,
-			)
-			wgpu.RenderPassEncoderSetIndexBuffer(
-				render_pass,
-				index_buffer,
-				.Uint32,
-				0,
-				wgpu.WHOLE_SIZE,
-			)
-			if wgpu_batch_uses_meshlets(renderer, batch) {
+			if span.meshlets {
 				wgpu.RenderPassEncoderMultiDrawIndexedIndirect(
 					render_pass,
 					renderer.gpu_meshlet_indirect_buffer,
-					u64(batch.meshlet_draw_offset) * u64(size_of(WGPU_Draw_Indexed_Indirect)),
-					batch.meshlet_draw_count,
+					u64(span.first_indirect) * u64(size_of(WGPU_Draw_Indexed_Indirect)),
+					span.indirect_count,
+				)
+			} else if span.indirect_count > 1 {
+				wgpu.RenderPassEncoderMultiDrawIndexedIndirect(
+					render_pass,
+					renderer.gpu_indirect_buffer,
+					u64(span.first_indirect) * u64(size_of(WGPU_Draw_Indexed_Indirect)),
+					span.indirect_count,
 				)
 			} else {
 				wgpu.RenderPassEncoderDrawIndexedIndirect(
 					render_pass,
 					renderer.gpu_indirect_buffer,
-					u64(batch_index * size_of(WGPU_Draw_Indexed_Indirect)),
+					u64(span.first_indirect) * u64(size_of(WGPU_Draw_Indexed_Indirect)),
 				)
 			}
+			batch_index = span.next_batch
 		}
 	}
 	wgpu.RenderPassEncoderEnd(render_pass)
@@ -2761,11 +2882,26 @@ wgpu_encode_depth_prepass :: proc(
 		u32(viewport.width),
 		u32(viewport.height),
 	)
-	for batch, batch_index in batches {
-		cached, err := wgpu_geometry_cache(renderer, registry, batch.geometry)
-		if err != "" {
-			return err
-		}
+	if len(batches) > 0 {
+		wgpu.RenderPassEncoderSetVertexBuffer(
+			pass,
+			0,
+			renderer.geometry_vertex_arena.buffer,
+			0,
+			wgpu.WHOLE_SIZE,
+		)
+		wgpu.RenderPassEncoderSetIndexBuffer(
+			pass,
+			renderer.geometry_index_arena.buffer,
+			.Uint32,
+			0,
+			wgpu.WHOLE_SIZE,
+		)
+	}
+	batch_index := 0
+	for batch_index < len(batches) {
+		batch := batches[batch_index]
+		span := wgpu_draw_submission_span(renderer, batches, batch_index)
 		material, material_alive := resources.get_material(registry, batch.material)
 		if !material_alive {
 			return "render material handle is stale during depth prepass"
@@ -2782,11 +2918,11 @@ wgpu_encode_depth_prepass :: proc(
 			}
 		}
 		wgpu.RenderPassEncoderSetPipeline(pass, pipeline)
-		world_bind_group := batch.world_bind_group
-		index_buffer := cached.index_buffer
-		if wgpu_batch_uses_meshlets(renderer, batch) {
-			world_bind_group = batch.meshlet_world_bind_group
-			index_buffer = cached.meshlet_index_buffer
+		world_bind_group := renderer.gpu_world_bind_group
+		if !renderer.gpu_meshlet_supported {
+			world_bind_group = batch.world_bind_group
+		} else if span.meshlets {
+			world_bind_group = renderer.gpu_meshlet_world_bind_group
 		}
 		wgpu.RenderPassEncoderSetBindGroup(pass, 0, world_bind_group)
 		if masked {
@@ -2800,22 +2936,28 @@ wgpu_encode_depth_prepass :: proc(
 			}
 			wgpu.RenderPassEncoderSetBindGroup(pass, 1, material_cached.bind_group)
 		}
-		wgpu.RenderPassEncoderSetVertexBuffer(pass, 0, cached.vertex_buffer, 0, wgpu.WHOLE_SIZE)
-		wgpu.RenderPassEncoderSetIndexBuffer(pass, index_buffer, .Uint32, 0, wgpu.WHOLE_SIZE)
-		if wgpu_batch_uses_meshlets(renderer, batch) {
+		if span.meshlets {
 			wgpu.RenderPassEncoderMultiDrawIndexedIndirect(
 				pass,
 				renderer.gpu_meshlet_indirect_buffer,
-				u64(batch.meshlet_draw_offset) * u64(size_of(WGPU_Draw_Indexed_Indirect)),
-				batch.meshlet_draw_count,
+				u64(span.first_indirect) * u64(size_of(WGPU_Draw_Indexed_Indirect)),
+				span.indirect_count,
+			)
+		} else if span.indirect_count > 1 {
+			wgpu.RenderPassEncoderMultiDrawIndexedIndirect(
+				pass,
+				renderer.gpu_indirect_buffer,
+				u64(span.first_indirect) * u64(size_of(WGPU_Draw_Indexed_Indirect)),
+				span.indirect_count,
 			)
 		} else {
 			wgpu.RenderPassEncoderDrawIndexedIndirect(
 				pass,
 				renderer.gpu_indirect_buffer,
-				u64(batch_index * size_of(WGPU_Draw_Indexed_Indirect)),
+				u64(span.first_indirect) * u64(size_of(WGPU_Draw_Indexed_Indirect)),
 			)
 		}
+		batch_index = span.next_batch
 	}
 	wgpu.RenderPassEncoderEnd(pass)
 	return ""
@@ -2942,9 +3084,24 @@ wgpu_encode_shadow_cascade_pass :: proc(
 	if pass == nil { return "failed to begin wgpu shadow pass" }
 	defer wgpu.RenderPassEncoderRelease(pass)
 	if len(batches) > 0 {
-		for batch, batch_index in batches {
-			cached, err := wgpu_geometry_cache(renderer, registry, batch.geometry)
-			if err != "" { return err }
+		wgpu.RenderPassEncoderSetVertexBuffer(
+			pass,
+			0,
+			renderer.geometry_vertex_arena.buffer,
+			0,
+			wgpu.WHOLE_SIZE,
+		)
+		wgpu.RenderPassEncoderSetIndexBuffer(
+			pass,
+			renderer.geometry_index_arena.buffer,
+			.Uint32,
+			0,
+			wgpu.WHOLE_SIZE,
+		)
+		batch_index := 0
+		for batch_index < len(batches) {
+			batch := batches[batch_index]
+			span := wgpu_draw_submission_span(renderer, batches, batch_index)
 			material, material_alive := resources.get_material(registry, batch.material)
 			if !material_alive {
 				return "render material handle is stale during shadow pass"
@@ -2961,11 +3118,11 @@ wgpu_encode_shadow_cascade_pass :: proc(
 				}
 			}
 			wgpu.RenderPassEncoderSetPipeline(pass, pipeline)
-			shadow_bind_group := batch.shadow_bind_groups[cascade_index]
-			index_buffer := cached.index_buffer
-			if wgpu_batch_uses_meshlets(renderer, batch) {
-				shadow_bind_group = batch.meshlet_shadow_bind_groups[cascade_index]
-				index_buffer = cached.meshlet_index_buffer
+			shadow_bind_group := renderer.gpu_shadow_bind_groups[cascade_index]
+			if !renderer.gpu_meshlet_supported {
+				shadow_bind_group = batch.shadow_bind_groups[cascade_index]
+			} else if span.meshlets {
+				shadow_bind_group = renderer.gpu_meshlet_shadow_bind_groups[cascade_index]
 			}
 			wgpu.RenderPassEncoderSetBindGroup(pass, 0, shadow_bind_group)
 			if masked {
@@ -2979,35 +3136,40 @@ wgpu_encode_shadow_cascade_pass :: proc(
 				}
 				wgpu.RenderPassEncoderSetBindGroup(pass, 1, material_cached.bind_group)
 			}
-			wgpu.RenderPassEncoderSetVertexBuffer(
-				pass,
-				0,
-				cached.vertex_buffer,
-				0,
-				wgpu.WHOLE_SIZE,
-			)
-			wgpu.RenderPassEncoderSetIndexBuffer(pass, index_buffer, .Uint32, 0, wgpu.WHOLE_SIZE)
-			if wgpu_batch_uses_meshlets(renderer, batch) {
+			if span.meshlets {
 				wgpu.RenderPassEncoderMultiDrawIndexedIndirect(
 					pass,
 					renderer.gpu_meshlet_shadow_indirect_buffer,
 					u64(
 						cascade_index * renderer.gpu_meshlet_draw_capacity +
-						int(batch.meshlet_draw_offset),
+						int(span.first_indirect),
 					) *
 					u64(size_of(WGPU_Draw_Indexed_Indirect)),
-					batch.meshlet_draw_count,
+					span.indirect_count,
+				)
+			} else if span.indirect_count > 1 {
+				wgpu.RenderPassEncoderMultiDrawIndexedIndirect(
+					pass,
+					renderer.gpu_shadow_indirect_buffer,
+					u64(
+						cascade_index * renderer.draw_batch_cache.batch_count +
+						int(span.first_indirect),
+					) *
+					u64(size_of(WGPU_Draw_Indexed_Indirect)),
+					span.indirect_count,
 				)
 			} else {
 				wgpu.RenderPassEncoderDrawIndexedIndirect(
 					pass,
 					renderer.gpu_shadow_indirect_buffer,
 					u64(
-						(cascade_index * renderer.draw_batch_cache.batch_count + batch_index) *
-						size_of(WGPU_Draw_Indexed_Indirect),
-					),
+						cascade_index * renderer.draw_batch_cache.batch_count +
+						int(span.first_indirect),
+					) *
+					u64(size_of(WGPU_Draw_Indexed_Indirect)),
 				)
 			}
+			batch_index = span.next_batch
 		}
 	}
 	wgpu.RenderPassEncoderEnd(pass)
@@ -3132,6 +3294,7 @@ wgpu_draw_frame :: proc(
 	}
 	if config.stats != nil {
 		config.stats.draw_batches = batch_count
+		wgpu_publish_geometry_arena_stats(renderer, config.stats, batches[:batch_count])
 		config.stats.draw_capacity = renderer.gpu_draw_capacity
 		config.stats.draw_database_rebuilds = renderer.gpu_draw_database_rebuild_count
 		config.stats.gpu_driven = true
@@ -3386,6 +3549,7 @@ wgpu_render_offscreen_frame :: proc(
 	}
 	if config != nil && config.stats != nil {
 		config.stats.draw_batches = batch_count
+		wgpu_publish_geometry_arena_stats(renderer, config.stats, batches[:batch_count])
 		config.stats.draw_capacity = renderer.gpu_draw_capacity
 		config.stats.draw_database_rebuilds = renderer.gpu_draw_database_rebuild_count
 		config.stats.gpu_driven = true

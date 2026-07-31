@@ -52,6 +52,7 @@ Runtime_Reimport_Proc :: #type proc(
 ) -> string
 Render_Stats :: struct {
 	draw_batches: int,
+	draw_submissions: int,
 	visible_batches: u32,
 	draw_capacity: int,
 	draw_database_rebuilds: u64,
@@ -122,6 +123,13 @@ Render_Stats :: struct {
 	instance_transform_upload_bytes: u64,
 	instance_expand_dispatches: u64,
 	instance_expanded_slots: u64,
+	geometry_vertex_arena_capacity_bytes: u64,
+	geometry_vertex_arena_resident_bytes: u64,
+	geometry_index_arena_capacity_bytes: u64,
+	geometry_index_arena_resident_bytes: u64,
+	geometry_arena_uploads: u64,
+	geometry_arena_upload_bytes: u64,
+	geometry_arena_growths: u64,
 	ui_vertex_rebuilds: u64,
 	ui_project_vertex_rebuilds: u64,
 	ui_editor_vertex_rebuilds: u64,

@@ -20,13 +20,18 @@ The WGPU backend includes:
 
 WGPU retains geometry/material/LOD batches across Transform-only frames. Stable ECS render slots address a backend-owned instance table. Transform changes pack into one dense update stream and one upload before GPU matrix/bounds expansion; static record changes still upload only coalesced dirty ranges. One compute pass produces separate camera-visible and shadow-visible instance lists plus their indirect counts. The renderer supports 131,072 instance slots and grows its draw database geometrically.
 
+Every exact Geometry version occupies aligned ranges in shared WGPU vertex and index arenas.
+Canonical and meshlet-expanded indices share the index arena. Changed versions reuse a fitting
+range or allocate from a coalescing free list; backing buffers grow geometrically. Unchanged frames
+perform no geometry allocation, scan, rebuild, or upload.
+
 Every registered Geometry also owns deterministic meshlets capped at 64 vertices and 124 triangles, including local index streams, conservative sphere bounds, and normal cones. They are built only when geometry is created or replaced and share its handle/version lifetime.
 
 Imported models compile eligible primitives into up to three deterministic compact LOD Geometry resources before runtime bootstrap. Their semantic handles survive harmless source reordering and reimport. The base resource publishes the same thresholds and alternate handles as procedural LOD resources, so CPU/GPU selection and debug views have no importer-specific path.
 
 When a native adapter exposes indirect-first-instance, WGPU retains one indexed-indirect command and aligned visible-instance slice per meshlet. A batch with at least two instances selects meshlet submission; a single-instance batch keeps one whole-primitive command so fine-grained culling cannot multiply driver command cost without reuse.
 
-After whole-object rejection and LOD selection, compute tests camera meshlets against the frustum, single-sided normal cone, and Hi-Z; shadow lanes test each cascade frustum. World, depth, and shadow can mix whole-primitive indirect draws with fixed meshlet multi-draws in the same pass. Meshlets, Meshlet Visibility, and Occlusion Queries force eligible batches through meshlet submission so diagnostics cover the complete retained cluster layout.
+After whole-object rejection and LOD selection, compute tests camera meshlets against the frustum, single-sided normal cone, and Hi-Z; shadow lanes test each cascade frustum. World, depth, and shadow can mix whole-primitive indirect draws with fixed meshlet multi-draws in the same pass. Arena-global offsets also let adjacent same-material LOD commands share one fixed multi-draw span without merging their visibility records. Meshlets, Meshlet Visibility, and Occlusion Queries force eligible batches through meshlet submission so diagnostics cover the complete retained cluster layout.
 
 Set `scrapbot.camera.debug_view` to `base_color`, `world_normals`, `roughness`, `metallic`, `depth`, `meshlets`, `lod`, `meshlet_visibility`, `hiz`, or `occlusion_queries` to capture the same diagnostics without opening the editor. `debug_hiz_mip` selects the retained pyramid level for `hiz`; `debug_occlusion_freeze` preserves the latest valid query records for `occlusion_queries`.
 
@@ -317,9 +322,9 @@ The output directory contains:
 
 Each row includes active CPU time, exact per-pass GPU time, their summed GPU frame duration, logical and physical dimensions, pixel density, viewport, shaded pixels, and a raw renderer snapshot. The snapshot includes effective `render_scale`, whether dynamic resolution is active, and its filtered scalable-GPU signal.
 
-The `workload` object records the dispatch size, render extent, draws, instances, or sample count behind each pass. It makes a timing actionable: for example, it distinguishes an expensive shader at a modest resolution from expected cost at a HiDPI physical resolution.
+The `workload` object records the dispatch size, render extent, encoded draw-submission spans, instances, or sample count behind each pass. It makes a timing actionable: for example, it distinguishes an expensive shader at a modest resolution from expected cost at a HiDPI physical resolution.
 
-`counter_deltas` turns cumulative upload, rebuild, dispatch, resize, redraw, and cache-hit totals into the work attributable to that frame.
+`counter_deltas` turns cumulative upload, rebuild, dispatch, resize, redraw, cache-hit, and geometry-arena mutation totals into the work attributable to that frame. Stable measured rows should report zero geometry arena uploads and growths.
 
 GPU timestamps arrive asynchronously. Scrapbot tags every readback with its originating frame and merges it into that exact row. Check `gpu_timing_valid` before using a row.
 

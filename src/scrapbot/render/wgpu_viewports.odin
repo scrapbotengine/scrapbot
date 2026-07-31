@@ -909,15 +909,28 @@ wgpu_encode_viewport_draws :: proc(
 			continue
 		}
 		wgpu.RenderPassEncoderSetBindGroup(pass, 1, material.bind_group)
-		wgpu.RenderPassEncoderSetVertexBuffer(pass, 0, geometry.vertex_buffer, 0, wgpu.WHOLE_SIZE)
+		wgpu.RenderPassEncoderSetVertexBuffer(
+			pass,
+			0,
+			renderer.geometry_vertex_arena.buffer,
+			0,
+			wgpu.WHOLE_SIZE,
+		)
 		wgpu.RenderPassEncoderSetIndexBuffer(
 			pass,
-			geometry.index_buffer,
+			renderer.geometry_index_arena.buffer,
 			.Uint32,
 			0,
 			wgpu.WHOLE_SIZE,
 		)
-		wgpu.RenderPassEncoderDrawIndexed(pass, u32(len(resource.indices)), 1, 0, 0, u32(index))
+		wgpu.RenderPassEncoderDrawIndexed(
+			pass,
+			u32(len(resource.indices)),
+			1,
+			u32(geometry.index_range.offset / u64(size_of(u32))),
+			i32(geometry.vertex_range.offset / u64(size_of(resources.Vertex))),
+			u32(index),
+		)
 	}
 	wgpu.RenderPassEncoderEnd(pass)
 	renderer.ui_viewport_redraw_count += 1

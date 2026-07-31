@@ -48,6 +48,9 @@ Profile_Workload :: struct {
 
 Profile_Counter_Deltas :: struct {
 	draw_database_rebuilds: u64,
+	geometry_arena_uploads: u64,
+	geometry_arena_upload_bytes: u64,
+	geometry_arena_growths: u64,
 	cluster_dispatches: u64,
 	instance_uploads: u64,
 	instance_upload_bytes: u64,
@@ -294,6 +297,18 @@ profile_counter_deltas :: proc(current, previous: Render_Stats) -> Profile_Count
 		draw_database_rebuilds = profile_counter_delta(
 			current.draw_database_rebuilds,
 			previous.draw_database_rebuilds,
+		),
+		geometry_arena_uploads = profile_counter_delta(
+			current.geometry_arena_uploads,
+			previous.geometry_arena_uploads,
+		),
+		geometry_arena_upload_bytes = profile_counter_delta(
+			current.geometry_arena_upload_bytes,
+			previous.geometry_arena_upload_bytes,
+		),
+		geometry_arena_growths = profile_counter_delta(
+			current.geometry_arena_growths,
+			previous.geometry_arena_growths,
 		),
 		cluster_dispatches = profile_counter_delta(
 			current.cluster_dispatches,

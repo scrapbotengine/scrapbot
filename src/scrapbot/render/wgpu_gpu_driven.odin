@@ -18,6 +18,13 @@ WGPU_MESHLET_DEBUG_VERTEX_COUNT ::
 	WGPU_MESHLET_DEBUG_SPHERE_VERTEX_COUNT + WGPU_OCCLUSION_DEBUG_RECT_VERTEX_COUNT
 WGPU_MESHLET_MIN_BATCH_INSTANCES :: u32(2)
 
+WGPU_Draw_Submission_Span :: struct {
+	next_batch: int,
+	first_indirect: u32,
+	indirect_count: u32,
+	meshlets: bool,
+}
+
 wgpu_meshlet_batch_submission :: proc "contextless" (meshlet_count, instance_count: u32) -> bool {
 	return meshlet_count > 0 && instance_count >= WGPU_MESHLET_MIN_BATCH_INSTANCES
 }
@@ -65,6 +72,51 @@ wgpu_active_classic_batch_count :: proc "contextless" (renderer: ^WGPU_Renderer)
 		return 0
 	}
 	return renderer.gpu_classic_batch_count
+}
+
+wgpu_draw_submission_span :: proc "contextless" (
+	renderer: ^WGPU_Renderer,
+	batches: []WGPU_Draw_Batch,
+	start: int,
+) -> WGPU_Draw_Submission_Span {
+	if renderer == nil || start < 0 || start >= len(batches) {
+		return {next_batch = start + 1}
+	}
+	first := batches[start]
+	meshlets := renderer.gpu_meshlet_supported && wgpu_batch_uses_meshlets(renderer, first)
+	span := WGPU_Draw_Submission_Span {
+		next_batch = start + 1,
+		first_indirect = first.meshlet_draw_offset if meshlets else u32(start),
+		indirect_count = first.meshlet_draw_count if meshlets else 1,
+		meshlets = meshlets,
+	}
+	if !renderer.gpu_meshlet_supported {
+		return span
+	}
+	for batch_index in start + 1 ..< len(batches) {
+		batch := batches[batch_index]
+		if batch.material != first.material ||
+		   wgpu_batch_uses_meshlets(renderer, batch) != meshlets {
+			break
+		}
+		span.next_batch = batch_index + 1
+		span.indirect_count += batch.meshlet_draw_count if meshlets else 1
+	}
+	return span
+}
+
+wgpu_draw_submission_count :: proc "contextless" (
+	renderer: ^WGPU_Renderer,
+	batches: []WGPU_Draw_Batch,
+) -> int {
+	count := 0
+	batch_index := 0
+	for batch_index < len(batches) {
+		span := wgpu_draw_submission_span(renderer, batches, batch_index)
+		batch_index = span.next_batch
+		count += 1
+	}
+	return count
 }
 
 wgpu_meshlet_visible_buffer_bytes :: proc "contextless" (capacity: int) -> u64 {
@@ -1445,19 +1497,35 @@ wgpu_release_batch_bind_groups :: proc(cache: ^WGPU_Draw_Batch_Cache) {
 				wgpu.BindGroupRelease(shadow_bind_group)
 			}
 		}
-		if batch.meshlet_world_bind_group != nil {
-			wgpu.BindGroupRelease(batch.meshlet_world_bind_group)
-		}
-		for shadow_bind_group in batch.meshlet_shadow_bind_groups {
-			if shadow_bind_group != nil {
-				wgpu.BindGroupRelease(shadow_bind_group)
-			}
-		}
 		batch.world_bind_group = nil
 		batch.shadow_bind_groups = {}
-		batch.meshlet_world_bind_group = nil
-		batch.meshlet_shadow_bind_groups = {}
 	}
+}
+
+wgpu_release_submission_bind_groups :: proc(renderer: ^WGPU_Renderer) {
+	if renderer == nil {
+		return
+	}
+	if renderer.gpu_world_bind_group != nil {
+		wgpu.BindGroupRelease(renderer.gpu_world_bind_group)
+	}
+	if renderer.gpu_meshlet_world_bind_group != nil {
+		wgpu.BindGroupRelease(renderer.gpu_meshlet_world_bind_group)
+	}
+	for bind_group in renderer.gpu_shadow_bind_groups {
+		if bind_group != nil {
+			wgpu.BindGroupRelease(bind_group)
+		}
+	}
+	for bind_group in renderer.gpu_meshlet_shadow_bind_groups {
+		if bind_group != nil {
+			wgpu.BindGroupRelease(bind_group)
+		}
+	}
+	renderer.gpu_world_bind_group = nil
+	renderer.gpu_shadow_bind_groups = {}
+	renderer.gpu_meshlet_world_bind_group = nil
+	renderer.gpu_meshlet_shadow_bind_groups = {}
 }
 
 wgpu_make_batch_bind_group :: proc(
@@ -1567,6 +1635,82 @@ wgpu_make_batch_bind_group :: proc(
 	)
 }
 
+wgpu_rebuild_submission_bind_groups :: proc(renderer: ^WGPU_Renderer) -> string {
+	if renderer == nil || !renderer.gpu_meshlet_supported {
+		return ""
+	}
+	world_bind_group := wgpu_make_batch_bind_group(
+		renderer,
+		renderer.gpu_visible_buffer,
+		0,
+		u32(renderer.gpu_visible_buffer_capacity),
+		"Scrapbot GPU Shared World Bind Group",
+	)
+	meshlet_world_bind_group := wgpu_make_batch_bind_group(
+		renderer,
+		renderer.gpu_meshlet_visible_buffer,
+		0,
+		u32(renderer.gpu_meshlet_visible_buffer_capacity),
+		"Scrapbot GPU Shared Meshlet World Bind Group",
+		meshlet_identity = true,
+	)
+	shadow_bind_groups: [WGPU_SHADOW_CASCADE_COUNT]wgpu.BindGroup
+	meshlet_shadow_bind_groups: [WGPU_SHADOW_CASCADE_COUNT]wgpu.BindGroup
+	for cascade_index in 0 ..< WGPU_SHADOW_CASCADE_COUNT {
+		shadow_bind_groups[cascade_index] = wgpu_make_batch_bind_group(
+			renderer,
+			renderer.gpu_shadow_visible_buffer,
+			0,
+			u32(renderer.gpu_visible_buffer_capacity),
+			"Scrapbot GPU Shared Shadow Bind Group",
+			true,
+			cascade_index,
+		)
+		meshlet_shadow_bind_groups[cascade_index] = wgpu_make_batch_bind_group(
+			renderer,
+			renderer.gpu_meshlet_shadow_visible_buffer,
+			0,
+			u32(renderer.gpu_meshlet_visible_buffer_capacity),
+			"Scrapbot GPU Shared Meshlet Shadow Bind Group",
+			true,
+			cascade_index,
+			renderer.gpu_meshlet_visible_buffer_capacity,
+		)
+	}
+	valid := world_bind_group != nil && meshlet_world_bind_group != nil
+	for cascade_index in 0 ..< WGPU_SHADOW_CASCADE_COUNT {
+		valid =
+			valid &&
+			shadow_bind_groups[cascade_index] != nil &&
+			meshlet_shadow_bind_groups[cascade_index] != nil
+	}
+	if !valid {
+		if world_bind_group != nil {
+			wgpu.BindGroupRelease(world_bind_group)
+		}
+		if meshlet_world_bind_group != nil {
+			wgpu.BindGroupRelease(meshlet_world_bind_group)
+		}
+		for bind_group in shadow_bind_groups {
+			if bind_group != nil {
+				wgpu.BindGroupRelease(bind_group)
+			}
+		}
+		for bind_group in meshlet_shadow_bind_groups {
+			if bind_group != nil {
+				wgpu.BindGroupRelease(bind_group)
+			}
+		}
+		return "failed to create shared GPU submission bind groups"
+	}
+	wgpu_release_submission_bind_groups(renderer)
+	renderer.gpu_world_bind_group = world_bind_group
+	renderer.gpu_shadow_bind_groups = shadow_bind_groups
+	renderer.gpu_meshlet_world_bind_group = meshlet_world_bind_group
+	renderer.gpu_meshlet_shadow_bind_groups = meshlet_shadow_bind_groups
+	return ""
+}
+
 wgpu_sync_gpu_topology :: proc(
 	renderer: ^WGPU_Renderer,
 	render_list: ^Render_List,
@@ -1658,6 +1802,9 @@ wgpu_refresh_gpu_batch_layout :: proc(
 			return buffer_err
 		}
 	}
+	if bind_group_err := wgpu_rebuild_submission_bind_groups(renderer); bind_group_err != "" {
+		return bind_group_err
+	}
 	batch_info := make([]WGPU_GPU_Batch_Info, cache.batch_count)
 	defer delete(batch_info)
 	meshlet_identity_count := 1
@@ -1681,61 +1828,31 @@ wgpu_refresh_gpu_batch_layout :: proc(
 			meshlet_count = batch.meshlet_draw_count,
 			meshlet_enabled = 1 if batch.meshlet_submission else 0,
 		}
-		batch.world_bind_group = wgpu_make_batch_bind_group(
-			renderer,
-			renderer.gpu_visible_buffer,
-			batch.visible_offset,
-			batch.visible_capacity,
-			"Scrapbot GPU-Driven Batch Bind Group",
-		)
-		for cascade_index in 0 ..< WGPU_SHADOW_CASCADE_COUNT {
-			batch.shadow_bind_groups[cascade_index] = wgpu_make_batch_bind_group(
+		if !renderer.gpu_meshlet_supported {
+			batch.world_bind_group = wgpu_make_batch_bind_group(
 				renderer,
-				renderer.gpu_shadow_visible_buffer,
+				renderer.gpu_visible_buffer,
 				batch.visible_offset,
 				batch.visible_capacity,
-				"Scrapbot GPU-Driven Shadow Batch Bind Group",
-				true,
-				cascade_index,
-			)
-		}
-		if renderer.gpu_meshlet_layout_valid {
-			batch.meshlet_world_bind_group = wgpu_make_batch_bind_group(
-				renderer,
-				renderer.gpu_meshlet_visible_buffer,
-				batch.meshlet_visible_offset,
-				batch.meshlet_visible_capacity,
-				"Scrapbot GPU Meshlet Batch Bind Group",
-				meshlet_identity = true,
+				"Scrapbot GPU-Driven Batch Bind Group",
 			)
 			for cascade_index in 0 ..< WGPU_SHADOW_CASCADE_COUNT {
-				batch.meshlet_shadow_bind_groups[cascade_index] = wgpu_make_batch_bind_group(
+				batch.shadow_bind_groups[cascade_index] = wgpu_make_batch_bind_group(
 					renderer,
-					renderer.gpu_meshlet_shadow_visible_buffer,
-					batch.meshlet_visible_offset,
-					batch.meshlet_visible_capacity,
-					"Scrapbot GPU Meshlet Shadow Batch Bind Group",
+					renderer.gpu_shadow_visible_buffer,
+					batch.visible_offset,
+					batch.visible_capacity,
+					"Scrapbot GPU-Driven Shadow Batch Bind Group",
 					true,
 					cascade_index,
-					renderer.gpu_meshlet_visible_buffer_capacity,
 				)
 			}
-		}
-		if batch.world_bind_group == nil {
-			return "failed to create GPU-driven batch bind groups"
-		}
-		for shadow_bind_group in batch.shadow_bind_groups {
-			if shadow_bind_group == nil {
-				return "failed to create GPU-driven shadow batch bind groups"
+			if batch.world_bind_group == nil {
+				return "failed to create GPU-driven batch bind groups"
 			}
-		}
-		if renderer.gpu_meshlet_layout_valid {
-			if batch.meshlet_world_bind_group == nil {
-				return "failed to create GPU meshlet batch bind group"
-			}
-			for shadow_bind_group in batch.meshlet_shadow_bind_groups {
+			for shadow_bind_group in batch.shadow_bind_groups {
 				if shadow_bind_group == nil {
-					return "failed to create GPU meshlet shadow batch bind groups"
+					return "failed to create GPU-driven shadow batch bind groups"
 				}
 			}
 		}
@@ -1747,7 +1864,8 @@ wgpu_refresh_gpu_batch_layout :: proc(
 		if !geometry_ok {
 			return "GPU draw batch references unavailable geometry"
 		}
-		first_index: u32
+		first_index := u32(geometry.meshlet_index_range.offset / u64(size_of(u32)))
+		base_vertex := i32(geometry.vertex_range.offset / u64(size_of(resources.Vertex)))
 		per_meshlet_capacity := wgpu_align_visible_capacity(batch.instance_count)
 		for meshlet, local_meshlet_index in geometry_resource.meshlets {
 			meshlet_index := int(batch.meshlet_draw_offset) + local_meshlet_index
@@ -1762,7 +1880,8 @@ wgpu_refresh_gpu_batch_layout :: proc(
 			renderer.gpu_meshlet_indirect_templates[meshlet_index] = {
 				index_count = meshlet.triangle_count * 3,
 				first_index = first_index,
-				first_instance = local_visible_offset,
+				base_vertex = base_vertex,
+				first_instance = batch.meshlet_visible_offset + local_visible_offset,
 			}
 			if renderer.gpu_meshlet_layout_valid {
 				for identity_index in 0 ..< int(per_meshlet_capacity) {
@@ -1830,20 +1949,37 @@ wgpu_update_indirect_template_cache :: proc(
 		changed = true
 	}
 	for batch, batch_index in cache.batches[:cache.batch_count] {
-		geometry, ok := resources.get_geometry(registry, batch.geometry)
-		if !ok {
-			return false, "GPU draw batch references unavailable geometry"
+		geometry, geometry_err := wgpu_geometry_cache(renderer, registry, batch.geometry)
+		if geometry_err != "" {
+			return false, geometry_err
 		}
-		template := WGPU_Draw_Indexed_Indirect {
-				index_count = u32(len(geometry.indices)),
-				first_instance = 0,
-			}
+		template := wgpu_geometry_indirect_template(
+			geometry,
+			batch.visible_offset,
+			renderer.gpu_meshlet_supported,
+		)
 		if renderer.gpu_indirect_templates[batch_index] != template {
 			renderer.gpu_indirect_templates[batch_index] = template
 			changed = true
 		}
 	}
 	return
+}
+
+wgpu_geometry_indirect_template :: proc "contextless" (
+	geometry: ^WGPU_Geometry_Cache,
+	visible_offset: u32,
+	global_visible_buffer: bool,
+) -> WGPU_Draw_Indexed_Indirect {
+	if geometry == nil {
+		return {}
+	}
+	return {
+		index_count = geometry.index_count,
+		first_index = u32(geometry.index_range.offset / u64(size_of(u32))),
+		base_vertex = i32(geometry.vertex_range.offset / u64(size_of(resources.Vertex))),
+		first_instance = visible_offset if global_visible_buffer else 0,
+	}
 }
 
 wgpu_refresh_indirect_templates :: proc(

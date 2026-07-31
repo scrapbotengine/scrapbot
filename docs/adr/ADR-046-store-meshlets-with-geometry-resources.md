@@ -31,9 +31,9 @@ The source vertices and full index buffer remain canonical. ECS components conti
 one generational Geometry handle, LOD selection continues to resolve Geometry handles, and no
 meshlet identity enters scene files, Luau payloads, or the native extension ABI.
 
-On adapters that expose `indirect-first-instance`, WGPU expands the local triangle streams into one
-meshlet-ordered index buffer per Geometry version. It retains meshlet metadata, visibility slices,
-and indexed-indirect templates beside the existing whole-primitive draw database.
+On adapters that expose `indirect-first-instance`, WGPU expands the local triangle streams into a
+meshlet-ordered index range in the shared geometry index arena. It retains meshlet metadata,
+visibility slices, and indexed-indirect templates beside the existing whole-primitive draw database.
 WGPU also requests native multi-draw-count when available, which guarantees fixed multi-draw is
 not emulated internally; adapters without it retain correct fixed multi-draw semantics.
 
@@ -91,4 +91,4 @@ caps the total at 1,048,576 entries and falls back rather than allocating unboun
 Meshlet metadata, templates, bind groups, selection policy, and expanded index buffers rebuild only
 after Geometry version/topology, batch-capacity, policy-threshold, or dependent GPU-buffer changes.
 Stable frames only reset/copy the active retained indirect templates and run current-frame compute
-and render commands.
+and render commands. See ADR-048 for shared arena ownership and compatible submission spans.

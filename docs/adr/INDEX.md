@@ -49,3 +49,4 @@
 | [ADR-045](ADR-045-compose-docking-from-public-groups-and-layout.md) | Compose docking from public groups and layout | 2026-07-30 |
 | [ADR-046](ADR-046-store-meshlets-with-geometry-resources.md) | Store meshlets with geometry resources | 2026-07-30 |
 | [ADR-047](ADR-047-generate-imported-mesh-lods-in-asset-products.md) | Generate imported mesh LODs in asset products | 2026-07-31 |
+| [ADR-048](ADR-048-suballocate-geometry-in-shared-wgpu-arenas.md) | Suballocate geometry in shared WGPU arenas | 2026-07-31 |

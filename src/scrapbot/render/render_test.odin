@@ -650,6 +650,97 @@ test_gpu_resource_cache_reuses_slots_across_handle_generations :: proc(t: ^testi
 }
 
 @(test)
+test_wgpu_geometry_arena_reuses_aligned_ranges_and_coalesces_releases :: proc(t: ^testing.T) {
+	allocator: WGPU_Arena_Allocator
+	defer delete(allocator.free_ranges)
+	first := wgpu_arena_allocate(&allocator, 60, 16)
+	second := wgpu_arena_allocate(&allocator, 20, 16)
+	testing.expect_value(t, first, WGPU_Arena_Range{offset = 0, size = 60})
+	testing.expect_value(t, second, WGPU_Arena_Range{offset = 64, size = 20})
+	testing.expect_value(t, allocator.high_water, u64(84))
+	testing.expect_value(t, allocator.resident_bytes, u64(80))
+
+	wgpu_arena_release(&allocator, first)
+	wgpu_arena_release(&allocator, second)
+	testing.expect_value(t, allocator.resident_bytes, u64(0))
+	testing.expect_value(t, len(allocator.free_ranges), 1)
+	testing.expect_value(t, allocator.free_ranges[0], WGPU_Arena_Range{offset = 0, size = 84})
+
+	reused := wgpu_arena_allocate(&allocator, 80, 16)
+	testing.expect_value(t, reused, WGPU_Arena_Range{offset = 0, size = 80})
+	testing.expect_value(t, allocator.high_water, u64(84))
+	testing.expect_value(t, allocator.resident_bytes, u64(80))
+}
+
+@(test)
+test_wgpu_geometry_cache_release_returns_all_arena_ranges :: proc(t: ^testing.T) {
+	renderer: WGPU_Renderer
+	defer delete(renderer.geometry_vertex_arena.allocator.free_ranges)
+	defer delete(renderer.geometry_index_arena.allocator.free_ranges)
+	vertex_range := wgpu_arena_allocate(&renderer.geometry_vertex_arena.allocator, 96, 16)
+	index_range := wgpu_arena_allocate(&renderer.geometry_index_arena.allocator, 48, 4)
+	meshlet_range := wgpu_arena_allocate(&renderer.geometry_index_arena.allocator, 64, 4)
+	cached := WGPU_Geometry_Cache {
+		handle = {index = 3, generation = 2},
+		vertex_range = vertex_range,
+		index_range = index_range,
+		meshlet_index_range = meshlet_range,
+		valid = true,
+	}
+
+	wgpu_release_geometry_cache_ranges(&renderer, &cached)
+
+	testing.expect(t, !cached.valid)
+	testing.expect_value(t, renderer.geometry_vertex_arena.allocator.resident_bytes, u64(0))
+	testing.expect_value(t, renderer.geometry_index_arena.allocator.resident_bytes, u64(0))
+	testing.expect_value(t, len(renderer.geometry_vertex_arena.allocator.free_ranges), 1)
+	testing.expect_value(t, len(renderer.geometry_index_arena.allocator.free_ranges), 1)
+}
+
+@(test)
+test_wgpu_geometry_arena_submission_spans_merge_compatible_lod_batches :: proc(t: ^testing.T) {
+	material := shared.Material_Handle {
+		index = 4,
+		generation = 2,
+	}
+	other_material := shared.Material_Handle {
+		index = 5,
+		generation = 1,
+	}
+	batches := [?]WGPU_Draw_Batch {
+		{material = material, meshlet_draw_offset = 0, meshlet_draw_count = 2},
+		{material = material, meshlet_draw_offset = 2, meshlet_draw_count = 3},
+		{material = material, meshlet_draw_offset = 5, meshlet_draw_count = 4},
+		{material = other_material, meshlet_draw_offset = 9, meshlet_draw_count = 1},
+	}
+	renderer := WGPU_Renderer {
+		gpu_meshlet_supported = true,
+	}
+	span := wgpu_draw_submission_span(&renderer, batches[:], 0)
+	testing.expect_value(t, span.next_batch, 3)
+	testing.expect_value(t, span.first_indirect, u32(0))
+	testing.expect_value(t, span.indirect_count, u32(3))
+	testing.expect(t, !span.meshlets)
+	testing.expect_value(t, wgpu_draw_submission_count(&renderer, batches[:]), 2)
+
+	renderer.gpu_meshlet_submission_active = true
+	for &batch in batches[:3] {
+		batch.meshlet_submission = true
+	}
+	span = wgpu_draw_submission_span(&renderer, batches[:], 0)
+	testing.expect_value(t, span.next_batch, 3)
+	testing.expect_value(t, span.first_indirect, u32(0))
+	testing.expect_value(t, span.indirect_count, u32(9))
+	testing.expect(t, span.meshlets)
+	testing.expect_value(t, wgpu_draw_submission_count(&renderer, batches[:]), 2)
+
+	renderer.gpu_meshlet_supported = false
+	span = wgpu_draw_submission_span(&renderer, batches[:], 0)
+	testing.expect_value(t, span.next_batch, 1)
+	testing.expect_value(t, span.indirect_count, u32(1))
+}
+
+@(test)
 test_renderer_backend_names_parse :: proc(t: ^testing.T) {
 	backend, ok := parse_renderer_backend("null")
 	testing.expect(t, ok)
@@ -1791,6 +1882,9 @@ test_profile_reports_per_frame_counter_deltas_after_warmup :: proc(t: ^testing.T
 		cluster_dispatches = 7,
 		instance_uploads = 11,
 		instance_upload_bytes = 1024,
+		geometry_arena_uploads = 101,
+		geometry_arena_upload_bytes = 4096,
+		geometry_arena_growths = 2,
 		ui_vertex_rebuilds = 5,
 		ui_vertex_upload_bytes = 2048,
 	}
@@ -1799,6 +1893,9 @@ test_profile_reports_per_frame_counter_deltas_after_warmup :: proc(t: ^testing.T
 	stats.cluster_dispatches += 1
 	stats.instance_uploads += 2
 	stats.instance_upload_bytes += 96
+	stats.geometry_arena_uploads += 3
+	stats.geometry_arena_upload_bytes += 768
+	stats.geometry_arena_growths += 1
 	stats.ui_vertex_rebuilds += 1
 	profile_record_frame(&collector, 1, 0, 0, 100, 100, 1, {}, &stats)
 
@@ -1807,6 +1904,9 @@ test_profile_reports_per_frame_counter_deltas_after_warmup :: proc(t: ^testing.T
 	testing.expect_value(t, first.cluster_dispatches, u64(1))
 	testing.expect_value(t, first.instance_uploads, u64(2))
 	testing.expect_value(t, first.instance_upload_bytes, u64(96))
+	testing.expect_value(t, first.geometry_arena_uploads, u64(3))
+	testing.expect_value(t, first.geometry_arena_upload_bytes, u64(768))
+	testing.expect_value(t, first.geometry_arena_growths, u64(1))
 	testing.expect_value(t, first.ui_vertex_rebuilds, u64(1))
 	testing.expect_value(t, first.ui_vertex_upload_bytes, u64(0))
 
@@ -1872,45 +1972,21 @@ test_wgpu_gpu_shadow_timing_uses_distinct_queries_for_every_cascade :: proc(t: ^
 }
 
 @(test)
-test_wgpu_indirect_template_tracks_in_place_geometry_replacement :: proc(t: ^testing.T) {
-	registry: resources.Registry
-	defer resources.destroy_registry(&registry)
-	cube, cube_err := resources.cube()
-	defer delete(cube.vertices)
-	defer delete(cube.indices)
-	testing.expect(t, cube_err == "")
-	handle, register_err := resources.register_geometry(&registry, "mutable", cube)
-	testing.expect(t, register_err == "")
-	cache := WGPU_Draw_Batch_Cache {
-		batch_count = 1,
+test_wgpu_indirect_template_uses_shared_geometry_arena_offsets :: proc(t: ^testing.T) {
+	geometry := WGPU_Geometry_Cache {
+		vertex_range = {offset = u64(size_of(resources.Vertex)) * 17, size = 4096},
+		index_range = {offset = u64(size_of(u32)) * 31, size = 2048},
+		index_count = 123,
+		valid = true,
 	}
-	defer delete(cache.batches)
-	append(&cache.batches, WGPU_Draw_Batch{geometry = handle})
-	renderer: WGPU_Renderer
-	defer delete(renderer.gpu_indirect_templates)
-	changed, before_err := wgpu_update_indirect_template_cache(&renderer, &cache, &registry)
-	testing.expect(t, before_err == "")
-	testing.expect(t, changed)
-	before_index_count := renderer.gpu_indirect_templates[0].index_count
-	testing.expect(t, before_index_count == u32(len(cube.indices)))
-	stable_err: string
-	changed, stable_err = wgpu_update_indirect_template_cache(&renderer, &cache, &registry)
-	testing.expect(t, stable_err == "")
-	testing.expect(t, !changed)
+	template := wgpu_geometry_indirect_template(&geometry, 44, true)
+	testing.expect_value(t, template.index_count, u32(123))
+	testing.expect_value(t, template.first_index, u32(31))
+	testing.expect_value(t, template.base_vertex, i32(17))
+	testing.expect_value(t, template.first_instance, u32(44))
 
-	plane, plane_err := resources.plane()
-	defer delete(plane.vertices)
-	defer delete(plane.indices)
-	testing.expect(t, plane_err == "")
-	updated, update_err := resources.register_geometry(&registry, "mutable", plane)
-	testing.expect(t, update_err == "")
-	testing.expect(t, updated == handle)
-	after_err: string
-	changed, after_err = wgpu_update_indirect_template_cache(&renderer, &cache, &registry)
-	testing.expect(t, after_err == "")
-	testing.expect(t, changed)
-	testing.expect(t, renderer.gpu_indirect_templates[0].index_count == u32(len(plane.indices)))
-	testing.expect(t, renderer.gpu_indirect_templates[0].index_count != before_index_count)
+	template = wgpu_geometry_indirect_template(&geometry, 44, false)
+	testing.expect_value(t, template.first_instance, u32(0))
 }
 
 test_count_frame_system :: proc(data: rawptr, world: ^World, delta_seconds: f32) -> string {

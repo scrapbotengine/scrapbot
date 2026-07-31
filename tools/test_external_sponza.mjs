@@ -117,6 +117,9 @@ function main() {
     if (
       rendered.result?.renderables !== 103 ||
       rendered.result?.draw_batches !== metadata.primitive_count + metadata.lod_count ||
+	  rendered.result?.render_stats?.draw_submissions >= rendered.result?.draw_batches ||
+	  rendered.result?.render_stats?.geometry_vertex_arena_resident_bytes <= 0 ||
+	  rendered.result?.render_stats?.geometry_index_arena_resident_bytes <= 0 ||
       rendered.result?.render_stats?.clustered_point_lights !== 11 ||
       rendered.result?.render_stats?.gpu_ambient_occlusion_ms <= 0 ||
       rendered.result?.render_stats?.gpu_screen_space_reflections_ms <= 0 ||

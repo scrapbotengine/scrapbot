@@ -478,7 +478,13 @@ for (const [label, raw, expectedCompute] of [["compute", process.argv[1], true],
       stats.cluster_dispatches < 1 ||
       result.result.renderables <= 64 || stats.instance_capacity < 100000 ||
       result.result.draw_batches <= 64 || stats.draw_capacity < result.result.draw_batches ||
+	  stats.draw_submissions < 1 || stats.draw_submissions > stats.draw_batches ||
       stats.draw_database_rebuilds < 1 || stats.instance_slots <= 64 ||
+	  stats.geometry_vertex_arena_capacity_bytes < stats.geometry_vertex_arena_resident_bytes ||
+	  stats.geometry_index_arena_capacity_bytes < stats.geometry_index_arena_resident_bytes ||
+	  stats.geometry_vertex_arena_resident_bytes <= 0 ||
+	  stats.geometry_index_arena_resident_bytes <= 0 ||
+	  stats.geometry_arena_uploads < 1 || stats.geometry_arena_upload_bytes <= 0 ||
       stats.instance_uploads < 1 ||
       stats.instance_uploads - stats.instance_transform_uploads >= 10 ||
       stats.instance_upload_bytes <= 0 || stats.frustum_culled_instances < 1 ||

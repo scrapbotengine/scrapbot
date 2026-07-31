@@ -37,9 +37,14 @@ The panel also shows the latest valid asynchronous GPU frame and scene durations
 
 **Retained Batches** is stable draw-database topology: one entry for each geometry/material/LOD combination the loaded scene may render. Culling never removes these records merely because the camera turns.
 
+Structured `render_stats.draw_submissions` is the number of compatible indirect command spans
+encoded for one pass. It can be lower than Retained Batches because shared geometry arenas let
+adjacent same-material LOD or meshlet commands retain separate visibility while sharing bindings
+and one fixed multi-draw call.
+
 **Visible Batches** counts camera batches with at least one object that survived object-level frustum and Hi-Z culling and selected that LOD. **Visible Meshlet Draws** counts meshlet indirect commands that received at least one surviving instance after meshlet frustum, cone, and Hi-Z tests. The latter is zero on the whole-primitive CPU-reference path.
 
-All three values describe camera submission, not shadow-cascade visibility. Retained batches can therefore remain high while visible batches and meshlet draws approach zero. Empty indirect commands produce no triangles, although encoding retained batch bindings and command ranges still has a bounded cost.
+The panel's three values describe camera visibility, not shadow-cascade visibility. Retained batches can therefore remain high while visible batches and meshlet draws approach zero. Empty indirect commands produce no triangles. Compatible commands still occupy retained topology but share bounded submission spans.
 
 The Hi-Z state explains why an occlusion count may be zero:
 

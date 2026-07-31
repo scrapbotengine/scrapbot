@@ -81,6 +81,13 @@ existing per-batch counts and reports zero meshlet draws.
 
 Resource caches replace stale generations by stable handle index. A material entry owns its generated textures/views, factor uniform, and bind group as one lifetime. Borrowed first-class Texture entries remain separately owned.
 
+Geometry cache entries own aligned ranges rather than GPU buffers. One WGPU vertex arena and one
+index arena own the backing buffers, aligned first-fit free lists, high-water marks, and cumulative
+mutation counters. Exact version hits do no allocator or upload work. Replacement commits new
+ranges only after all uploads succeed; stale handles are reclaimed when the registry's geometry
+topology revision changes. Growth is geometric and copies retained bytes before replacing the
+backing buffer. Stable frames never scan, compact, hash, or upload the arenas.
+
 Batch bind groups are released before cache storage is cleared. Exact lighting/background handle or content-version changes rebuild only the shared environment binding. The sky camera/projection uniform uploads only after an exact value change.
 
 ### Lights, shadows, and visibility

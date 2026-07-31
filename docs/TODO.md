@@ -6,7 +6,7 @@ This file tracks current actionable engineering work. The broad product roadmap 
 
 - [ ] Design baked/captured local reflection-probe resources, ECS volume components, probe selection/blending, and an editor bake workflow on top of global imported IBL.
 - [ ] Add GPU-native compressed texture products for imported images.
-- [ ] Pack compatible Geometry/LOD buffers into shared GPU arenas so GPU-selected imported LODs do not require one CPU-encoded indirect call per retained alternate; benchmark the result on Sponza. See [ADR-047](adr/ADR-047-generate-imported-mesh-lods-in-asset-products.md).
+- [ ] Add page-addressed hierarchical virtual Geometry products, bounded GPU residency, fallback root clusters, and residency debug views over shared WGPU arenas. See [ADR-048](adr/ADR-048-suballocate-geometry-in-shared-wgpu-arenas.md).
 - [ ] Add sorted glTF `BLEND` transparency, richer PBR extensions, animation, skins, morph targets, and compressed geometry. (`OPAQUE`, `MASK`, alpha cutoffs, and double-sided materials are supported.)
 - [ ] Add optional per-target post-processing, grids, axes, wireframe, and transparent presentation to embedded ECS viewports.
 - [ ] Generalize retained-World viewport targets into explicitly addressable concurrent ECS worlds when multi-world runtime ownership exists.

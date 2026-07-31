@@ -49,10 +49,11 @@ Any imported static model can use the existing GPU LOD path without renderer-spe
 Generated levels are deterministic cached asset work, while stable frames perform no simplification,
 product scan, Geometry rebuild, or upload.
 
-Model products and runtime registries retain additional geometry. Every retained alternate also
-adds a possible renderer batch, even when GPU culling writes a zero indirect instance count.
-Projects can reduce the number of levels, tune their thresholds, or disable generation when command
-topology or memory costs outweigh reduced triangle work.
+Model products and runtime registries retain additional geometry. Every retained alternate adds a
+logical renderer batch even when GPU culling writes a zero indirect instance count. Shared WGPU
+geometry arenas let compatible adjacent alternates share bindings and one fixed multi-draw
+submission; see ADR-048. Projects can still reduce the number of levels, tune their thresholds, or
+disable generation when retained topology or memory costs outweigh reduced triangle work.
 
 The current simplifier preserves source attributes by choosing among source vertices. It does not
 regenerate tangents, merge material primitives, or simplify animation, skins, or morph targets.

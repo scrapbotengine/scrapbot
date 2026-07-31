@@ -26,7 +26,7 @@ Pluggable rendering backends allow Scrapbot to start with `wgpu-native` while ke
   - builds five bloom levels, then tone maps once into the sRGB presentation target.
 - Project UI, transform gizmos, editor-only project-camera bodies and projection frusta, and editor chrome render after world postprocessing and do not bloom.
 - Eligible entities receive internal render-instance components automatically.
-- Shared geometry/material pairs use one instanced draw batch, and geometry and material texture uploads are cached by handle and version.
+- Shared geometry/material pairs use one instanced draw batch. Geometry versions occupy aligned ranges in shared WGPU vertex/index arenas, while material texture uploads remain cached by handle and version.
 - WGPU keeps a persistent slot-addressed GPU instance table, separates static source state from hot Transform state, sends Transform-only changes through one dense update upload, coalesces nearby static slot changes into bounded uploads, retains compact render/culling uniforms and instance-to-LOD batch mappings, computes camera and shadow frustum visibility into compacted batch slices, and obtains instance counts from indexed indirect draw arguments.
 - The retained draw database grows geometrically past the original 64-batch limit. It rebuilds only when render membership, geometry LOD topology, or required capacity changes.
 - Every Geometry version owns bounded meshlets. Adapters with indirect-first-instance support retain one indirect command and aligned visible-instance slice per meshlet. Each retained batch chooses whole-primitive or meshlet submission from its membership; meshlet-selected batches use sphere, normal-cone, Hi-Z, and cascade tests before fixed multi-draw. Meshlet debug views force the detailed path. Unsupported adapters, `--cpu-culling`, low-instance batches, and layouts above the bounded visibility capacity use whole-primitive draws.
@@ -36,7 +36,7 @@ Pluggable rendering backends allow Scrapbot to start with `wgpu-native` while ke
 - Large stable scenes run a depth prepass, build a max-depth Hi-Z pyramid, and conservatively reject occluded bounding spheres from the following frame. Camera or persistent-instance changes disable stale-pyramid rejection for that frame. Hi-Z queries cover the complete coarse-mip footprint; camera-plane crossings and large near-field bounds remain visible rather than risking a false rejection.
 - UUID-backed `scrapbot.geometry_lod` project resources declare generated icosphere levels and descending projected screen-radius thresholds. The GPU visibility pass selects the geometry batch; the CPU-reference path implements the same result.
 - `--cpu-culling` runs the same conservative camera/shadow visibility contract on the CPU and uploads its compacted lists and counts; it is a compatibility and correctness-reference path, not the performance default.
-- Structured run results include renderer counters for GPU-driven mode, retained draw batches, camera-visible batches, nonempty meshlet draws, meshlet capability/activation/visibility state, draw/instance/visibility capacity, database rebuilds, occupied slot span, cumulative instance upload calls and bytes, explicit Hi-Z status/threshold, instance/meshlet frustum, cone, and occlusion counts, per-LOD visible counts, and optional per-pass GPU milliseconds. Visibility and timing use asynchronous readback rings and never synchronously stall the frame.
+- Structured run results distinguish retained draw batches from encoded draw submissions. They include shared geometry arena capacity, residency, uploads, bytes, and growths beside GPU-driven, visibility, meshlet, Hi-Z, LOD, instance-upload, and optional per-pass timing counters. Visibility and timing use asynchronous readback rings and never synchronously stall the frame.
 - Headless `wgpu` creates an adapter and device without SDL or an OS presentation surface, renders into an offscreen texture, and can run bounded GPU workloads without reading pixels back.
 - The offscreen path can optionally render a losslessly compressed final-frame PNG with `--framegrab`.
 - `--framegrab-region x,y,width,height` exports a top-left-origin 1:1 pixel crop without resampling; omitting it preserves the complete 1280×720 frame.
@@ -157,7 +157,7 @@ The editor fly view inherits the project camera's render policy. WGPU dynamic re
 
 **Decision:** Preserve stable ECS render slots and a dirty-updated retained render list while WGPU owns persistent instance storage, retained grow-only batch membership, compute frustum culling, per-batch visible-instance compaction, and indexed indirect arguments. Camera and shadow visibility use separate outputs. See ADR-034.
 **Why:** Unchanged instance data should stay resident, active renderables should not be rescanned, membership churn in an existing batch should not rebuild the draw database, and project/ECS data should remain independent from WGPU objects.
-**Tradeoff:** The path has an explicit 131,072-slot limit, uses conservative bounding spheres, and requires one previous frame with stable camera and instance data before Hi-Z rejection. Whole-primitive fallback still encodes one indirect call per CPU-retained geometry/material/LOD batch. The draw database itself grows instead of imposing a fixed batch ceiling.
+**Tradeoff:** The path has an explicit 131,072-slot limit, uses conservative bounding spheres, and requires one previous frame with stable camera and instance data before Hi-Z rejection. Adapters without indirect-first-instance still encode one indirect call per CPU-retained geometry/material/LOD batch. The draw database itself grows instead of imposing a fixed batch ceiling.
 
 The retained batch count describes topology, not post-cull work. The visibility pass separately
 counts camera batches whose first object sets a fixed visibility bit and meshlet commands whose
@@ -258,9 +258,25 @@ World-environment and active-camera exposure apply to the complete HDR world.
 
 **Tradeoff:** Every alternate Geometry/material combination becomes retained batch topology. Empty GPU-selected commands avoid triangle work but still have bounded encoding and memory cost, so import recipes can tune or disable their generated chain.
 
+### 18. Suballocate Geometry versions from shared WGPU arenas
+
+**Decision:** Store every cached Geometry version in aligned ranges of one shared vertex arena and
+one shared index arena. Canonical and meshlet-expanded indices share the latter. Grow backing
+buffers geometrically, reuse fitting ranges, coalesce released ranges, and reclaim stale handles
+only at geometry-topology invalidation boundaries. Use arena-global indirect offsets so adjacent
+same-material commands can form one fixed multi-draw submission span. See ADR-048.
+
+**Why:** GPU-selected LODs and meshlets should not force one backend buffer set and one CPU-encoded
+call per logical alternate. The same allocation layer is also the required physical foundation for
+future virtual-geometry residency.
+
+**Tradeoff:** Stable frames deliberately do not compact fragmentation. Backing-buffer growth copies
+resident bytes and rebuilds dependent bindings at an explicit mutation boundary. Adapters without
+indirect-first-instance share the memory arenas but retain single-batch submission semantics.
+
 ## Related
 
-- **ADRs:** ADR-003, ADR-005, ADR-010, ADR-011, ADR-029, ADR-034, ADR-038, ADR-039, ADR-046, ADR-047
+- **ADRs:** ADR-003, ADR-005, ADR-010, ADR-011, ADR-029, ADR-034, ADR-038, ADR-039, ADR-046, ADR-047, ADR-048
 - **FDRs:** FDR-001, FDR-002, FDR-008
 
 ## Open Questions
