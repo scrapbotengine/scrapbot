@@ -18,10 +18,9 @@ Choose **Virtual Geometry** to see the resident cluster frontier selected inside
 Geometry resources. Cluster identity varies within a mint-to-pink hierarchy-depth palette. Amber
 marks a branch whose finer page group is not completely resident.
 
-The example deliberately configures a 0.16 MiB expanded-index page budget to exercise request and
-eviction pressure. That setting uses the public project renderer policy; hierarchy construction,
-page identity, feedback, fallback, and residency are engine paths shared by procedural, Luau,
-native, and built-in Geometry.
+Sponza uses the normal project renderer budget so the showcase converges to its intended geometric
+detail. Hierarchy construction, page identity, feedback, fallback, and residency are engine paths
+shared by procedural, Luau, native, and built-in Geometry.
 
 On Metal and other adapters without native multi-draw, the GPU compacts camera-selected
 instance/cluster records into compatible material spans and vertex-pulls them from the shared

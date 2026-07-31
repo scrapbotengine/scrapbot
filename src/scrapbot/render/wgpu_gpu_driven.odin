@@ -57,6 +57,30 @@ wgpu_virtual_geometry_uses_compaction :: proc "contextless" (
 	)
 }
 
+wgpu_virtual_geometry_should_preload_pages :: proc "contextless" (
+	renderer: ^WGPU_Renderer,
+	geometry: ^resources.Geometry,
+) -> bool {
+	if renderer == nil || geometry == nil {
+		return false
+	}
+	remaining_bytes :=
+		renderer.virtual_geometry_index_budget_bytes -
+		min(
+			renderer.virtual_geometry_index_resident_bytes,
+			renderer.virtual_geometry_index_budget_bytes,
+		)
+	for page in geometry.cluster_pages {
+		page_bytes := u64(page.index_count) * u64(size_of(u32))
+		allocation_bytes := wgpu_align_arena_offset(page_bytes, u64(size_of(u32)))
+		if allocation_bytes > remaining_bytes {
+			return false
+		}
+		remaining_bytes -= allocation_bytes
+	}
+	return len(geometry.cluster_pages) > 0
+}
+
 wgpu_cluster_group_residency :: proc "contextless" (
 	geometry: ^resources.Geometry,
 	cache: ^WGPU_Geometry_Cache,

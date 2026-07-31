@@ -4,7 +4,3 @@ default_scene = "scenes/main.scene.toml"
 [window]
 width = 1600
 height = 900
-
-[render]
-# Deliberately tiny so the Virtual Geometry debug view exercises requests and eviction.
-virtual_geometry_index_budget_mb = 0.16

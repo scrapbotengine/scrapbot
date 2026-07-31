@@ -207,6 +207,7 @@ struct Meshlet_Info {
 	request_geometry_generation: u32,
 	request_page_index: u32,
 	request_enabled: u32,
+	_padding: vec2<u32>,
 };
 
 @group(0) @binding(0) var<uniform> render: Render_Uniform;
@@ -1094,6 +1095,7 @@ struct Meshlet_Info {
 	request_geometry_generation: u32,
 	request_page_index: u32,
 	request_enabled: u32,
+	_padding: vec2<u32>,
 };
 
 struct Draw_Indexed_Indirect {

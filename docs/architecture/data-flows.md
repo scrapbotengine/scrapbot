@@ -37,8 +37,9 @@ models or derives the same hierarchy for other producers. Canonical vertex IDs, 
 errors, page identities, and pinned fallback flags remain versioned with the Geometry entry.
 
 WGPU consumes a changed Geometry version into aligned ranges of shared vertex/index arenas.
-Canonical and ordinary meshlet streams remain resident. The coarsest hierarchy index pages are
-pinned; finer pages enter the arena through asynchronous GPU request feedback.
+Canonical and ordinary meshlet streams remain resident. A complete hierarchy page set enters the
+arena immediately when it fits the remaining budget. Otherwise the coarsest pages are pinned and
+finer pages enter through asynchronous GPU request feedback.
 
 Capable adapters retain cluster metadata and arena-global indirect templates. They select the
 desired resident frontier and draw a coarse fallback while refinement is missing. Native

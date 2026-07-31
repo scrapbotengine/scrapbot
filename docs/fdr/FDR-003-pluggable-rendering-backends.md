@@ -29,7 +29,7 @@ Pluggable rendering backends allow Scrapbot to start with `wgpu-native` while ke
 - Shared geometry/material pairs use one instanced draw batch. Geometry versions occupy aligned ranges in shared WGPU vertex/index arenas, while material texture uploads remain cached by handle and version.
 - WGPU keeps a persistent slot-addressed GPU instance table, separates static source state from hot Transform state, sends Transform-only changes through one dense update upload, coalesces nearby static slot changes into bounded uploads, retains compact render/culling uniforms and instance-to-LOD batch mappings, computes camera and shadow frustum visibility into compacted batch slices, and obtains instance counts from indexed indirect draw arguments.
 - The retained draw database grows geometrically past the original 64-batch limit. It rebuilds only when render membership, geometry LOD topology, or required capacity changes.
-- Every Geometry version owns bounded meshlets and a crack-aware, deterministically paged cluster hierarchy. Coarse index pages remain pinned. The GPU selects resident detail, requests missing finer pages, and draws the nearest resident fallback before camera sphere, normal-cone, and Hi-Z tests. Native multi-draw adapters retain one indirect command per hierarchy cluster. Other indirect-first-instance adapters append selected instance/cluster records into a bounded camera stream and vertex-pull compatible material spans through one indirect command. Adapters without indirect-first-instance and `--cpu-culling` retain whole-primitive imported LOD selection.
+- Every Geometry version owns bounded meshlets and a crack-aware, deterministically paged cluster hierarchy. Complete page sets that fit the remaining budget are admitted immediately; coarse pages remain pinned for streamed resources. The GPU selects resident detail, requests missing finer pages, and draws the nearest resident fallback before camera sphere, normal-cone, and Hi-Z tests. Native multi-draw adapters retain one indirect command per hierarchy cluster. Other indirect-first-instance adapters append selected instance/cluster records into a bounded camera stream and vertex-pull compatible material spans through one indirect command. Adapters without indirect-first-instance and `--cpu-culling` retain whole-primitive imported LOD selection.
 - The active camera selects a backend-neutral debug view: lit output, material inputs, mapped world normals, logarithmic depth, retained meshlet identity, exact GPU-selected LOD, selected virtual-geometry clusters and hierarchy depth, object/meshlet visibility classification, one retained Hi-Z mip, or exact screen-space Hi-Z query footprints. Non-lit views skip presentation effects so diagnostics remain direct and stable.
 - Hi-Z false color and texel boundaries expose the exact conservative max-depth hierarchy without readback or rebuilding it. Occlusion Queries records each tested rectangle, selected mip, bound depth, sampled farthest depth, identity, and visible/culled decision in a bounded GPU-native stream.
 - The camera can freeze the latest valid occlusion-query records while that view remains selected. Freeze preserves only diagnostic records and their indirect draw count; ordinary culling continues from current safe Hi-Z state.
@@ -282,10 +282,10 @@ group depth, conservative bounds, monotonic geometric error, refined-group links
 indices with that exact resource version. Imported model products persist the hierarchy. Other
 Geometry producers build the same representation at registration. See ADR-049 and ADR-050.
 
-Partition expanded cluster indices into deterministic, group-aligned pages. Pin the coarsest
-frontier. On WGPU adapters with indirect-first-instance, project
-group error into pixels and submit the unique cluster frontier surrounding a one-pixel threshold
-before ordinary cluster culling.
+Partition expanded cluster indices into deterministic, group-aligned pages. Admit a complete
+Geometry page set immediately when it fits the remaining budget; otherwise pin its coarsest
+frontier. On WGPU adapters with indirect-first-instance, project group error into pixels and submit
+the unique cluster frontier surrounding a one-pixel threshold before ordinary cluster culling.
 
 When finer detail is wanted but missing, submit the resident coarse cluster and append the first
 missing page to the existing visibility-feedback buffer. Asynchronous CPU processing deduplicates

@@ -420,8 +420,10 @@ WGPU_GPU_Meshlet_Info :: struct {
 	request_geometry_generation: u32,
 	request_page_index: u32,
 	request_enabled: u32,
+	_padding: [2]u32,
 }
-#assert(size_of(WGPU_GPU_Meshlet_Info) == 136)
+// WGSL storage-array elements round this vec4-bearing structure to a 16-byte stride.
+#assert(size_of(WGPU_GPU_Meshlet_Info) == 144)
 
 WGPU_GPU_Compact_Record :: struct {
 	instance_slot: u32,
@@ -2452,9 +2454,10 @@ wgpu_geometry_cache :: proc(
 		meshlet_err: string
 		if wgpu_virtual_geometry_submission(renderer, geometry) {
 			resize(&cluster_pages, len(geometry.cluster_pages))
+			preload_geometry := wgpu_virtual_geometry_should_preload_pages(renderer, geometry)
 			for page, page_index in geometry.cluster_pages {
 				cluster_pages[page_index].pinned = page.pinned
-				if !page.pinned {
+				if !page.pinned && !preload_geometry {
 					continue
 				}
 				page_indices, page_err := wgpu_expand_cluster_page_indices(geometry, page_index)

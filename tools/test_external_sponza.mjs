@@ -80,7 +80,7 @@ function main() {
     readFileSync(join(importedDirectory, metadataName), "utf8"),
   );
   if (
-    metadata.schema !== "scrapbot.model.v10.offline-lods" ||
+    metadata.schema !== "scrapbot.model.v11.cluster-pages" ||
     metadata.node_count !== 1 ||
     metadata.mesh_count !== 1 ||
     metadata.primitive_count !== 103 ||
@@ -93,7 +93,10 @@ function main() {
     metadata.lod_count > metadata.primitive_count * 3 ||
     metadata.lod_vertex_count <= 0 ||
     metadata.lod_index_count <= 0 ||
-    metadata.lod_index_count >= metadata.index_count
+    metadata.lod_index_count >= metadata.index_count ||
+    metadata.cluster_count !== 15607 ||
+    metadata.cluster_group_count !== 1965 ||
+    metadata.cluster_page_count !== 1965
   ) {
     throw new Error(
       "Sponza metadata does not match the pinned real-world model shape",
@@ -117,9 +120,9 @@ function main() {
     if (
       rendered.result?.renderables !== 103 ||
       rendered.result?.draw_batches !== metadata.primitive_count + metadata.lod_count ||
-	  rendered.result?.render_stats?.draw_submissions >= rendered.result?.draw_batches ||
-	  rendered.result?.render_stats?.geometry_vertex_arena_resident_bytes <= 0 ||
-	  rendered.result?.render_stats?.geometry_index_arena_resident_bytes <= 0 ||
+      rendered.result?.render_stats?.draw_submissions >= rendered.result?.draw_batches ||
+      rendered.result?.render_stats?.geometry_vertex_arena_resident_bytes <= 0 ||
+      rendered.result?.render_stats?.geometry_index_arena_resident_bytes <= 0 ||
       rendered.result?.render_stats?.clustered_point_lights !== 11 ||
       rendered.result?.render_stats?.gpu_ambient_occlusion_ms <= 0 ||
       rendered.result?.render_stats?.gpu_screen_space_reflections_ms <= 0 ||
@@ -135,7 +138,7 @@ function main() {
     `[external-sponza] imported ${metadata.primitive_count} primitives with ` +
       `${metadata.lod_count} generated LODs, ${metadata.index_count / 3} source triangles, ` +
       `${metadata.lod_index_count / 3} LOD triangles, ${metadata.material_count} materials, ` +
-      `and ${metadata.texture_count} PBR textures`,
+      `${metadata.texture_count} PBR textures, and ${metadata.cluster_page_count} cluster pages`,
   );
 }
 

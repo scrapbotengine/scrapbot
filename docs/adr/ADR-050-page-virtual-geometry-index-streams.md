@@ -24,8 +24,9 @@ Imported model products persist the complete hierarchy and page table. Their sch
 changes whenever this binary contract changes. Procedural, Luau, native, and built-in Geometry
 build the same representation at explicit registration boundaries.
 
-The WGPU backend initially uploads only pinned cluster-index pages. Canonical vertex and source
-index arrays remain resident in this phase.
+The WGPU backend admits a Geometry's complete cluster-index page set when it fits the remaining
+project budget. Larger resources initially upload only pinned pages and refine through feedback.
+Canonical vertex and source index arrays remain resident in this phase.
 
 GPU frontier selection follows these rules:
 
@@ -58,7 +59,8 @@ statistics expose budget, resident bytes, total/resident/pinned page counts, req
 cumulative uploads, bytes, and evictions. Profile rows expose the cumulative values and frame-local
 deltas for page uploads and eviction.
 
-Sponza uses a deliberately small 0.16 MiB budget as a pressure demonstration. The renderer contains
+Sponza uses the normal project budget so the representative showcase converges to its intended
+detail. Residency-pressure coverage belongs in a dedicated bounded fixture. The renderer contains
 no Sponza-specific behavior.
 
 This phase does not page canonical vertices, source indices, hierarchy metadata, or material data.

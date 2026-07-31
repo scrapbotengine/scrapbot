@@ -33,8 +33,10 @@ when the resource is created or replaced.
 Imported models compile eligible primitives into up to three deterministic compact LOD Geometry resources before runtime bootstrap. Their semantic handles survive harmless source reordering and reimport. The base resource publishes the same thresholds and alternate handles as procedural LOD resources, so CPU/GPU selection and debug views have no importer-specific path.
 
 When an adapter exposes indirect-first-instance, WGPU projects each hierarchy group's monotonic
-geometric error into pixels. Coarsest pages remain pinned. If finer pages are absent, the GPU draws
-the nearest resident frontier and requests refinement through asynchronous visibility feedback.
+geometric error into pixels. A Geometry's complete page set is admitted immediately when it fits
+the remaining project budget. For larger resources, coarsest pages remain pinned; if finer pages
+are absent, the GPU draws the nearest resident frontier and requests refinement through
+asynchronous visibility feedback.
 The CPU loads requested pages and evicts least-recently-requested non-pinned pages under
 `render.virtual_geometry_index_budget_mb`.
 
@@ -47,8 +49,9 @@ After whole-object rejection and LOD selection, compute tests camera meshlets ag
 Set `scrapbot.camera.debug_view` to `base_color`, `world_normals`, `roughness`, `metallic`, `depth`, `meshlets`, `lod`, `meshlet_visibility`, `hiz`, `occlusion_queries`, or `virtual_geometry` to capture the same diagnostics without opening the editor.
 
 `virtual_geometry` colors the GPU-selected resident cluster frontier by cluster identity and
-hierarchy depth. Amber marks a branch whose finer group is not completely resident. Sponza uses a
-deliberately constrained budget so this transition is visible. `debug_hiz_mip` selects the retained
+hierarchy depth. Amber marks a branch whose finer group is not completely resident. Sponza uses the
+normal renderer budget so it remains a representative quality showcase; dedicated pressure
+fixtures should exercise persistent fallback and eviction. `debug_hiz_mip` selects the retained
 pyramid level for `hiz`; `debug_occlusion_freeze` preserves the latest valid query records for
 `occlusion_queries`.
 

@@ -1841,6 +1841,9 @@ test_wgpu_culling_shader_stays_within_portable_storage_binding_floor :: proc(t: 
 	testing.expect(t, !strings.contains(WGPU_GPU_CULL_SHADER, "@binding(10)"))
 	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "virtual_page_requests"))
 	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "meshlet.refined_resident == 0u"))
+	testing.expect(t, strings.count(WGPU_GPU_DRIVEN_SHADER, "_padding: vec2<u32>") == 1)
+	testing.expect(t, strings.count(WGPU_GPU_CULL_SHADER, "_padding: vec2<u32>") == 1)
+	testing.expect_value(t, size_of(WGPU_GPU_Meshlet_Info) % 16, 0)
 }
 
 @(test)
@@ -1865,6 +1868,22 @@ test_wgpu_virtual_group_residency_requires_every_page :: proc(t: ^testing.T) {
 	resident, _, has_missing = wgpu_cluster_group_residency(&geometry, &cache, 0)
 	testing.expect(t, resident)
 	testing.expect(t, !has_missing)
+}
+
+@(test)
+test_wgpu_virtual_geometry_preloads_only_complete_resources_that_fit :: proc(t: ^testing.T) {
+	geometry := resources.Geometry {
+		cluster_pages = []resources.Geometry_Cluster_Page{{index_count = 8}, {index_count = 16}},
+	}
+	renderer := WGPU_Renderer {
+		virtual_geometry_index_budget_bytes = 128,
+		virtual_geometry_index_resident_bytes = 32,
+	}
+	testing.expect(t, wgpu_virtual_geometry_should_preload_pages(&renderer, &geometry))
+	renderer.virtual_geometry_index_resident_bytes = 40
+	testing.expect(t, !wgpu_virtual_geometry_should_preload_pages(&renderer, &geometry))
+	renderer.virtual_geometry_index_resident_bytes = 129
+	testing.expect(t, !wgpu_virtual_geometry_should_preload_pages(&renderer, &geometry))
 }
 
 @(test)
