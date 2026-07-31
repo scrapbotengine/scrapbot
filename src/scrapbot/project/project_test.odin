@@ -88,11 +88,17 @@ name = "Ship"
 
 [model]
 source = "assets/ship.glb"
+lod_ratios = [0.6, 0.3]
+lod_screen_radii = [0.2, 0.05]
 `,
 	)
 	testing.expect(t, result.err == .None)
 	testing.expect(t, resource.kind == .Model)
 	testing.expect_value(t, resource.model.source, "assets/ship.glb")
+	testing.expect(t, resource.model.generate_lods)
+	testing.expect_value(t, resource.model.lod_count, 2)
+	testing.expect_value(t, resource.model.lod_ratios[0], f32(0.6))
+	testing.expect_value(t, resource.model.lod_screen_radii[1], f32(0.05))
 	_, unsafe := parse_project_resource(
 		`id = "a1000000-0000-4000-8000-000000000020"
 type = "scrapbot.model"
@@ -102,6 +108,17 @@ source = "assets/../ship.gltf"
 `,
 	)
 	testing.expect(t, unsafe.err == .Invalid_Path)
+	_, mismatched_lods := parse_project_resource(
+		`id = "a1000000-0000-4000-8000-000000000020"
+type = "scrapbot.model"
+name = "Mismatched"
+[model]
+source = "assets/ship.gltf"
+lod_ratios = [0.5, 0.25]
+lod_screen_radii = [0.1]
+`,
+	)
+	testing.expect(t, mismatched_lods.err == .Invalid_Field)
 }
 
 @(test)

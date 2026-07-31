@@ -159,7 +159,10 @@ test_project_model_registers_embedded_base_color_image_on_generated_material :: 
 	}
 }
 
-make_semantic_reimport_product :: proc(reverse: bool) -> asset_import.Model_Product {
+make_semantic_reimport_product :: proc(
+	reverse: bool,
+	with_lods: bool = true,
+) -> asset_import.Model_Product {
 	product: asset_import.Model_Product
 	material_keys := [?]string{"material:Red", "material:Blue"}
 	mesh_keys := [?]string{"mesh:Body", "mesh:Trim"}
@@ -197,8 +200,23 @@ make_semantic_reimport_product :: proc(reverse: bool) -> asset_import.Model_Prod
 		primitive.key, _ = strings.clone(mesh_keys[index])
 		append(&primitive.vertices, asset_import.Model_Vertex{position = {-1, -1, 0}})
 		append(&primitive.vertices, asset_import.Model_Vertex{position = {1, -1, 0}})
-		append(&primitive.vertices, asset_import.Model_Vertex{position = {0, 1, 0}})
-		append(&primitive.indices, 0, 1, 2)
+		append(&primitive.vertices, asset_import.Model_Vertex{position = {-1, 1, 0}})
+		append(&primitive.vertices, asset_import.Model_Vertex{position = {1, 1, 0}})
+		append(&primitive.indices, 0, 1, 2, 1, 3, 2)
+		if with_lods {
+			lod := asset_import.Model_Primitive_LOD {
+				screen_radius = 0.1,
+				simplification_error = 0.01,
+			}
+			append(
+				&lod.vertices,
+				primitive.vertices[0],
+				primitive.vertices[1],
+				primitive.vertices[2],
+			)
+			append(&lod.indices, 0, 1, 2)
+			append(&primitive.lods, lod)
+		}
 		append(&mesh.primitives, primitive)
 		append(&product.meshes, mesh)
 	}
@@ -229,6 +247,15 @@ test_model_reimport_preserves_generated_handles_across_source_reordering :: proc
 	}
 	red_material := first_model.material_handles[0]
 	body_geometry := first_model.meshes[0].primitives[0].geometry
+	body_lod := first_model.meshes[0].primitives[0].lod_geometries[0]
+	body_resource, body_resource_alive := get_geometry(&registry, body_geometry)
+	testing.expect(t, body_resource_alive)
+	if body_resource_alive {
+		testing.expect_value(t, body_resource.lod_count, 1)
+		testing.expect_value(t, body_resource.lod_handles[0], body_lod)
+		testing.expect_value(t, body_resource.lod_screen_radii[0], f32(0.1))
+		testing.expect_value(t, body_resource.lod_simplification_errors[0], f32(0.01))
+	}
 	second := make_semantic_reimport_product(true)
 	defer asset_import.destroy_model_product(&second)
 	second_handle, second_err := register_project_model(&registry, declaration, &second)
@@ -239,9 +266,25 @@ test_model_reimport_preserves_generated_handles_across_source_reordering :: proc
 	if second_alive {
 		testing.expect_value(t, second_model.material_handles[1], red_material)
 		testing.expect_value(t, second_model.meshes[1].primitives[0].geometry, body_geometry)
+		testing.expect_value(t, second_model.meshes[1].primitives[0].lod_geometries[0], body_lod)
 	}
 	_, red_alive := get_material(&registry, red_material)
 	_, body_alive := get_geometry(&registry, body_geometry)
 	testing.expect(t, red_alive)
 	testing.expect(t, body_alive)
+	_, body_lod_alive := get_geometry(&registry, body_lod)
+	testing.expect(t, body_lod_alive)
+	without_lods := make_semantic_reimport_product(true, false)
+	defer asset_import.destroy_model_product(&without_lods)
+	third_handle, third_err := register_project_model(&registry, declaration, &without_lods)
+	testing.expectf(t, third_err == "", "LOD-removing model registration failed: %s", third_err)
+	testing.expect_value(t, third_handle, handle)
+	third_model, third_alive := get_model(&registry, third_handle)
+	testing.expect(t, third_alive)
+	if third_alive {
+		testing.expect_value(t, third_model.meshes[1].primitives[0].geometry, body_geometry)
+		testing.expect_value(t, third_model.meshes[1].primitives[0].lod_count, 0)
+	}
+	_, retired_lod_alive := get_geometry(&registry, body_lod)
+	testing.expect(t, !retired_lod_alive)
 }

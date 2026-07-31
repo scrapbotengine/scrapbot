@@ -6,11 +6,11 @@ This file tracks current actionable engineering work. The broad product roadmap 
 
 - [ ] Design baked/captured local reflection-probe resources, ECS volume components, probe selection/blending, and an editor bake workflow on top of global imported IBL.
 - [ ] Add GPU-native compressed texture products for imported images.
+- [ ] Pack compatible Geometry/LOD buffers into shared GPU arenas so GPU-selected imported LODs do not require one CPU-encoded indirect call per retained alternate; benchmark the result on Sponza. See [ADR-047](adr/ADR-047-generate-imported-mesh-lods-in-asset-products.md).
 - [ ] Add sorted glTF `BLEND` transparency, richer PBR extensions, animation, skins, morph targets, and compressed geometry. (`OPAQUE`, `MASK`, alpha cutoffs, and double-sided materials are supported.)
 - [ ] Add optional per-target post-processing, grids, axes, wireframe, and transparent presentation to embedded ECS viewports.
 - [ ] Generalize retained-World viewport targets into explicitly addressable concurrent ECS worlds when multi-world runtime ownership exists.
 - [ ] Replace aggregate asset polling with dependency-aware platform file watching that enqueues exact resource UUID reimports.
-- [ ] Add imported mesh LODs and offline simplification alongside the current generated icosphere LOD resources.
 - [ ] Extend the camera's authored TAA/fast-AA/AO/SSR/bloom controls with ambient-occlusion radius/intensity/thickness, reflection distance/thickness/roughness, bloom threshold/intensity/scatter, and temporal history/quality; evaluate whether advanced overrides become a separate post-processing component or volume. (AO and SSR sample quality are available.)
 - [ ] Add hierarchical-Z ray marching, rough-reflection filtering, and temporal confidence accumulation to screen-space reflections; keep the current bounded linear ray march as the portable baseline.
 - [ ] Add per-object motion vectors so temporal antialiasing can reproject animated geometry exactly instead of relying on depth rejection and neighborhood clamping.

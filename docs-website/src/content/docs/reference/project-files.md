@@ -155,9 +155,18 @@ name = "Crate"
 
 [model]
 source = "assets/models/crate.glb"
+generate_lods = true
+lod_ratios = [0.5, 0.25, 0.125]
+lod_screen_radii = [0.18, 0.07, 0.025]
 ```
 
-The importer starts at the selected/default glTF scene and includes only reachable nodes, meshes, materials, and images. It supports triangle primitives, positions, optional normals, tangents, and UV0, optional indices, TRS node hierarchies, metallic-roughness material factors, normal and occlusion strengths, emissive factors, `OPAQUE` and alpha-cutout `MASK` materials, `alphaCutoff`, `doubleSided`, and base-color, metallic-roughness, normal, occlusion, and emissive images. Images may come from GLB buffer views, base64 data URIs, or safe relative files beside the `.gltf`; every image dependency participates in cache invalidation. Missing normals are generated. Imported subresources use semantic keys derived from authored names, hierarchy, and content where necessary, so harmless glTF array reordering preserves generated handles and derived entity UUIDs.
+The importer starts at the selected/default glTF scene and includes only reachable nodes, meshes, materials, and images. It supports triangle primitives, positions, optional normals, tangents, and UV0, optional indices, TRS node hierarchies, metallic-roughness material factors, normal and occlusion strengths, emissive factors, `OPAQUE` and alpha-cutout `MASK` materials, `alphaCutoff`, `doubleSided`, and base-color, metallic-roughness, normal, occlusion, and emissive images.
+
+Images may come from GLB buffer views, base64 data URIs, or safe relative files beside the `.gltf`; every image dependency participates in cache invalidation. Missing normals are generated. Imported subresources use semantic keys derived from authored names, hierarchy, and content where necessary, so harmless glTF array reordering preserves generated handles and derived entity UUIDs.
+
+Imported mesh LOD generation is enabled by default with the values shown above. `lod_ratios` gives each alternate level's target index ratio relative to the source. `lod_screen_radii` gives the matching descending projected-radius threshold at which the renderer selects that level. Both arrays must contain the same non-zero number of values, up to three.
+
+The importer uses meshoptimizer with position, normal, and UV evidence, compacts each retained level, and stores measured simplification error in the product. A primitive with fewer than 16 triangles, or one that cannot meet the next useful reduction within its error bound, retains fewer levels. Set `generate_lods = false` to keep only source geometry; ratio and radius arrays are then ignored.
 
 Imported images use complete RGBA8 mip chains. Base color and emissive use sRGB sampling; packed metallic-roughness, normal, and occlusion maps use linear sampling. Every material texture slot preserves its glTF minification, magnification, mip, and U/V wrap settings; omitted samplers use the glTF defaults.
 

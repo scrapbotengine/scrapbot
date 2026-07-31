@@ -37,18 +37,33 @@ and indexed-indirect templates beside the existing whole-primitive draw database
 WGPU also requests native multi-draw-count when available, which guarantees fixed multi-draw is
 not emulated internally; adapters without it retain correct fixed multi-draw semantics.
 
-The compute pass first rejects the complete instance and selects its LOD. It then tests that
-Geometry's meshlets:
+WGPU chooses submission independently for every retained geometry/material/LOD batch. A batch with
+at least two instances uses meshlets; a single-instance batch retains one whole-primitive indirect
+command. The threshold is part of retained batch layout and changes only when membership crosses
+it, so an ordinary frame does not rescan or rewrite the draw database.
+
+The conservative threshold prevents cluster command setup and driver finalization from costing
+more than the raster work it can avoid on low-instance architectural meshes. Meshlet identity,
+visibility, and occlusion-query debug views deliberately force eligible batches through meshlet
+submission so their evidence remains complete and truthful.
+
+For a meshlet-selected batch, the compute pass first rejects the complete instance and selects its
+LOD. It then tests that Geometry's meshlets:
 
 - camera visibility uses the meshlet sphere, normal cone for single-sided materials, and Hi-Z;
 - shadow visibility uses each cascade's frustum and the meshlet sphere;
 - one atomic instance count and compact visible-instance slice are retained per meshlet.
 
-World, depth, and shadow passes bind the meshlet-ordered index buffer and issue one native fixed
-multi-draw per retained geometry/material/LOD batch. Fixed multi-draw is intentional: meshlet
+World, depth, and shadow passes may therefore mix one whole-primitive indirect draw for one batch
+with a meshlet-ordered fixed multi-draw for the next. Fixed multi-draw is intentional: meshlet
 topology and command count are already known at the resource-version boundary, while compute
 writes zero or nonzero instance counts into those retained commands. A GPU-authored command-count
 buffer would add state and synchronization without compacting any information the renderer needs.
+
+Mixed culling stays within WebGPU's portable eight-storage-buffer stage limit. One compute pass
+issues a classic dispatch only when classic batches exist and a meshlet dispatch only when meshlet
+batches exist. Both dispatches use the same batch table and counters, bind their canonical
+visibility/indirect buffers, and immediately reject instances assigned to the other policy.
 
 Adapters without `indirect-first-instance`, `--cpu-culling`, empty meshlet layouts, or layouts that
 would exceed the bounded visibility allocation retain the existing whole-primitive indexed-
@@ -66,12 +81,14 @@ bounds without inventing an importer-only model representation or a second rende
 Geometry registration does additional CPU work and retains extra cluster arrays. Scrapbot also
 gains a pinned C++ source dependency and must build/link meshoptimizer on every supported host.
 
-Capable native adapters now reject invisible clusters before rasterization and submit the retained
-cluster commands with one multi-draw call per batch. This reduces triangle work for large,
-partially visible primitives without exposing cluster identity outside the backend.
+Capable native adapters now reject invisible clusters before rasterization when batch reuse can
+amortize the retained cluster commands. Low-instance batches avoid that command multiplier, while
+meshlet-oriented debug views can still inspect every eligible cluster. No cluster identity escapes
+the backend.
 
 Each meshlet reserves an aligned visible-instance slice sized to its batch membership. The backend
 caps the total at 1,048,576 entries and falls back rather than allocating unbounded storage.
-Meshlet metadata, templates, bind groups, and expanded index buffers rebuild only after Geometry
-version/topology, batch-capacity, or dependent GPU-buffer changes. Stable frames only reset/copy
-the retained indirect templates and run current-frame compute and render commands.
+Meshlet metadata, templates, bind groups, selection policy, and expanded index buffers rebuild only
+after Geometry version/topology, batch-capacity, policy-threshold, or dependent GPU-buffer changes.
+Stable frames only reset/copy the active retained indirect templates and run current-frame compute
+and render commands.

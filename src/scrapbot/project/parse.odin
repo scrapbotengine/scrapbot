@@ -27,6 +27,10 @@ parse_project_resource :: proc(
 ) {
 	resource.texture.color_space = .SRGB
 	resource.texture.generate_mipmaps = true
+	resource.model.generate_lods = true
+	resource.model.lod_ratios = {0.5, 0.25, 0.125}
+	resource.model.lod_screen_radii = {0.18, 0.07, 0.025}
+	resource.model.lod_count = shared.MAX_GEOMETRY_LODS - 1
 	resource.material.base_color = {1, 1, 1, 1}
 	resource.material.roughness = 0.8
 	resource.geometry_lod.radius = 0.5
@@ -34,6 +38,8 @@ parse_project_resource :: proc(
 	section := ""
 	type_name := ""
 	geometry_screen_radius_count := 0
+	model_lod_ratio_count := shared.MAX_GEOMETRY_LODS - 1
+	model_lod_screen_radius_count := shared.MAX_GEOMETRY_LODS - 1
 	ui_theme_base_found := false
 	text := source
 	for raw_line in strings.split_lines_iterator(&text) {
@@ -140,6 +146,19 @@ parse_project_resource :: proc(
 							"model.source must be a safe .gltf or .glb path under assets/",
 						)
 					}
+				case "generate_lods":
+					resource.model.generate_lods, found = parse_bool(value)
+				case "lod_ratios":
+					model_lod_ratio_count, found = parse_fixed_f32_list(
+						value,
+						&resource.model.lod_ratios,
+					)
+					resource.model.lod_count = model_lod_ratio_count
+				case "lod_screen_radii":
+					model_lod_screen_radius_count, found = parse_fixed_f32_list(
+						value,
+						&resource.model.lod_screen_radii,
+					)
 				case:
 					return resource, fail(
 						.Invalid_Field,
@@ -463,6 +482,43 @@ parse_project_resource :: proc(
 	} else if resource.kind == .Model {
 		if resource.model.source == "" {
 			return resource, fail(.Missing_Field, "model.source is required")
+		}
+		if resource.model.generate_lods {
+			if resource.model.lod_count < 1 ||
+			   model_lod_ratio_count != model_lod_screen_radius_count {
+				return resource, fail(
+					.Invalid_Field,
+					"model LOD ratios and screen radii must contain the same non-zero number of levels",
+				)
+			}
+			previous_ratio := f32(1)
+			previous_radius := f32(3.402823e38)
+			for index in 0 ..< resource.model.lod_count {
+				ratio := resource.model.lod_ratios[index]
+				radius := resource.model.lod_screen_radii[index]
+				if math.is_nan(ratio) ||
+				   math.is_inf(ratio) ||
+				   ratio <= 0 ||
+				   ratio >= previous_ratio {
+					return resource, fail(
+						.Invalid_Field,
+						"model.lod_ratios must be positive, less than one, and strictly descending",
+					)
+				}
+				if math.is_nan(radius) ||
+				   math.is_inf(radius) ||
+				   radius <= 0 ||
+				   radius >= previous_radius {
+					return resource, fail(
+						.Invalid_Field,
+						"model.lod_screen_radii must be positive and strictly descending",
+					)
+				}
+				previous_ratio = ratio
+				previous_radius = radius
+			}
+		} else {
+			resource.model.lod_count = 0
 		}
 	} else if resource.kind == .Environment {
 		if resource.environment.source == "" {

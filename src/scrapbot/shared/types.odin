@@ -132,6 +132,10 @@ Project_Texture_Resource :: struct {
 
 Project_Model_Resource :: struct {
 	source: string,
+	generate_lods: bool,
+	lod_ratios: [MAX_GEOMETRY_LODS - 1]f32,
+	lod_screen_radii: [MAX_GEOMETRY_LODS - 1]f32,
+	lod_count: int,
 }
 
 Project_Environment_Resource :: struct {
@@ -1479,6 +1483,7 @@ Performance_Diagnostics :: struct {
 	fps: f64,
 	frame_ms: f64,
 	gpu_frame_ms: f64,
+	gpu_scene_ms: f64,
 	render_scale: f32,
 	gpu_timestamps_valid: bool,
 	entity_count: int,

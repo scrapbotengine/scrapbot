@@ -1,6 +1,6 @@
 # Resources and Registries
 
-**Last verified:** 2026-07-30
+**Last verified:** 2026-07-31
 **Persistent declarations:** `shared.Project_Resource` and `project.load_project_resources`  
 **Runtime authority:** `resources.Registry`
 
@@ -84,6 +84,7 @@ The recursive project loader rejects duplicate UUIDs. Scene validation resolves 
   - a roughness-prefiltered specular cube.
 - Environment import wraps bilinear panorama lookup across the equirectangular seam. Deterministic 256-sample GGX integration prevents structured noise on close glossy surfaces.
 - Model products contain static triangles with optional authored tangent frames, TRS nodes, metallic-roughness factors, alpha/culling state, and decoded PBR image mip chains. Sources may be GLB buffer views, data URIs, or safe external relative files parsed through pinned `cgltf`.
+- Eligible model primitives also contain zero to three importer-built LOD payloads. Each level owns compact vertices/indices, its projected threshold, and measured simplification error. The import fingerprint includes normalized LOD settings.
 - Model compilation walks only the selected glTF scene closure and remaps its reachable node, mesh, and material references into a compact product. Nodes, meshes, primitives, and materials carry semantic keys; generated Geometry/Material names and derived model-instance ECS UUIDs are keyed from those values rather than glTF array positions. Reordering source arrays therefore reuses live handles, while removed semantic outputs are retired normally.
 - Every glTF image contributes to the model source fingerprint. Generated Material entries own cloned image payloads with explicit sRGB or linear color-space meaning and per-slot min/mag/mipmap/wrap sampler policy. The WGPU material cache uploads only a changed Material version, owns its generated texture/view/sampler set and factor/alpha uniform, and releases that complete set together. Batch rendering selects cached opaque/masked and single/double-sided pipeline variants; masked depth and shadow passes bind the same generated base-color texture and cutoff as world rendering.
 - Texture, Model, Environment, and Icon Set declarations retain UUID-backed handles and entry versions.
@@ -91,12 +92,13 @@ The recursive project loader rejects duplicate UUIDs. Scene validation resolves 
 - A handle, version, or presentation change bumps one environment revision consumed by WGPU. A visible empty background reuses imported lighting, or selects the procedural atmosphere when both UUIDs are empty.
 - Active-camera exposure remains a separate multiplier. Backend-neutral extraction derives an above-horizon sun into the first directional-light slot without mutating ECS light entities.
 - Imported backgrounds use the panorama at zero blur and the prefiltered cube for intentional blur. Imported lighting uses compact irradiance/specular cubes.
-- Imported models publish ordinary Geometry and Material handles for every primitive.
+- Imported models publish ordinary Geometry and Material handles for every primitive. Generated levels use the primitive semantic key plus level number, survive harmless source reordering and reimport in place, and attach through `set_geometry_lods`.
+- Removed imported levels are retired with the Model's other generated subresources. Every surviving level builds ordinary resource-owned meshlets at Geometry registration.
 - Editor Reimport addresses one authored UUID, forces only that Texture, Model, Environment, or Icon Set importer, updates the existing registry slot, and then reconciles model instances when relevant. Reimport All uses the same path for every imported declaration; neither action reloads Luau or native Odin.
 - A replaced or removed Model retires generated Geometry and Material outputs absent from the replacement by marking their slots dead and incrementing generation/version. Stable/reused products retain their handles.
 - Texture, Model, and Material inspection target the public `scrapbot.ui_viewport` component at the resource UUID. WGPU resolves the UUID by registry family, assigns an independently sized pooled target, and renders either an aspect-preserving Texture pass or an isolated Model/Material preview scene with its own camera, lighting, environment, and renderer-owned presentation geometry. Icon Set inspection reads its symbol count, atlas shape, dependency, product size, and import state from the ordinary registry/import records. Stable viewport targets cache by component, target size/aspect, exact resource version, and relevant registry revisions. Import state, dependency path, product type/size, and the last explicit failure remain editor presentation over registry/import state rather than new resource authority.
 - `scrapbot.model` roots reconcile a derived runtime hierarchy during resource/bootstrap reload work and after an explicit model-root structural revision. Generated primitives inherit the root's `scrapbot.shadow_caster` and `scrapbot.shadow_receiver` membership during that reconciliation. Stable ordinary frames only compare revision counters and consume the resulting standard Transform/Geometry/Material/shadow-marker entities without model scans.
-- Source/tests: `asset_import/imports.odin`, `asset_import/icons.odin`, `asset_import/environments.odin`, `asset_import/models.odin`, `resources/textures.odin`, `resources/icons.odin`, `resources/models.odin`, `scrapbot.odin`; importer, icon compiler, registry, environment-filtering, model-instance, and WGPU tests.
+- Source/tests: `asset_import/imports.odin`, `asset_import/icons.odin`, `asset_import/environments.odin`, `asset_import/models.odin`, `asset_import/model_lods.odin`, `resources/textures.odin`, `resources/icons.odin`, `resources/models.odin`, `scrapbot.odin`; importer, icon compiler, registry, environment-filtering, model-instance, and WGPU tests.
 
 ### Font
 

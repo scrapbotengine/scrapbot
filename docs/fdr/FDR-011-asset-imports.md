@@ -1,7 +1,7 @@
 # FDR-011: Asset imports
 
 **Status:** In Progress
-**Last reviewed:** 2026-07-30
+**Last reviewed:** 2026-07-31
 
 ## Overview
 
@@ -14,6 +14,7 @@ Asset imports turn artist-authored texture, model, HDR environment, and SVG icon
 - Icon-set resources recursively import monochrome SVG symbols from one source directory. The importer normalizes supported paths, primitives, transforms, groups, and strokes into filled outlines, rejects unsupported SVG paint/effect features, and emits a deterministic MTSDF atlas plus symbol metadata. Runtime and packaged builds consume only that product.
 - Material resources reference reusable Texture resources by UUID rather than embedding source paths.
 - Model resources import the selected glTF 2.0 `.gltf` or `.glb` scene and only its reachable nodes, meshes, materials, and images. Supported data includes triangle geometry, TRS node transforms, metallic-roughness material factors, normal and occlusion strengths, emissive factors, opaque and alpha-cutout materials, double-sided surfaces, and base-color, metallic-roughness, normal, occlusion, and emissive images. Images may be embedded in GLB buffer views, encoded as base64 data URIs, or stored at safe relative paths beside the model.
+- Model import generates up to three deterministic meshoptimizer LODs per eligible primitive by default. Project recipes control descending triangle ratios and projected screen-radius thresholds or disable generation. Small and topology-constrained primitives may retain fewer levels.
 - Imported images become owned mipmapped texture payloads on the Model's generated Material resources. Each texture slot preserves its glTF minification, magnification, mip, and U/V wrap policy. The WGPU material path renders them with GGX direct lighting, authored tangent-space normal mapping with a derivative fallback, ambient diffuse/specular response, HDR emission, bloom, and tone mapping.
 - Project checking, building, and running automatically import products that are absent or stale. `scrapbot import` performs the same work explicitly and reports structured per-resource results.
 - Imported products and manifests are generated under ignored project state. They are never hand-authored or committed as source authority.
@@ -97,9 +98,17 @@ Model-root shadow markers are copied onto derived primitive entities during the 
 **Why:** Binary cutouts remain compatible with retained GPU-driven opaque batching and indirect draws, while blended surfaces require ordering and depth-write rules that cannot be approximated honestly by the opaque path.
 **Tradeoff:** Foliage, fences, cards, and other cutout assets work correctly, but glass and translucent effects remain unsupported.
 
+### 12. Compile imported LODs into the Model product
+
+**Decision:** Simplify eligible indexed glTF primitives during import, compact each retained level, and persist its geometry, projected threshold, and measured error in the versioned Model product. Register generated levels as ordinary semantic Geometry subresources and attach them through the shared LOD contract. See ADR-047.
+
+**Why:** Simplification is deterministic source-asset work. Persisting it keeps runtime registration bounded and lets models use the existing CPU/GPU selection, meshlet, debug, reload, and retirement paths.
+
+**Tradeoff:** Products retain more geometry and rendered scenes retain more possible batch records. The simplifier may stop before a target ratio or omit a level when topology or the error bound prevents a useful reduction.
+
 ## Related
 
-- **ADRs:** ADR-002, ADR-010, ADR-024, ADR-030, ADR-031, ADR-032, ADR-036, ADR-037, ADR-038, ADR-041, ADR-046
+- **ADRs:** ADR-002, ADR-010, ADR-024, ADR-030, ADR-031, ADR-032, ADR-036, ADR-037, ADR-038, ADR-041, ADR-046, ADR-047
 - **FDRs:** FDR-002, FDR-003, FDR-008, FDR-009
 
 ## Open Questions

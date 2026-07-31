@@ -1,6 +1,6 @@
 # Source Map
 
-**Last verified:** 2026-07-30
+**Last verified:** 2026-07-31
 
 | Path | Responsibility | Important boundaries |
 | --- | --- | --- |
@@ -10,9 +10,9 @@
 | `src/scrapbot/component/` | Component registry and generated Luau declarations. | Canonical component names, ownership, storage kind, lifecycle, and field schemas. |
 | `src/scrapbot/ecs/` | World storage, typed mutation, commands, authoring snapshots, hierarchy, integrity, UI storage, and bounded immutable UI event history. | All mutation must preserve indexes and publish structural/render/UI invalidation. Event readers never mutate or drain the history. |
 | `src/scrapbot/project/` | Project/scene parsing, UI theme authoring resolution, resource discovery, fonts, configuration, recoverable save transaction. | Persistent source identity and validation. Theme directives are consumed before explicit component fields. |
-| `src/scrapbot/asset_import/` | Incremental source-asset importers, atomic products, SVG-to-MTSDF icon compilation, texture mips, static glTF decoding, and HDR-to-IBL preprocessing. | Source/dependency fingerprints and versioned `.scrapbot/imported/` products; never ordinary-frame work. |
-| `src/scrapbot/resources/` | Runtime geometry/texture/environment/icon-set/model/material/font/UI-theme registries, generational handles, and resource-owned meshlet construction. | Shared descriptions outside ECS; meshlets share exact Geometry lifetime/versioning; UI/backend caches consume render-resource versions, while theme versions serve explicit composition and editor inspection only. |
-| `third_party/meshoptimizer/` | Pinned upstream geometry clustering and bounds implementation. | Built as a static C++ library; called only at Geometry registration/replacement boundaries, never from ordinary frames. |
+| `src/scrapbot/asset_import/` | Incremental source-asset importers, atomic products, SVG-to-MTSDF icon compilation, texture mips, static glTF decoding/LOD simplification, and HDR-to-IBL preprocessing. | Source/dependency/settings fingerprints and versioned `.scrapbot/imported/` products; never ordinary-frame work. |
+| `src/scrapbot/resources/` | Runtime geometry/texture/environment/icon-set/model/material/font/UI-theme registries, generational handles, imported/generated LOD attachment, and resource-owned meshlet construction. | Shared descriptions outside ECS; LOD and meshlet data share exact Geometry lifetime/versioning; UI/backend caches consume render-resource versions, while theme versions serve explicit composition and editor inspection only. |
+| `third_party/meshoptimizer/` | Pinned upstream geometry simplification, clustering, and bounds implementation. | Simplification runs only during invalidated Model import; clustering runs only at Geometry registration/replacement; neither is ordinary-frame work. |
 | `src/scrapbot/schedule/` | Access-derived plan and native worker executor. | Native parallel batches, conflicts, and serial barriers. |
 | `src/scrapbot/script/` | Luau VM, public APIs, schemas, queries, write-back, UI theme/component composition, UI event snapshots, generated-type integration. | Theme resolution returns mutable ordinary component maps; event cursors are per consumer; deferred lifecycle and declared-write enforcement remain at attachment. |
 | `src/scrapbot/extension_api/` | Raw C-compatible native extension ABI. | Fixed layouts and callbacks only, including host-owned UI theme resolution and bounded UI event copies into caller buffers. |

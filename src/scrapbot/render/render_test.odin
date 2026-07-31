@@ -692,6 +692,7 @@ test_performance_diagnostics_publish_retained_rolling_snapshot :: proc(t: ^testi
 		visible_meshlet_draws = 6,
 		gpu_timestamps_valid = true,
 		gpu_frame_ms = 2.25,
+		gpu_scene_ms = 1.75,
 		render_scale = 0.75,
 		instance_slots = 12,
 		frustum_candidates = 11,
@@ -715,6 +716,7 @@ test_performance_diagnostics_publish_retained_rolling_snapshot :: proc(t: ^testi
 	testing.expect(t, math.abs(snapshot.fps - 50) < 0.001)
 	testing.expect(t, math.abs(snapshot.frame_ms - 6) < 0.001)
 	testing.expect(t, snapshot.gpu_frame_ms == 2.25)
+	testing.expect(t, snapshot.gpu_scene_ms == 1.75)
 	testing.expect_value(t, snapshot.render_scale, f32(0.75))
 	testing.expect(t, snapshot.gpu_timestamps_valid)
 	testing.expect(t, snapshot.entity_count == 2)
@@ -1491,27 +1493,58 @@ test_wgpu_instance_upload_ranges_coalesce_nearby_dirty_slots :: proc(t: ^testing
 }
 
 @(test)
-test_wgpu_existing_batch_membership_grows_without_rebuilding_draw_database :: proc(t: ^testing.T) {
+test_wgpu_batch_membership_invalidates_layout_only_for_policy_or_capacity_changes :: proc(
+	t: ^testing.T,
+) {
 	cache: WGPU_Draw_Batch_Cache
 	defer delete(cache.batches)
 	append(
 		&cache.batches,
-		WGPU_Draw_Batch{instance_count = 1, visible_capacity = WGPU_VISIBLE_ALIGNMENT},
+		WGPU_Draw_Batch {
+			instance_count = 1,
+			visible_capacity = WGPU_VISIBLE_ALIGNMENT,
+			meshlet_draw_count = 4,
+		},
 	)
 	cache.batch_count = 1
 	cache.instance_count = 1
 	indices: [shared.MAX_GEOMETRY_LODS]u32
-	capacity_grew := wgpu_adjust_batch_membership(&cache, indices, 0, 1)
-	testing.expect(t, !capacity_grew)
+	layout_changed := wgpu_adjust_batch_membership(&cache, indices, 0, 1)
+	testing.expect(t, layout_changed)
 	testing.expect_value(t, cache.batches[0].instance_count, u32(2))
 	testing.expect_value(t, cache.instance_count, 2)
-	_ = wgpu_adjust_batch_membership(&cache, indices, 0, -1)
+	layout_changed = wgpu_adjust_batch_membership(&cache, indices, 0, -1)
+	testing.expect(t, layout_changed)
 	testing.expect_value(t, cache.batches[0].instance_count, u32(1))
 	testing.expect_value(t, cache.instance_count, 1)
 
 	cache.batches[0].instance_count = WGPU_VISIBLE_ALIGNMENT
-	capacity_grew = wgpu_adjust_batch_membership(&cache, indices, 0, 1)
-	testing.expect(t, capacity_grew)
+	layout_changed = wgpu_adjust_batch_membership(&cache, indices, 0, 1)
+	testing.expect(t, layout_changed)
+}
+
+@(test)
+test_wgpu_meshlet_submission_policy_amortizes_indirect_commands :: proc(t: ^testing.T) {
+	testing.expect(t, !wgpu_meshlet_batch_submission(0, 8))
+	testing.expect(t, !wgpu_meshlet_batch_submission(16, 1))
+	testing.expect(t, wgpu_meshlet_batch_submission(16, 2))
+
+	testing.expect(t, !wgpu_meshlet_debug_forces_submission(.Lit))
+	testing.expect(t, wgpu_meshlet_debug_forces_submission(.Meshlets))
+	testing.expect(t, wgpu_meshlet_debug_forces_submission(.Meshlet_Visibility))
+	testing.expect(t, wgpu_meshlet_debug_forces_submission(.Occlusion_Queries))
+
+	renderer := WGPU_Renderer {
+		gpu_meshlet_submission_active = true,
+		gpu_meshlet_selected_draw_count = 12,
+		gpu_meshlet_draw_count = 28,
+		gpu_classic_batch_count = 5,
+	}
+	testing.expect_value(t, wgpu_active_meshlet_draw_count(&renderer), 12)
+	testing.expect_value(t, wgpu_active_classic_batch_count(&renderer), 5)
+	renderer.gpu_meshlet_force_enabled = true
+	testing.expect_value(t, wgpu_active_meshlet_draw_count(&renderer), 28)
+	testing.expect_value(t, wgpu_active_classic_batch_count(&renderer), 0)
 }
 
 @(test)
@@ -1653,9 +1686,31 @@ test_wgpu_gpu_timing_resolves_only_queries_written_by_the_frame :: proc(t: ^test
 	testing.expect_value(t, ranges[2].count, 4)
 	testing.expect_value(t, ranges[3].first, u32(WGPU_GPU_SHADOW_EXTRA_QUERY_BASE))
 	testing.expect_value(t, ranges[3].count, u32((WGPU_SHADOW_CASCADE_COUNT - 1) * 2))
-
 	_, empty_count := wgpu_gpu_timestamp_resolve_ranges(0, 0)
 	testing.expect_value(t, empty_count, 0)
+}
+
+@(test)
+test_wgpu_gpu_frame_timing_uses_ordered_pass_boundaries :: proc(t: ^testing.T) {
+	span: WGPU_GPU_Timestamp_Span
+	wgpu_gpu_timestamp_span_include(&span, 2_000, 4_000, true)
+	wgpu_gpu_timestamp_span_include(&span, 1_000, 3_000, true)
+	wgpu_gpu_timestamp_span_include(&span, 4_000, 5_500, false)
+	testing.expect(t, span.has_frame && span.has_scene)
+	frame_ms, scene_ms, valid := wgpu_gpu_span_ms(
+		span.frame_begin,
+		span.scene_end,
+		span.frame_end,
+		2_000,
+	)
+	testing.expect(t, valid)
+	testing.expect_value(t, scene_ms, 6.0)
+	testing.expect_value(t, frame_ms, 9.0)
+
+	_, _, valid = wgpu_gpu_span_ms(1_000, 900, 5_500, 2_000)
+	testing.expect(t, !valid)
+	_, _, valid = wgpu_gpu_span_ms(1_000, 4_000, 3_999, 2_000)
+	testing.expect(t, !valid)
 }
 
 @(test)
@@ -1680,7 +1735,11 @@ test_profile_correlates_delayed_gpu_timing_with_originating_frame :: proc(t: ^te
 	stats := Render_Stats {
 		draw_batches = 7,
 	}
-	profile_record_gpu_frame(&collector, 3, {frame = 5.0, world = 3.0, composite = 2.0})
+	profile_record_gpu_frame(
+		&collector,
+		3,
+		{frame = 5.0, scene = 4.5, world = 3.0, composite = 2.0},
+	)
 	profile_record_frame(
 		&collector,
 		2,
@@ -1703,15 +1762,22 @@ test_profile_correlates_delayed_gpu_timing_with_originating_frame :: proc(t: ^te
 		{width = 320, height = 180},
 		&stats,
 	)
-	profile_record_gpu_frame(&collector, 2, {frame = 4.0, world = 2.5, composite = 1.5})
+	profile_record_gpu_frame(
+		&collector,
+		2,
+		{frame = 4.0, scene = 3.5, world = 2.5, composite = 1.5},
+	)
 	finish_profile_collector(&collector)
 
 	testing.expect_value(t, collector.report.recorded_frames, 2)
 	testing.expect_value(t, collector.frames[0].render.draw_batches, 7)
 	testing.expect_value(t, collector.frames[0].render.gpu_frame_ms, 4.0)
+	testing.expect_value(t, collector.frames[0].render.gpu_scene_ms, 3.5)
 	testing.expect_value(t, collector.frames[1].render.gpu_frame_ms, 5.0)
+	testing.expect_value(t, collector.frames[1].render.gpu_scene_ms, 4.5)
 	testing.expect_value(t, collector.report.summary.gpu_frame.samples, 2)
 	testing.expect_value(t, collector.report.summary.gpu_frame.median_ms, 4.5)
+	testing.expect_value(t, collector.report.summary.gpu_scene.median_ms, 4.0)
 }
 
 @(test)
@@ -2106,19 +2172,19 @@ test_dynamic_resolution_requires_sustained_unique_gpu_samples :: proc(t: ^testin
 	camera.dynamic_resolution_min_scale = 0.5
 	camera.dynamic_resolution_target_ms = 10
 	state: Dynamic_Resolution_State
-	scale := dynamic_resolution_scale(&state, camera, true, 1, 20, 0)
+	scale := dynamic_resolution_scale(&state, camera, true, 1, 20)
 	testing.expect_value(t, scale, f32(1))
-	scale = dynamic_resolution_scale(&state, camera, true, 1, 20, 0)
+	scale = dynamic_resolution_scale(&state, camera, true, 1, 20)
 	testing.expect_value(t, scale, f32(1))
-	scale = dynamic_resolution_scale(&state, camera, true, 2, 20, 0)
+	scale = dynamic_resolution_scale(&state, camera, true, 2, 20)
 	testing.expect_value(t, scale, f32(1))
-	scale = dynamic_resolution_scale(&state, camera, true, 3, 20, 0)
+	scale = dynamic_resolution_scale(&state, camera, true, 3, 20)
 	testing.expect_value(t, scale, f32(0.95))
 	testing.expect_value(t, state.cooldown_samples, DYNAMIC_RESOLUTION_CHANGE_COOLDOWN_SAMPLES)
 }
 
 @(test)
-test_dynamic_resolution_excludes_native_ui_and_respects_manual_bounds :: proc(t: ^testing.T) {
+test_dynamic_resolution_consumes_scene_span_and_respects_manual_bounds :: proc(t: ^testing.T) {
 	camera := shared.camera_defaults()
 	camera.resolution_scale = 0.8
 	camera.dynamic_resolution = true
@@ -2126,15 +2192,15 @@ test_dynamic_resolution_excludes_native_ui_and_respects_manual_bounds :: proc(t:
 	camera.dynamic_resolution_target_ms = 10
 	state: Dynamic_Resolution_State
 	for serial in 1 ..= u64(DYNAMIC_RESOLUTION_OVER_BUDGET_SAMPLES) {
-		scale := dynamic_resolution_scale(&state, camera, true, serial, 20, 12)
+		scale := dynamic_resolution_scale(&state, camera, true, serial, 8)
 		testing.expect_value(t, scale, f32(0.8))
 	}
 	for serial in u64(4) ..= u64(6) {
-		_ = dynamic_resolution_scale(&state, camera, true, serial, 24, 0)
+		_ = dynamic_resolution_scale(&state, camera, true, serial, 24)
 	}
 	testing.expect_value(t, state.effective_scale, f32(0.75))
 	for serial in u64(7) ..= u64(64) {
-		_ = dynamic_resolution_scale(&state, camera, true, serial, 24, 0)
+		_ = dynamic_resolution_scale(&state, camera, true, serial, 24)
 	}
 	testing.expect_value(t, state.effective_scale, f32(0.7))
 }
@@ -2145,7 +2211,7 @@ test_dynamic_resolution_falls_back_to_manual_scale_without_timestamps :: proc(t:
 	camera.resolution_scale = 0.75
 	camera.dynamic_resolution = true
 	state: Dynamic_Resolution_State
-	scale := dynamic_resolution_scale(&state, camera, false, 0, 0, 0)
+	scale := dynamic_resolution_scale(&state, camera, false, 0, 0)
 	testing.expect_value(t, scale, f32(0.75))
 	testing.expect(t, !state.enabled)
 }
@@ -2159,21 +2225,20 @@ test_dynamic_resolution_rejects_delayed_samples_from_previous_scale_generation :
 	camera.dynamic_resolution_target_ms = 10
 	renderer: WGPU_Renderer
 	renderer.gpu_timestamp_supported = true
-	_ = dynamic_resolution_scale(&renderer.dynamic_resolution, camera, true, 0, 0, 0)
+	_ = dynamic_resolution_scale(&renderer.dynamic_resolution, camera, true, 0, 0)
 	initial_generation := renderer.dynamic_resolution.generation
 	for serial in 1 ..= u64(DYNAMIC_RESOLUTION_OVER_BUDGET_SAMPLES) {
-		_ = dynamic_resolution_scale(&renderer.dynamic_resolution, camera, true, serial, 20, 0)
+		_ = dynamic_resolution_scale(&renderer.dynamic_resolution, camera, true, serial, 20)
 	}
 	testing.expect(t, renderer.dynamic_resolution.generation != initial_generation)
-	wgpu_dynamic_resolution_accumulate_sample(&renderer, initial_generation, 1, 20, 0)
+	wgpu_dynamic_resolution_accumulate_sample(&renderer, initial_generation, 1, 20)
 	testing.expect_value(t, renderer.gpu_timestamp_resolution_sample_count, 0)
 	testing.expect_value(t, renderer.gpu_timestamp_sample_serial, u64(0))
 	wgpu_dynamic_resolution_accumulate_sample(
 		&renderer,
 		renderer.dynamic_resolution.generation,
 		2,
-		8,
-		2,
+		6,
 	)
 	testing.expect_value(t, renderer.gpu_timestamp_resolution_sample_count, 1)
 	testing.expect_value(t, renderer.gpu_timestamp_sample_serial, u64(1))
@@ -2187,10 +2252,10 @@ test_dynamic_resolution_batches_match_individual_sample_hysteresis :: proc(t: ^t
 	camera.dynamic_resolution_target_ms = 10
 	renderer: WGPU_Renderer
 	renderer.gpu_timestamp_supported = true
-	_ = dynamic_resolution_scale(&renderer.dynamic_resolution, camera, true, 0, 0, 0)
+	_ = dynamic_resolution_scale(&renderer.dynamic_resolution, camera, true, 0, 0)
 	generation := renderer.dynamic_resolution.generation
 	for frame_index in 0 ..< DYNAMIC_RESOLUTION_OVER_BUDGET_SAMPLES {
-		wgpu_dynamic_resolution_accumulate_sample(&renderer, generation, u64(frame_index), 20, 0)
+		wgpu_dynamic_resolution_accumulate_sample(&renderer, generation, u64(frame_index), 20)
 	}
 	scale := wgpu_dynamic_resolution_scale(&renderer, camera, {})
 	testing.expect_value(t, scale, f32(0.95))
@@ -2203,18 +2268,18 @@ test_dynamic_resolution_processes_completed_samples_in_frame_order :: proc(t: ^t
 	camera.dynamic_resolution_target_ms = 10
 	renderer: WGPU_Renderer
 	renderer.gpu_timestamp_supported = true
-	_ = dynamic_resolution_scale(&renderer.dynamic_resolution, camera, true, 0, 0, 0)
+	_ = dynamic_resolution_scale(&renderer.dynamic_resolution, camera, true, 0, 0)
 	generation := renderer.dynamic_resolution.generation
-	wgpu_dynamic_resolution_accumulate_sample(&renderer, generation, 4, 20, 0)
-	wgpu_dynamic_resolution_accumulate_sample(&renderer, generation, 1, 5, 0)
-	wgpu_dynamic_resolution_accumulate_sample(&renderer, generation, 2, 5, 0)
-	wgpu_dynamic_resolution_accumulate_sample(&renderer, generation, 3, 5, 0)
+	wgpu_dynamic_resolution_accumulate_sample(&renderer, generation, 4, 20)
+	wgpu_dynamic_resolution_accumulate_sample(&renderer, generation, 1, 5)
+	wgpu_dynamic_resolution_accumulate_sample(&renderer, generation, 2, 5)
+	wgpu_dynamic_resolution_accumulate_sample(&renderer, generation, 3, 5)
 	_ = wgpu_dynamic_resolution_scale(&renderer, camera, {})
 
 	expected: Dynamic_Resolution_State
 	expected_samples := [4]f64{5, 5, 5, 20}
 	for sample, serial in expected_samples {
-		_ = dynamic_resolution_scale(&expected, camera, true, u64(serial + 1), sample, 0)
+		_ = dynamic_resolution_scale(&expected, camera, true, u64(serial + 1), sample)
 	}
 	testing.expect(
 		t,
@@ -2246,7 +2311,7 @@ test_dynamic_resolution_resets_when_policy_owner_camera_changes :: proc(t: ^test
 	testing.expect(t, second_owner_ok)
 	state: Dynamic_Resolution_State
 	for serial in 1 ..= u64(DYNAMIC_RESOLUTION_OVER_BUDGET_SAMPLES) {
-		_ = dynamic_resolution_scale(&state, camera, true, serial, 20, 0, first_owner)
+		_ = dynamic_resolution_scale(&state, camera, true, serial, 20, first_owner)
 	}
 	testing.expect_value(t, state.effective_scale, f32(0.95))
 	scale := dynamic_resolution_scale(
@@ -2254,7 +2319,6 @@ test_dynamic_resolution_resets_when_policy_owner_camera_changes :: proc(t: ^test
 		camera,
 		true,
 		state.last_sample_serial,
-		0,
 		0,
 		second_owner,
 	)

@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 
 const GPU_METRICS = [
   ["gpu_frame", "frame"],
+  ["gpu_scene", "scene"],
   ["gpu_instance_expansion", "instance_expansion"],
   ["gpu_clustered_lighting", "clustered_lighting"],
   ["gpu_cull", "cull"],
@@ -47,8 +48,8 @@ function dimensions(report) {
 
 function loadReport(file) {
   const report = JSON.parse(fs.readFileSync(file, "utf8"));
-  if (report.schema_version !== 1 || !Array.isArray(report.frames) || !report.summary) {
-    throw new Error(`${file} is not a Scrapbot render profile schema version 1`);
+  if (report.schema_version !== 2 || !Array.isArray(report.frames) || !report.summary) {
+    throw new Error(`${file} is not a Scrapbot render profile schema version 2`);
   }
   return report;
 }
@@ -79,7 +80,7 @@ function passRanking(report) {
   const frameP95 = finite(report.summary.gpu_frame?.p95_ms);
   const workload = representativeWorkload(report);
   return GPU_METRICS
-    .filter(([metric]) => metric !== "gpu_frame")
+    .filter(([metric]) => metric !== "gpu_frame" && metric !== "gpu_scene")
     .map(([metric, pass]) => {
       const p95Ms = finite(report.summary[metric]?.p95_ms);
       return {
@@ -107,6 +108,7 @@ export function summarizeRenderProfile(report, file = "") {
     dimensions: size,
     cpu_active: report.summary.cpu_active,
     gpu_frame: report.summary.gpu_frame,
+    gpu_scene: report.summary.gpu_scene,
     gpu_p95_ms_per_megapixel: megapixels > 0 ? gpuP95 / megapixels : 0,
     gpu_passes_by_p95: passRanking(report),
     workload: representativeWorkload(report),
@@ -218,6 +220,7 @@ function printSummary(summary) {
   console.log(
     `GPU p95 ${formatMs(summary.gpu_frame?.p95_ms)} at ` +
       `${summary.dimensions.physical_width}x${summary.dimensions.physical_height}; ` +
+      `scene ${formatMs(summary.gpu_scene?.p95_ms)}; ` +
       `CPU active p95 ${formatMs(summary.cpu_active?.p95_ms)}`,
   );
   console.log("GPU passes by p95:");

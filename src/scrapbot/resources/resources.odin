@@ -125,6 +125,7 @@ Geometry :: struct {
 	bounds: Bounds,
 	lod_handles: [shared.MAX_GEOMETRY_LODS - 1]Geometry_Handle,
 	lod_screen_radii: [shared.MAX_GEOMETRY_LODS - 1]f32,
+	lod_simplification_errors: [shared.MAX_GEOMETRY_LODS - 1]f32,
 	lod_count: int,
 	generation: u32,
 	version: u32,
@@ -726,6 +727,7 @@ register_geometry :: proc(
 		geometry.bounds = calculate_bounds(desc.vertices)
 		geometry.lod_handles = {}
 		geometry.lod_screen_radii = {}
+		geometry.lod_simplification_errors = {}
 		geometry.lod_count = 0
 		geometry.version += 1
 		if had_lods {
@@ -762,6 +764,7 @@ set_geometry_lods :: proc(
 	base: Geometry_Handle,
 	lod_handles: []Geometry_Handle,
 	screen_radii: []f32,
+	simplification_errors: []f32 = nil,
 ) -> string {
 	geometry, alive := get_geometry(registry, base)
 	if !alive {
@@ -773,6 +776,9 @@ set_geometry_lods :: proc(
 			shared.MAX_GEOMETRY_LODS - 1,
 		)
 	}
+	if len(simplification_errors) != 0 && len(simplification_errors) != len(lod_handles) {
+		return "geometry LOD errors must be empty or match alternate handles"
+	}
 	previous_radius := f32(3.402823e38)
 	for handle, index in lod_handles {
 		if _, lod_alive := get_geometry(registry, handle); !lod_alive {
@@ -783,12 +789,22 @@ set_geometry_lods :: proc(
 			return "geometry LOD screen radii must be positive, finite, and strictly descending"
 		}
 		previous_radius = radius
+		if len(simplification_errors) > 0 {
+			simplification_error := simplification_errors[index]
+			if !finite(simplification_error) || simplification_error < 0 {
+				return "geometry LOD simplification errors must be finite and non-negative"
+			}
+		}
 	}
 	geometry.lod_handles = {}
 	geometry.lod_screen_radii = {}
+	geometry.lod_simplification_errors = {}
 	geometry.lod_count = len(lod_handles)
 	copy(geometry.lod_handles[:], lod_handles)
 	copy(geometry.lod_screen_radii[:], screen_radii)
+	if len(simplification_errors) > 0 {
+		copy(geometry.lod_simplification_errors[:], simplification_errors)
+	}
 	geometry.version += 1
 	registry.geometry_topology_revision += 1
 	return ""

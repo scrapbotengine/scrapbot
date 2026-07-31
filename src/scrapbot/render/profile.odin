@@ -4,7 +4,7 @@ import ui "../ui"
 import "core:math"
 import "core:strings"
 
-PROFILE_SCHEMA_VERSION :: 1
+PROFILE_SCHEMA_VERSION :: 2
 
 Profile_Distribution :: struct {
 	samples: int,
@@ -84,6 +84,7 @@ Profile_Frame :: struct {
 Profile_Summary :: struct {
 	cpu_active: Profile_Distribution,
 	gpu_frame: Profile_Distribution,
+	gpu_scene: Profile_Distribution,
 	gpu_instance_expansion: Profile_Distribution,
 	gpu_clustered_lighting: Profile_Distribution,
 	gpu_cull: Profile_Distribution,
@@ -362,7 +363,7 @@ profile_counter_deltas :: proc(current, previous: Render_Stats) -> Profile_Count
 }
 
 Profile_GPU_Stats :: struct {
-	frame, instance_expansion, clustered_lighting, cull, shadow, depth, world, hiz: f64,
+	frame, scene, instance_expansion, clustered_lighting, cull, shadow, depth, world, hiz: f64,
 	temporal_aa, ambient_occlusion, screen_space_reflections: f64,
 	volumetric_fog, bloom, automatic_exposure, composite, ui: f64,
 }
@@ -370,6 +371,7 @@ Profile_GPU_Stats :: struct {
 profile_gpu_stats :: proc(stats: Render_Stats) -> Profile_GPU_Stats {
 	return {
 		frame = stats.gpu_frame_ms,
+		scene = stats.gpu_scene_ms,
 		instance_expansion = stats.gpu_instance_expansion_ms,
 		clustered_lighting = stats.gpu_clustered_lighting_ms,
 		cull = stats.gpu_cull_ms,
@@ -391,6 +393,7 @@ profile_gpu_stats :: proc(stats: Render_Stats) -> Profile_GPU_Stats {
 profile_apply_gpu_stats :: proc(stats: ^Render_Stats, gpu: Profile_GPU_Stats) {
 	stats.gpu_timestamps_valid = true
 	stats.gpu_frame_ms = gpu.frame
+	stats.gpu_scene_ms = gpu.scene
 	stats.gpu_instance_expansion_ms = gpu.instance_expansion
 	stats.gpu_clustered_lighting_ms = gpu.clustered_lighting
 	stats.gpu_cull_ms = gpu.cull
@@ -466,6 +469,7 @@ finish_profile_collector :: proc(collector: ^Profile_Collector) {
 	}
 	cpu := make([dynamic]f64, 0, len(collector.frames))
 	gpu_frame := make([dynamic]f64, 0, len(collector.frames))
+	gpu_scene := make([dynamic]f64, 0, len(collector.frames))
 	gpu_instance_expansion := make([dynamic]f64, 0, len(collector.frames))
 	gpu_clustered_lighting := make([dynamic]f64, 0, len(collector.frames))
 	gpu_cull := make([dynamic]f64, 0, len(collector.frames))
@@ -484,6 +488,7 @@ finish_profile_collector :: proc(collector: ^Profile_Collector) {
 	defer {
 		delete(cpu)
 		delete(gpu_frame)
+		delete(gpu_scene)
 		delete(gpu_instance_expansion)
 		delete(gpu_clustered_lighting)
 		delete(gpu_cull)
@@ -507,6 +512,7 @@ finish_profile_collector :: proc(collector: ^Profile_Collector) {
 		}
 		stats := frame.render
 		append(&gpu_frame, stats.gpu_frame_ms)
+		append(&gpu_scene, stats.gpu_scene_ms)
 		append(&gpu_instance_expansion, stats.gpu_instance_expansion_ms)
 		append(&gpu_clustered_lighting, stats.gpu_clustered_lighting_ms)
 		append(&gpu_cull, stats.gpu_cull_ms)
@@ -529,6 +535,7 @@ finish_profile_collector :: proc(collector: ^Profile_Collector) {
 	collector.report.summary = {
 		cpu_active = profile_distribution(cpu[:]),
 		gpu_frame = profile_distribution(gpu_frame[:]),
+		gpu_scene = profile_distribution(gpu_scene[:]),
 		gpu_instance_expansion = profile_distribution(gpu_instance_expansion[:]),
 		gpu_clustered_lighting = profile_distribution(gpu_clustered_lighting[:]),
 		gpu_cull = profile_distribution(gpu_cull[:]),

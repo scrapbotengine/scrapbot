@@ -80,7 +80,7 @@ function main() {
     readFileSync(join(importedDirectory, metadataName), "utf8"),
   );
   if (
-    metadata.schema !== "scrapbot.model.v7.authored-tangents" ||
+    metadata.schema !== "scrapbot.model.v10.offline-lods" ||
     metadata.node_count !== 1 ||
     metadata.mesh_count !== 1 ||
     metadata.primitive_count !== 103 ||
@@ -88,7 +88,12 @@ function main() {
     metadata.texture_count !== 73 ||
     metadata.ignored_texture_count !== 0 ||
     metadata.vertex_count !== 192496 ||
-    metadata.index_count !== 786801
+    metadata.index_count !== 786801 ||
+    metadata.lod_count <= 0 ||
+    metadata.lod_count > metadata.primitive_count * 3 ||
+    metadata.lod_vertex_count <= 0 ||
+    metadata.lod_index_count <= 0 ||
+    metadata.lod_index_count >= metadata.index_count
   ) {
     throw new Error(
       "Sponza metadata does not match the pinned real-world model shape",
@@ -111,7 +116,7 @@ function main() {
     ]);
     if (
       rendered.result?.renderables !== 103 ||
-      rendered.result?.draw_batches !== 103 ||
+      rendered.result?.draw_batches !== metadata.primitive_count + metadata.lod_count ||
       rendered.result?.render_stats?.clustered_point_lights !== 11 ||
       rendered.result?.render_stats?.gpu_ambient_occlusion_ms <= 0 ||
       rendered.result?.render_stats?.gpu_screen_space_reflections_ms <= 0 ||
@@ -124,8 +129,9 @@ function main() {
   }
 
   console.log(
-    `[external-sponza] imported ${metadata.primitive_count} primitives, ` +
-      `${metadata.index_count / 3} triangles, ${metadata.material_count} materials, ` +
+    `[external-sponza] imported ${metadata.primitive_count} primitives with ` +
+      `${metadata.lod_count} generated LODs, ${metadata.index_count / 3} source triangles, ` +
+      `${metadata.lod_index_count / 3} LOD triangles, ${metadata.material_count} materials, ` +
       `and ${metadata.texture_count} PBR textures`,
   );
 }

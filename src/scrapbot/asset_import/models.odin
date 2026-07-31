@@ -12,8 +12,8 @@ import "core:path/filepath"
 import "core:strings"
 import cgltf "vendor:cgltf"
 
-MODEL_IMPORTER_SCHEMA :: "scrapbot.model.v7.authored-tangents"
-MODEL_PRODUCT_MAGIC :: [8]u8{'S', 'B', 'M', 'O', 'D', 'E', 'L', '7'}
+MODEL_IMPORTER_SCHEMA :: "scrapbot.model.v10.offline-lods"
+MODEL_PRODUCT_MAGIC :: [8]u8{'S', 'B', 'M', 'O', 'D', 'L', '1', '0'}
 
 Model_Vertex :: struct {
 	position, normal: shared.Vec3,
@@ -50,6 +50,15 @@ Model_Primitive :: struct {
 	material_index: i32,
 	vertices: [dynamic]Model_Vertex,
 	indices: [dynamic]u32,
+	lods: [dynamic]Model_Primitive_LOD,
+}
+
+Model_Primitive_LOD :: struct {
+	vertices: [dynamic]Model_Vertex,
+	indices: [dynamic]u32,
+	level: u32,
+	screen_radius: f32,
+	simplification_error: f32,
 }
 
 Model_Mesh :: struct {
@@ -78,6 +87,7 @@ Model_Metadata :: struct {
 	byte_count: int,
 	node_count, mesh_count, primitive_count: int,
 	vertex_count, index_count, material_count, texture_count: int,
+	lod_count, lod_vertex_count, lod_index_count: int,
 	ignored_texture_count: int,
 }
 
@@ -98,9 +108,7 @@ destroy_model_product :: proc(model: ^Model_Product) {
 		delete(mesh.key)
 		delete(mesh.name)
 		for &primitive in mesh.primitives {
-			delete(primitive.key)
-			delete(primitive.vertices)
-			delete(primitive.indices)
+			destroy_model_primitive(&primitive)
 		}
 		delete(mesh.primitives)
 	}
@@ -161,7 +169,7 @@ ensure_model_import :: proc(
 	if unsupported_err := validate_supported_static_gltf(data); unsupported_err != "" {
 		return {}, false, fmt.tprintf("unsupported glTF model %s: %s", declaration.model.source, unsupported_err)
 	}
-	source_hash, hash_err := model_import_hash(source, data, source_path)
+	source_hash, hash_err := model_import_hash(source, data, source_path, declaration.model)
 	if hash_err != "" {
 		return {}, false, fmt.tprintf("failed to fingerprint glTF model %s: %s", declaration.model.source, hash_err)
 	}
@@ -176,7 +184,7 @@ ensure_model_import :: proc(
 		cache_hit = false
 	}
 	if !cache_hit {
-		model, model_err := build_model_product(data, source_path)
+		model, model_err := build_model_product(data, source_path, declaration.model)
 		if model_err != "" {
 			return {}, false, fmt.tprintf("failed to import glTF model %s: %s", declaration.model.source, model_err)
 		}
@@ -219,6 +227,9 @@ ensure_model_import :: proc(
 			primitive_count = metadata.primitive_count,
 			vertex_count = metadata.vertex_count,
 			index_count = metadata.index_count,
+			lod_count = metadata.lod_count,
+			lod_vertex_count = metadata.lod_vertex_count,
+			lod_index_count = metadata.lod_index_count,
 			material_count = metadata.material_count,
 			texture_count = metadata.texture_count,
 			ignored_texture_count = metadata.ignored_texture_count,
@@ -438,9 +449,25 @@ validate_model_texture_view :: proc(view: cgltf.texture_view, kind: string) -> s
 	return ""
 }
 
-model_import_hash :: proc(source: []u8, data: ^cgltf.data, source_path: string) -> (u64, string) {
+model_import_hash :: proc(
+	source: []u8,
+	data: ^cgltf.data,
+	source_path: string,
+	settings: shared.Project_Model_Resource,
+) -> (
+	u64,
+	string,
+) {
 	value := hash.fnv64a(source)
 	value = hash.fnv64a(transmute([]byte)(string(MODEL_IMPORTER_SCHEMA)), value)
+	generate_lods := settings.generate_lods
+	lod_count := settings.lod_count
+	lod_ratios := settings.lod_ratios
+	lod_screen_radii := settings.lod_screen_radii
+	value = hash.fnv64a((cast([^]u8)&generate_lods)[:size_of(generate_lods)], value)
+	value = hash.fnv64a((cast([^]u8)&lod_count)[:size_of(lod_count)], value)
+	value = hash.fnv64a((cast([^]u8)&lod_ratios)[:size_of(lod_ratios)], value)
+	value = hash.fnv64a((cast([^]u8)&lod_screen_radii)[:size_of(lod_screen_radii)], value)
 	for buffer in data.buffers {
 		if buffer.data != nil && buffer.size > 0 {
 			value = hash.fnv64a((cast([^]u8)buffer.data)[:buffer.size], value)
@@ -460,6 +487,7 @@ model_import_hash :: proc(source: []u8, data: ^cgltf.data, source_path: string) 
 build_model_product :: proc(
 	data: ^cgltf.data,
 	source_path: string,
+	settings: shared.Project_Model_Resource,
 ) -> (
 	model: Model_Product,
 	err: string,
@@ -590,6 +618,9 @@ build_model_product :: proc(
 			if imported_primitive.material_index >= 0 {
 				imported_primitive.material_index =
 					material_remap[imported_primitive.material_index]
+			}
+			if settings.generate_lods {
+				build_model_primitive_lods(&imported_primitive, settings)
 			}
 			append(&imported_mesh.primitives, imported_primitive)
 		}
@@ -1068,6 +1099,11 @@ destroy_model_primitive :: proc(primitive: ^Model_Primitive) {
 	delete(primitive.key)
 	delete(primitive.vertices)
 	delete(primitive.indices)
+	for &lod in primitive.lods {
+		delete(lod.vertices)
+		delete(lod.indices)
+	}
+	delete(primitive.lods)
 	primitive^ = {}
 }
 
@@ -1249,6 +1285,11 @@ model_metadata :: proc(
 		for primitive in mesh.primitives {
 			metadata.vertex_count += len(primitive.vertices)
 			metadata.index_count += len(primitive.indices)
+			metadata.lod_count += len(primitive.lods)
+			for lod in primitive.lods {
+				metadata.lod_vertex_count += len(lod.vertices)
+				metadata.lod_index_count += len(lod.indices)
+			}
 		}
 	}
 	for material in model.materials {
@@ -1370,6 +1411,23 @@ encode_model_product :: proc(model: ^Model_Product) -> []u8 {
 			}
 			for index in primitive.indices {
 				model_write_u32(&bytes, index)
+			}
+			model_write_u32(&bytes, u32(len(primitive.lods)))
+			for lod in primitive.lods {
+				model_write_u32(&bytes, lod.level)
+				model_write_f32(&bytes, lod.screen_radius)
+				model_write_f32(&bytes, lod.simplification_error)
+				model_write_u32(&bytes, u32(len(lod.vertices)))
+				model_write_u32(&bytes, u32(len(lod.indices)))
+				for vertex in lod.vertices {
+					model_write_vec3(&bytes, vertex.position)
+					model_write_vec3(&bytes, vertex.normal)
+					model_write_vec2(&bytes, vertex.uv)
+					model_write_vec4(&bytes, vertex.tangent)
+				}
+				for index in lod.indices {
+					model_write_u32(&bytes, index)
+				}
 			}
 		}
 	}
@@ -1579,6 +1637,78 @@ read_model_product :: proc(path: string) -> (model: Model_Product, err: string) 
 					return {}, "imported model indices are invalid"
 				}
 			}
+			lod_count: u32
+			lod_count, ok = model_read_u32(&reader)
+			if !ok || lod_count >= shared.MAX_GEOMETRY_LODS {
+				destroy_model_primitive(&primitive)
+				destroy_model_mesh(&mesh)
+				destroy_model_product(&model)
+				return {}, "imported model LOD count is invalid"
+			}
+			for _ in 0 ..< lod_count {
+				lod: Model_Primitive_LOD
+				lod.level, ok = model_read_u32(&reader)
+				if ok {
+					lod.screen_radius, ok = model_read_f32(&reader)
+				}
+				if ok {
+					lod.simplification_error, ok = model_read_f32(&reader)
+				}
+				lod_vertex_count: u32
+				if ok {
+					lod_vertex_count, ok = model_read_u32(&reader)
+				}
+				lod_index_count: u32
+				if ok {
+					lod_index_count, ok = model_read_u32(&reader)
+				}
+				remaining_lod_bytes := u64(len(reader.bytes) - reader.offset)
+				required_lod_bytes := u64(lod_vertex_count) * 48 + u64(lod_index_count) * 4
+				if !ok ||
+				   lod_vertex_count > vertex_count ||
+				   lod_index_count >= index_count ||
+				   lod_index_count < 3 ||
+				   lod_index_count % 3 != 0 ||
+				   required_lod_bytes > remaining_lod_bytes {
+					destroy_model_lod(&lod)
+					destroy_model_primitive(&primitive)
+					destroy_model_mesh(&mesh)
+					destroy_model_product(&model)
+					return {}, "imported model LOD geometry counts are invalid"
+				}
+				resize(&lod.vertices, int(lod_vertex_count))
+				for &vertex in lod.vertices {
+					vertex.position, ok = model_read_vec3(&reader)
+					if ok {
+						vertex.normal, ok = model_read_vec3(&reader)
+					}
+					if ok {
+						vertex.uv, ok = model_read_vec2(&reader)
+					}
+					if ok {
+						vertex.tangent, ok = model_read_vec4(&reader)
+					}
+					if !ok {
+						destroy_model_lod(&lod)
+						destroy_model_primitive(&primitive)
+						destroy_model_mesh(&mesh)
+						destroy_model_product(&model)
+						return {}, "imported model LOD vertices are truncated"
+					}
+				}
+				resize(&lod.indices, int(lod_index_count))
+				for &index in lod.indices {
+					index, ok = model_read_u32(&reader)
+					if !ok || int(index) >= len(lod.vertices) {
+						destroy_model_lod(&lod)
+						destroy_model_primitive(&primitive)
+						destroy_model_mesh(&mesh)
+						destroy_model_product(&model)
+						return {}, "imported model LOD indices are invalid"
+					}
+				}
+				append(&primitive.lods, lod)
+			}
 			if primitive.material_index < -1 ||
 			   primitive.material_index >= i32(len(model.materials)) {
 				destroy_model_primitive(&primitive)
@@ -1649,6 +1779,26 @@ validate_decoded_model :: proc(model: ^Model_Product) -> string {
 		for primitive in mesh.primitives {
 			if primitive.key == "" {
 				return "imported model primitive semantic key is empty"
+			}
+			previous_radius := f32(3.402823e38)
+			previous_index_count := len(primitive.indices)
+			previous_level := -1
+			for lod in primitive.lods {
+				if lod.level >= shared.MAX_GEOMETRY_LODS - 1 ||
+				   int(lod.level) <= previous_level ||
+				   math.is_nan(lod.screen_radius) ||
+				   math.is_inf(lod.screen_radius) ||
+				   lod.screen_radius <= 0 ||
+				   lod.screen_radius >= previous_radius ||
+				   math.is_nan(lod.simplification_error) ||
+				   math.is_inf(lod.simplification_error) ||
+				   lod.simplification_error < 0 ||
+				   len(lod.indices) >= previous_index_count {
+					return "imported model LOD metadata is invalid"
+				}
+				previous_radius = lod.screen_radius
+				previous_index_count = len(lod.indices)
+				previous_level = int(lod.level)
 			}
 		}
 	}

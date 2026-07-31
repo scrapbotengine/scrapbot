@@ -72,6 +72,7 @@ Render_Stats :: struct {
 	gpu_timestamps_supported: bool,
 	gpu_timestamps_valid: bool,
 	gpu_frame_ms: f64,
+	gpu_scene_ms: f64,
 	render_scale: f32,
 	dynamic_resolution: bool,
 	dynamic_resolution_filtered_gpu_ms: f64,
@@ -169,7 +170,7 @@ dynamic_resolution_scale :: proc "contextless" (
 	camera: shared.Camera_Component,
 	timestamps_supported: bool,
 	sample_serial: u64,
-	gpu_frame_ms, gpu_ui_ms: f64,
+	gpu_scene_ms: f64,
 	policy_owner: shared.Entity_UUID = {},
 ) -> f32 {
 	maximum := shared.camera_resolution_scale(camera)
@@ -215,13 +216,12 @@ dynamic_resolution_scale :: proc "contextless" (
 		return state.effective_scale
 	}
 	state.last_sample_serial = sample_serial
-	scalable_frame_ms := max(gpu_frame_ms - gpu_ui_ms, 0)
 	if !state.has_filtered_sample {
-		state.filtered_gpu_ms = scalable_frame_ms
+		state.filtered_gpu_ms = max(gpu_scene_ms, 0)
 		state.has_filtered_sample = true
 	} else {
 		state.filtered_gpu_ms +=
-			(scalable_frame_ms - state.filtered_gpu_ms) * DYNAMIC_RESOLUTION_FILTER_ALPHA
+			(max(gpu_scene_ms, 0) - state.filtered_gpu_ms) * DYNAMIC_RESOLUTION_FILTER_ALPHA
 	}
 	if state.cooldown_samples > 0 {
 		state.cooldown_samples -= 1
@@ -455,6 +455,7 @@ performance_diagnostics_commit_frame :: proc(
 		snapshot.fps = 1000 / average_frame_interval_ms
 	}
 	snapshot.gpu_frame_ms = stats.gpu_frame_ms
+	snapshot.gpu_scene_ms = stats.gpu_scene_ms
 	snapshot.render_scale = stats.render_scale
 	snapshot.gpu_timestamps_valid = stats.gpu_timestamps_valid
 	snapshot.entity_count = world.scene_entity_count + world.runtime_entity_count

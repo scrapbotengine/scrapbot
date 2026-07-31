@@ -22,6 +22,7 @@ function successfulEnvelope(overrides = {}) {
         gpu_timestamps_supported: true,
         gpu_timestamps_valid: true,
         gpu_frame_ms: 1.25,
+        gpu_scene_ms: 1.0,
         visible_instances: 2,
         ...overrides,
       },
@@ -49,6 +50,7 @@ test("run validation requires real GPU work and coherent timestamps", () => {
     minimum_renderables: 2,
   });
   assert.equal(stats.gpu_frame_ms, 1.25);
+  assert.equal(stats.gpu_scene_ms, 1.0);
 
   assert.throws(
     () =>
@@ -72,6 +74,7 @@ test("run validation accepts adapters without timestamp-query support", () => {
     gpu_timestamps_supported: false,
     gpu_timestamps_valid: false,
     gpu_frame_ms: 0,
+    gpu_scene_ms: 0,
   });
   assert.doesNotThrow(() => validateRunEnvelope("minimal", envelope));
 });

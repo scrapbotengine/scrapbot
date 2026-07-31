@@ -18,7 +18,7 @@ import {
 
 function profile(gpuP95, adapter = "Test GPU") {
   return {
-    schema_version: 1,
+    schema_version: 2,
     metadata: {
       backend: "wgpu",
       adapter_device: adapter,
@@ -29,6 +29,12 @@ function profile(gpuP95, adapter = "Test GPU") {
     summary: {
       cpu_active: { samples: 2, median_ms: 1, p95_ms: 1.5, max_ms: 1.5 },
       gpu_frame: { samples: 2, median_ms: gpuP95, p95_ms: gpuP95, max_ms: gpuP95 },
+      gpu_scene: {
+        samples: 2,
+        median_ms: gpuP95 * 0.75,
+        p95_ms: gpuP95 * 0.75,
+        max_ms: gpuP95 * 0.75,
+      },
       gpu_world: {
         samples: 2,
         median_ms: gpuP95 / 2,

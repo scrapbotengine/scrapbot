@@ -89,7 +89,7 @@ These are the engine-owned rows published to the editor's Systems panel. They ar
 - **Phase/order:** First WGPU render-encoding phase after preparation.
 - **Inputs:** GPU instance/draw database, camera frustum, previous valid Hi-Z state, LOD/visibility configuration.
 - **Outputs:** Visible instance compaction, indirect draw arguments, explicit frustum accepted/rejected and occlusion-rejected counters, LOD counters, and next-pass state.
-- **Stable-frame behavior:** Does not rebuild membership; it encodes bounded GPU work over retained draw capacity. Hi-Z samples a coarse mip covering the complete projected sphere footprint and skips unsafe camera-crossing or large near-field projections. CPU-reference mode is an explicit diagnostic substitute.
+- **Stable-frame behavior:** Does not rebuild membership or submission policy; it encodes bounded GPU work over retained draw capacity. Each batch follows its retained classic/meshlet selection, while meshlet diagnostics can transiently force the detailed branch. Hi-Z samples a coarse mip covering the complete projected sphere footprint and skips unsafe camera-crossing or large near-field projections. CPU-reference mode is an explicit diagnostic substitute.
 - **Boundary:** WGPU compute/encoding phase with CPU fallback for reference testing.
 - **Source/tests:** `render/wgpu_visibility.odin`, `render/wgpu_hiz.odin`, `render/wgpu_gpu_driven.odin`; `render/render_test.odin`, `render/wgpu_math.odin` reference tests.
 

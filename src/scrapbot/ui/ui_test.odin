@@ -8588,6 +8588,7 @@ test_editor_performance_panel_uses_public_panel_table_and_text_components :: pro
 		fps = 59.9,
 		frame_ms = 16.69,
 		gpu_frame_ms = 2.25,
+		gpu_scene_ms = 1.75,
 		render_scale = 0.75,
 		gpu_timestamps_valid = true,
 		entity_count = 42,
@@ -8624,10 +8625,36 @@ test_editor_performance_panel_uses_public_panel_table_and_text_components :: pro
 		testing.expect(t, entity.ui_table_index >= 0)
 		testing.expect(t, entity.ui_scroll_area_index >= 0)
 	}
-	expected_values := [12]string {
+	expected_labels := [13]string {
+		"FPS",
+		"CPU FRAME",
+		"GPU FRAME",
+		"GPU SCENE",
+		"RENDER SCALE",
+		"ENTITIES",
+		"RETAINED BATCHES",
+		"VISIBLE BATCHES",
+		"VISIBLE MESHLET DRAWS",
+		"HI-Z CULLING",
+		"FRUSTUM CULLED",
+		"OBJECT OCCLUSION",
+		"MESHLET OCCLUSION",
+	}
+	for expected, slot in expected_labels {
+		cell, found := editor_ui_entity(&world, .Diagnostics_Label, slot)
+		testing.expect(t, found)
+		if !found {
+			continue
+		}
+		entity := world.entities[cell]
+		testing.expect(t, entity.ui_text_index >= 0)
+		testing.expect(t, world.ui_texts[entity.ui_text_index].text == expected)
+	}
+	expected_values := [13]string {
 		"59.9",
 		"16.69 ms",
 		"2.25 ms",
+		"1.75 ms",
 		"75%",
 		"42",
 		"7",
@@ -8656,7 +8683,7 @@ test_editor_performance_panel_uses_public_panel_table_and_text_components :: pro
 	diagnostics.entity_count = 43
 	diagnostics.revision += 1
 	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
-	entity_value, found := editor_ui_entity(&world, .Diagnostics_Value, 4)
+	entity_value, found := editor_ui_entity(&world, .Diagnostics_Value, 5)
 	testing.expect(t, found)
 	if found {
 		text := world.ui_texts[world.entities[entity_value].ui_text_index]

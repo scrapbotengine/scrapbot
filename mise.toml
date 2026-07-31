@@ -483,7 +483,7 @@ for (const [label, raw, expectedCompute] of [["compute", process.argv[1], true],
       stats.instance_uploads - stats.instance_transform_uploads >= 10 ||
       stats.instance_upload_bytes <= 0 || stats.frustum_culled_instances < 1 ||
       stats.visible_batches < 1 || stats.visible_batches > stats.draw_batches ||
-      (expectedCompute && (stats.visible_meshlet_draws < 1 ||
+      (expectedCompute && (stats.meshlet_draws < 1 ||
         stats.visible_meshlet_draws > stats.meshlet_draws)) ||
       (!expectedCompute && stats.visible_meshlet_draws !== 0)) {
     console.error(`unexpected ${label} GPU renderer diagnostics`);
@@ -496,7 +496,9 @@ for (const [label, raw, expectedCompute] of [["compute", process.argv[1], true],
     process.exit(1);
   }
   if (stats.gpu_timestamps_supported && (!stats.gpu_timestamps_valid ||
-      stats.gpu_frame_ms <= 0 || (expectedCompute && stats.gpu_cull_ms <= 0) ||
+      stats.gpu_frame_ms <= 0 || stats.gpu_scene_ms <= 0 ||
+      stats.gpu_scene_ms > stats.gpu_frame_ms ||
+      (expectedCompute && stats.gpu_cull_ms <= 0) ||
       stats.gpu_depth_ms <= 0 || stats.gpu_world_ms <= 0)) {
     console.error("supported GPU timestamp queries did not publish completed pass timings");
     process.exit(1);
@@ -583,7 +585,10 @@ const stats = result.result?.render_stats;
 if (result.schema_version !== 1 || result.command !== "run" || result.ok !== true ||
     stats?.draw_database_rebuilds > 1 || stats.ui_project_vertex_rebuilds !== 0 ||
     stats.ui_editor_vertex_rebuilds < 1 || stats.ui_editor_vertex_rebuilds >= 10 ||
-    stats.ui_overlay_vertex_rebuilds >= 10) {
+    stats.ui_overlay_vertex_rebuilds >= 10 ||
+    (stats.gpu_timestamps_supported && (!stats.gpu_timestamps_valid ||
+      stats.gpu_scene_ms <= 0 || stats.gpu_ui_ms <= 0 ||
+      stats.gpu_frame_ms <= stats.gpu_scene_ms))) {
   console.error("editor overlay lifecycle did not complete cleanly");
   process.exit(1);
 }

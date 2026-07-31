@@ -365,6 +365,9 @@ wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
 	if renderer.gpu_cull_pipeline != nil {
 		wgpu.ComputePipelineRelease(renderer.gpu_cull_pipeline)
 	}
+	if renderer.gpu_meshlet_cull_pipeline != nil {
+		wgpu.ComputePipelineRelease(renderer.gpu_meshlet_cull_pipeline)
+	}
 	if renderer.gpu_cull_pipeline_layout != nil {
 		wgpu.PipelineLayoutRelease(renderer.gpu_cull_pipeline_layout)
 	}

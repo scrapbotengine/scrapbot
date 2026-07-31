@@ -1,6 +1,8 @@
 # Sponza
 
-This example loads Khronos's glTF 2.0 Sponza scene through Scrapbot's real incremental model importer. It exercises 103 textured primitives, 25 metallic-roughness materials, alpha-cutout surfaces, low-contrast outdoor image-based lighting from Poly Haven's Kloppenheim 01 Pure Sky, cascaded shadows, depth-aware temporal antialiasing, eleven gently animated clustered point lights arranged as warm and cool architectural pools, and a subtle 30-second camera dolly into the atrium.
+This example loads Khronos's glTF 2.0 Sponza scene through Scrapbot's real incremental model importer. It exercises 103 textured primitives, importer-generated mesh LOD chains, per-level meshlets, 25 metallic-roughness materials, alpha-cutout surfaces, low-contrast outdoor image-based lighting from Poly Haven's Kloppenheim 01 Pure Sky, cascaded shadows, depth-aware temporal antialiasing, eleven gently animated clustered point lights arranged as warm and cool architectural pools, and a subtle 30-second camera dolly into the atrium.
+
+Choose **LOD** in the Game debug-view selector to see the exact GPU-selected imported level. Green is source geometry; blue, purple, and orange are progressively simplified product levels. The ordinary camera view uses the same selection without Sponza-specific renderer code.
 
 The camera enables dynamic resolution with a native-resolution ceiling, a `0.6` floor, and a 16.667 ms GPU budget. The world and post chain step down only after sustained GPU pressure, while UI stays native-resolution. Disable `dynamic_resolution` for fixed-resolution image-quality comparisons.
 

@@ -1307,8 +1307,9 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 	editor_ui_add_scroll(world, diagnostics_table)
 	diagnostic_labels := [?]string {
 		"FPS",
-		"FRAME",
+		"CPU FRAME",
 		"GPU FRAME",
+		"GPU SCENE",
 		"RENDER SCALE",
 		"ENTITIES",
 		"RETAINED BATCHES",
@@ -2170,9 +2171,10 @@ editor_ui_refresh_performance_diagnostics :: proc(state: ^State, world: ^shared.
 	if diagnostics.hiz_occlusion_status == .Below_Threshold {
 		hiz_status = fmt.tprintf("BELOW %d", diagnostics.hiz_instance_threshold)
 	}
-	values := [12]string {
+	values := [13]string {
 		fmt.tprintf("%.1f", diagnostics.fps),
 		fmt.tprintf("%.2f ms", diagnostics.frame_ms),
+		"--",
 		"--",
 		fmt.tprintf("%.0f%%", diagnostics.render_scale * 100),
 		fmt.tprintf("%d", diagnostics.entity_count),
@@ -2186,6 +2188,7 @@ editor_ui_refresh_performance_diagnostics :: proc(state: ^State, world: ^shared.
 	}
 	if diagnostics.gpu_timestamps_valid {
 		values[2] = fmt.tprintf("%.2f ms", diagnostics.gpu_frame_ms)
+		values[3] = fmt.tprintf("%.2f ms", diagnostics.gpu_scene_ms)
 	}
 	for value, slot in values {
 		if cell, found := editor_ui_entity(world, .Diagnostics_Value, slot); found {

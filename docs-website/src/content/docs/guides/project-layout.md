@@ -111,7 +111,9 @@ Project-owned source assets live under `assets/`. UUID-backed resource files dec
 
 Static models compile only the selected scene closure. Images may be stored in GLB buffer views or data URIs, or referenced through safe relative paths beside the model. Scrapbot imports base-color, metallic-roughness, normal, occlusion, and emissive images while preserving glTF sampler policies.
 
-`scrapbot import`, `check`, `run`, and `build` share the incremental importer and write versioned products under `.scrapbot/imported/`. Source and dependency content plus importer schema participate in the cache key. Ordinary frames never scan or decode the asset tree.
+Eligible model primitives also compile deterministic compact mesh LODs into the same product. See the model recipe reference for ratios, projected thresholds, and opt-out behavior.
+
+`scrapbot import`, `check`, `run`, and `build` share the incremental importer and write versioned products under `.scrapbot/imported/`. Source and dependency content, normalized settings, and importer schema participate in the cache key. Ordinary frames never scan, decode, or simplify the asset tree.
 
 See the [Project File Reference](/reference/project-files/#project-resources), `examples/gltf-showcase`, and the heavyweight external-file integration in `examples/sponza`.
 

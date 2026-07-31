@@ -8,6 +8,112 @@ import "core:strings"
 import "core:testing"
 import cgltf "vendor:cgltf"
 
+make_model_grid_primitive :: proc(size: int) -> Model_Primitive {
+	primitive := Model_Primitive {
+		material_index = -1,
+	}
+	for y in 0 ..= size {
+		for x in 0 ..= size {
+			append(
+				&primitive.vertices,
+				Model_Vertex {
+					position = {f32(x), f32(y), 0},
+					normal = {0, 0, 1},
+					uv = {f32(x) / f32(size), f32(y) / f32(size)},
+					tangent = {1, 0, 0, 1},
+				},
+			)
+		}
+	}
+	row := size + 1
+	for y in 0 ..< size {
+		for x in 0 ..< size {
+			a := u32(y * row + x)
+			b := u32(y * row + x + 1)
+			c := u32((y + 1) * row + x)
+			d := u32((y + 1) * row + x + 1)
+			append(&primitive.indices, a, b, c, b, d, c)
+		}
+	}
+	return primitive
+}
+
+@(test)
+test_model_offline_lods_are_deterministic_compact_and_round_trip :: proc(t: ^testing.T) {
+	settings := shared.Project_Model_Resource {
+		generate_lods = true,
+		lod_ratios = {0.5, 0.25, 0.125},
+		lod_screen_radii = {0.18, 0.07, 0.025},
+		lod_count = 3,
+	}
+	primitive := make_model_grid_primitive(12)
+	defer destroy_model_primitive(&primitive)
+	build_model_primitive_lods(&primitive, settings)
+	testing.expect_value(t, len(primitive.lods), 3)
+	previous_index_count := len(primitive.indices)
+	for lod, level in primitive.lods {
+		testing.expect(t, len(lod.indices) < previous_index_count)
+		testing.expect(t, len(lod.vertices) <= len(primitive.vertices))
+		testing.expect_value(t, lod.screen_radius, settings.lod_screen_radii[level])
+		testing.expect(t, lod.simplification_error >= 0)
+		for index in lod.indices {
+			testing.expect(t, int(index) < len(lod.vertices))
+		}
+		previous_index_count = len(lod.indices)
+	}
+	second := make_model_grid_primitive(12)
+	defer destroy_model_primitive(&second)
+	build_model_primitive_lods(&second, settings)
+	testing.expect_value(t, len(second.lods), len(primitive.lods))
+	for lod, level in primitive.lods {
+		testing.expect_value(t, len(second.lods[level].indices), len(lod.indices))
+		testing.expect_value(t, len(second.lods[level].vertices), len(lod.vertices))
+		for element, index in lod.indices {
+			testing.expect_value(t, second.lods[level].indices[index], element)
+		}
+		for vertex, vertex_index in lod.vertices {
+			testing.expect_value(t, second.lods[level].vertices[vertex_index], vertex)
+		}
+	}
+	model: Model_Product
+	mesh := Model_Mesh{}
+	mesh.key, _ = strings.clone("mesh:grid")
+	mesh.name, _ = strings.clone("Grid")
+	primitive.key, _ = strings.clone("mesh:grid/primitive:default")
+	append(&mesh.primitives, primitive)
+	primitive = {}
+	append(&model.meshes, mesh)
+	defer destroy_model_product(&model)
+	encoded := encode_model_product(&model)
+	defer delete(encoded)
+	root, temp_err := os.make_directory_temp("", "scrapbot-model-lods-*", context.allocator)
+	testing.expect(t, temp_err == nil)
+	if temp_err != nil {
+		return
+	}
+	defer os.remove_all(root)
+	defer delete(root)
+	path, path_err := filepath.join({root, "grid.model.bin"})
+	testing.expect(t, path_err == nil)
+	if path_err != nil {
+		return
+	}
+	defer delete(path)
+	testing.expect(t, os.write_entire_file(path, encoded) == nil)
+	decoded, decode_err := read_model_product(path)
+	defer destroy_model_product(&decoded)
+	testing.expectf(t, decode_err == "", "LOD product round trip failed: %s", decode_err)
+	if decode_err == "" {
+		testing.expect_value(t, len(decoded.meshes[0].primitives[0].lods), 3)
+		decoded_indices := decoded.meshes[0].primitives[0].lods[2].indices
+		source_indices := model.meshes[0].primitives[0].lods[2].indices
+		testing.expect_value(t, len(decoded_indices), len(source_indices))
+		for element, index in source_indices {
+			testing.expect_value(t, decoded_indices[index], element)
+		}
+	}
+}
+
 model_test_declaration :: proc() -> shared.Project_Resource {
 	id, _ := shared.resource_uuid_parse("a1000000-0000-4000-8000-000000000098")
 	return {id = id, kind = .Model, name = "Triangle", model = {source = "assets/triangle.gltf"}}
@@ -264,6 +370,19 @@ test_static_gltf_import_is_incremental_and_round_trips_product :: proc(t: ^testi
 	defer destroy_report(&second)
 	testing.expectf(t, second.err == "", "cached model import failed: %s", second.err)
 	testing.expect_value(t, second.cached_count, 1)
+	declaration.model.generate_lods = true
+	declaration.model.lod_ratios = {0.5, 0.25, 0.125}
+	declaration.model.lod_screen_radii = {0.18, 0.07, 0.025}
+	declaration.model.lod_count = 3
+	settings_changed := ensure_project_imports(root, []shared.Project_Resource{declaration})
+	defer destroy_report(&settings_changed)
+	testing.expectf(
+		t,
+		settings_changed.err == "",
+		"model LOD settings reimport failed: %s",
+		settings_changed.err,
+	)
+	testing.expect_value(t, settings_changed.imported_count, 1)
 }
 
 @(test)

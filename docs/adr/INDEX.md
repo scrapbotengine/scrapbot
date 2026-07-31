@@ -48,3 +48,4 @@
 | [ADR-044](ADR-044-resolve-intrinsic-and-flex-ui-layout-in-retained-passes.md) | Resolve intrinsic and flex UI layout in retained passes | 2026-07-30 |
 | [ADR-045](ADR-045-compose-docking-from-public-groups-and-layout.md) | Compose docking from public groups and layout | 2026-07-30 |
 | [ADR-046](ADR-046-store-meshlets-with-geometry-resources.md) | Store meshlets with geometry resources | 2026-07-30 |
+| [ADR-047](ADR-047-generate-imported-mesh-lods-in-asset-products.md) | Generate imported mesh LODs in asset products | 2026-07-31 |

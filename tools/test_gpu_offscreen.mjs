@@ -59,7 +59,10 @@ export function validateRunEnvelope(label, envelope, expected = {}) {
   }
   if (
     stats.gpu_timestamps_supported &&
-    (!stats.gpu_timestamps_valid || stats.gpu_frame_ms <= 0)
+    (!stats.gpu_timestamps_valid ||
+      stats.gpu_frame_ms <= 0 ||
+      stats.gpu_scene_ms <= 0 ||
+      stats.gpu_scene_ms > stats.gpu_frame_ms)
   ) {
     throw new Error(`${label}: supported GPU timestamps were not published`);
   }
@@ -80,6 +83,7 @@ export function summarizeRun(label, envelope, imagePath) {
     gpu_timestamps_supported: stats.gpu_timestamps_supported,
     gpu_timestamps_valid: stats.gpu_timestamps_valid,
     gpu_frame_ms: stats.gpu_frame_ms,
+    gpu_scene_ms: stats.gpu_scene_ms,
     gpu_passes_ms: {
       instance_expansion: stats.gpu_instance_expansion_ms,
       clustered_lighting: stats.gpu_clustered_lighting_ms,

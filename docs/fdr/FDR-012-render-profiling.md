@@ -1,7 +1,7 @@
 # FDR-012: Render profiling
 
 **Status:** Active
-**Last reviewed:** 2026-07-25
+**Last reviewed:** 2026-07-31
 
 ## Overview
 
@@ -13,10 +13,12 @@
 - Warmup frames execute normally but do not enter the report.
 - Every measured frame records active CPU time, exact physical and logical dimensions, pixel density, viewport bounds, shaded pixels, a raw renderer snapshot, per-frame deltas for cumulative upload/rebuild/dispatch counters, structured pass workload descriptions, and per-pass GPU timestamps when supported.
 - Workload descriptions expose whether a pass ran, its target dimensions, pass count, compute workgroups and invocation upper bound, raster draws and instances, and fixed shader sample budget where meaningful.
-- Transform expansion, clustered-light construction, visibility, shadows, depth, world shading, Hi-Z, AO, SSR, volumetric fog, temporal resolve, bloom, automatic exposure, composite, and UI have distinct timestamp phases. GPU frame time is their sum, keeping the timing path on portable pass timestamps without requiring backend-sensitive encoder timestamp support.
+- Transform expansion, clustered-light construction, visibility, shadows, depth, world shading, Hi-Z, AO, SSR, volumetric fog, temporal resolve, bloom, automatic exposure, composite, and UI have distinct timestamp phases for attribution.
+- One span runs from the earliest executed timed pass boundary through the final executed timed pass boundary, including UI when present. A second span shares the same beginning and ends after final composition, before UI. These ordered spans, rather than a sum of independently measured passes, define GPU frame and scene time.
+- Profile schema version 2 introduces the ordered frame/scene span semantics. Version 1 profiles used an additive pass total and must not be compared with version 2.
 - GPU readbacks retain their originating renderer-frame index. Asynchronous results are merged into that exact report row.
 - The profiler drains timing readbacks in bounded batches. The wait happens outside the recorded active CPU duration.
-- `profile.json` contains raw frame rows plus median, p95, and maximum distributions for CPU active time, total GPU time, and each timed GPU pass.
+- `profile.json` contains raw frame rows plus median, p95, and maximum distributions for CPU active time, full GPU frame time, pre-UI GPU scene time, and each timed GPU pass.
 - `overview.png` is the final frame from the measurement pass.
 - `--capture-range START:END` performs a fresh deterministic replay and writes lossless 1:1 PNGs under `frames/`. Readback stalls from this pass never enter the measured report.
 - `--resolution WIDTHxHEIGHT` overrides project resolution. Without it, the project window resolution is used.
@@ -48,7 +50,7 @@
 
 **Why:** Reporting the latest available GPU result beside the current CPU frame silently compares different work.
 
-**Tradeoff:** Unsupported or failed timestamp queries leave an explicit untimed row rather than fabricating a value.
+**Tradeoff:** Adapters without timestamp-query support and failed or unordered timestamp samples leave an explicit untimed row rather than fabricating a frame duration from the pass sum. Work outside the measured pass boundaries, such as query resolution and presentation, is not part of the GPU span.
 
 ### 3. Report active CPU work separately from pacing
 

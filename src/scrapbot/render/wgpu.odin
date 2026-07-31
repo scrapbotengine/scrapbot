@@ -271,6 +271,7 @@ WGPU_Draw_Batch :: struct {
 	material: shared.Material_Handle,
 	first_instance: u32,
 	instance_count: u32,
+	meshlet_submission: bool,
 	visible_offset: u32,
 	visible_capacity: u32,
 	meshlet_draw_offset: u32,
@@ -334,7 +335,8 @@ WGPU_GPU_Cull_Uniform :: struct {
 	meshlet_shadow_visible_stride: u32,
 	meshlet_debug_record_offset: u32,
 	debug_view: u32,
-	_padding: [3]u32,
+	meshlet_force_enabled: u32,
+	_padding: [2]u32,
 }
 #assert(size_of(WGPU_GPU_Cull_Uniform) == 688)
 
@@ -371,7 +373,9 @@ WGPU_GPU_Batch_Info :: struct {
 	visible_capacity: u32,
 	meshlet_offset: u32,
 	meshlet_count: u32,
+	meshlet_enabled: u32,
 }
+#assert(size_of(WGPU_GPU_Batch_Info) == 20)
 
 WGPU_GPU_Meshlet_Info :: struct {
 	bounds: [4]f32,
@@ -620,6 +624,7 @@ WGPU_Renderer :: struct {
 	gpu_driven_shadow_bind_group_layout: wgpu.BindGroupLayout,
 	gpu_cull_shader: wgpu.ShaderModule,
 	gpu_cull_pipeline: wgpu.ComputePipeline,
+	gpu_meshlet_cull_pipeline: wgpu.ComputePipeline,
 	gpu_cull_pipeline_layout: wgpu.PipelineLayout,
 	gpu_cull_bind_group_layout: wgpu.BindGroupLayout,
 	gpu_cull_bind_group: wgpu.BindGroup,
@@ -725,11 +730,15 @@ WGPU_Renderer :: struct {
 	gpu_meshlet_draw_capacity: int,
 	gpu_meshlet_visible_buffer_capacity: int,
 	gpu_meshlet_draw_count: int,
+	gpu_meshlet_selected_draw_count: int,
+	gpu_meshlet_selected_batch_count: int,
+	gpu_classic_batch_count: int,
 	gpu_meshlet_visible_capacity: int,
 	gpu_meshlet_supported: bool,
 	gpu_meshlet_native_multi_draw: bool,
 	gpu_meshlet_layout_valid: bool,
 	gpu_meshlet_submission_active: bool,
+	gpu_meshlet_force_enabled: bool,
 	gpu_draw_database_rebuild_count: u64,
 	gpu_slot_count: int,
 	gpu_visible_capacity: int,
@@ -760,6 +769,7 @@ WGPU_Renderer :: struct {
 	gpu_timestamp_resolution_sample_count: int,
 	gpu_timestamp_phase_ms: [WGPU_GPU_TIMESTAMP_PHASE_COUNT]f64,
 	gpu_timestamp_frame_ms: f64,
+	gpu_timestamp_scene_ms: f64,
 	dynamic_resolution: Dynamic_Resolution_State,
 	profile: ^Profile_Collector,
 	profile_frame_index: u64,
@@ -928,7 +938,6 @@ wgpu_dynamic_resolution_scale :: proc(
 		renderer.gpu_timestamp_supported,
 		renderer.dynamic_resolution.last_sample_serial,
 		0,
-		0,
 		policy_owner,
 	)
 	samples := renderer.gpu_timestamp_resolution_samples[:renderer.gpu_timestamp_resolution_sample_count]
@@ -952,7 +961,6 @@ wgpu_dynamic_resolution_scale :: proc(
 			renderer.gpu_timestamp_supported,
 			sample.serial,
 			sample.gpu_ms,
-			0,
 			policy_owner,
 		)
 		if renderer.dynamic_resolution.generation != generation {
@@ -971,7 +979,7 @@ wgpu_dynamic_resolution_accumulate_sample :: proc(
 	renderer: ^WGPU_Renderer,
 	generation: u64,
 	frame_index: u64,
-	frame_ms, ui_ms: f64,
+	scene_ms: f64,
 ) {
 	if renderer == nil ||
 	   !renderer.dynamic_resolution.initialized ||
@@ -986,7 +994,7 @@ wgpu_dynamic_resolution_accumulate_sample :: proc(
 		generation = generation,
 		serial = renderer.gpu_timestamp_sample_serial,
 		frame_index = frame_index,
-		gpu_ms = max(frame_ms - ui_ms, 0),
+		gpu_ms = max(scene_ms, 0),
 	}
 	renderer.gpu_timestamp_resolution_sample_count += 1
 }
@@ -1129,7 +1137,9 @@ wgpu_profile_workload :: proc(
 		batches = u64(max(stats.draw_batches, 0))
 		geometry_draws = batches
 		if stats.meshlet_culling {
-			geometry_draws = u64(max(stats.meshlet_draws, 0))
+			geometry_draws =
+				u64(max(wgpu_active_classic_batch_count(renderer), 0)) +
+				u64(max(stats.meshlet_draws, 0))
 		}
 		visible_instances = u64(stats.visible_instances)
 		shadow_instances = u64(stats.shadow_visible_instances)
@@ -1147,13 +1157,22 @@ wgpu_profile_workload :: proc(
 	}
 	cull := Profile_Pass_Workload{}
 	if stats != nil && stats.compute_culling && renderer.gpu_slot_count > 0 {
+		cull_dispatches := u32(0)
+		if wgpu_active_classic_batch_count(renderer) > 0 {
+			cull_dispatches += 1
+		}
+		if renderer.gpu_meshlet_submission_active {
+			cull_dispatches += 1
+		}
+		workgroups :=
+			u64((renderer.gpu_slot_count + 63) / 64) *
+			u64(WGPU_SHADOW_CASCADE_COUNT) *
+			u64(cull_dispatches)
 		cull = {
 			enabled = true,
 			passes = 1,
-			workgroups = u64((renderer.gpu_slot_count + 63) / 64) * u64(WGPU_SHADOW_CASCADE_COUNT),
-			invocations = u64(
-				(renderer.gpu_slot_count + 63) / 64,
-			) * u64(WGPU_SHADOW_CASCADE_COUNT) * 64,
+			workgroups = workgroups,
+			invocations = workgroups * 64,
 			instances = u64(renderer.gpu_slot_count),
 		}
 	}
@@ -2403,7 +2422,7 @@ wgpu_encode_render_pass :: proc(
 			wgpu.RenderPassEncoderSetPipeline(render_pass, pipeline)
 			world_bind_group := batch.world_bind_group
 			index_buffer := cached.index_buffer
-			if renderer.gpu_meshlet_submission_active {
+			if wgpu_batch_uses_meshlets(renderer, batch) {
 				world_bind_group = batch.meshlet_world_bind_group
 				index_buffer = cached.meshlet_index_buffer
 			}
@@ -2423,7 +2442,7 @@ wgpu_encode_render_pass :: proc(
 				0,
 				wgpu.WHOLE_SIZE,
 			)
-			if renderer.gpu_meshlet_submission_active {
+			if wgpu_batch_uses_meshlets(renderer, batch) {
 				wgpu.RenderPassEncoderMultiDrawIndexedIndirect(
 					render_pass,
 					renderer.gpu_meshlet_indirect_buffer,
@@ -2765,7 +2784,7 @@ wgpu_encode_depth_prepass :: proc(
 		wgpu.RenderPassEncoderSetPipeline(pass, pipeline)
 		world_bind_group := batch.world_bind_group
 		index_buffer := cached.index_buffer
-		if renderer.gpu_meshlet_submission_active {
+		if wgpu_batch_uses_meshlets(renderer, batch) {
 			world_bind_group = batch.meshlet_world_bind_group
 			index_buffer = cached.meshlet_index_buffer
 		}
@@ -2783,7 +2802,7 @@ wgpu_encode_depth_prepass :: proc(
 		}
 		wgpu.RenderPassEncoderSetVertexBuffer(pass, 0, cached.vertex_buffer, 0, wgpu.WHOLE_SIZE)
 		wgpu.RenderPassEncoderSetIndexBuffer(pass, index_buffer, .Uint32, 0, wgpu.WHOLE_SIZE)
-		if renderer.gpu_meshlet_submission_active {
+		if wgpu_batch_uses_meshlets(renderer, batch) {
 			wgpu.RenderPassEncoderMultiDrawIndexedIndirect(
 				pass,
 				renderer.gpu_meshlet_indirect_buffer,
@@ -2944,7 +2963,7 @@ wgpu_encode_shadow_cascade_pass :: proc(
 			wgpu.RenderPassEncoderSetPipeline(pass, pipeline)
 			shadow_bind_group := batch.shadow_bind_groups[cascade_index]
 			index_buffer := cached.index_buffer
-			if renderer.gpu_meshlet_submission_active {
+			if wgpu_batch_uses_meshlets(renderer, batch) {
 				shadow_bind_group = batch.meshlet_shadow_bind_groups[cascade_index]
 				index_buffer = cached.meshlet_index_buffer
 			}
@@ -2968,7 +2987,7 @@ wgpu_encode_shadow_cascade_pass :: proc(
 				wgpu.WHOLE_SIZE,
 			)
 			wgpu.RenderPassEncoderSetIndexBuffer(pass, index_buffer, .Uint32, 0, wgpu.WHOLE_SIZE)
-			if renderer.gpu_meshlet_submission_active {
+			if wgpu_batch_uses_meshlets(renderer, batch) {
 				wgpu.RenderPassEncoderMultiDrawIndexedIndirect(
 					pass,
 					renderer.gpu_meshlet_shadow_indirect_buffer,
@@ -3125,7 +3144,7 @@ wgpu_draw_frame :: proc(
 		config.stats.meshlet_supported = renderer.gpu_meshlet_supported
 		config.stats.meshlet_native_multi_draw =
 			renderer.gpu_meshlet_submission_active && renderer.gpu_meshlet_native_multi_draw
-		config.stats.meshlet_draws = renderer.gpu_meshlet_draw_count
+		config.stats.meshlet_draws = wgpu_active_meshlet_draw_count(renderer)
 		config.stats.meshlet_visible_capacity = renderer.gpu_meshlet_visible_capacity
 		config.stats.clustered_lighting = true
 		config.stats.shadow_cascades =
@@ -3379,7 +3398,7 @@ wgpu_render_offscreen_frame :: proc(
 		config.stats.meshlet_supported = renderer.gpu_meshlet_supported
 		config.stats.meshlet_native_multi_draw =
 			renderer.gpu_meshlet_submission_active && renderer.gpu_meshlet_native_multi_draw
-		config.stats.meshlet_draws = renderer.gpu_meshlet_draw_count
+		config.stats.meshlet_draws = wgpu_active_meshlet_draw_count(renderer)
 		config.stats.meshlet_visible_capacity = renderer.gpu_meshlet_visible_capacity
 		config.stats.clustered_lighting = true
 		config.stats.shadow_cascades =

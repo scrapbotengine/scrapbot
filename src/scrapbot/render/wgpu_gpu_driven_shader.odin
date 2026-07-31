@@ -938,6 +938,7 @@ struct Batch_Info {
 	visible_capacity: u32,
 	meshlet_offset: u32,
 	meshlet_count: u32,
+	meshlet_enabled: u32,
 };
 
 struct Meshlet_Info {
@@ -973,9 +974,9 @@ struct Cull_Uniform {
 	meshlet_shadow_visible_stride: u32,
 	meshlet_debug_record_offset: u32,
 	debug_view: u32,
+	meshlet_force_enabled: u32,
 	padding_0: u32,
 	padding_1: u32,
-	padding_2: u32,
 };
 
 struct Visibility_Counters {
@@ -1009,6 +1010,11 @@ struct Visibility_Counters {
 
 fn render_debug_is_occlusion_queries() -> bool {
 	return cull.debug_view == 10u;
+}
+
+fn batch_uses_meshlets(batch: Batch_Info) -> bool {
+	return cull.meshlet_enabled != 0u &&
+		(cull.meshlet_force_enabled != 0u || batch.meshlet_enabled != 0u);
 }
 
 fn mark_visible_batch(batch_index: u32) {
@@ -1226,7 +1232,7 @@ fn append_batch_meshlet_debug(
 	classification: u32,
 	lod_level: u32,
 ) {
-	if (cull.meshlet_debug_record_offset == 0u || cull.meshlet_enabled == 0u) {
+	if (cull.meshlet_debug_record_offset == 0u || !batch_uses_meshlets(batch)) {
 		return;
 	}
 	for (
@@ -1244,8 +1250,7 @@ fn append_batch_meshlet_debug(
 	}
 }
 
-@compute @workgroup_size(64)
-fn cull_instances(@builtin(global_invocation_id) invocation: vec3<u32>) {
+fn cull_instances(invocation: vec3<u32>, meshlet_pass: bool) {
 	let slot = invocation.x;
 	let cascade_index = invocation.y;
 	if (slot >= cull.slot_count || cascade_index >= 4u) {
@@ -1258,6 +1263,9 @@ fn cull_instances(@builtin(global_invocation_id) invocation: vec3<u32>) {
 		return;
 	}
 	let batch = batches[batch_index];
+	if (batch_uses_meshlets(batch) != meshlet_pass) {
+		return;
+	}
 	if (cascade_index == 0u && camera_sphere_visible(instance.bounds)) {
 		atomicAdd(&counters.frustum_candidates, 1u);
 		let instance_occlusion = camera_sphere_occlusion(instance.bounds);
@@ -1268,7 +1276,7 @@ fn cull_instances(@builtin(global_invocation_id) invocation: vec3<u32>) {
 			} else {
 				append_batch_meshlet_debug(instance, batch, 3u, lod_level);
 			}
-		} else if (cull.meshlet_enabled != 0u) {
+		} else if (batch_uses_meshlets(batch)) {
 			mark_visible_batch(batch_index);
 			for (
 				var local_meshlet = 0u;
@@ -1330,7 +1338,7 @@ fn cull_instances(@builtin(global_invocation_id) invocation: vec3<u32>) {
 		append_batch_meshlet_debug(instance, batch, 2u, lod_level);
 	}
 	if (instance.shadow_flags.x > 0.5 && shadow_sphere_visible(instance.bounds, cascade_index)) {
-		if (cull.meshlet_enabled != 0u) {
+		if (batch_uses_meshlets(batch)) {
 			for (
 				var local_meshlet = 0u;
 				local_meshlet < batch.meshlet_count;
@@ -1367,6 +1375,16 @@ fn cull_instances(@builtin(global_invocation_id) invocation: vec3<u32>) {
 			}
 		}
 	}
+}
+
+@compute @workgroup_size(64)
+fn cull_classic_instances(@builtin(global_invocation_id) invocation: vec3<u32>) {
+	cull_instances(invocation, false);
+}
+
+@compute @workgroup_size(64)
+fn cull_meshlet_instances(@builtin(global_invocation_id) invocation: vec3<u32>) {
+	cull_instances(invocation, true);
 }
 `
 

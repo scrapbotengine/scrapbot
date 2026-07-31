@@ -170,8 +170,12 @@ resource = "d4000000-0000-4000-8000-000000000001"
         framegrab,
         "--json",
       ]);
-      if (rendered.result?.renderables !== 1 || rendered.result?.draw_batches !== 1) {
-        throw new Error("Damaged Helmet did not produce one renderable draw batch");
+      if (
+        rendered.result?.renderables !== 1 ||
+        rendered.result?.draw_batches < 2 ||
+        rendered.result?.draw_batches > 4
+      ) {
+        throw new Error("Damaged Helmet did not produce one renderable imported LOD chain");
       }
     }
 
@@ -199,7 +203,7 @@ resource = "d4000000-0000-4000-8000-000000000001"
     const expectedEnvironmentBytes =
       (1024 * 512 + 32 * 32 * 6 + specularTexels) * 4 * 2;
     if (
-      environmentMetadata.schema !== "scrapbot.environment.v3.rgba16f-sky-ibl" ||
+      environmentMetadata.schema !== "scrapbot.environment.v4.bilinear-ggx256" ||
       environmentMetadata.width !== 1024 ||
       environmentMetadata.height !== 512 ||
       environmentMetadata.irradiance_size !== 32 ||
@@ -213,7 +217,7 @@ resource = "d4000000-0000-4000-8000-000000000001"
       readFileSync(join(importedDirectory, metadataName), "utf8"),
     );
     if (
-      metadata.schema !== "scrapbot.model.v6.semantic-scene" ||
+      metadata.schema !== "scrapbot.model.v10.offline-lods" ||
       metadata.node_count !== 1 ||
       metadata.mesh_count !== 1 ||
       metadata.primitive_count !== 1 ||
@@ -221,12 +225,16 @@ resource = "d4000000-0000-4000-8000-000000000001"
       metadata.texture_count !== 5 ||
       metadata.ignored_texture_count !== 0 ||
       metadata.vertex_count < 10000 ||
-      metadata.index_count < 10000
+      metadata.index_count < 10000 ||
+      metadata.lod_count < 1 ||
+      metadata.lod_count > 3 ||
+      metadata.lod_vertex_count <= 0 ||
+      metadata.lod_index_count <= 0
     ) {
       throw new Error("Damaged Helmet metadata does not match the expected real-world model shape");
     }
     console.log(
-      `[external-gltf] imported Damaged Helmet: ${metadata.vertex_count} vertices, ${metadata.index_count} indices, ${metadata.texture_count} rendered PBR textures`,
+      `[external-gltf] imported Damaged Helmet: ${metadata.vertex_count} vertices, ${metadata.index_count} indices, ${metadata.lod_count} generated LODs, ${metadata.texture_count} rendered PBR textures`,
     );
   } finally {
     rmSync(project, { force: true, recursive: true });

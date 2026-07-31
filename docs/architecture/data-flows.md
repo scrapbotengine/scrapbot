@@ -22,14 +22,22 @@ scene parse + schema validation + resource UUID resolution
 
 Native components register before Luau executes, so scripts can retrieve native handles. Asset import completes before runtime resource registration. Scene validation uses the combined engine/native/Luau registry.
 
-At bootstrap or reload, Model roots reconcile imported nodes and primitives into derived Transform/Geometry/Material entities. Later duplication, Undo/Redo, or resource replacement increments a model-instance revision; reconciliation waits for that structural signal.
+Before bootstrap, Model import simplifies eligible primitive index streams, compacts each retained
+level, and persists the generated chain in the versioned product. Runtime registration publishes
+semantic Geometry subresources and attaches their handles to the base Geometry.
+
+At bootstrap or reload, Model roots reconcile imported nodes and primitives into derived
+Transform/Geometry/Material entities. Later duplication, Undo/Redo, or resource replacement
+increments a model-instance revision; reconciliation waits for that structural signal.
 
 Resource descriptions remain outside ECS. Components store resolved runtime handles. Geometry
 registration derives bounded meshlet streams and local culling bounds once from canonical indexed
-triangles; the arrays remain owned and versioned with the Geometry entry.
+triangles, including every imported LOD level; the arrays remain owned and versioned with the
+Geometry entry.
 WGPU consumes a changed Geometry version into canonical and meshlet-ordered index buffers. Capable
-adapters retain cluster metadata and indirect templates; unsupported adapters ignore that derived
-cache and keep whole-primitive submission.
+adapters retain cluster metadata and indirect templates, then select classic or meshlet submission
+for each retained batch from its membership. Unsupported adapters ignore that derived cache and
+keep whole-primitive submission.
 
 Hot reload stages the resource registry, world, script/native runtime, source set, and playback baseline independently. Failure destroys the staged bundle; success swaps it atomically.
 
@@ -103,7 +111,9 @@ typed ECS/resource mutation
                                       │
              persistent WGPU instance/primitive/meshlet draw databases
                                       │
-                        object/meshlet compute cull
+                retained per-batch classic/meshlet selection
+                                      │
+                         mixed object/meshlet compute cull
                          ├─ compact visible draws
                          └─ opt-in rejection records ─> indirect bounds overlay
                                       │
@@ -156,7 +166,7 @@ Material revisions trigger one dependent-instance pass. WGPU replaces only that 
 
 The active camera owns the manual world-render ceiling, optional GPU-budgeted dynamic-resolution floor/target, fixed/automatic exposure, TAA, current-frame fast AA, AO, SSR, and bloom switches. The editor fly camera contributes pose and lens while inheriting this policy.
 
-Before layout, WGPU drains any completed asynchronous timestamp readbacks. Dynamic resolution processes every newly completed scalable-GPU sample exactly once, filters it, and applies asymmetric hysteresis in quantized 5% steps. Samples retain their render-policy generation, so delayed evidence from an old scale or camera cannot affect the new controller state. Native project/editor UI time is excluded. The authored `resolution_scale` remains the ceiling, the authored minimum remains the floor, and unsupported timestamps select the ceiling.
+Before layout, WGPU drains any completed asynchronous timestamp readbacks. The scene span runs from the earliest executed timed pass boundary through the end of final composition, before native-resolution UI. Dynamic resolution processes every newly completed scene-span sample exactly once, filters it, and applies asymmetric hysteresis in quantized 5% steps. Samples retain their render-policy generation, so delayed evidence from an old scale or camera cannot affect the new controller state. The authored `resolution_scale` remains the ceiling, the authored minimum remains the floor, and adapters without timestamp queries select the ceiling.
 
 WGPU derives one output layout and one effective world-render layout after that control step. The world, depth, Hi-Z, and post chain use the scaled layout. Final composition maps the complete scaled grid back onto the native output target. The native-resolution UI pass then paints project UI, editor-world overlays clipped to the Game viewport, and editor chrome in that order. Editor tabs and panels therefore occlude gizmos and camera visualizers when they cover the Game surface.
 
@@ -191,7 +201,7 @@ spawn/despawn-maintained entity-origin counts ─────────┘    
                                                                public ECS UI panel
 ```
 
-The editor formats values only when the snapshot revision changes. GPU timestamp and visibility values are asynchronous.
+The editor formats values only when the snapshot revision changes. GPU timestamp and visibility values are asynchronous. `GPU FRAME` runs from the earliest executed timed pass boundary through the final executed timed pass boundary, including UI when present. `GPU SCENE` shares that beginning and ends after final composition, before UI. Individual pass spans remain attribution and are not added to manufacture either duration.
 
 Retained batches describe geometry/material/LOD topology. Camera-visible batches count selected batches with at least one object surviving object-level visibility. Visible meshlet draws count indirect meshlet commands with at least one surviving instance. These camera counters remain separate from shadow-cascade visibility and from the number of API commands encoded across all passes.
 

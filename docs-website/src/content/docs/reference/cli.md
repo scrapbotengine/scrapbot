@@ -73,7 +73,7 @@ Successful JSON results include `target`, `output_directory`, and `executable` f
 scrapbot import [path] [--json]
 ```
 
-Compiles declared `scrapbot.texture` and `scrapbot.model` source assets into versioned products under `.scrapbot/imported/`. Unchanged fingerprints reuse cached products. Human output reports imported and cached counts; JSON results contain `imported`, `cached`, and `products`. Import failures report `SCRAPBOT_IMPORT_FAILED` and leave a prior valid product untouched.
+Compiles declared Texture, Model, Environment, and Icon Set sources into versioned products under `.scrapbot/imported/`. Model products include configured offline mesh LODs. Unchanged source/dependency/settings fingerprints reuse cached products. Human output reports imported and cached counts; JSON results contain `imported`, `cached`, and `products`. Import failures report `SCRAPBOT_IMPORT_FAILED` and leave a prior valid product untouched.
 
 ## `scrapbot check`
 
@@ -149,14 +149,14 @@ With `--runtime-stats`, JSON results include a `runtime_stats` object. It report
 
 JSON run results also include `render_stats`. For WGPU, the object groups together:
 
-- Active-path flags for compute culling, meshlet culling, native multi-draw acceleration, and clustered lighting.
-- Meshlet capability, retained `draw_batches`, camera `visible_batches`, nonempty `visible_meshlet_draws`, visibility capacity, separate object/meshlet frustum, cone, and occlusion counters, and the opt-in `meshlet_debug_records` count.
+- Active-path flags for compute culling, any active meshlet batch, native multi-draw acceleration, and clustered lighting. A capable frame may mix classic and meshlet batches.
+- Meshlet capability, retained `draw_batches`, selected meshlet command count in `meshlet_draws`, camera `visible_batches`, nonempty `visible_meshlet_draws`, visibility capacity, separate object/meshlet frustum, cone, and occlusion counters, and the opt-in `meshlet_debug_records` count. Meshlet debug views report the forced complete command set.
 - Shadow-cascade, cluster-count, per-cluster light-capacity, clustered-point-light, and cluster-dispatch values.
 - Draw-database, instance-slot, and visibility-buffer capacities, database rebuilds, and cumulative instance uploads.
 - Frustum candidates, explicit frustum rejections, visible instances, per-LOD visible counts, and Hi-Z validity, status, mip count, and adaptive instance threshold.
 - Retained-UI vertex rebuild and upload counters for project UI, editor UI, and editor-world overlays.
 
-When the adapter supports timestamp queries, `gpu_timestamps_supported` and `gpu_timestamps_valid` qualify asynchronous `gpu_frame_ms`, `gpu_cull_ms`, `gpu_shadow_ms`, `gpu_depth_ms`, `gpu_world_ms`, `gpu_hiz_ms`, `gpu_bloom_ms`, `gpu_composite_ms`, and `gpu_ui_ms` samples.
+When the adapter supports timestamp queries, `gpu_timestamps_supported` and `gpu_timestamps_valid` qualify asynchronous `gpu_frame_ms` and `gpu_scene_ms` ordered pass-boundary spans. Separate `gpu_cull_ms`, `gpu_shadow_ms`, `gpu_depth_ms`, `gpu_world_ms`, `gpu_hiz_ms`, `gpu_bloom_ms`, `gpu_composite_ms`, and `gpu_ui_ms` values attribute individual passes and are not summed into frame duration.
 
 Visibility counters and timestamps use multi-frame readback rings. The renderer never waits synchronously and retains the latest completed sample when a frame has no new result.
 
@@ -166,7 +166,7 @@ Visibility counters and timestamps use multi-frame readback rings. The renderer 
 scrapbot profile [path] [--warmup n] [--frames n] [--resolution WIDTHxHEIGHT] [--capture-range START:END] [--framegrab-region x,y,width,height] [--editor] [--ui-script actions.json] [--cpu-culling] [--disabled-features names] [--out directory] [--json]
 ```
 
-Runs a bounded headless WGPU measurement after an excluded warmup. The output bundle contains raw exact-frame CPU/GPU telemetry in `profile.json` and a final `overview.png`. A capture range triggers a fresh replay and writes a lossless PNG sequence, keeping pixel readback stalls outside the measured pass.
+Runs a bounded headless WGPU measurement after an excluded warmup. The output bundle contains raw exact-frame CPU/GPU telemetry in `profile.json` and a final `overview.png`. Profile schema version 2 defines GPU frame and scene time as ordered pass-boundary spans; version 1 used an additive pass total and is intentionally not comparison-compatible. A capture range triggers a fresh replay and writes a lossless PNG sequence, keeping pixel readback stalls outside the measured pass.
 
 `--disabled-features` accepts comma-separated `automatic-exposure`, `temporal-antialiasing`, `fast-antialiasing`, `ambient-occlusion`, `screen-space-reflections`, `bloom`, and `volumetric-fog`. These profile-only overrides do not mutate project data.
 

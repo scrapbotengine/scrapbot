@@ -1,6 +1,6 @@
 # Engine Components
 
-**Last verified:** 2026-07-30
+**Last verified:** 2026-07-31
 **Source of truth:** `src/scrapbot/component/registry.odin`  
 **Canonical public field reference:** `docs-website/src/content/docs/reference/components.md`
 
@@ -102,7 +102,7 @@ These entries deliberately omit exhaustive field/default documentation. Follow t
 - **Consumers:** Active-camera selection, GPU-timestamp dynamic-resolution control, scaled world/depth/post target layout, render-view/debug construction, postprocess dispatch/jitter/history/exposure policy, global environment uniform, visible-sky ray construction, editor Game-view override, camera mesh/frustum visualization, and scene picking.
 - **Invalidation:** Membership is structural. Projection, debug view, render-scale policy, exposure, render-feature, quality, or Transform changes update compact camera input.
 - **Debug invalidation:** A debug-view, Hi-Z-mip, or occlusion-freeze change updates the retained render/cull uniform and post policy without rebuilding membership, geometry, or the pyramid. Non-lit modes skip presentation effects. Visibility diagnostics write bounded frame-valued records only while selected. Freeze preserves the latest valid query-record range and indirect count until disabled or the view changes. Editor overrides mutate only the extracted camera copy.
-- **Dynamic-resolution invalidation:** The controller consumes each asynchronous timestamp once, excludes native UI time, filters the result, and changes scale only after bounded hysteresis. Samples carry the controller generation; the stable project-camera UUID owns controller identity even when the editor fly camera supplies pose and lens. A scale, policy, or owner change rejects delayed evidence and resets filtered state. The controller never mutates the authored camera.
+- **Dynamic-resolution invalidation:** The controller consumes each asynchronous scene span once. The span uses ordered pass boundaries and ends after final composition and before native UI, so exclusion is structural rather than subtraction from an additive pass total. Samples carry the controller generation; the stable project-camera UUID owns controller identity even when the editor fly camera supplies pose and lens. A scale, policy, or owner change rejects delayed evidence and resets filtered state. The controller never mutates the authored camera.
 - **Target lifetime:** An effective-scale step lazily replaces only owned scaled depth and size-dependent post targets, then rejects temporal history. Stable scale reuses them, native scale reuses output depth, and unsupported timestamps fall back to the authored ceiling.
 - **Effect invalidation:** Fixed exposure rewrites only the environment uniform. Automatic exposure uses a persistent GPU scalar and one bounded metering dispatch per enabled frame; disabling it restores scalar `1` once and stops metering. AO and SSR quality update only the next uniform and loop bound. TAA mode changes reject temporal history, while disabled AO, SSR, and bloom skip their compute work.
 - **Surfaces:** Public in scene TOML, generated Luau query data/writeback, automatic editor inspection/history, and persistence; native Odin currently exposes membership. See the [public component reference](../../docs-website/src/content/docs/reference/components.md#scrapbotcamera).

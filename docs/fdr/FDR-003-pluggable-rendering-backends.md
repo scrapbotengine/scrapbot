@@ -29,7 +29,7 @@ Pluggable rendering backends allow Scrapbot to start with `wgpu-native` while ke
 - Shared geometry/material pairs use one instanced draw batch, and geometry and material texture uploads are cached by handle and version.
 - WGPU keeps a persistent slot-addressed GPU instance table, separates static source state from hot Transform state, sends Transform-only changes through one dense update upload, coalesces nearby static slot changes into bounded uploads, retains compact render/culling uniforms and instance-to-LOD batch mappings, computes camera and shadow frustum visibility into compacted batch slices, and obtains instance counts from indexed indirect draw arguments.
 - The retained draw database grows geometrically past the original 64-batch limit. It rebuilds only when render membership, geometry LOD topology, or required capacity changes.
-- Every Geometry version owns bounded meshlets. Adapters with indirect-first-instance support retain one indirect command and aligned visible-instance slice per meshlet. Compute culls camera meshlets by sphere, normal cone, and Hi-Z and shadow meshlets by cascade sphere, then world, depth, and shadow issue one native fixed multi-draw per retained batch. Unsupported adapters, `--cpu-culling`, and layouts above the bounded visibility capacity use the whole-primitive path.
+- Every Geometry version owns bounded meshlets. Adapters with indirect-first-instance support retain one indirect command and aligned visible-instance slice per meshlet. Each retained batch chooses whole-primitive or meshlet submission from its membership; meshlet-selected batches use sphere, normal-cone, Hi-Z, and cascade tests before fixed multi-draw. Meshlet debug views force the detailed path. Unsupported adapters, `--cpu-culling`, low-instance batches, and layouts above the bounded visibility capacity use whole-primitive draws.
 - The active camera selects a backend-neutral debug view: lit output, material inputs, mapped world normals, logarithmic depth, retained meshlet identity, exact GPU-selected LOD, object/meshlet visibility classification, one retained Hi-Z mip, or exact screen-space Hi-Z query footprints. Non-lit views skip presentation effects so diagnostics remain direct and stable.
 - Hi-Z false color and texel boundaries expose the exact conservative max-depth hierarchy without readback or rebuilding it. Occlusion Queries records each tested rectangle, selected mip, bound depth, sampled farthest depth, identity, and visible/culled decision in a bounded GPU-native stream.
 - The camera can freeze the latest valid occlusion-query records while that view remains selected. Freeze preserves only diagnostic records and their indirect draw count; ordinary culling continues from current safe Hi-Z state.
@@ -140,7 +140,7 @@ TAA jitters the projection with an eight-sample sequence bounded to a quarter pi
 
 Automatic exposure uses one 256-thread GPU workgroup to reduce viewport-stratified log-luminance samples and exponentially adapt a persistent clamped scalar. HDR history remains scene-linear. Bloom and final composition share the scalar, while manual camera exposure becomes compensation. There is no CPU readback.
 
-The editor fly view inherits the project camera's render policy. WGPU dynamic resolution consumes asynchronous GPU timestamps, excludes native UI, and changes its derived effective scale only in hysteretic 5% steps. Unsupported timing uses the authored ceiling. Scale changes replace only size-dependent retained targets and reject temporal history. Disabled features skip their compute or history work. Tone map once into native output, then draw UI at native resolution.
+The editor fly view inherits the project camera's render policy. WGPU dynamic resolution consumes an asynchronous ordered pass-boundary span that ends after final composition and before native UI, then changes its derived effective scale only in hysteretic 5% steps. Adapters without timestamp queries use the authored ceiling. Scale changes replace only size-dependent retained targets and reject temporal history. Disabled features skip their compute or history work. Tone map once into native output, then draw UI at native resolution.
 **Why:** Architectural contacts and crevices need indirect-light grounding, participating media needs depth-aware and shadow-aware scattering, smooth materials need local reflections, bloom requires values above display white, broad halos need multiple spatial scales, subpixel geometry and texture detail need temporal supersampling, and text must remain crisp. Reusing depth supports fog bounds, AO, reflection ray intersection, and camera reprojection without another geometry pass or velocity target. See ADR-029.
 **Tradeoff:** These techniques deliberately exchange completeness, precision, latency, memory, and configurability for bounded real-time work:
 
@@ -171,19 +171,29 @@ independently culled shadow cascades.
 boundaries, expand meshlet-local triangles into a meshlet-ordered index buffer and retain one
 indexed-indirect template plus aligned instance slice per meshlet. After object rejection and LOD
 selection, compute camera cluster visibility from sphere, normal cone, and Hi-Z tests and shadow
-cluster visibility from cascade spheres. Submit the CPU-known command ranges through native fixed
-multi-draw. See ADR-046.
+cluster visibility from cascade spheres. Select meshlet submission independently for batches with
+at least two instances; retain one whole-primitive command for single-instance batches. Meshlet
+debug views force eligible batches through the cluster path. Submit selected CPU-known command
+ranges through native fixed multi-draw. See ADR-046.
 
-**Why:** Large primitives need a visibility unit smaller than the complete object, but mesh shaders
-are outside the current WebGPU baseline. Fixed multi-draw matches the actual ownership: resource
-versions determine command topology, while the GPU determines each command's instance count.
+**Why:** Large reused primitives need a visibility unit smaller than the complete object, but mesh
+shaders are outside the current WebGPU baseline. Fine-grained submission can cost more than it
+saves when a batch has only one instance. Per-batch selection preserves GPU-driven visibility
+without multiplying command finalization for low-instance scenes. Fixed multi-draw matches the
+actual ownership: resource versions determine command topology, while the GPU determines each
+command's instance count.
 
 **Tradeoff:** Each meshlet reserves visibility capacity for the complete batch, so WGPU bounds the
 total at 1,048,576 entries and falls back when it cannot represent a layout safely. Double-sided
 materials skip normal-cone rejection. The deterministic CPU reference remains whole-primitive
 culling rather than duplicating the GPU cluster implementation. WGPU requests native multi-draw-
 count when present; without it, wgpu-native may emulate the fixed multi-draw call as individual
-indirect draws while preserving the meshlet raster-work reduction.
+indirect draws. The current two-instance threshold is conservative and backend-wide rather than
+adapter-calibrated.
+
+A mixed frame uses one compute pass with separate classic and meshlet dispatches. Each dispatch
+binds only its canonical visibility and indirect resources, stays within the portable storage-
+binding limit, and returns immediately for batches owned by the other policy.
 
 ### 15. Make render debug views part of the camera contract
 
@@ -240,13 +250,20 @@ World-environment and active-camera exposure apply to the complete HDR world.
 **Why:** Lighting probes are useful even when their photographic capture is unsuitable as scenery. A compact reflection cube is not an acceptable sharp background, while an intentionally blurred backdrop can reuse its prefiltered levels. Independent presentation avoids coupling art direction to physically useful reflections.
 **Tradeoff:** Environment products retain both the full panorama and compact lighting cubes, and an enabled background keeps another prefiltered cube resident. The procedural sun consumes the first directional-light slot while above the horizon. There is no photographic EV calibration, automatic exposure, panorama mip chain, or local reflection-probe blending yet.
 
+### 17. Consume imported and generated LODs through one Geometry contract
+
+**Decision:** Let imported Model products publish alternate Geometry handles, screen-radius thresholds, and simplification errors through the same resource contract as generated LOD geometry. Selection remains in the shared CPU reference and GPU visibility paths. See ADR-047.
+
+**Why:** The renderer should optimize resource geometry without knowing whether a level came from glTF simplification, a procedural generator, Luau, native Odin, or a future authoring tool.
+
+**Tradeoff:** Every alternate Geometry/material combination becomes retained batch topology. Empty GPU-selected commands avoid triangle work but still have bounded encoding and memory cost, so import recipes can tune or disable their generated chain.
+
 ## Related
 
-- **ADRs:** ADR-003, ADR-005, ADR-010, ADR-011, ADR-029, ADR-034, ADR-038, ADR-039, ADR-046
+- **ADRs:** ADR-003, ADR-005, ADR-010, ADR-011, ADR-029, ADR-034, ADR-038, ADR-039, ADR-046, ADR-047
 - **FDRs:** FDR-001, FDR-002, FDR-008
 
 ## Open Questions
 
-- How should authored LOD evolve from generated icospheres to imported meshes and offline simplification?
 - How should offscreen render output be compared once scene rendering exists?
 - How long should the headful runtime loop live before the editor and game loop exist?

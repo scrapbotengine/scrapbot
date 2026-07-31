@@ -16,6 +16,56 @@ WGPU_MESHLET_DEBUG_SPHERE_VERTEX_COUNT :: u32(144)
 WGPU_OCCLUSION_DEBUG_RECT_VERTEX_COUNT :: u32(8)
 WGPU_MESHLET_DEBUG_VERTEX_COUNT ::
 	WGPU_MESHLET_DEBUG_SPHERE_VERTEX_COUNT + WGPU_OCCLUSION_DEBUG_RECT_VERTEX_COUNT
+WGPU_MESHLET_MIN_BATCH_INSTANCES :: u32(2)
+
+wgpu_meshlet_batch_submission :: proc "contextless" (meshlet_count, instance_count: u32) -> bool {
+	return meshlet_count > 0 && instance_count >= WGPU_MESHLET_MIN_BATCH_INSTANCES
+}
+
+wgpu_meshlet_debug_forces_submission :: proc "contextless" (
+	debug_view: shared.Render_Debug_View,
+) -> bool {
+	#partial switch debug_view {
+		case .Meshlets, .Meshlet_Visibility, .Occlusion_Queries:
+			return true
+		case:
+			return false
+	}
+}
+
+wgpu_batch_uses_meshlets :: proc "contextless" (
+	renderer: ^WGPU_Renderer,
+	batch: WGPU_Draw_Batch,
+) -> bool {
+	return(
+		renderer != nil &&
+		renderer.gpu_meshlet_submission_active &&
+		(renderer.gpu_meshlet_force_enabled || batch.meshlet_submission) \
+	)
+}
+
+wgpu_active_meshlet_draw_count :: proc "contextless" (renderer: ^WGPU_Renderer) -> int {
+	if renderer == nil || !renderer.gpu_meshlet_submission_active {
+		return 0
+	}
+	if renderer.gpu_meshlet_force_enabled {
+		return renderer.gpu_meshlet_draw_count
+	}
+	return renderer.gpu_meshlet_selected_draw_count
+}
+
+wgpu_active_classic_batch_count :: proc "contextless" (renderer: ^WGPU_Renderer) -> int {
+	if renderer == nil {
+		return 0
+	}
+	if !renderer.gpu_meshlet_submission_active {
+		return renderer.draw_batch_cache.batch_count
+	}
+	if renderer.gpu_meshlet_force_enabled {
+		return 0
+	}
+	return renderer.gpu_classic_batch_count
+}
 
 wgpu_meshlet_visible_buffer_bytes :: proc "contextless" (capacity: int) -> u64 {
 	return u64(capacity) * (u64(size_of(u32)) + u64(size_of(WGPU_GPU_Meshlet_Debug_Record)))
@@ -784,13 +834,21 @@ wgpu_create_gpu_driven_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 	renderer.gpu_cull_pipeline = wgpu.DeviceCreateComputePipeline(
 		renderer.device,
 		&wgpu.ComputePipelineDescriptor {
-			label = "Scrapbot GPU Culling Pipeline",
+			label = "Scrapbot GPU Classic Culling Pipeline",
 			layout = renderer.gpu_cull_pipeline_layout,
-			compute = {module = renderer.gpu_cull_shader, entryPoint = "cull_instances"},
+			compute = {module = renderer.gpu_cull_shader, entryPoint = "cull_classic_instances"},
 		},
 	)
-	if renderer.gpu_cull_pipeline == nil {
-		return "failed to create GPU culling pipeline"
+	renderer.gpu_meshlet_cull_pipeline = wgpu.DeviceCreateComputePipeline(
+		renderer.device,
+		&wgpu.ComputePipelineDescriptor {
+			label = "Scrapbot GPU Meshlet Culling Pipeline",
+			layout = renderer.gpu_cull_pipeline_layout,
+			compute = {module = renderer.gpu_cull_shader, entryPoint = "cull_meshlet_instances"},
+		},
+	)
+	if renderer.gpu_cull_pipeline == nil || renderer.gpu_meshlet_cull_pipeline == nil {
+		return "failed to create GPU culling pipelines"
 	}
 	if hiz_err := wgpu_create_hiz_pipelines(renderer); hiz_err != "" {
 		return hiz_err
@@ -1549,6 +1607,8 @@ wgpu_refresh_gpu_batch_layout :: proc(
 	meshlet_draw_offset: u32
 	meshlet_visible_offset: u32
 	meshlet_capacity_valid := true
+	meshlet_selected_draw_count := 0
+	meshlet_selected_batch_count := 0
 	for batch_index in 0 ..< cache.batch_count {
 		batch := &cache.batches[batch_index]
 		batch.visible_offset = visible_offset
@@ -1560,6 +1620,14 @@ wgpu_refresh_gpu_batch_layout :: proc(
 		}
 		batch.meshlet_draw_offset = meshlet_draw_offset
 		batch.meshlet_draw_count = u32(len(geometry.meshlets))
+		batch.meshlet_submission = wgpu_meshlet_batch_submission(
+			batch.meshlet_draw_count,
+			batch.instance_count,
+		)
+		if batch.meshlet_submission {
+			meshlet_selected_draw_count += int(batch.meshlet_draw_count)
+			meshlet_selected_batch_count += 1
+		}
 		batch.meshlet_visible_offset = meshlet_visible_offset
 		batch_capacity, batch_capacity_ok := wgpu_meshlet_batch_visible_capacity(
 			batch.meshlet_draw_count,
@@ -1611,6 +1679,7 @@ wgpu_refresh_gpu_batch_layout :: proc(
 			visible_capacity = batch.visible_capacity,
 			meshlet_offset = batch.meshlet_draw_offset,
 			meshlet_count = batch.meshlet_draw_count,
+			meshlet_enabled = 1 if batch.meshlet_submission else 0,
 		}
 		batch.world_bind_group = wgpu_make_batch_bind_group(
 			renderer,
@@ -1706,6 +1775,9 @@ wgpu_refresh_gpu_batch_layout :: proc(
 	}
 	renderer.gpu_visible_capacity = int(visible_offset)
 	renderer.gpu_meshlet_draw_count = int(meshlet_draw_offset)
+	renderer.gpu_meshlet_selected_draw_count = meshlet_selected_draw_count
+	renderer.gpu_meshlet_selected_batch_count = meshlet_selected_batch_count
+	renderer.gpu_classic_batch_count = cache.batch_count - meshlet_selected_batch_count
 	renderer.gpu_meshlet_visible_capacity = int(meshlet_visible_offset)
 	wgpu.QueueWriteBuffer(
 		renderer.queue,
@@ -1978,7 +2050,7 @@ wgpu_adjust_batch_membership :: proc(
 	lod_count: u32,
 	delta: int,
 ) -> (
-	capacity_grew: bool,
+	layout_changed: bool,
 ) {
 	count := min(int(lod_count) + 1, shared.MAX_GEOMETRY_LODS)
 	for ordinal in 0 ..< count {
@@ -1995,10 +2067,14 @@ wgpu_adjust_batch_membership :: proc(
 			continue
 		}
 		batch := &cache.batches[index]
+		previous_meshlet_submission := wgpu_meshlet_batch_submission(
+			batch.meshlet_draw_count,
+			batch.instance_count,
+		)
 		if delta > 0 {
 			batch.instance_count += u32(delta)
 			cache.instance_count += delta
-			capacity_grew = capacity_grew || batch.instance_count > batch.visible_capacity
+			layout_changed = layout_changed || batch.instance_count > batch.visible_capacity
 		} else if batch.instance_count > 0 {
 			batch.instance_count -= u32(-delta)
 			cache.instance_count = max(cache.instance_count + delta, 0)
@@ -2006,6 +2082,10 @@ wgpu_adjust_batch_membership :: proc(
 				cache.valid = false
 			}
 		}
+		layout_changed =
+			layout_changed ||
+			previous_meshlet_submission !=
+				wgpu_meshlet_batch_submission(batch.meshlet_draw_count, batch.instance_count)
 	}
 	return
 }
@@ -2062,7 +2142,7 @@ wgpu_sync_dirty_instance_slot :: proc(
 	slot: int,
 	cpu_culling: bool,
 ) -> (
-	capacity_grew: bool,
+	batch_layout_changed: bool,
 	err: string,
 ) {
 	if slot < 0 || slot >= render_list.instance_slot_count {
@@ -2130,7 +2210,7 @@ wgpu_sync_dirty_instance_slot :: proc(
 		)
 	}
 	if membership_changed {
-		capacity_grew = wgpu_adjust_batch_membership(
+		batch_layout_changed = wgpu_adjust_batch_membership(
 			cache,
 			batch_indices,
 			u32(geometry.lod_count),
@@ -2504,11 +2584,18 @@ wgpu_prepare_gpu_draw_batches :: proc(
 	if topology_err != "" {
 		return nil, 0, topology_err
 	}
+	debug_view := shared.Render_Debug_View.Lit
+	if render_list.has_camera {
+		debug_view = render_list.camera.camera.debug_view
+	}
+	renderer.gpu_meshlet_force_enabled =
+		!cpu_culling && wgpu_meshlet_debug_forces_submission(debug_view)
 	renderer.gpu_meshlet_submission_active =
 		!cpu_culling &&
 		renderer.gpu_meshlet_supported &&
 		renderer.gpu_meshlet_layout_valid &&
-		renderer.gpu_meshlet_draw_count > 0
+		renderer.gpu_meshlet_draw_count > 0 &&
+		(renderer.gpu_meshlet_selected_batch_count > 0 || renderer.gpu_meshlet_force_enabled)
 	old_point_light_buffer, old_cluster_index_buffer, cluster_buffers_grew, cluster_err :=
 		wgpu_ensure_clustered_light_capacity(renderer, render_list.point_light_count)
 	if cluster_err != "" {
@@ -2665,7 +2752,7 @@ wgpu_prepare_gpu_draw_batches :: proc(
 	if reset_instances {
 		wgpu_reset_gpu_instance_slots(renderer)
 	}
-	capacity_grew := false
+	batch_layout_changed := false
 	instances := render_list.instances[:]
 	if !reset_instances {
 		instances = nil
@@ -2721,7 +2808,7 @@ wgpu_prepare_gpu_draw_batches :: proc(
 			   !wgpu_material_instance_needs_sync(renderer, registry, instance) {
 				continue
 			}
-			grew, sync_err := wgpu_sync_dirty_instance_slot(
+			layout_changed, sync_err := wgpu_sync_dirty_instance_slot(
 				renderer,
 				cache,
 				render_list,
@@ -2732,13 +2819,13 @@ wgpu_prepare_gpu_draw_batches :: proc(
 			if sync_err != "" {
 				return nil, 0, sync_err
 			}
-			capacity_grew = capacity_grew || grew
+			batch_layout_changed = batch_layout_changed || layout_changed
 		}
 	}
 	renderer.gpu_material_revision = registry.material_revision
 	if !reset_instances {
 		for slot in render_list.dirty_instance_slots {
-			grew, sync_err := wgpu_sync_dirty_instance_slot(
+			layout_changed, sync_err := wgpu_sync_dirty_instance_slot(
 				renderer,
 				cache,
 				render_list,
@@ -2749,7 +2836,7 @@ wgpu_prepare_gpu_draw_batches :: proc(
 			if sync_err != "" {
 				return nil, 0, sync_err
 			}
-			capacity_grew = capacity_grew || grew
+			batch_layout_changed = batch_layout_changed || layout_changed
 		}
 		for slot in render_list.dirty_transform_slots {
 			if slot < 0 || slot >= slot_count {
@@ -2760,7 +2847,7 @@ wgpu_prepare_gpu_draw_batches :: proc(
 				continue
 			}
 			if instance != nil && !renderer.gpu_active_slots[slot] {
-				grew, sync_err := wgpu_sync_dirty_instance_slot(
+				layout_changed, sync_err := wgpu_sync_dirty_instance_slot(
 					renderer,
 					cache,
 					render_list,
@@ -2771,7 +2858,7 @@ wgpu_prepare_gpu_draw_batches :: proc(
 				if sync_err != "" {
 					return nil, 0, sync_err
 				}
-				capacity_grew = capacity_grew || grew
+				batch_layout_changed = batch_layout_changed || layout_changed
 			}
 			if instance == nil || !renderer.gpu_active_slots[slot] {
 				return nil, 0, fmt.tprintf(
@@ -2815,7 +2902,7 @@ wgpu_prepare_gpu_draw_batches :: proc(
 			}
 		}
 	}
-	if capacity_grew {
+	if batch_layout_changed {
 		if layout_err := wgpu_refresh_gpu_batch_layout(renderer, cache, registry);
 		   layout_err != "" {
 			return nil, 0, layout_err
@@ -2825,7 +2912,8 @@ wgpu_prepare_gpu_draw_batches :: proc(
 		!cpu_culling &&
 		renderer.gpu_meshlet_supported &&
 		renderer.gpu_meshlet_layout_valid &&
-		renderer.gpu_meshlet_draw_count > 0
+		renderer.gpu_meshlet_draw_count > 0 &&
+		(renderer.gpu_meshlet_selected_batch_count > 0 || renderer.gpu_meshlet_force_enabled)
 	instance_data_changed :=
 		len(renderer.gpu_dirty_indices) > 0 || len(renderer.gpu_transform_updates) > 1
 	wgpu_upload_dirty_instance_ranges(renderer, renderer.gpu_dirty_indices[:])
@@ -2871,6 +2959,7 @@ wgpu_prepare_gpu_draw_batches :: proc(
 			renderer.gpu_occlusion_debug_evidence_valid,
 		),
 		debug_view = u32(camera.debug_view),
+		meshlet_force_enabled = 1 if renderer.gpu_meshlet_force_enabled else 0,
 	}
 	for cascade_index in 0 ..< WGPU_SHADOW_CASCADE_COUNT {
 		cull_uniform.shadow_planes[cascade_index] = wgpu_extract_frustum_planes(
@@ -3017,14 +3106,17 @@ wgpu_encode_gpu_culling :: proc(
 		return "failed to begin GPU visibility pass"
 	}
 	defer wgpu.ComputePassEncoderRelease(pass)
-	wgpu.ComputePassEncoderSetPipeline(pass, renderer.gpu_cull_pipeline)
-	cull_bind_group := renderer.gpu_cull_bind_group
-	if renderer.gpu_meshlet_submission_active {
-		cull_bind_group = renderer.gpu_meshlet_cull_bind_group
-	}
-	wgpu.ComputePassEncoderSetBindGroup(pass, 0, cull_bind_group)
 	workgroups := u32((renderer.gpu_slot_count + 63) / 64)
-	wgpu.ComputePassEncoderDispatchWorkgroups(pass, workgroups, WGPU_SHADOW_CASCADE_COUNT, 1)
+	if wgpu_active_classic_batch_count(renderer) > 0 {
+		wgpu.ComputePassEncoderSetPipeline(pass, renderer.gpu_cull_pipeline)
+		wgpu.ComputePassEncoderSetBindGroup(pass, 0, renderer.gpu_cull_bind_group)
+		wgpu.ComputePassEncoderDispatchWorkgroups(pass, workgroups, WGPU_SHADOW_CASCADE_COUNT, 1)
+	}
+	if renderer.gpu_meshlet_submission_active {
+		wgpu.ComputePassEncoderSetPipeline(pass, renderer.gpu_meshlet_cull_pipeline)
+		wgpu.ComputePassEncoderSetBindGroup(pass, 0, renderer.gpu_meshlet_cull_bind_group)
+		wgpu.ComputePassEncoderDispatchWorkgroups(pass, workgroups, WGPU_SHADOW_CASCADE_COUNT, 1)
+	}
 	wgpu.ComputePassEncoderEnd(pass)
 	if capture_debug_evidence {
 		wgpu.CommandEncoderCopyBufferToBuffer(

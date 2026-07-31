@@ -8,7 +8,7 @@ import {
 
 function report(gpuP95, width = 100, uploads = 2) {
   return {
-    schema_version: 1,
+    schema_version: 2,
     warmup_frames: 1,
     recorded_frames: 2,
     gpu_timed_frames: 2,
@@ -20,6 +20,7 @@ function report(gpuP95, width = 100, uploads = 2) {
     summary: {
       cpu_active: { samples: 2, median_ms: 1, p95_ms: 1.5, max_ms: 1.5 },
       gpu_frame: { samples: 2, median_ms: gpuP95, p95_ms: gpuP95, max_ms: gpuP95 },
+      gpu_scene: { samples: 2, median_ms: gpuP95 * 0.75, p95_ms: gpuP95 * 0.75, max_ms: gpuP95 * 0.75 },
       gpu_world: { samples: 2, median_ms: gpuP95 / 2, p95_ms: gpuP95 / 2, max_ms: gpuP95 / 2 },
     },
     frames: [
@@ -60,6 +61,7 @@ test("summarizes pass cost and frame-local counters", () => {
   assert.equal(summary.gpu_passes_by_p95[0].workload.draws, 4);
   assert.equal(summary.workload.world.width, 100);
   assert.equal(summary.gpu_p95_ms_per_megapixel, 800);
+  assert.equal(summary.gpu_scene.p95_ms, 3);
 });
 
 test("uses an enabled workload when a change-driven pass skips the first frame", () => {
@@ -84,6 +86,7 @@ test("compares compatible reports with absolute and relative deltas", () => {
   assert.equal(comparison.comparable, true);
   assert.equal(comparison.metrics.frame.p95_ms.delta_ms, 1);
   assert.equal(comparison.metrics.frame.p95_ms.delta_percent, 25);
+  assert.equal(comparison.metrics.scene.p95_ms.delta_ms, 0.75);
   assert.equal(comparison.counters.instance_uploads.delta, 2);
 });
 

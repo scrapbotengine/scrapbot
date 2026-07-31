@@ -10,6 +10,8 @@ import "core:strings"
 Model_Primitive :: struct {
 	key: string,
 	geometry: Geometry_Handle,
+	lod_geometries: [shared.MAX_GEOMETRY_LODS - 1]Geometry_Handle,
+	lod_count: int,
 	material: Material_Handle,
 }
 
@@ -184,20 +186,7 @@ register_project_model :: proc(
 			return {}, "failed to allocate imported model mesh name"
 		}
 		for primitive in mesh.primitives {
-			vertices := make([]Vertex, len(primitive.vertices))
-			for vertex, vertex_index in primitive.vertices {
-				vertices[vertex_index] = {
-					position = vertex.position,
-					normal = vertex.normal,
-					uv = {vertex.uv.x, vertex.uv.y},
-					tangent = {
-						vertex.tangent.x,
-						vertex.tangent.y,
-						vertex.tangent.z,
-						vertex.tangent.w,
-					},
-				}
-			}
+			vertices := model_geometry_vertices(primitive.vertices[:])
 			geometry_name := fmt.tprintf(
 				"__model_%s_geometry_%016x",
 				id_text,
@@ -215,6 +204,38 @@ register_project_model :: proc(
 			}
 			model_primitive := Model_Primitive {
 				geometry = geometry,
+			}
+			lod_screen_radii: [shared.MAX_GEOMETRY_LODS - 1]f32
+			lod_simplification_errors: [shared.MAX_GEOMETRY_LODS - 1]f32
+			for lod, lod_index in primitive.lods {
+				lod_vertices := model_geometry_vertices(lod.vertices[:])
+				lod_geometry_name := fmt.tprintf("%s_lod_%d", geometry_name, lod.level + 1)
+				lod_geometry, lod_geometry_err := register_geometry(
+					registry,
+					lod_geometry_name,
+					{vertices = lod_vertices, indices = lod.indices[:]},
+				)
+				delete(lod_vertices)
+				if lod_geometry_err != "" {
+					destroy_model(&model, registry.allocator)
+					return {}, lod_geometry_err
+				}
+				model_primitive.lod_geometries[lod_index] = lod_geometry
+				lod_screen_radii[lod_index] = lod.screen_radius
+				lod_simplification_errors[lod_index] = lod.simplification_error
+				model_primitive.lod_count += 1
+			}
+			if model_primitive.lod_count > 0 {
+				if lod_err := set_geometry_lods(
+					registry,
+					geometry,
+					model_primitive.lod_geometries[:model_primitive.lod_count],
+					lod_screen_radii[:model_primitive.lod_count],
+					lod_simplification_errors[:model_primitive.lod_count],
+				); lod_err != "" {
+					destroy_model(&model, registry.allocator)
+					return {}, lod_err
+				}
 			}
 			model_primitive.key, _ = strings.clone(primitive.key, registry.allocator)
 			if primitive.material_index >= 0 &&
@@ -274,6 +295,19 @@ model_material_image :: proc(
 	}
 }
 
+model_geometry_vertices :: proc(vertices: []asset_import.Model_Vertex) -> []Vertex {
+	result := make([]Vertex, len(vertices))
+	for vertex, vertex_index in vertices {
+		result[vertex_index] = {
+			position = vertex.position,
+			normal = vertex.normal,
+			uv = {vertex.uv.x, vertex.uv.y},
+			tangent = {vertex.tangent.x, vertex.tangent.y, vertex.tangent.z, vertex.tangent.w},
+		}
+	}
+	return result
+}
+
 retire_model_products :: proc(registry: ^Registry, model: ^Model) {
 	if registry == nil || model == nil {
 		return
@@ -281,6 +315,9 @@ retire_model_products :: proc(registry: ^Registry, model: ^Model) {
 	for mesh in model.meshes {
 		for primitive in mesh.primitives {
 			retire_generated_geometry(registry, primitive.geometry)
+			for lod_index in 0 ..< primitive.lod_count {
+				retire_generated_geometry(registry, primitive.lod_geometries[lod_index])
+			}
 		}
 	}
 	for handle in model.material_handles {
@@ -296,6 +333,12 @@ retire_replaced_model_products :: proc(registry: ^Registry, old, replacement: ^M
 		for primitive in mesh.primitives {
 			if !model_contains_geometry(replacement, primitive.geometry) {
 				retire_generated_geometry(registry, primitive.geometry)
+			}
+			for lod_index in 0 ..< primitive.lod_count {
+				lod_handle := primitive.lod_geometries[lod_index]
+				if !model_contains_geometry(replacement, lod_handle) {
+					retire_generated_geometry(registry, lod_handle)
+				}
 			}
 		}
 	}
@@ -314,6 +357,11 @@ model_contains_geometry :: proc(model: ^Model, handle: Geometry_Handle) -> bool 
 		for primitive in mesh.primitives {
 			if primitive.geometry == handle {
 				return true
+			}
+			for lod_index in 0 ..< primitive.lod_count {
+				if primitive.lod_geometries[lod_index] == handle {
+					return true
+				}
 			}
 		}
 	}
