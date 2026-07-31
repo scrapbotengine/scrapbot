@@ -64,6 +64,7 @@ Render_Stats :: struct {
 	meshlet_draws: int,
 	visible_meshlet_draws: u32,
 	virtual_geometry: bool,
+	virtual_geometry_compacted: bool,
 	virtual_cluster_draws: int,
 	visible_virtual_clusters: u32,
 	virtual_rejected_clusters: u32,

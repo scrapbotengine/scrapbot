@@ -720,7 +720,7 @@ test_wgpu_geometry_arena_submission_spans_merge_compatible_lod_batches :: proc(t
 	testing.expect_value(t, span.next_batch, 3)
 	testing.expect_value(t, span.first_indirect, u32(0))
 	testing.expect_value(t, span.indirect_count, u32(3))
-	testing.expect(t, !span.meshlets)
+	testing.expect_value(t, span.mode, WGPU_Submission_Mode.Classic)
 	testing.expect_value(t, wgpu_draw_submission_count(&renderer, batches[:]), 2)
 
 	renderer.gpu_meshlet_submission_active = true
@@ -731,13 +731,65 @@ test_wgpu_geometry_arena_submission_spans_merge_compatible_lod_batches :: proc(t
 	testing.expect_value(t, span.next_batch, 3)
 	testing.expect_value(t, span.first_indirect, u32(0))
 	testing.expect_value(t, span.indirect_count, u32(9))
-	testing.expect(t, span.meshlets)
+	testing.expect_value(t, span.mode, WGPU_Submission_Mode.Meshlet)
 	testing.expect_value(t, wgpu_draw_submission_count(&renderer, batches[:]), 2)
+
+	batches[0].compact_submission = true
+	span = wgpu_draw_submission_span(&renderer, batches[:], 0)
+	testing.expect_value(t, span.next_batch, 1)
+	testing.expect_value(t, span.first_indirect, u32(0))
+	testing.expect_value(t, span.indirect_count, u32(1))
+	testing.expect_value(t, span.mode, WGPU_Submission_Mode.Compact)
+	renderer.gpu_meshlet_force_enabled = true
+	span = wgpu_draw_submission_span(&renderer, batches[:], 0)
+	testing.expect_value(t, span.mode, WGPU_Submission_Mode.Meshlet)
+	renderer.gpu_meshlet_force_enabled = false
 
 	renderer.gpu_meshlet_supported = false
 	span = wgpu_draw_submission_span(&renderer, batches[:], 0)
 	testing.expect_value(t, span.next_batch, 1)
 	testing.expect_value(t, span.indirect_count, u32(1))
+}
+
+@(test)
+test_wgpu_compact_submission_spans_share_one_bounded_record_range :: proc(t: ^testing.T) {
+	material := shared.Material_Handle {
+		index = 2,
+		generation = 1,
+	}
+	other_material := shared.Material_Handle {
+		index = 3,
+		generation = 1,
+	}
+	batches := [?]WGPU_Draw_Batch {
+		{
+			material = material,
+			compact_submission = true,
+			meshlet_visible_offset = 0,
+			meshlet_visible_capacity = 12,
+		},
+		{
+			material = material,
+			compact_submission = true,
+			meshlet_visible_offset = 12,
+			meshlet_visible_capacity = 20,
+		},
+		{
+			material = other_material,
+			compact_submission = true,
+			meshlet_visible_offset = 32,
+			meshlet_visible_capacity = 8,
+		},
+	}
+	wgpu_assign_compact_submission_spans(batches[:])
+	for index in 0 ..< 2 {
+		testing.expect_value(t, batches[index].compact_command_index, u32(0))
+		testing.expect_value(t, batches[index].compact_visible_offset, u32(0))
+		testing.expect_value(t, batches[index].compact_visible_capacity, u32(32))
+	}
+	testing.expect_value(t, batches[2].compact_command_index, u32(2))
+	testing.expect_value(t, batches[2].compact_visible_offset, u32(32))
+	testing.expect_value(t, batches[2].compact_visible_capacity, u32(8))
 }
 
 @(test)
@@ -1630,11 +1682,14 @@ test_wgpu_meshlet_submission_policy_amortizes_indirect_commands :: proc(t: ^test
 	renderer := WGPU_Renderer {
 		gpu_meshlet_supported = true,
 	}
-	testing.expect(t, !wgpu_virtual_geometry_submission(&renderer, &one_group))
+	testing.expect(t, wgpu_virtual_geometry_submission(&renderer, &one_group))
+	testing.expect(t, wgpu_virtual_geometry_uses_compaction(&renderer, &one_group))
 	renderer.gpu_meshlet_native_multi_draw = true
 	testing.expect(t, wgpu_virtual_geometry_submission(&renderer, &one_group))
+	testing.expect(t, !wgpu_virtual_geometry_uses_compaction(&renderer, &one_group))
 	renderer.gpu_meshlet_supported = false
 	testing.expect(t, !wgpu_virtual_geometry_submission(&renderer, &one_group))
+	testing.expect(t, !wgpu_virtual_geometry_uses_compaction(&renderer, &one_group))
 
 	testing.expect(t, !wgpu_meshlet_batch_submission(0, 8))
 	testing.expect(t, !wgpu_meshlet_batch_submission(16, 1))

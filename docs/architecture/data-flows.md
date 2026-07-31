@@ -38,8 +38,11 @@ vertex IDs plus monotonic group errors and remains owned and versioned with the 
 WGPU consumes a changed Geometry version into aligned ranges of shared vertex/index arenas.
 Canonical, meshlet-ordered, and hierarchy-cluster indices share the index arena. Capable adapters
 retain cluster metadata and arena-global indirect templates, select one fully resident geometric-
-error frontier, then apply camera/shadow cluster visibility. Unsupported adapters ignore that
-derived cache and keep whole-primitive submission.
+error frontier, then apply camera/shadow cluster visibility. Native multi-draw consumes the
+retained cluster commands directly. Other indirect-first-instance adapters compact selected
+instance/cluster pairs into bounded camera and cascade streams; compatible material batches share
+one indirect span whose vertex shader pulls from the shared arenas. Adapters without indirect-
+first-instance ignore that derived cache and keep whole-primitive submission.
 
 Hot reload stages the resource registry, world, script/native runtime, source set, and playback baseline independently. Failure destroys the staged bundle; success swaps it atomically.
 
@@ -115,8 +118,8 @@ typed ECS/resource mutation
                                       │
                 retained per-batch classic/meshlet selection
                                       │
-                         mixed object/meshlet compute cull
-                         ├─ compact visible draws
+                         mixed object/cluster compute cull
+                         ├─ compact visible instances or cluster records
                          └─ opt-in rejection records ─> indirect bounds overlay
                                       │
                  shadow + depth/sky/world + camera-selected debug/postprocessing

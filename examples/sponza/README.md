@@ -14,7 +14,7 @@ It exercises:
 
 Choose **LOD** in the Game debug-view selector to see the exact GPU-selected imported level. Green is source geometry; blue, purple, and orange are progressively simplified product levels. The ordinary camera view uses the same selection without Sponza-specific renderer code.
 
-Choose **Virtual Geometry** to see the exact cluster frontier selected inside those ordinary Geometry resources. Cluster identity varies within a mint-to-pink hierarchy-depth palette. Sponza configures none of this behavior; it uses the same resource and WGPU paths as procedural, Luau, native, and built-in Geometry.
+Choose **Virtual Geometry** to see the exact cluster frontier selected inside those ordinary Geometry resources. Cluster identity varies within a mint-to-pink hierarchy-depth palette. Sponza configures none of this behavior; it uses the same resource and WGPU paths as procedural, Luau, native, and built-in Geometry. On Metal and other adapters without native multi-draw, the GPU compacts selected instance/cluster records into compatible material spans and the vertex shader pulls them from the shared geometry arenas.
 
 The camera enables dynamic resolution with a native-resolution ceiling, a `0.6` floor, and a 16.667 ms GPU budget. The world and post chain step down only after sustained GPU pressure, while UI stays native-resolution. Disable `dynamic_resolution` for fixed-resolution image-quality comparisons.
 

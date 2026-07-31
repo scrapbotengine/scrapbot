@@ -362,11 +362,17 @@ wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
 	if renderer.gpu_meshlet_cull_bind_group != nil {
 		wgpu.BindGroupRelease(renderer.gpu_meshlet_cull_bind_group)
 	}
+	if renderer.gpu_compact_cull_bind_group != nil {
+		wgpu.BindGroupRelease(renderer.gpu_compact_cull_bind_group)
+	}
 	if renderer.gpu_cull_pipeline != nil {
 		wgpu.ComputePipelineRelease(renderer.gpu_cull_pipeline)
 	}
 	if renderer.gpu_meshlet_cull_pipeline != nil {
 		wgpu.ComputePipelineRelease(renderer.gpu_meshlet_cull_pipeline)
+	}
+	if renderer.gpu_compact_cull_pipeline != nil {
+		wgpu.ComputePipelineRelease(renderer.gpu_compact_cull_pipeline)
 	}
 	if renderer.gpu_cull_pipeline_layout != nil {
 		wgpu.PipelineLayoutRelease(renderer.gpu_cull_pipeline_layout)
@@ -398,6 +404,12 @@ wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
 	if renderer.gpu_driven_double_sided_pipeline != nil {
 		wgpu.RenderPipelineRelease(renderer.gpu_driven_double_sided_pipeline)
 	}
+	if renderer.gpu_compact_pipeline != nil {
+		wgpu.RenderPipelineRelease(renderer.gpu_compact_pipeline)
+	}
+	if renderer.gpu_compact_double_sided_pipeline != nil {
+		wgpu.RenderPipelineRelease(renderer.gpu_compact_double_sided_pipeline)
+	}
 	if renderer.gpu_driven_depth_pipeline != nil {
 		wgpu.RenderPipelineRelease(renderer.gpu_driven_depth_pipeline)
 	}
@@ -409,6 +421,17 @@ wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
 	}
 	if renderer.gpu_driven_depth_mask_double_sided_pipeline != nil {
 		wgpu.RenderPipelineRelease(renderer.gpu_driven_depth_mask_double_sided_pipeline)
+	}
+	compact_depth_pipelines := [?]wgpu.RenderPipeline {
+		renderer.gpu_compact_depth_pipeline,
+		renderer.gpu_compact_depth_double_sided_pipeline,
+		renderer.gpu_compact_depth_mask_pipeline,
+		renderer.gpu_compact_depth_mask_double_sided_pipeline,
+	}
+	for pipeline in compact_depth_pipelines {
+		if pipeline != nil {
+			wgpu.RenderPipelineRelease(pipeline)
+		}
 	}
 	if renderer.gpu_driven_depth_pipeline_layout != nil {
 		wgpu.PipelineLayoutRelease(renderer.gpu_driven_depth_pipeline_layout)
@@ -427,6 +450,17 @@ wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
 	}
 	if renderer.gpu_driven_shadow_mask_double_sided_pipeline != nil {
 		wgpu.RenderPipelineRelease(renderer.gpu_driven_shadow_mask_double_sided_pipeline)
+	}
+	compact_shadow_pipelines := [?]wgpu.RenderPipeline {
+		renderer.gpu_compact_shadow_pipeline,
+		renderer.gpu_compact_shadow_double_sided_pipeline,
+		renderer.gpu_compact_shadow_mask_pipeline,
+		renderer.gpu_compact_shadow_mask_double_sided_pipeline,
+	}
+	for pipeline in compact_shadow_pipelines {
+		if pipeline != nil {
+			wgpu.RenderPipelineRelease(pipeline)
+		}
 	}
 	if renderer.gpu_driven_pipeline_layout != nil {
 		wgpu.PipelineLayoutRelease(renderer.gpu_driven_pipeline_layout)
@@ -492,6 +526,8 @@ wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
 		renderer.gpu_meshlet_identity_buffer,
 		renderer.gpu_meshlet_debug_indirect_buffer,
 		renderer.gpu_meshlet_shadow_visible_buffer,
+		renderer.gpu_compact_visible_buffer,
+		renderer.gpu_compact_shadow_visible_buffer,
 		renderer.gpu_meshlet_indirect_template_buffer,
 		renderer.gpu_meshlet_indirect_buffer,
 		renderer.gpu_meshlet_shadow_indirect_buffer,

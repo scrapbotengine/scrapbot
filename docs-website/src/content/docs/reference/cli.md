@@ -149,7 +149,7 @@ With `--runtime-stats`, JSON results include a `runtime_stats` object. It report
 
 JSON run results also include `render_stats`. For WGPU, the object groups together:
 
-- Active-path flags for compute culling, any active meshlet batch, native multi-draw acceleration, and clustered lighting. A capable frame may mix classic and meshlet batches.
+- Active-path flags for compute culling, any active meshlet batch, native multi-draw acceleration, portable virtual-geometry compaction, and clustered lighting. `virtual_geometry_compacted` is true when selected clusters flow through GPU-produced instance/cluster streams instead of native multi-draw. A capable frame may mix classic and cluster batches.
 - Meshlet capability, retained `draw_batches`, compatible fixed multi-draw spans in `draw_submissions`, selected meshlet command count in `meshlet_draws`, camera `visible_batches`, nonempty `visible_meshlet_draws`, visibility capacity, separate object/meshlet frustum, cone, and occlusion counters, and the opt-in `meshlet_debug_records` count. `virtual_geometry`, `virtual_cluster_draws`, `visible_virtual_clusters`, and `virtual_rejected_clusters` distinguish fully resident hierarchy topology from the selected frontier. Meshlet debug views report the forced complete command set.
 - Shadow-cascade, cluster-count, per-cluster light-capacity, clustered-point-light, and cluster-dispatch values.
 - Draw-database, instance-slot, and visibility-buffer capacities, database rebuilds, and cumulative instance uploads.

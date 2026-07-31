@@ -29,11 +29,19 @@ Clone, replacement, hot reload, and destruction treat these arrays as part of th
 version. Construction happens only at explicit resource registration boundaries. Stable frames do
 not simplify, partition, hash, or rebuild hierarchy data.
 
-On adapters with indirect-first-instance and native multi-draw, WGPU expands all resident cluster
-indices into the shared index arena and retains one indirect command per cluster. Requiring native
-multi-draw is submission policy, not a Geometry-format distinction: a backend that expands each
-fixed multi-draw range into CPU-encoded indirect calls would multiply work across the shadow,
-depth, and world passes.
+WGPU expands all resident cluster indices into the shared index arena. Adapters with indirect-
+first-instance and native multi-draw retain one indexed-indirect command per cluster and submit
+compatible command ranges together.
+
+Adapters with indirect-first-instance but no native multi-draw instead append selected
+`{instance slot, cluster index}` records into bounded camera and per-cascade storage streams. A
+compatible run of clusters sharing one material owns one retained record span and one non-indexed
+indirect command. Its vertex shader pulls cluster indices and packed attributes directly from the
+shared geometry arenas. Every selected record renders the fixed maximum cluster vertex count;
+invocations beyond the cluster's triangle count degenerate to its first vertex.
+
+Both submission modes are GPU-produced. Ordinary frames neither read selected clusters back nor
+expand their command topology on the CPU.
 
 The compute culler projects each group's monotonic geometric error into pixels. It submits a
 cluster exactly when:
@@ -46,15 +54,22 @@ frontier before applying sphere, normal-cone, and Hi-Z tests. A hierarchy-bearin
 path even with one instance because geometric-detail selection does not require instance-count
 amortization.
 
-Adapters without either required capability retain classic indexed drawing and the existing
-object-level imported LOD contract. The backend exposes hierarchy command, nonempty selected-
-cluster, and instance-cluster threshold-rejection counters. The public `virtual_geometry` camera
-debug view colors submitted clusters by identity within a mint-to-pink hierarchy-depth palette.
+Adapters without indirect-first-instance, capacity-limited layouts, and `--cpu-culling` retain
+classic indexed drawing and the existing object-level imported LOD contract. The backend exposes
+hierarchy command, nonempty selected-cluster, instance-cluster threshold-rejection, and compacted-
+submission counters. The public `virtual_geometry` camera debug view colors submitted clusters by
+identity within a mint-to-pink hierarchy-depth palette.
 
 ## Consequences
 
 Imported, procedural, Luau-created, native, and built-in Geometry all enter one resource-owned
 hierarchy path. Sponza is evidence for the feature, not a special renderer input.
+
+Virtual Geometry now operates on Metal adapters that expose indirect-first-instance even though
+their WGPU implementation does not expose native multi-draw. Compatible material runs amortize
+submission without requiring mesh shaders, backend-specific argument buffers, or one encoded draw
+per cluster. The portable path spends extra GPU culling and vertex-pulling work to preserve stable
+CPU frame cost.
 
 The first implementation is fully resident. Hierarchy metadata and every cluster index stream are
 uploaded with the Geometry version, so large resources can consume more index-arena memory than

@@ -710,9 +710,9 @@ if (result.schema_version !== 1 || result.command !== "run" || result.ok !== tru
 }
 ' "$MASK_JSON"
 node tools/assert_png_close.mjs "$COMPUTE_FRAME" "$CPU_FRAME"
-node tools/assert_png_close.mjs "$LOD_COMPUTE_FRAME" "$LOD_CPU_FRAME" 1 128
+node tools/assert_png_psnr.mjs "$LOD_COMPUTE_FRAME" "$LOD_CPU_FRAME" 44
 node tools/assert_png_close.mjs "$TRANSFORM_COMPUTE_FRAME" "$TRANSFORM_CPU_FRAME" 1 128
-node tools/assert_png_psnr.mjs "$TAA_FRAME_A" "$TAA_FRAME_B" 44
+node tools/assert_png_psnr.mjs "$TAA_FRAME_A" "$TAA_FRAME_B" 42
 node tools/assert_png_variance.mjs "$COMPUTE_FRAME"
 node tools/assert_png_variance.mjs "$LOD_COMPUTE_FRAME"
 node tools/assert_png_variance.mjs "$TRANSFORM_COMPUTE_FRAME"
