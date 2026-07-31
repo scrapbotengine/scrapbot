@@ -1,5 +1,6 @@
 package asset_import
 
+import geometry "../geometry"
 import shared "../shared"
 import c "core:c"
 
@@ -113,5 +114,6 @@ destroy_model_lod :: proc(lod: ^Model_Primitive_LOD) {
 	}
 	delete(lod.vertices)
 	delete(lod.indices)
+	geometry.destroy_hierarchy(&lod.hierarchy)
 	lod^ = {}
 }

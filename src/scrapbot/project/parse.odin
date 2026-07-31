@@ -625,6 +625,7 @@ parse_project_config :: proc(source: string) -> (config: Project_Config, result:
 		height = shared.DEFAULT_WINDOW_HEIGHT,
 	}
 	config.render.environment_intensity = 1
+	config.render.virtual_geometry_index_budget_mb = 64
 	config.render.environment_reflection_intensity = 1
 	config.render.exposure = 1
 	config.render.background_intensity = 1
@@ -760,6 +761,8 @@ parse_project_config :: proc(source: string) -> (config: Project_Config, result:
 		}
 		if section == "render" {
 			switch key {
+				case "virtual_geometry_index_budget_mb":
+					config.render.virtual_geometry_index_budget_mb, found = parse_f32(value)
 				case "environment":
 					raw_environment: string
 					raw_environment, found = parse_basic_string(value)
@@ -801,6 +804,8 @@ parse_project_config :: proc(source: string) -> (config: Project_Config, result:
 					)
 			}
 			if !found ||
+			   config.render.virtual_geometry_index_budget_mb < 0.125 ||
+			   config.render.virtual_geometry_index_budget_mb > 16_384 ||
 			   !finite_render_config(config.render) ||
 			   config.render.environment_intensity < 0 ||
 			   config.render.environment_reflection_intensity < 0 ||
@@ -811,7 +816,7 @@ parse_project_config :: proc(source: string) -> (config: Project_Config, result:
 			   config.render.background_blur > 1 {
 				return config, fail(
 					.Invalid_Field,
-					"render values must be finite; intensities must be non-negative, exposures positive, and background blur between 0 and 1",
+					"render values must be finite; the virtual geometry index budget must be 0.125..16384 MiB, intensities non-negative, exposures positive, and background blur between 0 and 1",
 				)
 			}
 			continue
@@ -3122,6 +3127,8 @@ valid_resource_icon_set_path :: proc(path: string) -> bool {
 
 finite_render_config :: proc(value: shared.Project_Render_Config) -> bool {
 	return(
+		!math.is_nan(value.virtual_geometry_index_budget_mb) &&
+		!math.is_inf(value.virtual_geometry_index_budget_mb) &&
 		!math.is_nan(value.environment_intensity) &&
 		!math.is_inf(value.environment_intensity) &&
 		!math.is_nan(value.environment_reflection_intensity) &&

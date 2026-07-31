@@ -57,6 +57,34 @@ wgpu_virtual_geometry_uses_compaction :: proc "contextless" (
 	)
 }
 
+wgpu_cluster_group_residency :: proc "contextless" (
+	geometry: ^resources.Geometry,
+	cache: ^WGPU_Geometry_Cache,
+	group_index: i32,
+) -> (
+	resident: bool,
+	first_missing_page: u32,
+	has_missing_page: bool,
+) {
+	if geometry == nil ||
+	   cache == nil ||
+	   group_index < 0 ||
+	   int(group_index) >= len(geometry.cluster_groups) {
+		return true, 0, false
+	}
+	group := geometry.cluster_groups[group_index]
+	page_end := u64(group.page_offset) + u64(group.page_count)
+	if group.page_count == 0 || page_end > u64(len(cache.cluster_pages)) {
+		return false, 0, false
+	}
+	for page_index in group.page_offset ..< u32(page_end) {
+		if !cache.cluster_pages[page_index].resident {
+			return false, page_index, true
+		}
+	}
+	return true, 0, false
+}
+
 wgpu_meshlet_batch_submission :: proc "contextless" (meshlet_count, instance_count: u32) -> bool {
 	return meshlet_count > 0 && instance_count >= WGPU_MESHLET_MIN_BATCH_INSTANCES
 }
@@ -355,6 +383,49 @@ wgpu_expand_cluster_indices :: proc(
 			indices[cursor] = geometry.cluster_vertices[vertex_index]
 			cursor += 1
 		}
+	}
+	return
+}
+
+wgpu_expand_cluster_page_indices :: proc(
+	geometry: ^resources.Geometry,
+	page_index: int,
+	allocator := context.temp_allocator,
+) -> (
+	indices: []u32,
+	err: string,
+) {
+	if geometry == nil || page_index < 0 || page_index >= len(geometry.cluster_pages) {
+		return nil, "cluster page is not available"
+	}
+	page := geometry.cluster_pages[page_index]
+	if page.index_count == 0 {
+		return nil, "cluster page has no triangle indices"
+	}
+	indices = make([]u32, int(page.index_count), allocator)
+	cursor := 0
+	cluster_end := int(page.cluster_offset + page.cluster_count)
+	if cluster_end > len(geometry.clusters) {
+		return nil, "cluster page range is out of bounds"
+	}
+	for cluster in geometry.clusters[page.cluster_offset:cluster_end] {
+		vertex_start := int(cluster.vertex_offset)
+		triangle_start := int(cluster.triangle_offset)
+		for local_index in 0 ..< int(cluster.triangle_count * 3) {
+			triangle_index := triangle_start + local_index
+			if triangle_index < 0 || triangle_index >= len(geometry.cluster_triangles) {
+				return nil, "cluster page triangle stream is out of bounds"
+			}
+			vertex_index := vertex_start + int(geometry.cluster_triangles[triangle_index])
+			if vertex_index < 0 || vertex_index >= len(geometry.cluster_vertices) {
+				return nil, "cluster page vertex stream is out of bounds"
+			}
+			indices[cursor] = geometry.cluster_vertices[vertex_index]
+			cursor += 1
+		}
+	}
+	if cursor != len(indices) {
+		return nil, "cluster page index count does not match its clusters"
 	}
 	return
 }
@@ -2350,6 +2421,20 @@ wgpu_refresh_gpu_batch_layout :: proc(
 					refined_bounds = refined.bounds
 					refined_error = refined.error
 				}
+				page_resident :=
+					int(cluster.page) < len(geometry.cluster_pages) &&
+					geometry.cluster_pages[cluster.page].resident
+				refined_resident, request_page, request_enabled := wgpu_cluster_group_residency(
+					geometry_resource,
+					geometry,
+					cluster.refined_group,
+				)
+				cluster_first_index: u32
+				if page_resident {
+					page := geometry.cluster_pages[cluster.page]
+					cluster_first_index =
+						u32(page.range.offset / u64(size_of(u32))) + cluster.page_index_offset
+				}
 				renderer.gpu_meshlet_infos[meshlet_index] = {
 					bounds = cluster.bounds,
 					cone_axis_cutoff = cluster.cone_axis_cutoff,
@@ -2363,16 +2448,25 @@ wgpu_refresh_gpu_batch_layout :: proc(
 					refined_error = refined_error,
 					max_depth = geometry_resource.cluster_max_depth,
 					virtual_geometry = 1,
-					first_index = first_index,
+					first_index = cluster_first_index,
 					base_vertex = u32(base_vertex),
 					triangle_count = cluster.triangle_count,
+					page_resident = 1 if page_resident else 0,
+					refined_resident = 1 if refined_resident else 0,
+					request_geometry_index = batch.geometry.index,
+					request_geometry_generation = batch.geometry.generation,
+					request_page_index = request_page,
+					request_enabled = 1 if request_enabled else 0,
 				}
 				level_byte := group.depth * 255 / max(geometry_resource.cluster_max_depth, 1)
-				identity := (level_byte << 24) | (u32(meshlet_index + 1) & 0x00ff_ffff)
+				identity := (level_byte << 24) | (u32(meshlet_index + 1) & 0x007f_ffff)
+				if !refined_resident {
+					identity |= 0x0080_0000
+				}
 				renderer.gpu_meshlet_infos[meshlet_index].identity = identity
 				renderer.gpu_meshlet_indirect_templates[meshlet_index] = {
-					index_count = cluster.triangle_count * 3,
-					first_index = first_index,
+					index_count = cluster.triangle_count * 3 if page_resident else 0,
+					first_index = cluster_first_index,
 					base_vertex = base_vertex,
 					first_instance = batch.meshlet_visible_offset + local_visible_offset,
 				}
@@ -2382,7 +2476,6 @@ wgpu_refresh_gpu_batch_layout :: proc(
 							identity
 					}
 				}
-				first_index += cluster.triangle_count * 3
 			}
 		} else {
 			for meshlet, local_meshlet_index in geometry_resource.meshlets {

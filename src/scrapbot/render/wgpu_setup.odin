@@ -564,6 +564,9 @@ wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
 	if renderer.uniform_buffer != nil {
 		wgpu.BufferRelease(renderer.uniform_buffer)
 	}
+	for &cached in renderer.geometry_cache {
+		delete(cached.cluster_pages)
+	}
 	wgpu_destroy_geometry_arena(&renderer.geometry_vertex_arena)
 	wgpu_destroy_geometry_arena(&renderer.geometry_index_arena)
 	delete(renderer.geometry_cache)

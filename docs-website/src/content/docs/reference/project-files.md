@@ -17,6 +17,9 @@ default_scene = "scenes/main.scene.toml"
 width = 1600
 height = 900
 
+[render]
+virtual_geometry_index_budget_mb = 64
+
 [[native_extensions]]
 name = "scrappyphysics"
 source = "native/scrappyphysics"
@@ -35,6 +38,8 @@ Fields:
 | `[window]` | No | Initial logical window size. Omitted fields default to 1600×900. |
 | `window.width` | No | Positive logical width up to 16384. |
 | `window.height` | No | Positive logical height up to 16384. |
+| `[render]` | No | Renderer-wide project policy. |
+| `render.virtual_geometry_index_budget_mb` | No | Budget for resident expanded virtual-geometry cluster indices, from 0.125 to 16384 MiB. Defaults to 64 MiB. Pinned coarse fallback pages may exceed it. |
 | `[[native_extensions]]` | No | Repeated table for project-local native extension targets. |
 | `native_extensions.name` | Yes | Build output base name. Must be an identifier token. |
 | `native_extensions.source` | Yes | Safe relative path to an Odin package directory. |
@@ -42,7 +47,10 @@ Fields:
 | `fonts.name` | Yes | Resource name used by UI components. Must be a unique identifier token. |
 | `fonts.source` | Yes | Safe path under `assets/` ending in `.ttf` or `.otf`. |
 
-The legacy optional `[render]` environment fields remain accepted as a compatibility fallback for scenes without `scrapbot.world_environment`. New projects and migrated examples should author environment state on the scene entity; when present, that component is authoritative.
+The optional `[render]` table owns renderer-wide policy such as the virtual-geometry index budget.
+Its environment fields remain accepted as a compatibility fallback for scenes without
+`scrapbot.world_environment`. New projects should author environment state on the scene entity;
+when present, that component is authoritative.
 
 Visible windows preserve the requested aspect ratio but scale down when necessary to fit within 90% of the primary display's usable area. High-pixel-density displays may provide a larger physical-pixel framebuffer than this logical size. Headless framegrabs remain fixed at 1280×720 unless cropped.
 

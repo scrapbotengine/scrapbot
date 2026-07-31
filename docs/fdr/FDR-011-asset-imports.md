@@ -15,6 +15,7 @@ Asset imports turn artist-authored texture, model, HDR environment, and SVG icon
 - Material resources reference reusable Texture resources by UUID rather than embedding source paths.
 - Model resources import the selected glTF 2.0 `.gltf` or `.glb` scene and only its reachable nodes, meshes, materials, and images. Supported data includes triangle geometry, TRS node transforms, metallic-roughness material factors, normal and occlusion strengths, emissive factors, opaque and alpha-cutout materials, double-sided surfaces, and base-color, metallic-roughness, normal, occlusion, and emissive images. Images may be embedded in GLB buffer views, encoded as base64 data URIs, or stored at safe relative paths beside the model.
 - Model import generates up to three deterministic meshoptimizer LODs per eligible primitive by default. Project recipes control descending triangle ratios and projected screen-radius thresholds or disable generation. Small and topology-constrained primitives may retain fewer levels.
+- Every imported primitive and generated LOD persists its crack-aware cluster hierarchy and deterministic page table in the Model product. Runtime registration validates and clones that product-owned hierarchy instead of rebuilding it.
 - Imported images become owned mipmapped texture payloads on the Model's generated Material resources. Each texture slot preserves its glTF minification, magnification, mip, and U/V wrap policy. The WGPU material path renders them with GGX direct lighting, authored tangent-space normal mapping with a derivative fallback, ambient diffuse/specular response, HDR emission, bloom, and tone mapping.
 - Project checking, building, and running automatically import products that are absent or stale. `scrapbot import` performs the same work explicitly and reports structured per-resource results.
 - Imported products and manifests are generated under ignored project state. They are never hand-authored or committed as source authority.
@@ -101,6 +102,18 @@ Model-root shadow markers are copied onto derived primitive entities during the 
 ### 12. Compile imported LODs into the Model product
 
 **Decision:** Simplify eligible indexed glTF primitives during import, compact each retained level, and persist its geometry, projected threshold, and measured error in the versioned Model product. Register generated levels as ordinary semantic Geometry subresources and attach them through the shared LOD contract. See ADR-047.
+
+### 13. Persist virtual Geometry hierarchies
+
+**Decision:** Build and validate each imported primitive hierarchy during import. Persist groups,
+clusters, local streams, page identities, and pinned-page flags in the versioned Model product.
+Publish cluster, group, and page counts in import metadata. See ADR-050.
+
+**Why:** Runtime startup should consume a compiled geometry product, not repeat simplification and
+page partitioning for every imported model.
+
+**Tradeoff:** Model products are larger and their schema changes when hierarchy serialization
+changes. Procedural and script-created Geometry still builds the same hierarchy at registration.
 
 **Why:** Simplification is deterministic source-asset work. Persisting it keeps runtime registration bounded and lets models use the existing CPU/GPU selection, meshlet, debug, reload, and retirement paths.
 

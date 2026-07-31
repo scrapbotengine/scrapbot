@@ -14,7 +14,19 @@ It exercises:
 
 Choose **LOD** in the Game debug-view selector to see the exact GPU-selected imported level. Green is source geometry; blue, purple, and orange are progressively simplified product levels. The ordinary camera view uses the same selection without Sponza-specific renderer code.
 
-Choose **Virtual Geometry** to see the exact cluster frontier selected inside those ordinary Geometry resources. Cluster identity varies within a mint-to-pink hierarchy-depth palette. Sponza configures none of this behavior; it uses the same resource and WGPU paths as procedural, Luau, native, and built-in Geometry. On Metal and other adapters without native multi-draw, the GPU compacts camera-selected instance/cluster records into compatible material spans and the vertex shader pulls them from the shared geometry arenas. Shadows reuse the GPU-selected indexed object LOD so four cascades do not multiply that vertex-pulling cost.
+Choose **Virtual Geometry** to see the resident cluster frontier selected inside those ordinary
+Geometry resources. Cluster identity varies within a mint-to-pink hierarchy-depth palette. Amber
+marks a branch whose finer page group is not completely resident.
+
+The example deliberately configures a 0.16 MiB expanded-index page budget to exercise request and
+eviction pressure. That setting uses the public project renderer policy; hierarchy construction,
+page identity, feedback, fallback, and residency are engine paths shared by procedural, Luau,
+native, and built-in Geometry.
+
+On Metal and other adapters without native multi-draw, the GPU compacts camera-selected
+instance/cluster records into compatible material spans and vertex-pulls them from the shared
+geometry arenas. Shadows reuse the GPU-selected indexed object LOD so four cascades do not
+multiply that cost.
 
 The camera enables dynamic resolution with a native-resolution ceiling, a `0.6` floor, and a 16.667 ms GPU budget. The world and post chain step down only after sustained GPU pressure, while UI stays native-resolution. Disable `dynamic_resolution` for fixed-resolution image-quality comparisons.
 

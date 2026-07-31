@@ -51,3 +51,4 @@
 | [ADR-047](ADR-047-generate-imported-mesh-lods-in-asset-products.md) | Generate imported mesh LODs in asset products | 2026-07-31 |
 | [ADR-048](ADR-048-suballocate-geometry-in-shared-wgpu-arenas.md) | Suballocate geometry in shared WGPU arenas | 2026-07-31 |
 | [ADR-049](ADR-049-select-fully-resident-virtual-geometry-frontiers-on-the-gpu.md) | Select fully resident virtual Geometry frontiers on the GPU | 2026-07-31 |
+| [ADR-050](ADR-050-page-virtual-geometry-index-streams.md) | Page virtual Geometry index streams | 2026-07-31 |

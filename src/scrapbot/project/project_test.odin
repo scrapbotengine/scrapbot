@@ -219,6 +219,7 @@ source = "assets/studio.hdr"
 default_scene = "scenes/main.scene.toml"
 
 [render]
+virtual_geometry_index_budget_mb = 96.5
 environment = "a1000000-0000-4000-8000-000000000021"
 environment_intensity = 1.25
 environment_rotation = 90
@@ -233,6 +234,7 @@ background_blur = 0.25
 	)
 	defer destroy_project_config(&config)
 	testing.expect(t, config_result.err == .None)
+	testing.expect_value(t, config.render.virtual_geometry_index_budget_mb, f32(96.5))
 	testing.expect_value(t, config.render.environment, resource.id)
 	testing.expect_value(t, config.render.environment_intensity, f32(1.25))
 	testing.expect_value(t, config.render.environment_rotation, f32(90))
@@ -309,6 +311,16 @@ background_blur = 1.5
 	)
 	defer destroy_project_config(&invalid_background)
 	testing.expect(t, invalid_background_result.err == .Invalid_Field)
+
+	invalid_budget, invalid_budget_result := parse_project_config(
+		`name = "Invalid Budget"
+default_scene = "scenes/main.scene.toml"
+[render]
+virtual_geometry_index_budget_mb = 0
+`,
+	)
+	defer destroy_project_config(&invalid_budget)
+	testing.expect(t, invalid_budget_result.err == .Invalid_Field)
 
 	missing_background, missing_background_result := parse_project_config(
 		`name = "Missing Background"

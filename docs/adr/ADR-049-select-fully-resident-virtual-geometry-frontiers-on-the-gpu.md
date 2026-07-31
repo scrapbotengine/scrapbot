@@ -87,3 +87,5 @@ also receive their own hierarchy.
 This decision does not define persisted hierarchy products, page identifiers, sparse residency,
 GPU request feedback, upload budgets, eviction, root-cluster pinning, or page-boundary diagnostics.
 Those policies layer over the same Geometry hierarchy and shared arena ownership.
+
+ADR-050 adds those policies for expanded cluster-index streams while retaining canonical vertices.

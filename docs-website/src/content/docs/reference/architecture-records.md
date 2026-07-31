@@ -61,6 +61,8 @@ Current decisions:
 | ADR-046 | Store meshlets with Geometry resources |
 | ADR-047 | Generate imported mesh LODs in asset products |
 | ADR-048 | Suballocate Geometry in shared WGPU arenas |
+| ADR-049 | Select virtual Geometry frontiers on the GPU |
+| ADR-050 | Page virtual Geometry index streams |
 
 ## FDRs
 

@@ -217,6 +217,7 @@ make_semantic_reimport_product :: proc(
 			append(&lod.indices, 0, 1, 2)
 			append(&primitive.lods, lod)
 		}
+		_ = asset_import.build_model_primitive_hierarchies(&primitive)
 		append(&mesh.primitives, primitive)
 		append(&product.meshes, mesh)
 	}

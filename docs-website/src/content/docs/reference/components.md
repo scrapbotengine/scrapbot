@@ -139,6 +139,10 @@ Non-lit debug views display renderer inputs directly. They disable temporal jitt
 
 Meshlet Visibility colors submitted meshlets green and overlays rejected meshlet bounds without CPU readback. Object-frustum and object-Hi-Z rejection use red and purple; meshlet-frustum, normal-cone, and meshlet-Hi-Z rejection use orange, cyan, and magenta. Meshlets and Meshlet Visibility show a red/slate diagnostic checker during whole-primitive fallback instead of presenting unrelated triangles as clusters.
 
+Virtual Geometry colors the selected resident hierarchy frontier by cluster identity and depth.
+Amber marks a selected branch whose finer page group is not completely resident, so it also shows
+the coarse fallback used while asynchronous page feedback catches up.
+
 Hi-Z displays the current max-depth pyramid in false color. Near occluders appear mint, distant depth trends toward dark blue, and selected mip texel boundaries are drawn directly over the expanded cells. Mip `0` is the full render-grid depth copy; each subsequent mip conservatively stores the farthest depth from a 2×2 block.
 
 Occlusion Queries dims the world and draws the exact projected rectangle evaluated against Hi-Z for every tested object or meshlet. Mint rectangles survived; pink rectangles were rejected. The renderer records this evidence in the GPU culling pass and draws it indirectly without copying geometry to the CPU.

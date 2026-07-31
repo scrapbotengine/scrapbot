@@ -201,6 +201,12 @@ struct Meshlet_Info {
 	base_vertex: u32,
 	triangle_count: u32,
 	identity: u32,
+	page_resident: u32,
+	refined_resident: u32,
+	request_geometry_index: u32,
+	request_geometry_generation: u32,
+	request_page_index: u32,
+	request_enabled: u32,
 };
 
 @group(0) @binding(0) var<uniform> render: Render_Uniform;
@@ -838,15 +844,19 @@ fn fs_main(
 			case 11u: {
 				if (render.debug.y != 0u && input.meshlet_identity != 0u) {
 					let level = f32(input.meshlet_identity >> 24u) / 255.0;
+					let refinement_missing = (input.meshlet_identity & 0x00800000u) != 0u;
 					let level_color = mix(
 						vec3<f32>(0.18, 0.82, 0.68),
 						vec3<f32>(1.0, 0.26, 0.56),
 						level,
 					);
 					let cluster_color = meshlet_debug_color(
-						input.meshlet_identity & 0x00ffffffu,
+						input.meshlet_identity & 0x007fffffu,
 					);
 					debug_color = mix(level_color, cluster_color, 0.38);
+					if (refinement_missing) {
+						debug_color = mix(debug_color, vec3<f32>(1.0, 0.48, 0.08), 0.72);
+					}
 				} else {
 					debug_color = vec3<f32>(0.05, 0.055, 0.07);
 				}
@@ -1078,6 +1088,12 @@ struct Meshlet_Info {
 	base_vertex: u32,
 	triangle_count: u32,
 	identity: u32,
+	page_resident: u32,
+	refined_resident: u32,
+	request_geometry_index: u32,
+	request_geometry_generation: u32,
+	request_page_index: u32,
+	request_enabled: u32,
 };
 
 struct Draw_Indexed_Indirect {
@@ -1109,6 +1125,12 @@ struct Cull_Uniform {
 	projection_y: f32,
 };
 
+struct Virtual_Page_Request {
+	geometry_index: u32,
+	geometry_generation: u32,
+	page_index: u32,
+};
+
 struct Visibility_Counters {
 	visible_instances: atomic<u32>,
 	shadow_visible_instances: atomic<u32>,
@@ -1126,6 +1148,9 @@ struct Visibility_Counters {
 	visible_meshlet_draws: atomic<u32>,
 	visible_virtual_clusters: atomic<u32>,
 	virtual_rejected_clusters: atomic<u32>,
+	virtual_page_request_count: atomic<u32>,
+	virtual_page_request_overflow: atomic<u32>,
+	virtual_page_requests: array<Virtual_Page_Request, 4096>,
 	visible_batch_words: array<atomic<u32>, 16384>,
 };
 
@@ -1158,13 +1183,14 @@ fn batch_uses_meshlets(batch: Batch_Info) -> bool {
 	return batch_submission_mode(batch) != 0u;
 }
 
-fn mark_visible_batch(batch_index: u32) {
+fn mark_visible_batch(batch_index: u32) -> bool {
 	let word_index = batch_index >> 5u;
 	let bit = 1u << (batch_index & 31u);
 	let previous = atomicOr(&counters.visible_batch_words[word_index], bit);
 	if ((previous & bit) == 0u) {
 		atomicAdd(&counters.visible_batches, 1u);
 	}
+	return (previous & bit) == 0u;
 }
 
 fn world_meshlet_bounds(instance: GPU_Instance, meshlet: Meshlet_Info) -> vec4<f32> {
@@ -1205,16 +1231,39 @@ fn virtual_projected_error(
 	return error * scale / distance * abs(cull.projection_y) * 0.5 * cull.viewport.w;
 }
 
-fn virtual_cluster_selected(instance: GPU_Instance, meshlet: Meshlet_Info) -> bool {
+fn virtual_cluster_selected(
+	instance: GPU_Instance,
+	meshlet: Meshlet_Info,
+	request_refinement: bool,
+) -> bool {
 	if (meshlet.virtual_geometry == 0u) {
 		return true;
+	}
+	if (meshlet.page_resident == 0u) {
+		return false;
 	}
 	let group_over_threshold =
 		virtual_projected_error(instance, meshlet.group_bounds, meshlet.group_error) >
 		cull.virtual_error_pixels;
-	let refined_under_threshold = meshlet.refined_error <= 0.0 ||
-		virtual_projected_error(instance, meshlet.refined_bounds, meshlet.refined_error) <=
+	let wants_refinement = meshlet.refined_error > 0.0 &&
+		virtual_projected_error(instance, meshlet.refined_bounds, meshlet.refined_error) >
 		cull.virtual_error_pixels;
+	if (group_over_threshold && wants_refinement && meshlet.refined_resident == 0u) {
+		if (request_refinement && meshlet.request_enabled != 0u) {
+			let request_index = atomicAdd(&counters.virtual_page_request_count, 1u);
+			if (request_index < 4096u) {
+				counters.virtual_page_requests[request_index] = Virtual_Page_Request(
+					meshlet.request_geometry_index,
+					meshlet.request_geometry_generation,
+					meshlet.request_page_index,
+				);
+			} else {
+				atomicAdd(&counters.virtual_page_request_overflow, 1u);
+			}
+		}
+		return true;
+	}
+	let refined_under_threshold = !wants_refinement;
 	return group_over_threshold && refined_under_threshold;
 }
 
@@ -1424,7 +1473,7 @@ fn append_batch_meshlet_debug(
 		local_meshlet = local_meshlet + 1u
 	) {
 		let meshlet_index = batch.meshlet_offset + local_meshlet;
-		if (!virtual_cluster_selected(instance, meshlets[meshlet_index])) {
+		if (!virtual_cluster_selected(instance, meshlets[meshlet_index], false)) {
 			continue;
 		}
 		append_meshlet_debug(
@@ -1466,7 +1515,7 @@ fn cull_instances(invocation: vec3<u32>, submission_mode: u32) {
 				append_batch_meshlet_debug(instance, batch, 3u, lod_level);
 			}
 		} else if (batch_uses_meshlets(batch)) {
-			mark_visible_batch(batch_index);
+			let owns_page_requests = mark_visible_batch(batch_index);
 			for (
 				var local_meshlet = 0u;
 				local_meshlet < batch.meshlet_count;
@@ -1474,7 +1523,7 @@ fn cull_instances(invocation: vec3<u32>, submission_mode: u32) {
 			) {
 				let meshlet_index = batch.meshlet_offset + local_meshlet;
 				let meshlet = meshlets[meshlet_index];
-				if (!virtual_cluster_selected(instance, meshlet)) {
+				if (!virtual_cluster_selected(instance, meshlet, owns_page_requests)) {
 					if (meshlet.virtual_geometry != 0u) {
 						atomicAdd(&counters.virtual_rejected_clusters, 1u);
 					}
@@ -1562,7 +1611,7 @@ fn cull_instances(invocation: vec3<u32>, submission_mode: u32) {
 			) {
 				let meshlet_index = batch.meshlet_offset + local_meshlet;
 				let meshlet = meshlets[meshlet_index];
-				if (!virtual_cluster_selected(instance, meshlet)) {
+				if (!virtual_cluster_selected(instance, meshlet, false)) {
 					continue;
 				}
 				let bounds = world_meshlet_bounds(instance, meshlet);

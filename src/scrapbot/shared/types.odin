@@ -55,6 +55,7 @@ Project_Window_Config :: struct {
 }
 
 Project_Render_Config :: struct {
+	virtual_geometry_index_budget_mb: f32,
 	environment: Resource_UUID,
 	environment_intensity: f32,
 	environment_reflection_intensity: f32,

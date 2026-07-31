@@ -23,27 +23,28 @@ scene parse + schema validation + resource UUID resolution
 Native components register before Luau executes, so scripts can retrieve native handles. Asset import completes before runtime resource registration. Scene validation uses the combined engine/native/Luau registry.
 
 Before bootstrap, Model import simplifies eligible primitive index streams, compacts each retained
-level, and persists the generated chain in the versioned product. Runtime registration publishes
-semantic Geometry subresources and attaches their handles to the base Geometry.
+level, builds its crack-aware hierarchy, and persists both the LOD chain and deterministic page
+table in the versioned product. Runtime registration validates and publishes those compiled values
+as semantic Geometry subresources.
 
 At bootstrap or reload, Model roots reconcile imported nodes and primitives into derived
 Transform/Geometry/Material entities. Later duplication, Undo/Redo, or resource replacement
 increments a model-instance revision; reconciliation waits for that structural signal.
 
 Resource descriptions remain outside ECS. Components store resolved runtime handles. Geometry
-registration derives bounded meshlet streams and a crack-aware cluster hierarchy once from
-canonical indexed triangles, including every imported LOD level. The hierarchy keeps canonical
-vertex IDs plus monotonic group errors and remains owned and versioned with the Geometry entry.
+registration derives bounded meshlets. It accepts a validated compiled hierarchy for imported
+models or derives the same hierarchy for other producers. Canonical vertex IDs, monotonic group
+errors, page identities, and pinned fallback flags remain versioned with the Geometry entry.
 
 WGPU consumes a changed Geometry version into aligned ranges of shared vertex/index arenas.
-Canonical, meshlet-ordered, and hierarchy-cluster indices share the index arena. Capable adapters
-retain cluster metadata and arena-global indirect templates, then select one fully resident
-geometric-error frontier. Native multi-draw applies camera/shadow cluster visibility and consumes
-the retained cluster commands directly. Other indirect-first-instance adapters compact selected
-instance/cluster pairs into a bounded camera stream; compatible material batches share one
-indirect span whose vertex shader pulls from the shared arenas. Their cascade culling reuses the
-GPU-selected object LOD and separate retained indexed shadow templates. Adapters without indirect-
-first-instance ignore that derived cache and keep whole-primitive submission.
+Canonical and ordinary meshlet streams remain resident. The coarsest hierarchy index pages are
+pinned; finer pages enter the arena through asynchronous GPU request feedback.
+
+Capable adapters retain cluster metadata and arena-global indirect templates. They select the
+desired resident frontier and draw a coarse fallback while refinement is missing. Native
+multi-draw consumes cluster commands directly. Other indirect-first-instance adapters compact
+selected instance/cluster pairs into a bounded camera stream and vertex-pull from the arenas.
+Adapters without indirect-first-instance keep whole-primitive submission.
 
 Hot reload stages the resource registry, world, script/native runtime, source set, and playback baseline independently. Failure destroys the staged bundle; success swaps it atomically.
 

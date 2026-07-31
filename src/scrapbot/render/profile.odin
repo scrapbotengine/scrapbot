@@ -51,6 +51,9 @@ Profile_Counter_Deltas :: struct {
 	geometry_arena_uploads: u64,
 	geometry_arena_upload_bytes: u64,
 	geometry_arena_growths: u64,
+	virtual_geometry_page_uploads: u64,
+	virtual_geometry_page_upload_bytes: u64,
+	virtual_geometry_page_evictions: u64,
 	cluster_dispatches: u64,
 	instance_uploads: u64,
 	instance_upload_bytes: u64,
@@ -309,6 +312,18 @@ profile_counter_deltas :: proc(current, previous: Render_Stats) -> Profile_Count
 		geometry_arena_growths = profile_counter_delta(
 			current.geometry_arena_growths,
 			previous.geometry_arena_growths,
+		),
+		virtual_geometry_page_uploads = profile_counter_delta(
+			current.virtual_geometry_page_uploads,
+			previous.virtual_geometry_page_uploads,
+		),
+		virtual_geometry_page_upload_bytes = profile_counter_delta(
+			current.virtual_geometry_page_upload_bytes,
+			previous.virtual_geometry_page_upload_bytes,
+		),
+		virtual_geometry_page_evictions = profile_counter_delta(
+			current.virtual_geometry_page_evictions,
+			previous.virtual_geometry_page_evictions,
 		),
 		cluster_dispatches = profile_counter_delta(
 			current.cluster_dispatches,

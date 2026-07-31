@@ -40,6 +40,7 @@ WGPU_CLUSTER_COUNT_Y :: 9
 WGPU_CLUSTER_COUNT_Z :: 24
 WGPU_CLUSTER_COUNT :: WGPU_CLUSTER_COUNT_X * WGPU_CLUSTER_COUNT_Y * WGPU_CLUSTER_COUNT_Z
 WGPU_CLUSTER_INITIAL_LIGHT_CAPACITY :: 256
+WGPU_VIRTUAL_GEOMETRY_INDEX_BUDGET_BYTES :: u64(64 * 1024 * 1024)
 
 WGPU_GPU_Timestamp_Phase :: enum u32 {
 	Instance_Expansion,
@@ -107,7 +108,17 @@ WGPU_GPU_Visibility_Counters :: struct {
 	visible_meshlet_draws: u32,
 	visible_virtual_clusters: u32,
 	virtual_rejected_clusters: u32,
+	virtual_page_request_count: u32,
+	virtual_page_request_overflow: u32,
+	virtual_page_requests: [WGPU_VIRTUAL_PAGE_REQUEST_CAPACITY]WGPU_GPU_Virtual_Page_Request,
 }
+WGPU_VIRTUAL_PAGE_REQUEST_CAPACITY :: 4_096
+WGPU_GPU_Virtual_Page_Request :: struct {
+	geometry_index: u32,
+	geometry_generation: u32,
+	page_index: u32,
+}
+#assert(size_of(WGPU_GPU_Virtual_Page_Request) == 12)
 WGPU_GPU_VISIBLE_BATCH_WORD_COUNT :: (WGPU_MAX_GPU_INSTANCES * shared.MAX_GEOMETRY_LODS + 31) / 32
 #assert(WGPU_GPU_VISIBLE_BATCH_WORD_COUNT == 16_384)
 WGPU_GPU_VISIBILITY_COUNTER_BUFFER_SIZE ::
@@ -403,8 +414,14 @@ WGPU_GPU_Meshlet_Info :: struct {
 	base_vertex: u32,
 	triangle_count: u32,
 	identity: u32,
+	page_resident: u32,
+	refined_resident: u32,
+	request_geometry_index: u32,
+	request_geometry_generation: u32,
+	request_page_index: u32,
+	request_enabled: u32,
 }
-#assert(size_of(WGPU_GPU_Meshlet_Info) == 112)
+#assert(size_of(WGPU_GPU_Meshlet_Info) == 136)
 
 WGPU_GPU_Compact_Record :: struct {
 	instance_slot: u32,
@@ -430,9 +447,17 @@ WGPU_Geometry_Cache :: struct {
 	vertex_range: WGPU_Arena_Range,
 	index_range: WGPU_Arena_Range,
 	meshlet_index_range: WGPU_Arena_Range,
+	cluster_pages: [dynamic]WGPU_Cluster_Page_Cache,
 	vertex_count: u32,
 	index_count: u32,
 	valid: bool,
+}
+
+WGPU_Cluster_Page_Cache :: struct {
+	range: WGPU_Arena_Range,
+	last_requested_frame: u64,
+	resident: bool,
+	pinned: bool,
 }
 
 WGPU_Material_Cache :: struct {
@@ -913,6 +938,14 @@ WGPU_Renderer :: struct {
 	geometry_cache: [dynamic]WGPU_Geometry_Cache,
 	geometry_vertex_arena: WGPU_Geometry_Arena,
 	geometry_index_arena: WGPU_Geometry_Arena,
+	virtual_geometry_index_budget_bytes: u64,
+	virtual_geometry_index_resident_bytes: u64,
+	virtual_geometry_page_count: int,
+	virtual_geometry_resident_page_count: int,
+	virtual_geometry_pinned_page_count: int,
+	virtual_geometry_page_upload_count: u64,
+	virtual_geometry_page_upload_bytes: u64,
+	virtual_geometry_page_eviction_count: u64,
 	texture_cache: [dynamic]WGPU_Texture_Cache,
 	material_cache: [dynamic]WGPU_Material_Cache,
 	uniform_buffer: wgpu.Buffer,
@@ -2315,6 +2348,12 @@ wgpu_release_geometry_cache_ranges :: proc(
 	wgpu_arena_release(&renderer.geometry_vertex_arena.allocator, cached.vertex_range)
 	wgpu_arena_release(&renderer.geometry_index_arena.allocator, cached.index_range)
 	wgpu_arena_release(&renderer.geometry_index_arena.allocator, cached.meshlet_index_range)
+	for page in cached.cluster_pages {
+		if page.resident {
+			wgpu_arena_release(&renderer.geometry_index_arena.allocator, page.range)
+		}
+	}
+	delete(cached.cluster_pages)
 	cached^ = {}
 }
 
@@ -2335,6 +2374,7 @@ wgpu_reclaim_stale_geometry_cache :: proc(
 		}
 		wgpu_release_geometry_cache_ranges(renderer, cached)
 	}
+	wgpu_recount_virtual_page_residency(renderer)
 }
 
 wgpu_geometry_cache :: proc(
@@ -2389,6 +2429,7 @@ wgpu_geometry_cache :: proc(
 	meshlet_indices: []u32
 	meshlet_index_range := cached.meshlet_index_range
 	meshlet_range_reused := true
+	cluster_pages: [dynamic]WGPU_Cluster_Page_Cache
 	committed := false
 	defer if !committed {
 		if !vertex_range_reused {
@@ -2400,26 +2441,63 @@ wgpu_geometry_cache :: proc(
 		if !meshlet_range_reused {
 			wgpu_arena_release(&renderer.geometry_index_arena.allocator, meshlet_index_range)
 		}
+		for page in cluster_pages {
+			if page.resident {
+				wgpu_arena_release(&renderer.geometry_index_arena.allocator, page.range)
+			}
+		}
+		delete(cluster_pages)
 	}
 	if renderer.gpu_meshlet_supported {
 		meshlet_err: string
 		if wgpu_virtual_geometry_submission(renderer, geometry) {
-			meshlet_indices, meshlet_err = wgpu_expand_cluster_indices(geometry)
+			resize(&cluster_pages, len(geometry.cluster_pages))
+			for page, page_index in geometry.cluster_pages {
+				cluster_pages[page_index].pinned = page.pinned
+				if !page.pinned {
+					continue
+				}
+				page_indices, page_err := wgpu_expand_cluster_page_indices(geometry, page_index)
+				if page_err != "" {
+					return nil, page_err
+				}
+				page_bytes := u64(len(page_indices)) * u64(size_of(u32))
+				page_range := wgpu_arena_allocate(
+					&renderer.geometry_index_arena.allocator,
+					wgpu_align_arena_offset(page_bytes, u64(size_of(u32))),
+					u64(size_of(u32)),
+				)
+				cluster_pages[page_index].range = page_range
+				cluster_pages[page_index].resident = true
+				if upload_err := wgpu_geometry_arena_upload(
+					renderer,
+					&renderer.geometry_index_arena,
+					page_range,
+					raw_data(page_indices),
+					page_bytes,
+				); upload_err != "" {
+					return nil, upload_err
+				}
+				renderer.virtual_geometry_page_upload_count += 1
+				renderer.virtual_geometry_page_upload_bytes += page_bytes
+			}
+			meshlet_range_reused = false
+			meshlet_index_range = {}
 		} else {
 			meshlet_indices, meshlet_err = wgpu_expand_meshlet_indices(geometry)
-		}
-		if meshlet_err != "" {
-			return nil, meshlet_err
-		}
-		meshlet_bytes := u64(len(meshlet_indices)) * u64(size_of(u32))
-		meshlet_range_reused =
-			meshlet_index_range.size >= meshlet_bytes && meshlet_index_range.size > 0
-		if !meshlet_range_reused {
-			meshlet_index_range = wgpu_arena_allocate(
-				&renderer.geometry_index_arena.allocator,
-				wgpu_align_arena_offset(meshlet_bytes, u64(size_of(u32))),
-				u64(size_of(u32)),
-			)
+			if meshlet_err != "" {
+				return nil, meshlet_err
+			}
+			meshlet_bytes := u64(len(meshlet_indices)) * u64(size_of(u32))
+			meshlet_range_reused =
+				meshlet_index_range.size >= meshlet_bytes && meshlet_index_range.size > 0
+			if !meshlet_range_reused {
+				meshlet_index_range = wgpu_arena_allocate(
+					&renderer.geometry_index_arena.allocator,
+					wgpu_align_arena_offset(meshlet_bytes, u64(size_of(u32))),
+					u64(size_of(u32)),
+				)
+			}
 		}
 	}
 	if vertex_range.offset / u64(size_of(resources.Vertex)) > 0x7fff_ffff ||
@@ -2445,7 +2523,7 @@ wgpu_geometry_cache :: proc(
 	); upload_err != "" {
 		return nil, upload_err
 	}
-	if renderer.gpu_meshlet_supported {
+	if renderer.gpu_meshlet_supported && len(meshlet_indices) > 0 {
 		meshlet_bytes := u64(len(meshlet_indices)) * u64(size_of(u32))
 		if upload_err := wgpu_geometry_arena_upload(
 			renderer,
@@ -2466,17 +2544,26 @@ wgpu_geometry_cache :: proc(
 	if !meshlet_range_reused {
 		wgpu_arena_release(&renderer.geometry_index_arena.allocator, cached.meshlet_index_range)
 	}
+	for page in cached.cluster_pages {
+		if page.resident {
+			wgpu_arena_release(&renderer.geometry_index_arena.allocator, page.range)
+		}
+	}
+	delete(cached.cluster_pages)
 	cached^ = {
 		handle = handle,
 		version = geometry.version,
 		vertex_range = vertex_range,
 		index_range = index_range,
 		meshlet_index_range = meshlet_index_range,
+		cluster_pages = cluster_pages,
 		vertex_count = u32(len(geometry.vertices)),
 		index_count = u32(len(geometry.indices)),
 		valid = true,
 	}
+	cluster_pages = nil
 	committed = true
+	wgpu_recount_virtual_page_residency(renderer)
 	return cached, ""
 }
 
@@ -3543,7 +3630,10 @@ wgpu_draw_frame :: proc(
 	}
 	defer wgpu.CommandEncoderRelease(encoder)
 	if !config.cpu_culling {
-		wgpu_visibility_begin_frame(renderer)
+		if visibility_err := wgpu_visibility_begin_frame(renderer, config.resource_registry);
+		   visibility_err != "" {
+			return false, false, visibility_err
+		}
 	}
 	if err = wgpu_encode_gpu_instance_expansion(renderer, encoder); err != "" {
 		return false, false, err
@@ -3801,7 +3891,10 @@ wgpu_render_offscreen_frame :: proc(
 	}
 	defer wgpu.CommandEncoderRelease(encoder)
 	if !config.cpu_culling {
-		wgpu_visibility_begin_frame(renderer)
+		if visibility_err := wgpu_visibility_begin_frame(renderer, config.resource_registry);
+		   visibility_err != "" {
+			return visibility_err
+		}
 	}
 	if err := wgpu_encode_gpu_instance_expansion(renderer, encoder); err != "" {
 		return err
@@ -4010,6 +4103,10 @@ wgpu_run_headless :: proc(world: ^World, config: ^Run_Config) -> string {
 		return init_err
 	}
 	wgpu_configure_profile(&renderer, config.profile)
+	renderer.virtual_geometry_index_budget_bytes = config.virtual_geometry_index_budget_bytes
+	if renderer.virtual_geometry_index_budget_bytes == 0 {
+		renderer.virtual_geometry_index_budget_bytes = WGPU_VIRTUAL_GEOMETRY_INDEX_BUDGET_BYTES
+	}
 
 	width := u32(WGPU_OFFSCREEN_WIDTH)
 	height := u32(WGPU_OFFSCREEN_HEIGHT)
@@ -4193,7 +4290,12 @@ wgpu_run_headless :: proc(world: ^World, config: ^Run_Config) -> string {
 
 	wgpu_gpu_timing_drain(&renderer)
 	if !config.cpu_culling {
-		wgpu_visibility_consume_readbacks(&renderer)
+		if visibility_err := wgpu_visibility_consume_readbacks(
+			&renderer,
+			config.resource_registry,
+		); visibility_err != "" {
+			return visibility_err
+		}
 	}
 	if config.stats != nil {
 		wgpu_publish_gpu_timing(&renderer, config.stats)
@@ -4244,6 +4346,10 @@ wgpu_run_window :: proc(world: ^World, config: ^Run_Config) -> string {
 		return init_err
 	}
 	wgpu_configure_profile(&renderer, config.profile)
+	renderer.virtual_geometry_index_budget_bytes = config.virtual_geometry_index_budget_bytes
+	if renderer.virtual_geometry_index_budget_bytes == 0 {
+		renderer.virtual_geometry_index_budget_bytes = WGPU_VIRTUAL_GEOMETRY_INDEX_BUDGET_BYTES
+	}
 	defer wgpu_gpu_timing_drain(&renderer)
 
 	frame_count: u32

@@ -29,7 +29,7 @@ Pluggable rendering backends allow Scrapbot to start with `wgpu-native` while ke
 - Shared geometry/material pairs use one instanced draw batch. Geometry versions occupy aligned ranges in shared WGPU vertex/index arenas, while material texture uploads remain cached by handle and version.
 - WGPU keeps a persistent slot-addressed GPU instance table, separates static source state from hot Transform state, sends Transform-only changes through one dense update upload, coalesces nearby static slot changes into bounded uploads, retains compact render/culling uniforms and instance-to-LOD batch mappings, computes camera and shadow frustum visibility into compacted batch slices, and obtains instance counts from indexed indirect draw arguments.
 - The retained draw database grows geometrically past the original 64-batch limit. It rebuilds only when render membership, geometry LOD topology, or required capacity changes.
-- Every Geometry version owns bounded meshlets and a crack-aware cluster hierarchy. Hierarchy batches select a fully resident geometric-error frontier on the GPU before camera sphere, normal-cone, and Hi-Z tests. Native multi-draw adapters retain one indirect command per hierarchy cluster and use that frontier for shadows. Other indirect-first-instance adapters append selected instance/cluster records into a bounded camera stream and vertex-pull compatible material spans through one indirect command, while shadows reuse the GPU-selected object LOD through indexed-indirect draws. Adapters without indirect-first-instance and `--cpu-culling` retain whole-primitive imported LOD selection.
+- Every Geometry version owns bounded meshlets and a crack-aware, deterministically paged cluster hierarchy. Coarse index pages remain pinned. The GPU selects resident detail, requests missing finer pages, and draws the nearest resident fallback before camera sphere, normal-cone, and Hi-Z tests. Native multi-draw adapters retain one indirect command per hierarchy cluster. Other indirect-first-instance adapters append selected instance/cluster records into a bounded camera stream and vertex-pull compatible material spans through one indirect command. Adapters without indirect-first-instance and `--cpu-culling` retain whole-primitive imported LOD selection.
 - The active camera selects a backend-neutral debug view: lit output, material inputs, mapped world normals, logarithmic depth, retained meshlet identity, exact GPU-selected LOD, selected virtual-geometry clusters and hierarchy depth, object/meshlet visibility classification, one retained Hi-Z mip, or exact screen-space Hi-Z query footprints. Non-lit views skip presentation effects so diagnostics remain direct and stable.
 - Hi-Z false color and texel boundaries expose the exact conservative max-depth hierarchy without readback or rebuilding it. Occlusion Queries records each tested rectangle, selected mip, bound depth, sampled farthest depth, identity, and visible/culled decision in a bounded GPU-native stream.
 - The camera can freeze the latest valid occlusion-query records while that view remains selected. Freeze preserves only diagnostic records and their indirect draw count; ordinary culling continues from current safe Hi-Z state.
@@ -275,13 +275,22 @@ future virtual-geometry residency.
 resident bytes and rebuilds dependent bindings at an explicit mutation boundary. Adapters without
 indirect-first-instance share the memory arenas but retain single-batch submission semantics.
 
-### 19. Select a fully resident virtual-geometry frontier
+### 19. Select a resident virtual-geometry frontier
 
-**Decision:** Derive a crack-aware cluster hierarchy for every Geometry at registration. Retain
+**Decision:** Derive a crack-aware cluster hierarchy for every Geometry. Retain
 group depth, conservative bounds, monotonic geometric error, refined-group links, and cluster-local
-indices with that exact resource version. On WGPU adapters with indirect-first-instance, project
+indices with that exact resource version. Imported model products persist the hierarchy. Other
+Geometry producers build the same representation at registration. See ADR-049 and ADR-050.
+
+Partition expanded cluster indices into deterministic, group-aligned pages. Pin the coarsest
+frontier. On WGPU adapters with indirect-first-instance, project
 group error into pixels and submit the unique cluster frontier surrounding a one-pixel threshold
-before ordinary cluster culling. See ADR-049.
+before ordinary cluster culling.
+
+When finer detail is wanted but missing, submit the resident coarse cluster and append the first
+missing page to the existing visibility-feedback buffer. Asynchronous CPU processing deduplicates
+requests, uploads pages, and evicts the least-recently-requested non-pinned page under the project
+index budget. Residency mutations update affected Geometry batches; stable frames do no page work.
 
 Native multi-draw adapters submit the retained indexed-indirect command range for camera and
 shadow work. Other capable adapters compact selected `{instance slot, cluster index}` records into
@@ -291,24 +300,23 @@ shared geometry arenas. Their four shadow cascades reuse the GPU-selected object
 separate retained indexed-indirect templates. Stable frames perform no CPU readback, per-cluster
 command generation, or geometry upload.
 
-The `virtual_geometry` camera view colors selected clusters by identity and hierarchy depth.
-Structured results report resident hierarchy commands, visible virtual clusters, and clusters
-rejected because another level owns their screen-space region.
+The `virtual_geometry` camera view colors selected clusters by identity and hierarchy depth. Amber
+marks a branch whose finer group is not completely resident. Structured results report the index
+budget, residency, requests, uploads, evictions, selected clusters, and threshold rejections.
 
 **Why:** Geometry detail must vary below object granularity without cracks, importer-specific draw
 paths, or CPU decisions per cluster.
 
-**Tradeoff:** All hierarchy data is resident and generated at the resource boundary. Paging,
-streaming, eviction, and pinned root clusters remain separate follow-up work. The compact camera
-path trades additional GPU culling and vertex-pulling cost for portable, bounded CPU submission;
-portable shadows deliberately use conservative whole-object LOD geometry to avoid multiplying
-that cost across four cascades.
+**Tradeoff:** Hierarchy metadata, canonical vertices, and source indices remain resident. This
+phase bounds expanded hierarchy indices only. The compact camera path trades additional GPU
+culling and vertex-pulling cost for portable, bounded CPU submission. Portable shadows use
+conservative whole-object LOD geometry to avoid multiplying that cost across four cascades.
 Adapters without indirect-first-instance and capacity-limited layouts keep the existing classic
 indexed and imported-LOD fallback.
 
 ## Related
 
-- **ADRs:** ADR-003, ADR-005, ADR-010, ADR-011, ADR-029, ADR-034, ADR-038, ADR-039, ADR-046, ADR-047, ADR-048, ADR-049
+- **ADRs:** ADR-003, ADR-005, ADR-010, ADR-011, ADR-029, ADR-034, ADR-038, ADR-039, ADR-046, ADR-047, ADR-048, ADR-049, ADR-050
 - **FDRs:** FDR-001, FDR-002, FDR-008
 
 ## Open Questions

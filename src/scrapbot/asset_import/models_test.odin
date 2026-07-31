@@ -75,6 +75,16 @@ test_model_offline_lods_are_deterministic_compact_and_round_trip :: proc(t: ^tes
 			testing.expect_value(t, second.lods[level].vertices[vertex_index], vertex)
 		}
 	}
+	hierarchy_err := build_model_primitive_hierarchies(&primitive)
+	testing.expectf(t, hierarchy_err == "", "hierarchy build failed: %s", hierarchy_err)
+	testing.expect(t, len(primitive.hierarchy.pages) > 0)
+	pinned_pages := 0
+	for page in primitive.hierarchy.pages {
+		if page.pinned {
+			pinned_pages += 1
+		}
+	}
+	testing.expect(t, pinned_pages > 0)
 	model: Model_Product
 	mesh := Model_Mesh{}
 	mesh.key, _ = strings.clone("mesh:grid")
@@ -104,12 +114,26 @@ test_model_offline_lods_are_deterministic_compact_and_round_trip :: proc(t: ^tes
 	defer destroy_model_product(&decoded)
 	testing.expectf(t, decode_err == "", "LOD product round trip failed: %s", decode_err)
 	if decode_err == "" {
+		decoded_primitive := decoded.meshes[0].primitives[0]
+		testing.expect_value(
+			t,
+			len(decoded_primitive.hierarchy.pages),
+			len(model.meshes[0].primitives[0].hierarchy.pages),
+		)
+		testing.expect_value(
+			t,
+			len(decoded_primitive.hierarchy.clusters),
+			len(model.meshes[0].primitives[0].hierarchy.clusters),
+		)
 		testing.expect_value(t, len(decoded.meshes[0].primitives[0].lods), 3)
 		decoded_indices := decoded.meshes[0].primitives[0].lods[2].indices
 		source_indices := model.meshes[0].primitives[0].lods[2].indices
 		testing.expect_value(t, len(decoded_indices), len(source_indices))
 		for element, index in source_indices {
 			testing.expect_value(t, decoded_indices[index], element)
+		}
+		for lod in decoded_primitive.lods {
+			testing.expect(t, len(lod.hierarchy.pages) > 0)
 		}
 	}
 }
@@ -341,6 +365,9 @@ test_static_gltf_import_is_incremental_and_round_trips_product :: proc(t: ^testi
 	testing.expect_value(t, product.vertex_count, 3)
 	testing.expect_value(t, product.index_count, 3)
 	testing.expect_value(t, product.material_count, 1)
+	testing.expect_value(t, product.cluster_count, 1)
+	testing.expect_value(t, product.cluster_group_count, 1)
+	testing.expect_value(t, product.cluster_page_count, 1)
 	model, read_err := read_model_product(product.artifact_path)
 	defer destroy_model_product(&model)
 	testing.expectf(t, read_err == "", "model product read failed: %s", read_err)

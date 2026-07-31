@@ -21,15 +21,22 @@ The WGPU backend includes:
 WGPU retains geometry/material/LOD batches across Transform-only frames. Stable ECS render slots address a backend-owned instance table. Transform changes pack into one dense update stream and one upload before GPU matrix/bounds expansion; static record changes still upload only coalesced dirty ranges. One compute pass produces separate camera-visible and shadow-visible instance lists plus their indirect counts. The renderer supports 131,072 instance slots and grows its draw database geometrically.
 
 Every exact Geometry version occupies aligned ranges in shared WGPU vertex and index arenas.
-Canonical and meshlet-expanded indices share the index arena. Changed versions reuse a fitting
-range or allocate from a coalescing free list; backing buffers grow geometrically. Unchanged frames
-perform no geometry allocation, scan, rebuild, or upload.
+Canonical and ordinary meshlet indices remain resident. Virtual-geometry cluster indices use
+group-aligned pages in the same index arena. Changed versions reuse fitting ranges or allocate from
+a coalescing free list; backing buffers grow geometrically.
 
-Every registered Geometry also owns deterministic meshlets capped at 64 vertices and 124 triangles, including local index streams, conservative sphere bounds, and normal cones. They are built only when geometry is created or replaced and share its handle/version lifetime.
+Every registered Geometry also owns deterministic meshlets capped at 64 vertices and 124 triangles,
+including local index streams, conservative sphere bounds, and normal cones. Imported Model
+products persist their hierarchy and page table. Other Geometry producers build the same data only
+when the resource is created or replaced.
 
 Imported models compile eligible primitives into up to three deterministic compact LOD Geometry resources before runtime bootstrap. Their semantic handles survive harmless source reordering and reimport. The base resource publishes the same thresholds and alternate handles as procedural LOD resources, so CPU/GPU selection and debug views have no importer-specific path.
 
-When an adapter exposes indirect-first-instance, WGPU projects each hierarchy group's monotonic geometric error into pixels and selects the unique fully resident frontier surrounding a one-pixel threshold for camera rendering.
+When an adapter exposes indirect-first-instance, WGPU projects each hierarchy group's monotonic
+geometric error into pixels. Coarsest pages remain pinned. If finer pages are absent, the GPU draws
+the nearest resident frontier and requests refinement through asynchronous visibility feedback.
+The CPU loads requested pages and evicts least-recently-requested non-pinned pages under
+`render.virtual_geometry_index_budget_mb`.
 
 Native multi-draw adapters retain one indexed-indirect command and aligned visible-instance slice per hierarchy cluster, and use that frontier for shadows too. Other capable adapters append selected `{instance slot, cluster index}` records into a bounded camera stream. Compatible same-material batches share one record span and indirect command; the vertex shader pulls cluster indices and attributes directly from the shared geometry arenas. Their shadow cascades reuse the GPU-selected object LOD through classic indexed-indirect commands. Selection, compaction, cascade visibility, and command counts remain GPU-produced.
 
@@ -39,9 +46,18 @@ After whole-object rejection and LOD selection, compute tests camera meshlets ag
 
 Set `scrapbot.camera.debug_view` to `base_color`, `world_normals`, `roughness`, `metallic`, `depth`, `meshlets`, `lod`, `meshlet_visibility`, `hiz`, `occlusion_queries`, or `virtual_geometry` to capture the same diagnostics without opening the editor.
 
-`virtual_geometry` colors the GPU-selected, fully resident cluster frontier by cluster identity and hierarchy depth. `debug_hiz_mip` selects the retained pyramid level for `hiz`; `debug_occlusion_freeze` preserves the latest valid query records for `occlusion_queries`.
+`virtual_geometry` colors the GPU-selected resident cluster frontier by cluster identity and
+hierarchy depth. Amber marks a branch whose finer group is not completely resident. Sponza uses a
+deliberately constrained budget so this transition is visible. `debug_hiz_mip` selects the retained
+pyramid level for `hiz`; `debug_occlusion_freeze` preserves the latest valid query records for
+`occlusion_queries`.
 
-The checked-in semantic replays `tests/fixtures/ui/game-debug-meshlets.json`, `game-debug-lod.json`, `game-debug-visibility.json`, `game-debug-hiz.json`, and `game-debug-occlusion.json` drive the editor selector and capture only Game. Pair LOD with `tests/fixtures/gpu-lod` for exact three-level CPU/GPU parity or `examples/sponza` for importer-generated levels. Pair visibility or Hi-Z with `examples/ecs-showcase`, either meshlet view with `examples/sponza`, and Occlusion Queries with the dense `examples/clustered-lights` cathedral.
+The checked-in semantic replays `tests/fixtures/ui/game-debug-meshlets.json`,
+`game-debug-lod.json`, `game-debug-visibility.json`, `game-debug-hiz.json`,
+`game-debug-occlusion.json`, and `game-debug-virtual-geometry.json` drive the editor selector and
+capture only Game. Pair LOD with `tests/fixtures/gpu-lod` for exact CPU/GPU parity. Pair visibility
+or Hi-Z with `examples/ecs-showcase`, the meshlet and virtual-geometry views with
+`examples/sponza`, and Occlusion Queries with the dense `examples/clustered-lights` cathedral.
 
 Visibility diagnostics remain GPU-native. The culling pass emits records into an aligned diagnostic range only while a matching view is active, copies its count into an indirect line draw, and publishes `meshlet_debug_records` through the existing asynchronous statistics path. Meshlet Visibility records rejected bounds. Occlusion Queries records the exact query rectangle, selected mip, nearest bound depth, sampled farthest depth, identity, and decision for every tested object or meshlet.
 

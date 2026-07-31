@@ -1,5 +1,6 @@
 package asset_import
 
+import geometry "../geometry"
 import shared "../shared"
 import "core:encoding/base64"
 import "core:encoding/endian"
@@ -12,8 +13,8 @@ import "core:path/filepath"
 import "core:strings"
 import cgltf "vendor:cgltf"
 
-MODEL_IMPORTER_SCHEMA :: "scrapbot.model.v10.offline-lods"
-MODEL_PRODUCT_MAGIC :: [8]u8{'S', 'B', 'M', 'O', 'D', 'L', '1', '0'}
+MODEL_IMPORTER_SCHEMA :: "scrapbot.model.v11.cluster-pages"
+MODEL_PRODUCT_MAGIC :: [8]u8{'S', 'B', 'M', 'O', 'D', 'L', '1', '1'}
 
 Model_Vertex :: struct {
 	position, normal: shared.Vec3,
@@ -50,12 +51,14 @@ Model_Primitive :: struct {
 	material_index: i32,
 	vertices: [dynamic]Model_Vertex,
 	indices: [dynamic]u32,
+	hierarchy: geometry.Hierarchy,
 	lods: [dynamic]Model_Primitive_LOD,
 }
 
 Model_Primitive_LOD :: struct {
 	vertices: [dynamic]Model_Vertex,
 	indices: [dynamic]u32,
+	hierarchy: geometry.Hierarchy,
 	level: u32,
 	screen_radius: f32,
 	simplification_error: f32,
@@ -88,6 +91,7 @@ Model_Metadata :: struct {
 	node_count, mesh_count, primitive_count: int,
 	vertex_count, index_count, material_count, texture_count: int,
 	lod_count, lod_vertex_count, lod_index_count: int,
+	cluster_count, cluster_group_count, cluster_page_count: int,
 	ignored_texture_count: int,
 }
 
@@ -230,6 +234,9 @@ ensure_model_import :: proc(
 			lod_count = metadata.lod_count,
 			lod_vertex_count = metadata.lod_vertex_count,
 			lod_index_count = metadata.lod_index_count,
+			cluster_count = metadata.cluster_count,
+			cluster_group_count = metadata.cluster_group_count,
+			cluster_page_count = metadata.cluster_page_count,
 			material_count = metadata.material_count,
 			texture_count = metadata.texture_count,
 			ignored_texture_count = metadata.ignored_texture_count,
@@ -621,6 +628,13 @@ build_model_product :: proc(
 			}
 			if settings.generate_lods {
 				build_model_primitive_lods(&imported_primitive, settings)
+			}
+			if hierarchy_err := build_model_primitive_hierarchies(&imported_primitive);
+			   hierarchy_err != "" {
+				destroy_model_primitive(&imported_primitive)
+				destroy_model_product(&model)
+				destroy_model_mesh(&imported_mesh)
+				return {}, hierarchy_err
 			}
 			append(&imported_mesh.primitives, imported_primitive)
 		}
@@ -1099,12 +1113,45 @@ destroy_model_primitive :: proc(primitive: ^Model_Primitive) {
 	delete(primitive.key)
 	delete(primitive.vertices)
 	delete(primitive.indices)
+	geometry.destroy_hierarchy(&primitive.hierarchy)
 	for &lod in primitive.lods {
 		delete(lod.vertices)
 		delete(lod.indices)
+		geometry.destroy_hierarchy(&lod.hierarchy)
 	}
 	delete(primitive.lods)
 	primitive^ = {}
+}
+
+build_model_primitive_hierarchies :: proc(primitive: ^Model_Primitive) -> string {
+	if primitive == nil {
+		return "imported model primitive is unavailable"
+	}
+	hierarchy, hierarchy_err := geometry.build_hierarchy(
+		primitive.indices[:],
+		raw_data(primitive.vertices[:]),
+		len(primitive.vertices),
+		size_of(Model_Vertex),
+	)
+	if hierarchy_err != "" {
+		return hierarchy_err
+	}
+	geometry.destroy_hierarchy(&primitive.hierarchy)
+	primitive.hierarchy = hierarchy
+	for &lod in primitive.lods {
+		lod_hierarchy, lod_hierarchy_err := geometry.build_hierarchy(
+			lod.indices[:],
+			raw_data(lod.vertices[:]),
+			len(lod.vertices),
+			size_of(Model_Vertex),
+		)
+		if lod_hierarchy_err != "" {
+			return lod_hierarchy_err
+		}
+		geometry.destroy_hierarchy(&lod.hierarchy)
+		lod.hierarchy = lod_hierarchy
+	}
+	return ""
 }
 
 destroy_model_mesh :: proc(mesh: ^Model_Mesh) {
@@ -1285,10 +1332,16 @@ model_metadata :: proc(
 		for primitive in mesh.primitives {
 			metadata.vertex_count += len(primitive.vertices)
 			metadata.index_count += len(primitive.indices)
+			metadata.cluster_count += len(primitive.hierarchy.clusters)
+			metadata.cluster_group_count += len(primitive.hierarchy.groups)
+			metadata.cluster_page_count += len(primitive.hierarchy.pages)
 			metadata.lod_count += len(primitive.lods)
 			for lod in primitive.lods {
 				metadata.lod_vertex_count += len(lod.vertices)
 				metadata.lod_index_count += len(lod.indices)
+				metadata.cluster_count += len(lod.hierarchy.clusters)
+				metadata.cluster_group_count += len(lod.hierarchy.groups)
+				metadata.cluster_page_count += len(lod.hierarchy.pages)
 			}
 		}
 	}
@@ -1412,6 +1465,7 @@ encode_model_product :: proc(model: ^Model_Product) -> []u8 {
 			for index in primitive.indices {
 				model_write_u32(&bytes, index)
 			}
+			model_write_hierarchy(&bytes, primitive.hierarchy)
 			model_write_u32(&bytes, u32(len(primitive.lods)))
 			for lod in primitive.lods {
 				model_write_u32(&bytes, lod.level)
@@ -1428,6 +1482,7 @@ encode_model_product :: proc(model: ^Model_Product) -> []u8 {
 				for index in lod.indices {
 					model_write_u32(&bytes, index)
 				}
+				model_write_hierarchy(&bytes, lod.hierarchy)
 			}
 		}
 	}
@@ -1441,6 +1496,52 @@ encode_model_product :: proc(model: ^Model_Product) -> []u8 {
 		model_write_vec3(&bytes, node.transform.scale)
 	}
 	return bytes[:]
+}
+
+model_write_hierarchy :: proc(bytes: ^[dynamic]u8, hierarchy: geometry.Hierarchy) {
+	model_write_u32(bytes, hierarchy.max_depth)
+	model_write_u32(bytes, u32(len(hierarchy.groups)))
+	model_write_u32(bytes, u32(len(hierarchy.clusters)))
+	model_write_u32(bytes, u32(len(hierarchy.pages)))
+	model_write_u32(bytes, u32(len(hierarchy.vertices)))
+	model_write_u32(bytes, u32(len(hierarchy.triangles)))
+	for group in hierarchy.groups {
+		for value in group.bounds {
+			model_write_f32(bytes, value)
+		}
+		model_write_f32(bytes, group.error)
+		model_write_u32(bytes, group.depth)
+		model_write_u32(bytes, group.cluster_offset)
+		model_write_u32(bytes, group.cluster_count)
+		model_write_u32(bytes, group.page_offset)
+		model_write_u32(bytes, group.page_count)
+	}
+	for cluster in hierarchy.clusters {
+		model_write_u32(bytes, cluster.vertex_offset)
+		model_write_u32(bytes, cluster.triangle_offset)
+		model_write_u32(bytes, cluster.vertex_count)
+		model_write_u32(bytes, cluster.triangle_count)
+		for value in cluster.bounds {
+			model_write_f32(bytes, value)
+		}
+		for value in cluster.cone_axis_cutoff {
+			model_write_f32(bytes, value)
+		}
+		model_write_i32(bytes, cluster.group)
+		model_write_i32(bytes, cluster.refined_group)
+		model_write_u32(bytes, cluster.page)
+		model_write_u32(bytes, cluster.page_index_offset)
+	}
+	for page in hierarchy.pages {
+		model_write_u32(bytes, page.cluster_offset)
+		model_write_u32(bytes, page.cluster_count)
+		model_write_u32(bytes, page.index_count)
+		model_write_u32(bytes, 1 if page.pinned else 0)
+	}
+	for vertex in hierarchy.vertices {
+		model_write_u32(bytes, vertex)
+	}
+	model_write_bytes(bytes, hierarchy.triangles)
 }
 
 read_model_product :: proc(path: string) -> (model: Model_Product, err: string) {
@@ -1637,6 +1738,15 @@ read_model_product :: proc(path: string) -> (model: Model_Product, err: string) 
 					return {}, "imported model indices are invalid"
 				}
 			}
+			if ok {
+				ok = model_read_hierarchy(&reader, &primitive.hierarchy, int(vertex_count))
+			}
+			if !ok {
+				destroy_model_primitive(&primitive)
+				destroy_model_mesh(&mesh)
+				destroy_model_product(&model)
+				return {}, "imported model cluster hierarchy is invalid"
+			}
 			lod_count: u32
 			lod_count, ok = model_read_u32(&reader)
 			if !ok || lod_count >= shared.MAX_GEOMETRY_LODS {
@@ -1707,6 +1817,16 @@ read_model_product :: proc(path: string) -> (model: Model_Product, err: string) 
 						return {}, "imported model LOD indices are invalid"
 					}
 				}
+				if ok {
+					ok = model_read_hierarchy(&reader, &lod.hierarchy, int(lod_vertex_count))
+				}
+				if !ok {
+					destroy_model_lod(&lod)
+					destroy_model_primitive(&primitive)
+					destroy_model_mesh(&mesh)
+					destroy_model_product(&model)
+					return {}, "imported model LOD cluster hierarchy is invalid"
+				}
 				append(&primitive.lods, lod)
 			}
 			if primitive.material_index < -1 ||
@@ -1758,6 +1878,160 @@ read_model_product :: proc(path: string) -> (model: Model_Product, err: string) 
 		return {}, "imported model product has trailing data"
 	}
 	return model, ""
+}
+
+model_read_hierarchy :: proc(
+	reader: ^Model_Reader,
+	hierarchy: ^geometry.Hierarchy,
+	canonical_vertex_count: int,
+) -> bool {
+	if reader == nil || hierarchy == nil {
+		return false
+	}
+	ok: bool
+	max_depth: u32
+	max_depth, ok = model_read_u32(reader)
+	if !ok {
+		return false
+	}
+	group_count, group_ok := model_read_u32(reader)
+	cluster_count, cluster_ok := model_read_u32(reader)
+	page_count, page_ok := model_read_u32(reader)
+	vertex_count, vertex_ok := model_read_u32(reader)
+	triangle_byte_count, triangle_ok := model_read_u32(reader)
+	if !group_ok ||
+	   !cluster_ok ||
+	   !page_ok ||
+	   !vertex_ok ||
+	   !triangle_ok ||
+	   group_count == 0 ||
+	   group_count > 4_000_000 ||
+	   cluster_count == 0 ||
+	   cluster_count > 16_000_000 ||
+	   page_count == 0 ||
+	   page_count > cluster_count ||
+	   vertex_count == 0 ||
+	   vertex_count > 64_000_000 ||
+	   triangle_byte_count == 0 ||
+	   triangle_byte_count > 256_000_000 {
+		return false
+	}
+	required_bytes :=
+		u64(group_count) * 40 +
+		u64(cluster_count) * 64 +
+		u64(page_count) * 16 +
+		u64(vertex_count) * 4 +
+		u64(triangle_byte_count)
+	if required_bytes > u64(len(reader.bytes) - reader.offset) {
+		return false
+	}
+	hierarchy.max_depth = max_depth
+	hierarchy.groups = make([]geometry.Cluster_Group, int(group_count))
+	hierarchy.clusters = make([]geometry.Cluster, int(cluster_count))
+	hierarchy.pages = make([]geometry.Cluster_Page, int(page_count))
+	hierarchy.vertices = make([]u32, int(vertex_count))
+	for &group in hierarchy.groups {
+		for &value in group.bounds {
+			value, ok = model_read_f32(reader)
+			if !ok {
+				geometry.destroy_hierarchy(hierarchy)
+				return false
+			}
+		}
+		group.error, ok = model_read_f32(reader)
+		if ok {
+			group.depth, ok = model_read_u32(reader)
+		}
+		if ok {
+			group.cluster_offset, ok = model_read_u32(reader)
+		}
+		if ok {
+			group.cluster_count, ok = model_read_u32(reader)
+		}
+		if ok {
+			group.page_offset, ok = model_read_u32(reader)
+		}
+		if ok {
+			group.page_count, ok = model_read_u32(reader)
+		}
+		if !ok {
+			geometry.destroy_hierarchy(hierarchy)
+			return false
+		}
+	}
+	for &cluster in hierarchy.clusters {
+		cluster.vertex_offset, ok = model_read_u32(reader)
+		if ok {
+			cluster.triangle_offset, ok = model_read_u32(reader)
+		}
+		if ok {
+			cluster.vertex_count, ok = model_read_u32(reader)
+		}
+		if ok {
+			cluster.triangle_count, ok = model_read_u32(reader)
+		}
+		for &value in cluster.bounds {
+			if !ok {
+				break
+			}
+			value, ok = model_read_f32(reader)
+		}
+		for &value in cluster.cone_axis_cutoff {
+			if !ok {
+				break
+			}
+			value, ok = model_read_f32(reader)
+		}
+		if ok {
+			cluster.group, ok = model_read_i32(reader)
+		}
+		if ok {
+			cluster.refined_group, ok = model_read_i32(reader)
+		}
+		if ok {
+			cluster.page, ok = model_read_u32(reader)
+		}
+		if ok {
+			cluster.page_index_offset, ok = model_read_u32(reader)
+		}
+		if !ok {
+			geometry.destroy_hierarchy(hierarchy)
+			return false
+		}
+	}
+	for &page in hierarchy.pages {
+		page.cluster_offset, ok = model_read_u32(reader)
+		if ok {
+			page.cluster_count, ok = model_read_u32(reader)
+		}
+		if ok {
+			page.index_count, ok = model_read_u32(reader)
+		}
+		pinned: u32
+		if ok {
+			pinned, ok = model_read_u32(reader)
+		}
+		if !ok || pinned > 1 {
+			geometry.destroy_hierarchy(hierarchy)
+			return false
+		}
+		page.pinned = pinned == 1
+	}
+	for &vertex in hierarchy.vertices {
+		vertex, ok = model_read_u32(reader)
+		if !ok {
+			geometry.destroy_hierarchy(hierarchy)
+			return false
+		}
+	}
+	triangles, triangles_ok := model_read_bytes(reader, int(triangle_byte_count))
+	if !triangles_ok {
+		geometry.destroy_hierarchy(hierarchy)
+		return false
+	}
+	hierarchy.triangles = make([]u8, len(triangles))
+	copy(hierarchy.triangles, triangles)
+	return geometry.validate_hierarchy(hierarchy, canonical_vertex_count) == ""
 }
 
 validate_decoded_model :: proc(model: ^Model_Product) -> string {

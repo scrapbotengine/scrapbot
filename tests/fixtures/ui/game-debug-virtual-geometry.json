@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "timeout_frames": 240,
+  "actions": [
+    {"action": "click", "target": {"text": "VIEW / CAMERA", "origin": "editor"}},
+    {"action": "click", "target": {"text": "VIRTUAL GEOMETRY", "origin": "editor"}},
+    {"action": "wait", "frames": 24},
+    {"action": "expect", "target": {"text": "VIEW / VIRTUAL GEOMETRY", "origin": "editor"}, "expect": "visible"},
+    {"action": "capture", "target": {"name": "__scrapbot_editor_viewport", "origin": "editor"}, "padding": 4}
+  ]
+}

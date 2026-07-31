@@ -471,6 +471,7 @@ test_registered_geometry_builds_bounded_meshlets :: proc(t: ^testing.T) {
 	testing.expect_value(t, total_triangles, len(geometry.indices) / 3)
 	testing.expect(t, len(geometry.cluster_groups) > 1)
 	testing.expect(t, len(geometry.clusters) > len(geometry.meshlets))
+	testing.expect(t, len(geometry.cluster_pages) > 0)
 	testing.expect(t, geometry.cluster_max_depth > 0)
 	leaf_triangles := 0
 	for group, group_index in geometry.cluster_groups {
@@ -494,6 +495,14 @@ test_registered_geometry_builds_bounded_meshlets :: proc(t: ^testing.T) {
 			if cluster.refined_group == -1 {
 				leaf_triangles += int(cluster.triangle_count)
 			}
+			testing.expect(t, int(cluster.page) < len(geometry.cluster_pages))
+		}
+		page_start := int(group.page_offset)
+		page_end := int(group.page_offset + group.page_count)
+		for page in geometry.cluster_pages[page_start:page_end] {
+			testing.expect_value(t, page.pinned, group.depth == geometry.cluster_max_depth)
+			testing.expect(t, page.index_count > 0)
+			testing.expect(t, page.index_count <= 64 * 1024 / size_of(u32))
 		}
 	}
 	testing.expect_value(t, leaf_triangles, len(geometry.indices) / 3)

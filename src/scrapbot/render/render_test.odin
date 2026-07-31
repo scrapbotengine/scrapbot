@@ -1839,6 +1839,32 @@ test_wgpu_meshlet_visibility_capacity_is_aligned_and_bounded :: proc(t: ^testing
 test_wgpu_culling_shader_stays_within_portable_storage_binding_floor :: proc(t: ^testing.T) {
 	testing.expect_value(t, strings.count(WGPU_GPU_CULL_SHADER, "var<storage"), 8)
 	testing.expect(t, !strings.contains(WGPU_GPU_CULL_SHADER, "@binding(10)"))
+	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "virtual_page_requests"))
+	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "meshlet.refined_resident == 0u"))
+}
+
+@(test)
+test_wgpu_virtual_group_residency_requires_every_page :: proc(t: ^testing.T) {
+	geometry := resources.Geometry {
+		cluster_groups = []resources.Geometry_Cluster_Group{{page_offset = 0, page_count = 2}},
+	}
+	cache := WGPU_Geometry_Cache {
+		cluster_pages = make([dynamic]WGPU_Cluster_Page_Cache, 2),
+	}
+	defer delete(cache.cluster_pages)
+	resident, missing, has_missing := wgpu_cluster_group_residency(&geometry, &cache, 0)
+	testing.expect(t, !resident)
+	testing.expect(t, has_missing)
+	testing.expect_value(t, missing, u32(0))
+	cache.cluster_pages[0].resident = true
+	resident, missing, has_missing = wgpu_cluster_group_residency(&geometry, &cache, 0)
+	testing.expect(t, !resident)
+	testing.expect(t, has_missing)
+	testing.expect_value(t, missing, u32(1))
+	cache.cluster_pages[1].resident = true
+	resident, _, has_missing = wgpu_cluster_group_residency(&geometry, &cache, 0)
+	testing.expect(t, resident)
+	testing.expect(t, !has_missing)
 }
 
 @(test)
@@ -1969,6 +1995,9 @@ test_profile_reports_per_frame_counter_deltas_after_warmup :: proc(t: ^testing.T
 		geometry_arena_uploads = 101,
 		geometry_arena_upload_bytes = 4096,
 		geometry_arena_growths = 2,
+		virtual_geometry_page_uploads = 5,
+		virtual_geometry_page_upload_bytes = 2048,
+		virtual_geometry_page_evictions = 1,
 		ui_vertex_rebuilds = 5,
 		ui_vertex_upload_bytes = 2048,
 	}
@@ -1980,6 +2009,9 @@ test_profile_reports_per_frame_counter_deltas_after_warmup :: proc(t: ^testing.T
 	stats.geometry_arena_uploads += 3
 	stats.geometry_arena_upload_bytes += 768
 	stats.geometry_arena_growths += 1
+	stats.virtual_geometry_page_uploads += 2
+	stats.virtual_geometry_page_upload_bytes += 512
+	stats.virtual_geometry_page_evictions += 1
 	stats.ui_vertex_rebuilds += 1
 	profile_record_frame(&collector, 1, 0, 0, 100, 100, 1, {}, &stats)
 
@@ -1991,6 +2023,9 @@ test_profile_reports_per_frame_counter_deltas_after_warmup :: proc(t: ^testing.T
 	testing.expect_value(t, first.geometry_arena_uploads, u64(3))
 	testing.expect_value(t, first.geometry_arena_upload_bytes, u64(768))
 	testing.expect_value(t, first.geometry_arena_growths, u64(1))
+	testing.expect_value(t, first.virtual_geometry_page_uploads, u64(2))
+	testing.expect_value(t, first.virtual_geometry_page_upload_bytes, u64(512))
+	testing.expect_value(t, first.virtual_geometry_page_evictions, u64(1))
 	testing.expect_value(t, first.ui_vertex_rebuilds, u64(1))
 	testing.expect_value(t, first.ui_vertex_upload_bytes, u64(0))
 

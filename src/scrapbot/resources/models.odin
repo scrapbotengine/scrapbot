@@ -176,7 +176,7 @@ register_project_model :: proc(
 		}
 		append(&model.material_handles, handle)
 	}
-	for mesh in imported.meshes {
+	for &mesh in imported.meshes {
 		model_mesh := Model_Mesh{}
 		model_mesh.primitives = make([dynamic]Model_Primitive, registry.allocator)
 		model_mesh.key, _ = strings.clone(mesh.key, registry.allocator)
@@ -185,17 +185,18 @@ register_project_model :: proc(
 			destroy_model(&model, registry.allocator)
 			return {}, "failed to allocate imported model mesh name"
 		}
-		for primitive in mesh.primitives {
+		for &primitive in mesh.primitives {
 			vertices := model_geometry_vertices(primitive.vertices[:])
 			geometry_name := fmt.tprintf(
 				"__model_%s_geometry_%016x",
 				id_text,
 				hash.fnv64a(transmute([]byte)primitive.key),
 			)
-			geometry, geometry_err := register_geometry(
+			geometry, geometry_err := register_geometry_with_hierarchy(
 				registry,
 				geometry_name,
 				{vertices = vertices, indices = primitive.indices[:]},
+				&primitive.hierarchy,
 			)
 			delete(vertices)
 			if geometry_err != "" {
@@ -207,13 +208,14 @@ register_project_model :: proc(
 			}
 			lod_screen_radii: [shared.MAX_GEOMETRY_LODS - 1]f32
 			lod_simplification_errors: [shared.MAX_GEOMETRY_LODS - 1]f32
-			for lod, lod_index in primitive.lods {
+			for &lod, lod_index in primitive.lods {
 				lod_vertices := model_geometry_vertices(lod.vertices[:])
 				lod_geometry_name := fmt.tprintf("%s_lod_%d", geometry_name, lod.level + 1)
-				lod_geometry, lod_geometry_err := register_geometry(
+				lod_geometry, lod_geometry_err := register_geometry_with_hierarchy(
 					registry,
 					lod_geometry_name,
 					{vertices = lod_vertices, indices = lod.indices[:]},
+					&lod.hierarchy,
 				)
 				delete(lod_vertices)
 				if lod_geometry_err != "" {
