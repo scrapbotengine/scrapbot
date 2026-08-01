@@ -58,6 +58,9 @@ Profile_Counter_Deltas :: struct {
 	virtual_geometry_page_read_failures: u64,
 	virtual_geometry_page_evictions: u64,
 	virtual_geometry_group_uploads: u64,
+	virtual_geometry_prefetch_group_uploads: u64,
+	virtual_geometry_prefetch_hits: u64,
+	virtual_geometry_prefetch_evictions: u64,
 	virtual_geometry_group_evictions: u64,
 	virtual_geometry_deferred_groups: u64,
 	cluster_dispatches: u64,
@@ -346,6 +349,18 @@ profile_counter_deltas :: proc(current, previous: Render_Stats) -> Profile_Count
 		virtual_geometry_group_uploads = profile_counter_delta(
 			current.virtual_geometry_group_uploads,
 			previous.virtual_geometry_group_uploads,
+		),
+		virtual_geometry_prefetch_group_uploads = profile_counter_delta(
+			current.virtual_geometry_prefetch_group_uploads,
+			previous.virtual_geometry_prefetch_group_uploads,
+		),
+		virtual_geometry_prefetch_hits = profile_counter_delta(
+			current.virtual_geometry_prefetch_hits,
+			previous.virtual_geometry_prefetch_hits,
+		),
+		virtual_geometry_prefetch_evictions = profile_counter_delta(
+			current.virtual_geometry_prefetch_evictions,
+			previous.virtual_geometry_prefetch_evictions,
 		),
 		virtual_geometry_group_evictions = profile_counter_delta(
 			current.virtual_geometry_group_evictions,

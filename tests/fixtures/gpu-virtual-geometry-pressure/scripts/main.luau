@@ -56,8 +56,9 @@ scrapbot.system(Cameras, {
 )
 	local position_count = math.max(1, math.floor(pressure.position_count))
 	local dwell = math.max(1, math.floor(pressure.dwell_frames))
-	local position_index = math.floor((time.frame_index - 1) / dwell) % position_count
-	transform.position.x = pressure.start_x + pressure.step_x * position_index
+	local cycle_frames = position_count * dwell
+	local position = ((time.frame_index - 1) % cycle_frames) / dwell
+	transform.position.x = pressure.start_x + pressure.step_x * position
 end)
 
 local descriptor = pressure_grid_descriptor()

@@ -847,15 +847,19 @@ fn fs_main(
 				if (render.debug.y != 0u && input.meshlet_identity != 0u) {
 					let level = f32(input.meshlet_identity >> 24u) / 255.0;
 					let refinement_missing = (input.meshlet_identity & 0x00800000u) != 0u;
+					let prefetched = (input.meshlet_identity & 0x00400000u) != 0u;
 					let level_color = mix(
 						vec3<f32>(0.18, 0.82, 0.68),
 						vec3<f32>(1.0, 0.26, 0.56),
 						level,
 					);
 					let cluster_color = meshlet_debug_color(
-						input.meshlet_identity & 0x007fffffu,
+						input.meshlet_identity & 0x003fffffu,
 					);
 					debug_color = mix(level_color, cluster_color, 0.38);
+					if (prefetched) {
+						debug_color = mix(debug_color, vec3<f32>(0.12, 0.72, 1.0), 0.78);
+					}
 					if (refinement_missing) {
 						debug_color = mix(debug_color, vec3<f32>(1.0, 0.48, 0.08), 0.72);
 					}
@@ -1111,11 +1115,13 @@ struct Draw_Indexed_Indirect {
 
 struct Cull_Uniform {
 	camera_planes: array<vec4<f32>, 6>,
+	predictive_camera_planes: array<vec4<f32>, 6>,
 	shadow_planes: array<array<vec4<f32>, 6>, 4>,
 	view_projection: mat4x4<f32>,
 	hiz_view_projection: mat4x4<f32>,
 	viewport: vec4<f32>,
 	camera_position: vec4<f32>,
+	predictive_camera_position: vec4<f32>,
 	slot_count: u32,
 	batch_count: u32,
 	hiz_mip_count: u32,
@@ -1130,8 +1136,8 @@ struct Cull_Uniform {
 	projection_y: f32,
 	virtual_feedback_epoch: u32,
 	compact_shadow_pages: u32,
+	virtual_prefetch_enabled: u32,
 	_padding_1: u32,
-	_padding_2: u32,
 };
 
 struct Virtual_Page_Feedback {
@@ -1160,6 +1166,7 @@ struct Visibility_Counters {
 	visible_virtual_clusters: atomic<u32>,
 	virtual_rejected_clusters: atomic<u32>,
 	virtual_page_request_count: atomic<u32>,
+	virtual_page_prefetch_count: atomic<u32>,
 	virtual_page_feedback_count: atomic<u32>,
 	virtual_page_feedback_overflow: atomic<u32>,
 	virtual_page_feedback: array<Virtual_Page_Feedback, 4096>,
@@ -1228,6 +1235,20 @@ fn virtual_projected_error(
 	bounds: vec4<f32>,
 	error: f32,
 ) -> f32 {
+	return virtual_projected_error_from(
+		instance,
+		bounds,
+		error,
+		cull.camera_position.xyz,
+	);
+}
+
+fn virtual_projected_error_from(
+	instance: GPU_Instance,
+	bounds: vec4<f32>,
+	error: f32,
+	camera_position: vec3<f32>,
+) -> f32 {
 	if (error > 1.0e30) {
 		return error;
 	}
@@ -1237,7 +1258,7 @@ fn virtual_projected_error(
 		length(instance.model[2].xyz),
 	);
 	let distance = max(
-		length(world_bounds.xyz - cull.camera_position.xyz) - world_bounds.w,
+		length(world_bounds.xyz - camera_position) - world_bounds.w,
 		0.0001,
 	);
 	return error * scale / distance * abs(cull.projection_y) * 0.5 * cull.viewport.w;
@@ -1309,6 +1330,54 @@ fn virtual_cluster_selected(
 	return group_over_threshold && refined_under_threshold;
 }
 
+fn prefetch_virtual_cluster(
+	instance: GPU_Instance,
+	meshlet: Meshlet_Info,
+	current_frontier: bool,
+) {
+	if (
+		cull.virtual_prefetch_enabled == 0u ||
+		meshlet.virtual_geometry == 0u ||
+		meshlet.page_resident == 0u ||
+		meshlet.refined_resident != 0u ||
+		meshlet.request_enabled == 0u ||
+		meshlet.refined_error <= 0.0
+	) {
+		return;
+	}
+	if (current_frontier &&
+		virtual_projected_error(instance, meshlet.refined_bounds, meshlet.refined_error) >
+		cull.virtual_error_pixels
+	) {
+		return;
+	}
+	let group_over_threshold = virtual_projected_error_from(
+		instance,
+		meshlet.group_bounds,
+		meshlet.group_error,
+		cull.predictive_camera_position.xyz,
+	) > cull.virtual_error_pixels;
+	let predicted_error = virtual_projected_error_from(
+		instance,
+		meshlet.refined_bounds,
+		meshlet.refined_error,
+		cull.predictive_camera_position.xyz,
+	);
+	if (
+		group_over_threshold &&
+		predicted_error > cull.virtual_error_pixels * 0.75 &&
+		predictive_sphere_visible(world_virtual_bounds(instance, meshlet.refined_bounds))
+	) {
+		atomicAdd(&counters.virtual_page_prefetch_count, 1u);
+		append_virtual_page_feedback(
+			meshlet,
+			meshlet.request_group_index,
+			predicted_error,
+			4u,
+		);
+	}
+}
+
 fn meshlet_cone_culled(
 	instance: GPU_Instance,
 	meshlet: Meshlet_Info,
@@ -1329,6 +1398,16 @@ fn meshlet_cone_culled(
 fn camera_sphere_visible(bounds: vec4<f32>) -> bool {
 	for (var plane_index: u32 = 0u; plane_index < 6u; plane_index = plane_index + 1u) {
 		let plane = cull.camera_planes[plane_index];
+		if (dot(plane.xyz, bounds.xyz) + plane.w < -bounds.w) {
+			return false;
+		}
+	}
+	return true;
+}
+
+fn predictive_sphere_visible(bounds: vec4<f32>) -> bool {
+	for (var plane_index: u32 = 0u; plane_index < 6u; plane_index = plane_index + 1u) {
+		let plane = cull.predictive_camera_planes[plane_index];
 		if (dot(plane.xyz, bounds.xyz) + plane.w < -bounds.w) {
 			return false;
 		}
@@ -1548,8 +1627,35 @@ fn cull_instances(invocation: vec3<u32>, submission_mode: u32) {
 	if (active_submission_mode != submission_mode && !compact_shadow_fallback) {
 		return;
 	}
+	var current_camera_visible = false;
+	var predictive_instance_visible = false;
+	if (cascade_index == 0u) {
+		current_camera_visible = camera_sphere_visible(instance.bounds);
+		predictive_instance_visible =
+			cull.virtual_prefetch_enabled != 0u &&
+			predictive_sphere_visible(instance.bounds);
+	}
+	if (
+		cascade_index == 0u &&
+		active_submission_mode == submission_mode &&
+		predictive_instance_visible &&
+		!current_camera_visible &&
+		batch_uses_meshlets(batch)
+	) {
+		for (
+			var local_meshlet = 0u;
+			local_meshlet < batch.meshlet_count;
+			local_meshlet = local_meshlet + 1u
+		) {
+			prefetch_virtual_cluster(
+				instance,
+				meshlets[batch.meshlet_offset + local_meshlet],
+				false,
+			);
+		}
+	}
 	let owns_camera = active_submission_mode == submission_mode;
-	if (owns_camera && cascade_index == 0u && camera_sphere_visible(instance.bounds)) {
+	if (owns_camera && cascade_index == 0u && current_camera_visible) {
 		atomicAdd(&counters.frustum_candidates, 1u);
 		let instance_occlusion = camera_sphere_occlusion(instance.bounds);
 		if (instance_occlusion.occluded != 0u) {
@@ -1573,6 +1679,9 @@ fn cull_instances(invocation: vec3<u32>, submission_mode: u32) {
 						atomicAdd(&counters.virtual_rejected_clusters, 1u);
 					}
 					continue;
+				}
+				if (predictive_instance_visible) {
+					prefetch_virtual_cluster(instance, meshlet, true);
 				}
 				let bounds = world_meshlet_bounds(instance, meshlet);
 				if (!camera_sphere_visible(bounds)) {

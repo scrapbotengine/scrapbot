@@ -2659,7 +2659,10 @@ wgpu_refresh_gpu_batch_layout :: proc(
 					request_enabled = 1 if request_enabled else 0,
 				}
 				level_byte := group.depth * 255 / max(geometry_resource.cluster_max_depth, 1)
-				identity := (level_byte << 24) | (u32(meshlet_index + 1) & 0x007f_ffff)
+				identity := (level_byte << 24) | (u32(meshlet_index + 1) & 0x003f_ffff)
+				if page_resident && geometry.cluster_pages[cluster.page].prefetched {
+					identity |= 0x0040_0000
+				}
 				if !refined_resident {
 					identity |= 0x0080_0000
 				}
@@ -3681,6 +3684,51 @@ wgpu_prepare_gpu_draw_batches :: proc(
 	if render_list.has_camera {
 		camera = render_list.camera.camera
 	}
+	prediction_history_valid :=
+		renderer.virtual_geometry_camera_valid &&
+		!temporal_world_changed &&
+		renderer.virtual_geometry_camera_frame + 1 == renderer.profile_frame_index
+	camera_forward := vec3_normalize(Vec3{0, -2, -6})
+	if render_list.has_camera {
+		camera_forward = shared.camera_forward(render_list.camera.transform.rotation)
+	}
+	prediction := wgpu_predict_virtual_camera(
+		camera_position,
+		camera_forward,
+		renderer.virtual_geometry_camera_position,
+		renderer.virtual_geometry_camera_forward,
+		renderer.virtual_geometry_camera_velocity,
+		camera.far,
+		prediction_history_valid,
+	)
+	prediction.enabled =
+		prediction.enabled && renderer.virtual_geometry_prefetch_enabled && render_list.has_camera
+	renderer.virtual_geometry_camera_position = camera_position
+	renderer.virtual_geometry_camera_forward = camera_forward
+	renderer.virtual_geometry_camera_velocity = prediction.velocity
+	renderer.virtual_geometry_camera_frame = renderer.profile_frame_index
+	renderer.virtual_geometry_camera_valid = render_list.has_camera
+	predictive_view_projection := view_projection
+	if prediction.enabled {
+		up := shared.camera_up(render_list.camera.transform.rotation)
+		predictive_view := mat4_look_at(
+			prediction.position,
+			wgpu_vec3_add(prediction.position, prediction.forward),
+			up,
+		)
+		aspect := f32(16.0 / 9.0)
+		if viewport.width > 0 && viewport.height > 0 {
+			aspect = viewport.width / viewport.height
+		}
+		predictive_fov := clamp(camera.fov + 20, f32(1), f32(120))
+		predictive_projection := mat4_perspective(
+			math.to_radians(predictive_fov),
+			aspect,
+			camera.near,
+			camera.far,
+		)
+		predictive_view_projection = mat4_mul(predictive_projection, predictive_view)
+	}
 	if camera.debug_view != .Occlusion_Queries {
 		renderer.gpu_occlusion_debug_evidence_valid = false
 		renderer.gpu_occlusion_debug_record_count = 0
@@ -3936,10 +3984,17 @@ wgpu_prepare_gpu_draw_batches :: proc(
 	renderer.gpu_hiz_occlusion_enabled = hiz_reusable
 	cull_uniform := WGPU_GPU_Cull_Uniform {
 		camera_planes = wgpu_extract_frustum_planes(view_projection),
+		predictive_camera_planes = wgpu_extract_frustum_planes(predictive_view_projection),
 		view_projection = view_projection,
 		hiz_view_projection = renderer.gpu_previous_depth_view_projection,
 		viewport = {viewport.x, viewport.y, viewport.width, viewport.height},
 		camera_position = {camera_position.x, camera_position.y, camera_position.z, 1},
+		predictive_camera_position = {
+			prediction.position.x,
+			prediction.position.y,
+			prediction.position.z,
+			1,
+		},
 		slot_count = u32(slot_count),
 		batch_count = u32(cache.batch_count),
 		hiz_mip_count = u32(renderer.gpu_hiz_mip_count),
@@ -3959,6 +4014,7 @@ wgpu_prepare_gpu_draw_batches :: proc(
 		projection_y = projection[5],
 		virtual_feedback_epoch = u32(renderer.profile_frame_index),
 		compact_shadow_pages = 1 if wgpu_compact_shadow_pages_active(renderer) else 0,
+		virtual_prefetch_enabled = 1 if prediction.enabled else 0,
 	}
 	for cascade_index in 0 ..< WGPU_SHADOW_CASCADE_COUNT {
 		cull_uniform.shadow_planes[cascade_index] = wgpu_extract_frustum_planes(

@@ -50,11 +50,23 @@ Requests are deduplicated and prioritized by projected error. Admission and evic
 atomic. Ordinary frames admit at most 512 KiB and 16 groups. The configured budget counts both
 aligned vertex and index residency; pinned fallback data may raise effective residency above it.
 
+When `[render].virtual_geometry_prefetch` is enabled, WGPU derives a bounded future camera from
+smoothed frame-to-frame position and view-direction motion. A widened future frustum emits speculative refinement requests
+through the same feedback channel. Visible demand always sorts before speculative work. Demand may
+immediately reclaim prefetched groups; prefetch may evict only groups outside the visible-use grace
+window. A sampled visible touch promotes prefetched residency into ordinary visible residency.
+
+Prediction is a residency hint, never a visibility or correctness input. Camera discontinuities,
+world replacement, missing camera history, and negligible motion disable it for that frame. The
+current camera alone chooses and culls the rendered frontier.
+
 Completed reads carry Geometry handle, generation, version, and page identity. Stale completions
 are discarded. Failed reads leave the coarse frontier intact and may be retried by later feedback.
 
 `[render].virtual_geometry_budget_mb` defaults to 64 MiB and accepts 0.015625 through 16384 MiB.
 The old `virtual_geometry_index_budget_mb` spelling remains a deprecated compatibility alias.
+`[render].virtual_geometry_prefetch` defaults to `true` and may disable speculative requests without
+changing demand streaming.
 
 Stable frames with no feedback, completion, or residency change perform no hierarchy scan, file
 read, payload construction, arena upload, or meshlet-layout rewrite.
@@ -66,9 +78,10 @@ imported product without blocking a frame. Procedural Geometry exercises the sam
 residency machinery through a memory source. Resources that fit retain a faster canonical GPU
 representation; resources that do not fit use self-contained pages without changing public APIs.
 
-Structured render statistics expose total/resident/pinned pages; complete payload budget and
-resident bytes; request overflow; page/group uploads and evictions; asynchronous read count,
-bytes, and failures; and deferred admissions. Profile rows include frame-local counter deltas.
+Structured render statistics expose total/resident/pinned/prefetched pages; complete payload budget
+and resident bytes; demand and prefetch requests; prefetch uploads, hits, and reclamations; request
+overflow; page/group uploads and evictions; asynchronous read count, bytes, and failures; and
+deferred admissions. Profile rows include frame-local cumulative-counter deltas.
 
 Canonical CPU vertices, source indices, hierarchy metadata, and material data remain resident for
 backend-neutral fallback, picking, and authoring. Removing those CPU copies requires a separate

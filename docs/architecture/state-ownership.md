@@ -1,6 +1,6 @@
 # State Ownership and Invalidation
 
-**Last verified:** 2026-07-31
+**Last verified:** 2026-08-01
 
 Scrapbot separates authoritative project/runtime state from derived indexes, caches, render data, and editor views. A derived owner must update from explicit lifecycle or revision signals where feasible; stable frames must not rediscover unchanged state.
 
@@ -106,12 +106,14 @@ canonical fast-path or page-local vertex/index arena ranges, residency, visible-
 immutable product-range reads, and the configured combined payload budget. Coarsest streamed pages
 are pinned.
 
-GPU group requests and cadence-sampled visible-use touches arrive through the bounded asynchronous
-visibility ring. Feedback schedules file-backed refinement on one renderer-owned I/O worker;
-handle/generation/version-tagged completions are discarded when stale. Ready payloads drive
-priority-ordered, group-atomic admission and least-recently-used group eviction within per-frame
-byte/group limits. Only affected Geometry commands update. Stable frames do no page scan, file
-read, upload, or mutation.
+GPU demand requests, future-camera prefetch requests, and cadence-sampled visible-use touches arrive
+through the bounded asynchronous visibility ring. WGPU owns smoothed camera-motion history; cuts,
+world changes, missing history, and stable cameras disable prediction. Feedback schedules
+file-backed refinement on one renderer-owned I/O worker; handle/generation/version-tagged
+completions are discarded when stale. Demand-first, group-atomic admission protects recently visible
+groups, permits demand to reclaim speculative groups immediately, and promotes a prefetched group
+on sampled visible use. Only affected Geometry commands update. Stable frames do no page scan, file
+read, upload, or residency mutation.
 
 Batch bind groups are released before cache storage is cleared. Exact lighting/background handle or content-version changes rebuild only the shared environment binding. The sky camera/projection uniform uploads only after an exact value change.
 

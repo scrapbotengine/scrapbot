@@ -626,6 +626,7 @@ parse_project_config :: proc(source: string) -> (config: Project_Config, result:
 	}
 	config.render.environment_intensity = 1
 	config.render.virtual_geometry_budget_mb = 64
+	config.render.virtual_geometry_prefetch = true
 	config.render.environment_reflection_intensity = 1
 	config.render.exposure = 1
 	config.render.background_intensity = 1
@@ -763,6 +764,8 @@ parse_project_config :: proc(source: string) -> (config: Project_Config, result:
 			switch key {
 				case "virtual_geometry_budget_mb", "virtual_geometry_index_budget_mb":
 					config.render.virtual_geometry_budget_mb, found = parse_f32(value)
+				case "virtual_geometry_prefetch":
+					config.render.virtual_geometry_prefetch, found = parse_bool(value)
 				case "environment":
 					raw_environment: string
 					raw_environment, found = parse_basic_string(value)

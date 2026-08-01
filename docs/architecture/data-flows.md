@@ -1,6 +1,6 @@
 # Major Data Flows
 
-**Last verified:** 2026-07-31
+**Last verified:** 2026-08-01
 
 ## Project load and world bootstrap
 
@@ -42,9 +42,11 @@ Virtual Geometry that fits the remaining budget retains canonical vertex/index r
 expanded page indices. Larger resources allocate page-local vertex and index ranges only for
 resident pages, with the coarsest pages pinned.
 
-GPU feedback identifies wanted groups and visible-use touches. Imported misses enqueue immutable
-product ranges on the I/O worker. Versioned completions admit and evict whole groups under bounded
-per-frame work and the combined payload budget while the resident fallback continues drawing.
+GPU feedback identifies visible demand, bounded future-camera prefetch, and visible-use touches.
+Imported misses enqueue immutable product ranges on the I/O worker. Versioned completions admit and
+evict whole groups under bounded per-frame work and the combined payload budget while the resident
+fallback continues drawing. Demand sorts first and may reclaim speculative residency; prefetch may
+replace only groups beyond the visible-use grace window.
 
 Capable adapters retain cluster metadata and arena-global indirect templates. They select the
 desired resident frontier and draw a coarse fallback while refinement is missing. Native

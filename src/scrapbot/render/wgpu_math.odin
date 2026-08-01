@@ -12,6 +12,66 @@ WGPU_Shadow_Cascades :: struct {
 	texel_sizes: [WGPU_SHADOW_CASCADE_COUNT]f32,
 }
 
+WGPU_VIRTUAL_PREDICTION_HORIZON_FRAMES :: f32(8)
+WGPU_VIRTUAL_PREDICTION_TURN_HORIZON_FRAMES :: f32(4)
+WGPU_VIRTUAL_PREDICTION_VELOCITY_WEIGHT :: f32(0.65)
+
+WGPU_Virtual_Camera_Prediction :: struct {
+	position: Vec3,
+	forward: Vec3,
+	velocity: Vec3,
+	enabled: bool,
+}
+
+wgpu_predict_virtual_camera :: proc(
+	current_position,
+	current_forward,
+	previous_position,
+	previous_forward,
+	previous_velocity: Vec3,
+	far_plane: f32,
+	history_valid: bool,
+) -> WGPU_Virtual_Camera_Prediction {
+	result := WGPU_Virtual_Camera_Prediction {
+		position = current_position,
+		forward = current_forward,
+	}
+	if !history_valid {
+		return result
+	}
+	delta := vec3_sub(current_position, previous_position)
+	jump_limit := max(far_plane * 0.25, f32(4))
+	forward_alignment := vec3_dot(previous_forward, current_forward)
+	if vec3_dot(delta, delta) > jump_limit * jump_limit || forward_alignment < 0.8660254 {
+		return result
+	}
+	turn_delta := vec3_sub(current_forward, previous_forward)
+	result.forward = vec3_normalize(
+		wgpu_vec3_add(
+			current_forward,
+			wgpu_vec3_mul(turn_delta, WGPU_VIRTUAL_PREDICTION_TURN_HORIZON_FRAMES),
+		),
+	)
+	turning := forward_alignment < 0.9999
+	result.velocity = wgpu_vec3_add(
+		wgpu_vec3_mul(previous_velocity, 1 - WGPU_VIRTUAL_PREDICTION_VELOCITY_WEIGHT),
+		wgpu_vec3_mul(delta, WGPU_VIRTUAL_PREDICTION_VELOCITY_WEIGHT),
+	)
+	travel := wgpu_vec3_mul(result.velocity, WGPU_VIRTUAL_PREDICTION_HORIZON_FRAMES)
+	travel_length := wgpu_vec3_length(travel)
+	if travel_length <= 0.05 {
+		result.enabled = turning
+		return result
+	}
+	travel_limit := clamp(far_plane * 0.2, f32(4), f32(32))
+	if travel_length > travel_limit {
+		travel = wgpu_vec3_mul(travel, travel_limit / travel_length)
+	}
+	result.position = wgpu_vec3_add(current_position, travel)
+	result.enabled = true
+	return result
+}
+
 f32x4_from_array :: proc "contextless" (value: [4]f32) -> F32x4 {
 	return transmute(F32x4)value
 }

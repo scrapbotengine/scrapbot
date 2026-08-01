@@ -1,6 +1,6 @@
 # Resources and Registries
 
-**Last verified:** 2026-07-31
+**Last verified:** 2026-08-01
 **Persistent declarations:** `shared.Project_Resource` and `project.load_project_resources`  
 **Runtime authority:** `resources.Registry`
 
@@ -61,8 +61,8 @@ The recursive project loader rejects duplicate UUIDs. Scene validation resolves 
 - Missing authored declarations mark prior entries dead, increment generation/version, and invalidate old handles without compacting registry indexes.
 - Render preparation and the WGPU backend consume exact handle/version/topology changes; stable geometry is neither re-extracted nor re-uploaded.
 - WGPU uploads ordinary Geometry versions into shared aligned vertex and index arena ranges. Streamed Virtual Geometry allocates only resident page-local vertex and index ranges and retains no complete canonical GPU allocation.
-- Complete resources that fit the remaining budget retain canonical vertex/index ranges plus expanded page indices as a nonduplicating fast path. Larger resources pin the coarsest frontier. Bounded GPU feedback reports prioritized missing groups and visible resident-group touches.
-- Imported refinement payloads are read from exact product ranges by a dedicated worker. Versioned completions reach the render thread without waiting, then admit or evict complete groups under per-frame byte/group limits and the combined vertex/index project budget.
+- Complete resources that fit the remaining budget retain canonical vertex/index ranges plus expanded page indices as a nonduplicating fast path. Larger resources pin the coarsest frontier. Bounded GPU feedback reports prioritized visible demand, future-camera prefetch, and visible resident-group touches.
+- Imported refinement payloads are read from exact product ranges by a dedicated worker. Versioned completions reach the render thread without waiting, then admit or evict complete groups under per-frame byte/group limits and the combined vertex/index project budget. Demand precedes speculative work, may reclaim prefetched groups immediately, and promotes them on visible use; speculative requests cannot evict recently visible groups.
 - Native multi-draw submits retained per-cluster indexed commands. Other capable adapters compact instance/cluster records into bounded shared spans and vertex-pull from the arenas. Portable shadows use classic canonical indices for complete resources and page-local compact records for streamed resources. Adapters without indirect-first-instance and capacity-limited layouts retain whole-primitive indexed-indirect submission.
 - Source hierarchy clusters continue to reference canonical vertices. The C++ bridge in `native/clusterlod/` owns no runtime data after registration; it adapts the pinned meshoptimizer builder into allocator-owned Odin slices.
 - Source/tests: `geometry/hierarchy.odin`, `resources/geometry_pages.odin`, `resources/resources.odin`, `render/wgpu_page_io.odin`, `render/wgpu_visibility.odin`; `asset_import/models_test.odin`, `resources/resources_test.odin`, `render/render_test.odin`.

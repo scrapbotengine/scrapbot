@@ -220,6 +220,7 @@ default_scene = "scenes/main.scene.toml"
 
 [render]
 virtual_geometry_budget_mb = 96.5
+virtual_geometry_prefetch = false
 environment = "a1000000-0000-4000-8000-000000000021"
 environment_intensity = 1.25
 environment_rotation = 90
@@ -235,6 +236,7 @@ background_blur = 0.25
 	defer destroy_project_config(&config)
 	testing.expect(t, config_result.err == .None)
 	testing.expect_value(t, config.render.virtual_geometry_budget_mb, f32(96.5))
+	testing.expect(t, !config.render.virtual_geometry_prefetch)
 	testing.expect_value(t, config.render.environment, resource.id)
 	testing.expect_value(t, config.render.environment_intensity, f32(1.25))
 	testing.expect_value(t, config.render.environment_rotation, f32(90))
@@ -332,6 +334,7 @@ virtual_geometry_budget_mb = 0.015625
 	defer destroy_project_config(&tiny_budget)
 	testing.expect(t, tiny_budget_result.err == .None)
 	testing.expect_value(t, tiny_budget.render.virtual_geometry_budget_mb, f32(0.015625))
+	testing.expect(t, tiny_budget.render.virtual_geometry_prefetch)
 
 	legacy_budget, legacy_budget_result := parse_project_config(
 		`name = "Legacy Budget"

@@ -1,7 +1,7 @@
 # FDR-003: Pluggable rendering backends
 
 **Status:** Active
-**Last reviewed:** 2026-07-31
+**Last reviewed:** 2026-08-01
 
 ## Overview
 
@@ -294,6 +294,12 @@ identity plus projected-error priority to the visibility-feedback buffer. Visibl
 resident-group usage touches through the same bounded channel. Deterministic hashing spreads those
 touches across 16 frames; missing-group requests remain immediate.
 
+With renderer prefetch enabled, smoothed camera motion projects a bounded future position and view
+direction into a widened future frustum. The GPU may request likely refinement groups without rendering, touching,
+or otherwise making them authoritative. Demand sorts first and may reclaim speculative residency
+immediately. Speculative admission may reclaim only groups older than the visible-use grace window;
+visible use promotes a prefetched group and records a hit.
+
 Asynchronous CPU processing applies touches, deduplicates and prioritizes group requests. Imported
 misses read exact Model-product byte ranges on a dedicated worker. Versioned completions admit or
 evict complete non-pinned groups under the project vertex-and-index payload budget while the
@@ -315,9 +321,10 @@ on evicted canonical geometry. Stable frames perform no CPU readback, per-cluste
 generation, or geometry upload.
 
 The `virtual_geometry` camera view colors selected clusters by identity and hierarchy depth. Amber
-marks a branch whose finer group is not completely resident. Structured results report payload
-budget and residency, feedback, requests, asynchronous reads/failures, page/group uploads and
-evictions, deferred groups, selected clusters, and threshold rejections.
+marks a branch whose finer group is not completely resident; cyan marks a selected page that
+arrived speculatively. Structured results report payload budget and residency, demand/prefetch
+feedback, asynchronous reads/failures, page/group uploads, prefetch hits/reclamation, evictions,
+deferred groups, selected clusters, and threshold rejections.
 
 **Why:** Geometry detail must vary below object granularity without cracks, importer-specific draw
 paths, or CPU decisions per cluster.

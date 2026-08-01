@@ -112,6 +112,7 @@ WGPU_GPU_Visibility_Counters :: struct {
 	visible_virtual_clusters: u32,
 	virtual_rejected_clusters: u32,
 	virtual_page_request_count: u32,
+	virtual_page_prefetch_count: u32,
 	virtual_page_feedback_count: u32,
 	virtual_page_feedback_overflow: u32,
 	virtual_page_feedback: [WGPU_VIRTUAL_PAGE_FEEDBACK_CAPACITY]WGPU_GPU_Virtual_Page_Feedback,
@@ -344,11 +345,13 @@ WGPU_GPU_Instance_Transform :: struct {
 
 WGPU_GPU_Cull_Uniform :: struct {
 	camera_planes: [6][4]f32,
+	predictive_camera_planes: [6][4]f32,
 	shadow_planes: [WGPU_SHADOW_CASCADE_COUNT][6][4]f32,
 	view_projection: Mat4,
 	hiz_view_projection: Mat4,
 	viewport: [4]f32,
 	camera_position: [4]f32,
+	predictive_camera_position: [4]f32,
 	slot_count: u32,
 	batch_count: u32,
 	hiz_mip_count: u32,
@@ -363,9 +366,10 @@ WGPU_GPU_Cull_Uniform :: struct {
 	projection_y: f32,
 	virtual_feedback_epoch: u32,
 	compact_shadow_pages: u32,
-	_padding: [2]u32,
+	virtual_prefetch_enabled: u32,
+	_padding: u32,
 }
-#assert(size_of(WGPU_GPU_Cull_Uniform) == 704)
+#assert(size_of(WGPU_GPU_Cull_Uniform) == 816)
 
 WGPU_Draw_Indexed_Indirect :: struct {
 	index_count: u32,
@@ -475,6 +479,7 @@ WGPU_Cluster_Page_Cache :: struct {
 	group_index: u32,
 	resident: bool,
 	pinned: bool,
+	prefetched: bool,
 	loading: bool,
 	loaded_payload: []u8,
 }
@@ -962,6 +967,7 @@ WGPU_Renderer :: struct {
 	virtual_geometry_page_count: int,
 	virtual_geometry_resident_page_count: int,
 	virtual_geometry_pinned_page_count: int,
+	virtual_geometry_prefetched_page_count: int,
 	virtual_geometry_page_upload_count: u64,
 	virtual_geometry_page_upload_bytes: u64,
 	virtual_geometry_page_read_count: u64,
@@ -969,9 +975,18 @@ WGPU_Renderer :: struct {
 	virtual_geometry_page_read_failure_count: u64,
 	virtual_geometry_page_eviction_count: u64,
 	virtual_geometry_group_upload_count: u64,
+	virtual_geometry_prefetch_group_upload_count: u64,
+	virtual_geometry_prefetch_hit_count: u64,
+	virtual_geometry_prefetch_eviction_count: u64,
 	virtual_geometry_group_eviction_count: u64,
 	virtual_geometry_deferred_group_count: u64,
 	virtual_geometry_page_io: WGPU_Virtual_Page_IO,
+	virtual_geometry_prefetch_enabled: bool,
+	virtual_geometry_camera_position: Vec3,
+	virtual_geometry_camera_forward: Vec3,
+	virtual_geometry_camera_velocity: Vec3,
+	virtual_geometry_camera_frame: u64,
+	virtual_geometry_camera_valid: bool,
 	gpu_compact_shadow_pages: bool,
 	cpu_culling: bool,
 	texture_cache: [dynamic]WGPU_Texture_Cache,
@@ -4242,6 +4257,7 @@ wgpu_run_headless :: proc(world: ^World, config: ^Run_Config) -> string {
 	}
 	wgpu_configure_profile(&renderer, config.profile)
 	renderer.virtual_geometry_budget_bytes = config.virtual_geometry_budget_bytes
+	renderer.virtual_geometry_prefetch_enabled = config.virtual_geometry_prefetch
 	renderer.cpu_culling = config.cpu_culling
 	if renderer.virtual_geometry_budget_bytes == 0 {
 		renderer.virtual_geometry_budget_bytes = WGPU_VIRTUAL_GEOMETRY_BUDGET_BYTES
@@ -4486,6 +4502,7 @@ wgpu_run_window :: proc(world: ^World, config: ^Run_Config) -> string {
 	}
 	wgpu_configure_profile(&renderer, config.profile)
 	renderer.virtual_geometry_budget_bytes = config.virtual_geometry_budget_bytes
+	renderer.virtual_geometry_prefetch_enabled = config.virtual_geometry_prefetch
 	renderer.cpu_culling = config.cpu_culling
 	if renderer.virtual_geometry_budget_bytes == 0 {
 		renderer.virtual_geometry_budget_bytes = WGPU_VIRTUAL_GEOMETRY_BUDGET_BYTES

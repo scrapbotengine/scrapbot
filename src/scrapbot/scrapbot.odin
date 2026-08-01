@@ -542,6 +542,7 @@ run_project_internal_untracked :: proc(
 	run_config.virtual_geometry_budget_bytes = u64(
 		loaded.config.render.virtual_geometry_budget_mb * 1024 * 1024,
 	)
+	run_config.virtual_geometry_prefetch = loaded.config.render.virtual_geometry_prefetch
 	if err := project.prepare_project_fonts(root, &loaded.config); err != "" {
 		result.err = err
 		return result

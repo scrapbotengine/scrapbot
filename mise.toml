@@ -742,11 +742,13 @@ if (result.schema_version !== 1 || result.command !== "run" || result.ok !== tru
     !stats?.virtual_geometry || stats.virtual_geometry_pages < 3 ||
     stats.virtual_geometry_resident_pages >= stats.virtual_geometry_pages ||
     stats.virtual_geometry_page_feedback < 1 ||
-    stats.virtual_geometry_group_uploads < 2 ||
-    stats.virtual_geometry_group_evictions < 1 ||
+	stats.virtual_geometry_group_uploads < 2 ||
+	stats.virtual_geometry_prefetch_group_uploads < 1 ||
+	stats.virtual_geometry_prefetch_hits < 1 ||
+	stats.virtual_geometry_group_evictions < 1 ||
     stats.virtual_geometry_page_evictions < stats.virtual_geometry_group_evictions ||
     stats.virtual_geometry_page_upload_bytes <= 0) {
-  console.error("virtual geometry pressure fixture did not stream and evict complete groups");
+  console.error("virtual geometry pressure fixture did not predict, stream, hit, and evict complete groups");
   console.error(JSON.stringify(stats, null, 2));
   process.exit(1);
 }

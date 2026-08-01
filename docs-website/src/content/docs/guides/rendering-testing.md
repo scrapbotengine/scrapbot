@@ -72,7 +72,9 @@ meshlet path so diagnostics cover the complete retained cluster layout.
 Set `scrapbot.camera.debug_view` to `base_color`, `world_normals`, `roughness`, `metallic`, `depth`, `meshlets`, `lod`, `meshlet_visibility`, `hiz`, `occlusion_queries`, or `virtual_geometry` to capture the same diagnostics without opening the editor.
 
 `virtual_geometry` colors the GPU-selected resident cluster frontier by cluster identity and
-hierarchy depth. Amber marks a branch whose finer group is not completely resident. Sponza uses the
+hierarchy depth. Amber marks a branch whose finer group is not completely resident. Cyan marks a
+selected page that arrived through future-camera prefetch and has not yet been promoted by sampled
+visible use. Sponza uses the
 normal renderer budget so it remains a representative quality showcase; dedicated pressure
 fixtures should exercise persistent fallback and eviction. `debug_hiz_mip` selects the retained
 pyramid level for `hiz`; `debug_occlusion_freeze` preserves the latest valid query records for

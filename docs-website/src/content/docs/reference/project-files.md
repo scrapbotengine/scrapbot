@@ -40,6 +40,7 @@ Fields:
 | `window.height` | No | Positive logical height up to 16384. |
 | `[render]` | No | Renderer-wide project policy. |
 | `render.virtual_geometry_budget_mb` | No | Budget for resident virtual-geometry vertex and index pages, from 0.015625 to 16384 MiB. Defaults to 64 MiB. Pinned coarse fallback pages may exceed it. |
+| `render.virtual_geometry_prefetch` | No | Predict refinement from bounded camera motion and a widened future view. Defaults to `true`; visible demand remains available when disabled. |
 | `render.virtual_geometry_index_budget_mb` | No | Deprecated alias for `render.virtual_geometry_budget_mb`; retained for existing projects. |
 | `[[native_extensions]]` | No | Repeated table for project-local native extension targets. |
 | `native_extensions.name` | Yes | Build output base name. Must be an identifier token. |
