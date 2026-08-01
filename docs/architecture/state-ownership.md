@@ -13,7 +13,7 @@ Scrapbot separates authoritative project/runtime state from derived indexes, cac
 | Compiled native chunk plans | Each `native.Native_System` | Derived query/storage/field resolution | Bounded cache keyed by chunk terms and bindings; invalidated by World UUID, component-registry revision, newly appearing storage families, or extension-set replacement. Ordinary component membership churn retains the plan. |
 | Entity identity and component values | `shared.World` / `ecs` | Active runtime authority | Typed ECS mutation, deferred command application, playback restore, or world replacement. |
 | Frame time | `world.time` | Current runtime resource | Advanced once per permitted simulation step. |
-| Geometry/material/environment/icon-set descriptions and handles | `resources.Registry` | Runtime shared-resource authority | Generational handles plus content/topology versions. Geometry content includes LOD metadata, meshlets, and a registration-built crack-aware cluster hierarchy with monotonic group errors; they rebuild only with that exact Geometry version, never on stable frames. See [Resource render state](#resource-render-state). |
+| Geometry/material/environment/icon-set descriptions and handles | `resources.Registry` | Runtime shared-resource authority | Generational handles plus content/topology versions. Geometry content includes LOD metadata, meshlets, a registration-built crack-aware cluster hierarchy with monotonic group errors, and a file-or-memory page source. Imported Geometry retains canonical counts and a position-only query proxy instead of complete CPU render vertices/source indices. Those structures rebuild only with that exact Geometry version, never on stable frames. See [Resource render state](#resource-render-state). |
 | Texture/Model/Environment/Icon Set imported products | `asset_import` products plus `resources.Registry` | Derived from authored UUID recipes and asset/dependency contents | Ensured at import/check/build/run or asset hot reload; schema/content/settings fingerprints reuse unchanged products and atomic writes preserve last-good files. Model LOD simplification and compaction run only on invalidation. Generated semantic handles update at registration, while model-root revisions reconcile derived ECS children at bootstrap/reload or an explicit structural edit. |
 | Authoring history and dirty UUID candidates | Editor UI state | In-memory authoring authority until Save/Revert | One transaction per completed gesture or structural operation; playback mutations remain disposable. |
 | UI theme palettes, metrics, typography, and named recipes | Shared UI composition contract plus UUID-backed `resources.Registry.ui_themes` | Ephemeral composition input with versioned lookup, not retained UI authority | Scene parsing, Luau resolution, UUID-specific native host resolution, and editor composition consume the same engine-owned recipe vocabulary before typed ECS attachment or update. The resolved `ui_*` values are authoritative for layout and paint; the registry revision refreshes resource inspection only. No theme identity, ancestry cascade, stable-frame traversal, or renderer-side style store remains. |
@@ -105,6 +105,12 @@ Hierarchy metadata and each Geometry's file-or-memory page source are resource-o
 canonical fast-path or page-local vertex/index arena ranges, residency, visible-use age, pending
 immutable product-range reads, and the configured combined payload budget. Coarsest streamed pages
 are pinned.
+
+Imported Geometry query positions and exact leaf topology remain resource-owned. Picking borrows
+them without allocation. A WGPU cache miss may request an owned canonical view reconstructed from
+leaf-containing product pages; the cache upload consumes and releases it in the same call. Stable
+cache hits neither reconstruct nor read CPU geometry. Memory-backed procedural/runtime Geometry
+instead lends its resident canonical arrays.
 
 GPU demand requests, future-camera prefetch requests, and cadence-sampled visible-use touches arrive
 through the bounded asynchronous visibility ring. WGPU owns smoothed camera-motion history; cuts,

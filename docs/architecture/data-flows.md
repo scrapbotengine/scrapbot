@@ -34,8 +34,15 @@ increments a model-instance revision; reconciliation waits for that structural s
 Resource descriptions remain outside ECS. Components store resolved runtime handles. Geometry
 registration derives bounded meshlets. It accepts a validated compiled hierarchy and file-backed
 page ranges for imported models or derives the same hierarchy and in-memory page payloads for other
-producers. Canonical vertex IDs, monotonic group errors, page identities, page-source records, and
-pinned fallback flags remain versioned with the Geometry entry.
+producers. Imported entries retain canonical counts and a position-only query proxy, then release
+their complete CPU render vertices and source indices. Canonical vertex IDs, exact leaf topology,
+monotonic group errors, page identities, page-source records, and pinned fallback flags remain
+versioned with the Geometry entry.
+
+Picking iterates exact leaf triangles against resident vertex positions or the query proxy. A
+classic backend path asks the resource for a canonical view. Memory sources lend resident arrays;
+file sources reconstruct vertices and leaf indices from all leaf-containing pages into a temporary
+owned view. WGPU releases that view immediately after the invalidated Geometry version is uploaded.
 
 WGPU consumes ordinary Geometry versions into aligned shared vertex/index ranges. A complete
 Virtual Geometry that fits the remaining budget retains canonical vertex/index ranges plus

@@ -2459,8 +2459,17 @@ wgpu_geometry_cache :: proc(
 			geometry,
 			wgpu_cached_virtual_geometry_bytes(cached),
 		)
-	vertex_bytes := u64(len(geometry.vertices)) * u64(size_of(resources.Vertex))
-	index_bytes := u64(len(geometry.indices)) * u64(size_of(u32))
+	canonical: resources.Geometry_Canonical_View
+	if !virtual_submission || preload_virtual_geometry {
+		canonical_err: string
+		canonical, canonical_err = resources.load_geometry_canonical(geometry)
+		if canonical_err != "" {
+			return nil, canonical_err
+		}
+	}
+	defer resources.destroy_geometry_canonical_view(&canonical)
+	vertex_bytes := u64(len(canonical.vertices)) * u64(size_of(resources.Vertex))
+	index_bytes := u64(len(canonical.indices)) * u64(size_of(u32))
 	if virtual_submission && !preload_virtual_geometry {
 		vertex_bytes = 0
 	}
@@ -2656,7 +2665,7 @@ wgpu_geometry_cache :: proc(
 			renderer,
 			&renderer.geometry_vertex_arena,
 			vertex_range,
-			raw_data(geometry.vertices),
+			raw_data(canonical.vertices),
 			vertex_bytes,
 		); upload_err != "" {
 			return nil, upload_err
@@ -2667,7 +2676,7 @@ wgpu_geometry_cache :: proc(
 			renderer,
 			&renderer.geometry_index_arena,
 			index_range,
-			raw_data(geometry.indices),
+			raw_data(canonical.indices),
 			index_bytes,
 		); upload_err != "" {
 			return nil, upload_err
@@ -2709,8 +2718,8 @@ wgpu_geometry_cache :: proc(
 		index_range = index_range,
 		meshlet_index_range = meshlet_index_range,
 		cluster_pages = cluster_pages,
-		vertex_count = u32(len(geometry.vertices)),
-		index_count = u32(len(geometry.indices)),
+		vertex_count = u32(resources.geometry_canonical_vertex_count(geometry)),
+		index_count = u32(resources.geometry_fallback_index_count(geometry)),
 		valid = true,
 		virtual_geometry = virtual_submission,
 	}

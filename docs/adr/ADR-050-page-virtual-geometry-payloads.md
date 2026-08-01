@@ -32,6 +32,18 @@ Model schema v12 persists each self-contained payload beside its hierarchy metad
 decoding validates page count, vertex/index counts, byte sizes, and file bounds before registering
 file-backed Geometry sources.
 
+File-backed Geometry retains canonical vertex/index counts, a position-only CPU query proxy, exact
+leaf-cluster topology, and its immutable page source. It does not retain the complete render-vertex
+or source-index arrays after registration. Exact CPU queries iterate the leaf clusters, including
+leaves that terminate above maximum hierarchy depth, and resolve their canonical vertex IDs
+through the position proxy.
+
+The resource contract exposes an explicit canonical view for backend compatibility. Memory-backed
+Geometry borrows its resident arrays. File-backed Geometry reconstructs render vertices and exact
+leaf indices from every page containing leaf clusters into an owned temporary view. A consumer
+must release that view; WGPU does so immediately after cache upload. Source indices are metadata,
+not runtime topology authority, because hierarchy construction may remove degenerate triangles.
+
 WGPU gives every streamed resident page an aligned vertex-arena range and index-arena range.
 Cluster draw metadata uses that page-local base vertex and first index. Streamed Virtual Geometry
 retains no complete canonical allocation in the WGPU arenas.
@@ -51,10 +63,11 @@ atomic. Ordinary frames admit at most 512 KiB and 16 groups. The configured budg
 aligned vertex and index residency; pinned fallback data may raise effective residency above it.
 
 When `[render].virtual_geometry_prefetch` is enabled, WGPU derives a bounded future camera from
-smoothed frame-to-frame position and view-direction motion. A widened future frustum emits speculative refinement requests
-through the same feedback channel. Visible demand always sorts before speculative work. Demand may
-immediately reclaim prefetched groups; prefetch may evict only groups outside the visible-use grace
-window. A sampled visible touch promotes prefetched residency into ordinary visible residency.
+smoothed frame-to-frame position and view-direction motion. A widened future frustum emits
+speculative refinement requests through the same feedback channel. Visible demand always sorts
+before speculative work. Demand may immediately reclaim prefetched groups; prefetch may evict only
+groups outside the visible-use grace window. A sampled visible touch promotes prefetched residency
+into ordinary visible residency.
 
 Prediction is a residency hint, never a visibility or correctness input. Camera discontinuities,
 world replacement, missing camera history, and negligible motion disable it for that frame. The
@@ -83,9 +96,12 @@ and resident bytes; demand and prefetch requests; prefetch uploads, hits, and re
 overflow; page/group uploads and evictions; asynchronous read count, bytes, and failures; and
 deferred admissions. Profile rows include frame-local cumulative-counter deltas.
 
-Canonical CPU vertices, source indices, hierarchy metadata, and material data remain resident for
-backend-neutral fallback, picking, and authoring. Removing those CPU copies requires a separate
-proxy/query design and is not implied by this decision.
+Imported canonical CPU render vertices and source indices no longer remain resident. Picking and
+future authoring queries use the position-only proxy plus exact leaf topology. Classic rendering,
+CPU culling, resource previews, and adapters without the virtual path reconstruct a temporary
+canonical view at Geometry-cache invalidation, upload it, and release it before the frame proceeds.
+Procedural and runtime Geometry keeps resident arrays because its page source is memory-backed and
+there is no persistent product from which to recover backend fallback data.
 
 Sponza and the pressure fixture use ordinary engine behavior. No resource name, example path, or
 scene-specific policy participates in paging.

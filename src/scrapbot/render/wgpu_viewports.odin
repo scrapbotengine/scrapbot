@@ -925,7 +925,7 @@ wgpu_encode_viewport_draws :: proc(
 		)
 		wgpu.RenderPassEncoderDrawIndexed(
 			pass,
-			u32(len(resource.indices)),
+			u32(resources.geometry_fallback_index_count(resource)),
 			1,
 			u32(geometry.index_range.offset / u64(size_of(u32))),
 			i32(geometry.vertex_range.offset / u64(size_of(resources.Vertex))),

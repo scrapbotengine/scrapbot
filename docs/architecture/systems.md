@@ -60,10 +60,10 @@ These are the engine-owned rows published to the editor's Systems panel. They ar
 ### `scrapbot.pick`
 
 - **Phase/order:** After UI has resolved whether the scene view owns the pointer and before render preparation.
-- **Inputs:** Pending editor pick request, scene-view coordinates, active editor camera, camera visualizer bounds, retained render geometry.
+- **Inputs:** Pending editor pick request, scene-view coordinates, active editor camera, camera visualizer bounds, and each Geometry's resident vertices or position-only query proxy plus exact leaf topology.
 - **Outputs:** Editor selection UUID or cleared selection.
 - **Stable-frame behavior:** With no pending pick, exact intersection and camera-visualizer tests are skipped.
-- **Boundary:** Main-thread CPU query against retained scene inputs; it does not mutate project component data.
+- **Boundary:** Main-thread allocation-free CPU query against retained scene inputs; it does not load render payload pages or mutate project component data.
 - **Source/tests:** `render/picking.odin`, `render/camera_visualizer.odin`, `render/render.odin`; `render/picking_test.odin`, `render/camera_visualizer_test.odin`.
 
 ### `scrapbot.environment`

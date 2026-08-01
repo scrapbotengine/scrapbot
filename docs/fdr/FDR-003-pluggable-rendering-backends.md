@@ -283,9 +283,11 @@ indices with that exact resource version. Imported model products persist the hi
 Geometry producers build the same representation at registration. See ADR-049 and ADR-050.
 
 Partition each hierarchy into deterministic, group-aligned pages containing referenced canonical
-vertices and page-local expanded indices. Retain canonical vertex/index streams plus expanded page
-indices when the complete Geometry fits the remaining combined payload budget; otherwise pin its
-coarsest page frontier. On WGPU adapters
+vertices and page-local expanded indices. Imported resources retain a position-only CPU query
+proxy plus exact leaf topology instead of full render vertices and source indices. Reconstruct a
+temporary canonical view from leaf-containing pages only for backend cache creation. Retain
+canonical GPU vertex/index streams plus expanded page indices when the complete Geometry fits the
+remaining combined payload budget; otherwise pin its coarsest page frontier. On WGPU adapters
 with indirect-first-instance, project group error into pixels and submit the unique cluster
 frontier surrounding a one-pixel threshold before ordinary cluster culling.
 
@@ -295,10 +297,10 @@ resident-group usage touches through the same bounded channel. Deterministic has
 touches across 16 frames; missing-group requests remain immediate.
 
 With renderer prefetch enabled, smoothed camera motion projects a bounded future position and view
-direction into a widened future frustum. The GPU may request likely refinement groups without rendering, touching,
-or otherwise making them authoritative. Demand sorts first and may reclaim speculative residency
-immediately. Speculative admission may reclaim only groups older than the visible-use grace window;
-visible use promotes a prefetched group and records a hit.
+direction into a widened future frustum. The GPU may request likely refinement groups without
+rendering, touching, or otherwise making them authoritative. Demand sorts first and may reclaim
+speculative residency immediately. Speculative admission may reclaim only groups older than the
+visible-use grace window; visible use promotes a prefetched group and records a hit.
 
 Asynchronous CPU processing applies touches, deduplicates and prioritizes group requests. Imported
 misses read exact Model-product byte ranges on a dedicated worker. Versioned completions admit or
@@ -329,13 +331,16 @@ deferred groups, selected clusters, and threshold rejections.
 **Why:** Geometry detail must vary below object granularity without cracks, importer-specific draw
 paths, or CPU decisions per cluster.
 
-**Tradeoff:** Canonical CPU vertices, source indices, and hierarchy metadata remain resident for
-backend-neutral fallback, picking, and authoring. Virtual WGPU vertex/index payloads are bounded.
+**Tradeoff:** Imported resources retain position proxies, hierarchy topology, page metadata, and
+meshlet streams on the CPU. Procedural/runtime Geometry without a persistent product retains its
+canonical arrays. Classic compatibility paths may perform one temporary page reconstruction when a
+Geometry version enters the backend cache. Virtual WGPU vertex/index payloads are bounded.
+
 The compact camera path trades additional GPU culling and vertex-pulling cost for portable,
 bounded CPU submission. Portable shadows retain the canonical fast path when possible and pay the
-four-cascade compact cost only under actual streaming pressure.
-Adapters without indirect-first-instance and capacity-limited layouts keep the existing classic
-indexed and imported-LOD fallback.
+four-cascade compact cost only under actual streaming pressure. Adapters without
+indirect-first-instance and capacity-limited layouts keep the existing classic indexed and
+imported-LOD fallback.
 
 ## Related
 

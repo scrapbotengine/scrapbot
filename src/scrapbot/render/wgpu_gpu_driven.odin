@@ -73,7 +73,7 @@ wgpu_virtual_geometry_should_preload_pages :: proc "contextless" (
 		renderer.virtual_geometry_budget_bytes -
 		min(retained_bytes, renderer.virtual_geometry_budget_bytes)
 	canonical_vertex_bytes := wgpu_align_arena_offset(
-		u64(len(geometry.vertices)) * u64(size_of(resources.Vertex)),
+		u64(resources.geometry_canonical_vertex_count(geometry)) * u64(size_of(resources.Vertex)),
 		u64(size_of(resources.Vertex)),
 	)
 	if canonical_vertex_bytes > remaining_bytes {
@@ -81,7 +81,7 @@ wgpu_virtual_geometry_should_preload_pages :: proc "contextless" (
 	}
 	remaining_bytes -= canonical_vertex_bytes
 	canonical_index_bytes := wgpu_align_arena_offset(
-		u64(len(geometry.indices)) * u64(size_of(u32)),
+		u64(resources.geometry_fallback_index_count(geometry)) * u64(size_of(u32)),
 		u64(size_of(u32)),
 	)
 	if canonical_index_bytes > remaining_bytes {

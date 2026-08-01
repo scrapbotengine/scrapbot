@@ -33,6 +33,14 @@ including local index streams, conservative sphere bounds, and normal cones. Imp
 products persist their hierarchy and page payloads. Other Geometry producers build the same data
 in memory only when the resource is created or replaced.
 
+Imported Geometry does not keep its complete CPU render vertices and source indices after
+registration. It retains canonical counts, exact leaf-cluster topology, and a position-only query
+proxy for picking and tooling. Classic rendering, `--cpu-culling`, resource previews, and adapters
+without virtual submission reconstruct a temporary canonical view from leaf-containing product
+pages when that Geometry version enters the WGPU cache. The upload consumes and releases the view;
+stable frames do not repeat reconstruction or file reads. Procedural/runtime Geometry retains its
+canonical arrays because its fallback source exists only in memory.
+
 Imported models compile eligible primitives into up to three deterministic compact LOD Geometry resources before runtime bootstrap. Their semantic handles survive harmless source reordering and reimport. The base resource publishes the same thresholds and alternate handles as procedural LOD resources, so CPU/GPU selection and debug views have no importer-specific path.
 
 When an adapter exposes indirect-first-instance, WGPU projects each hierarchy group's monotonic

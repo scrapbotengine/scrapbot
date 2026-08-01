@@ -21,6 +21,12 @@ bin/scrapbot run examples/ecs-showcase \
 
 The versioned JSON result reports early and late nanoseconds per frame, CPU growth ratio, allocator checkpoints, and ECS slot counts. Compare results on the same machine and build configuration. Use `mise test-soak` for the repository's 10,000-frame growth gate.
 
+Large imported models retain position-only CPU query proxies instead of full render vertices and
+source indices. Their immutable products remain the fallback source. Backend cache creation may
+temporarily reconstruct exact leaf geometry, but stable cache hits do not retain or rebuild that
+CPU view. Use the allocator checkpoints from identical bounded runs to measure the retained-memory
+effect independently from GPU page residency.
+
 Repository builds make optimization intent explicit: `mise build-dev` emits `bin/scrapbot-dev` with `-o:minimal`, while `mise build` emits the ordinary performance binary with `-o:speed`. `mise benchmark-profiles` runs the same bounded null-backend project through both binaries and reports median late-update time over three trials. It is a same-machine investigation tool, not a cross-machine CI budget. Pass an optional project, frame count, and trial count after `--`, for example `mise benchmark-profiles -- examples/ecs-showcase 4000 5`.
 
 Use `examples/ecs-stress --editor` to watch the retained native-query path drive roughly 3,000 glowing renderables while editing the emitter live. `mise benchmark-native-queries` copies that example to a temporary project, sets the requested spawn rate, and reports late frame time, packed entities, chunk count, average chunk occupancy, scalar tail lanes, compiled-plan builds, and retained-plan hits. Optional arguments set frame count and spawn rate, for example `mise benchmark-native-queries -- 4000 1000`.

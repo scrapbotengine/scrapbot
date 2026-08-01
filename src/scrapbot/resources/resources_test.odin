@@ -425,6 +425,105 @@ test_cube_is_full_indexed_geometry :: proc(t: ^testing.T) {
 	testing.expect(t, validate_geometry(desc) == "")
 }
 
+@(test)
+test_nonresident_geometry_reconstructs_every_exact_leaf_page :: proc(t: ^testing.T) {
+	vertices := [4]Vertex {
+		{position = {-1, -1, 0}},
+		{position = {1, -1, 0}},
+		{position = {-1, 1, 0}},
+		{position = {1, 1, 0}},
+	}
+	indices := [6]u32{0, 1, 2, 1, 3, 2}
+	groups := [2]Geometry_Cluster_Group {
+		{depth = 0, cluster_offset = 0, cluster_count = 1, page_offset = 0, page_count = 1},
+		{depth = 1, cluster_offset = 1, cluster_count = 1, page_offset = 1, page_count = 1},
+	}
+	clusters := [2]Geometry_Cluster {
+		{
+			vertex_offset = 0,
+			triangle_offset = 0,
+			vertex_count = 3,
+			triangle_count = 1,
+			group = 0,
+			refined_group = -1,
+			page = 0,
+		},
+		{
+			vertex_offset = 3,
+			triangle_offset = 3,
+			vertex_count = 3,
+			triangle_count = 1,
+			group = 1,
+			refined_group = -1,
+			page = 1,
+		},
+	}
+	pages := [2]Geometry_Cluster_Page {
+		{cluster_offset = 0, cluster_count = 1, index_count = 3},
+		{cluster_offset = 1, cluster_count = 1, index_count = 3, pinned = true},
+	}
+	cluster_vertices := [6]u32{0, 1, 2, 1, 3, 2}
+	cluster_triangles := [6]u8{0, 1, 2, 0, 1, 2}
+	hierarchy := Geometry_Hierarchy {
+		groups = groups[:],
+		clusters = clusters[:],
+		pages = pages[:],
+		vertices = cluster_vertices[:],
+		triangles = cluster_triangles[:],
+		max_depth = 1,
+	}
+	desc := Geometry_Desc {
+		vertices = vertices[:],
+		indices = indices[:],
+	}
+	prepared, prepared_err := prepare_geometry_page_source(
+		desc,
+		&hierarchy,
+		nil,
+		context.allocator,
+	)
+	defer destroy_prepared_geometry_page_source(&prepared, context.allocator)
+	testing.expectf(t, prepared_err == "", "page source failed: %s", prepared_err)
+	positions := [4]Vec3 {
+		vertices[0].position,
+		vertices[1].position,
+		vertices[2].position,
+		vertices[3].position,
+	}
+	resource := Geometry {
+		query_proxy = {positions = positions[:]},
+		canonical_vertex_count = 4,
+		canonical_index_count = 6,
+		cluster_groups = groups[:],
+		clusters = clusters[:],
+		cluster_pages = pages[:],
+		cluster_vertices = cluster_vertices[:],
+		cluster_triangles = cluster_triangles[:],
+		page_source_kind = prepared.kind,
+		page_payload_records = prepared.records,
+		page_payload_bytes = prepared.bytes[:],
+		cluster_max_depth = 1,
+	}
+	testing.expect_value(t, geometry_fallback_index_count(&resource), 6)
+	fallback, fallback_err := load_geometry_canonical(&resource)
+	defer destroy_geometry_canonical_view(&fallback)
+	testing.expectf(t, fallback_err == "", "fallback failed: %s", fallback_err)
+	testing.expect_value(t, len(fallback.vertices), 4)
+	for index, position in fallback.indices {
+		testing.expect_value(t, index, indices[position])
+	}
+	iterator := geometry_query_iterator(&resource)
+	triangle_count := 0
+	for {
+		_, ok := geometry_query_next(&iterator)
+		if !ok {
+			break
+		}
+		triangle_count += 1
+	}
+	testing.expect_value(t, triangle_count, 2)
+}
+
 test_registered_geometry_builds_bounded_meshlets :: proc(t: ^testing.T) {
 	registry := Registry{}
 	defer destroy_registry(&registry)

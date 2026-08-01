@@ -47,6 +47,10 @@ Geometry_Desc :: struct {
 	indices: []u32,
 }
 
+Geometry_Query_Proxy :: struct {
+	positions: []Vec3,
+}
+
 Geometry_Page_Source_Kind :: enum {
 	Memory,
 	File,
@@ -132,6 +136,9 @@ Geometry :: struct {
 	authored: bool,
 	vertices: []Vertex,
 	indices: []u32,
+	query_proxy: Geometry_Query_Proxy,
+	canonical_vertex_count: u32,
+	canonical_index_count: u32,
 	meshlets: []Meshlet,
 	meshlet_vertices: []u32,
 	meshlet_triangles: []u8,
@@ -352,6 +359,7 @@ destroy_registry :: proc(registry: ^Registry) {
 		delete(geometry.source, allocator)
 		delete(geometry.vertices, allocator)
 		delete(geometry.indices, allocator)
+		delete(geometry.query_proxy.positions, allocator)
 		delete(geometry.meshlets, allocator)
 		delete(geometry.meshlet_vertices, allocator)
 		delete(geometry.meshlet_triangles, allocator)
@@ -461,6 +469,7 @@ clone_registry :: proc(source: ^Registry, destination: ^Registry) -> string {
 		cloned.source = source_path
 		cloned.vertices = clone_slice(geometry.vertices, allocator)
 		cloned.indices = clone_slice(geometry.indices, allocator)
+		cloned.query_proxy.positions = clone_slice(geometry.query_proxy.positions, allocator)
 		cloned.meshlets = clone_slice(geometry.meshlets, allocator)
 		cloned.meshlet_vertices = clone_slice(geometry.meshlet_vertices, allocator)
 		cloned.meshlet_triangles = clone_slice(geometry.meshlet_triangles, allocator)
@@ -786,17 +795,21 @@ register_geometry_with_hierarchy :: proc(
 		destroy_geometry_hierarchy(&hierarchy, registry.allocator)
 		return {}, page_source_err
 	}
+	retain_canonical := prepared_page_source.kind != .File
+	query_proxy := prepare_geometry_query_proxy(desc, retain_canonical, registry.allocator)
 	if index, found := geometry_index_by_name(registry, name); found {
 		geometry := &registry.geometries[index]
 		if geometry.authored {
 			destroy_meshlet_data(&meshlet_data, registry.allocator)
 			destroy_geometry_hierarchy(&hierarchy, registry.allocator)
 			destroy_prepared_geometry_page_source(&prepared_page_source, registry.allocator)
+			delete(query_proxy.positions, registry.allocator)
 			return {}, fmt.tprintf("geometry name '%s' belongs to a project resource and cannot be replaced at runtime", name)
 		}
 		had_lods := geometry.lod_count > 0
 		delete(geometry.vertices, registry.allocator)
 		delete(geometry.indices, registry.allocator)
+		delete(geometry.query_proxy.positions, registry.allocator)
 		delete(geometry.meshlets, registry.allocator)
 		delete(geometry.meshlet_vertices, registry.allocator)
 		delete(geometry.meshlet_triangles, registry.allocator)
@@ -806,8 +819,15 @@ register_geometry_with_hierarchy :: proc(
 		delete(geometry.cluster_vertices, registry.allocator)
 		delete(geometry.cluster_triangles, registry.allocator)
 		destroy_geometry_page_source(geometry, registry.allocator)
-		geometry.vertices = clone_slice(desc.vertices, registry.allocator)
-		geometry.indices = clone_slice(desc.indices, registry.allocator)
+		geometry.vertices = nil
+		geometry.indices = nil
+		if retain_canonical {
+			geometry.vertices = clone_slice(desc.vertices, registry.allocator)
+			geometry.indices = clone_slice(desc.indices, registry.allocator)
+		}
+		geometry.query_proxy = query_proxy
+		geometry.canonical_vertex_count = u32(len(desc.vertices))
+		geometry.canonical_index_count = u32(len(desc.indices))
 		geometry.meshlets = meshlet_data.meshlets
 		geometry.meshlet_vertices = meshlet_data.vertices
 		geometry.meshlet_triangles = meshlet_data.triangles
@@ -834,14 +854,18 @@ register_geometry_with_hierarchy :: proc(
 		destroy_meshlet_data(&meshlet_data, registry.allocator)
 		destroy_geometry_hierarchy(&hierarchy, registry.allocator)
 		destroy_prepared_geometry_page_source(&prepared_page_source, registry.allocator)
+		delete(query_proxy.positions, registry.allocator)
 		return {}, "failed to allocate geometry name"
 	}
 	append(
 		&registry.geometries,
 		Geometry {
 			name = cloned_name,
-			vertices = clone_slice(desc.vertices, registry.allocator),
-			indices = clone_slice(desc.indices, registry.allocator),
+			vertices = clone_slice(desc.vertices, registry.allocator) if retain_canonical else nil,
+			indices = clone_slice(desc.indices, registry.allocator) if retain_canonical else nil,
+			query_proxy = query_proxy,
+			canonical_vertex_count = u32(len(desc.vertices)),
+			canonical_index_count = u32(len(desc.indices)),
 			meshlets = meshlet_data.meshlets,
 			meshlet_vertices = meshlet_data.vertices,
 			meshlet_triangles = meshlet_data.triangles,
@@ -863,6 +887,23 @@ register_geometry_with_hierarchy :: proc(
 	)
 	registry.geometry_topology_revision += 1
 	return {u32(len(registry.geometries) - 1), 1}, ""
+}
+
+prepare_geometry_query_proxy :: proc(
+	desc: Geometry_Desc,
+	canonical_resident: bool,
+	allocator: mem.Allocator,
+) -> Geometry_Query_Proxy {
+	if canonical_resident {
+		return {}
+	}
+	result := Geometry_Query_Proxy {
+		positions = make([]Vec3, len(desc.vertices), allocator),
+	}
+	for vertex, index in desc.vertices {
+		result.positions[index] = vertex.position
+	}
+	return result
 }
 
 prepare_geometry_page_source :: proc(
@@ -1076,6 +1117,8 @@ register_project_lod_geometry :: proc(
 				authored = true,
 				vertices = clone_slice(descriptions[0].vertices, registry.allocator),
 				indices = clone_slice(descriptions[0].indices, registry.allocator),
+				canonical_vertex_count = u32(len(descriptions[0].vertices)),
+				canonical_index_count = u32(len(descriptions[0].indices)),
 				meshlets = base_meshlets.meshlets,
 				meshlet_vertices = base_meshlets.vertices,
 				meshlet_triangles = base_meshlets.triangles,
@@ -1118,6 +1161,7 @@ register_project_lod_geometry :: proc(
 		delete(geometry.source, registry.allocator)
 		delete(geometry.vertices, registry.allocator)
 		delete(geometry.indices, registry.allocator)
+		delete(geometry.query_proxy.positions, registry.allocator)
 		delete(geometry.meshlets, registry.allocator)
 		delete(geometry.meshlet_vertices, registry.allocator)
 		delete(geometry.meshlet_triangles, registry.allocator)
@@ -1130,6 +1174,9 @@ register_project_lod_geometry :: proc(
 		geometry.source = cloned_source
 		geometry.vertices = clone_slice(descriptions[0].vertices, registry.allocator)
 		geometry.indices = clone_slice(descriptions[0].indices, registry.allocator)
+		geometry.query_proxy = {}
+		geometry.canonical_vertex_count = u32(len(descriptions[0].vertices))
+		geometry.canonical_index_count = u32(len(descriptions[0].indices))
 		geometry.meshlets = base_meshlets.meshlets
 		geometry.meshlet_vertices = base_meshlets.vertices
 		geometry.meshlet_triangles = base_meshlets.triangles

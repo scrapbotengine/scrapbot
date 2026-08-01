@@ -65,8 +65,23 @@ test_project_model_products_register_generated_meshes_and_materials :: proc(t: ^
 	testing.expect(t, geometry_alive)
 	testing.expect(t, material_alive)
 	if geometry_alive {
-		testing.expect_value(t, len(geometry.vertices), 3)
-		testing.expect_value(t, len(geometry.indices), 3)
+		testing.expect_value(t, geometry_canonical_vertex_count(geometry), 3)
+		testing.expect_value(t, geometry_canonical_index_count(geometry), 3)
+		testing.expect_value(t, len(geometry.vertices), 0)
+		testing.expect_value(t, len(geometry.indices), 0)
+		testing.expect_value(t, len(geometry.query_proxy.positions), 3)
+		testing.expect(t, !geometry_has_resident_canonical(geometry))
+		iterator := geometry_query_iterator(geometry)
+		_, triangle_ok := geometry_query_next(&iterator)
+		testing.expect(t, triangle_ok)
+		_, exhausted := geometry_query_next(&iterator)
+		testing.expect(t, !exhausted)
+		fallback, fallback_err := load_geometry_canonical(geometry)
+		defer destroy_geometry_canonical_view(&fallback)
+		testing.expectf(t, fallback_err == "", "canonical fallback failed: %s", fallback_err)
+		testing.expect(t, fallback.owned)
+		testing.expect_value(t, len(fallback.vertices), 3)
+		testing.expect_value(t, len(fallback.indices), 3)
 	}
 	if material_alive {
 		testing.expect_value(t, material.desc.base_color.x, f32(1))
@@ -79,6 +94,19 @@ test_project_model_products_register_generated_meshes_and_materials :: proc(t: ^
 	testing.expect(t, cloned_alive)
 	if cloned_alive {
 		testing.expect_value(t, cloned_model.meshes[0].name, "Triangle Mesh")
+		cloned_geometry, cloned_geometry_alive := get_geometry(
+			&cloned,
+			cloned_model.meshes[0].primitives[0].geometry,
+		)
+		testing.expect(t, cloned_geometry_alive)
+		if cloned_geometry_alive {
+			testing.expect_value(t, len(cloned_geometry.vertices), 0)
+			testing.expect_value(t, len(cloned_geometry.query_proxy.positions), 3)
+			fallback, fallback_err := load_geometry_canonical(cloned_geometry)
+			defer destroy_geometry_canonical_view(&fallback)
+			testing.expectf(t, fallback_err == "", "cloned fallback failed: %s", fallback_err)
+			testing.expect_value(t, len(fallback.indices), 3)
+		}
 	}
 	geometry_handle := model.meshes[0].primitives[0].geometry
 	material_handle := model.meshes[0].primitives[0].material
