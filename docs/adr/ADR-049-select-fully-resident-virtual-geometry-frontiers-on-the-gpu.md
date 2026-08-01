@@ -88,4 +88,5 @@ This decision does not define persisted hierarchy products, page identifiers, sp
 GPU request feedback, upload budgets, eviction, root-cluster pinning, or page-boundary diagnostics.
 Those policies layer over the same Geometry hierarchy and shared arena ownership.
 
-ADR-050 adds those policies for expanded cluster-index streams while retaining canonical vertices.
+ADR-050 adds those policies for self-contained vertex/index payloads while retaining canonical CPU
+source data.

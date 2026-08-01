@@ -18,7 +18,7 @@ width = 1600
 height = 900
 
 [render]
-virtual_geometry_index_budget_mb = 64
+virtual_geometry_budget_mb = 64
 
 [[native_extensions]]
 name = "scrappyphysics"
@@ -39,7 +39,8 @@ Fields:
 | `window.width` | No | Positive logical width up to 16384. |
 | `window.height` | No | Positive logical height up to 16384. |
 | `[render]` | No | Renderer-wide project policy. |
-| `render.virtual_geometry_index_budget_mb` | No | Budget for resident expanded virtual-geometry cluster indices, from 0.015625 to 16384 MiB. Defaults to 64 MiB. Pinned coarse fallback pages may exceed it. |
+| `render.virtual_geometry_budget_mb` | No | Budget for resident virtual-geometry vertex and index pages, from 0.015625 to 16384 MiB. Defaults to 64 MiB. Pinned coarse fallback pages may exceed it. |
+| `render.virtual_geometry_index_budget_mb` | No | Deprecated alias for `render.virtual_geometry_budget_mb`; retained for existing projects. |
 | `[[native_extensions]]` | No | Repeated table for project-local native extension targets. |
 | `native_extensions.name` | Yes | Build output base name. Must be an identifier token. |
 | `native_extensions.source` | Yes | Safe relative path to an Odin package directory. |
@@ -47,7 +48,7 @@ Fields:
 | `fonts.name` | Yes | Resource name used by UI components. Must be a unique identifier token. |
 | `fonts.source` | Yes | Safe path under `assets/` ending in `.ttf` or `.otf`. |
 
-The optional `[render]` table owns renderer-wide policy such as the virtual-geometry index budget.
+The optional `[render]` table owns renderer-wide policy such as the virtual-geometry payload budget.
 Its environment fields remain accepted as a compatibility fallback for scenes without
 `scrapbot.world_environment`. New projects should author environment state on the scene entity;
 when present, that component is authoritative.

@@ -2,4 +2,4 @@ name = "GPU Virtual Geometry Pressure Fixture"
 default_scene = "scenes/main.scene.toml"
 
 [render]
-virtual_geometry_index_budget_mb = 0.015625
+virtual_geometry_budget_mb = 0.0625

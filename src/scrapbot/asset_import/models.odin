@@ -13,8 +13,8 @@ import "core:path/filepath"
 import "core:strings"
 import cgltf "vendor:cgltf"
 
-MODEL_IMPORTER_SCHEMA :: "scrapbot.model.v11.cluster-pages"
-MODEL_PRODUCT_MAGIC :: [8]u8{'S', 'B', 'M', 'O', 'D', 'L', '1', '1'}
+MODEL_IMPORTER_SCHEMA :: "scrapbot.model.v12.vertex-pages"
+MODEL_PRODUCT_MAGIC :: [8]u8{'S', 'B', 'M', 'O', 'D', 'L', '1', '2'}
 
 Model_Vertex :: struct {
 	position, normal: shared.Vec3,
@@ -52,6 +52,7 @@ Model_Primitive :: struct {
 	vertices: [dynamic]Model_Vertex,
 	indices: [dynamic]u32,
 	hierarchy: geometry.Hierarchy,
+	page_payloads: []geometry.Page_Payload_Record,
 	lods: [dynamic]Model_Primitive_LOD,
 }
 
@@ -59,6 +60,7 @@ Model_Primitive_LOD :: struct {
 	vertices: [dynamic]Model_Vertex,
 	indices: [dynamic]u32,
 	hierarchy: geometry.Hierarchy,
+	page_payloads: []geometry.Page_Payload_Record,
 	level: u32,
 	screen_radius: f32,
 	simplification_error: f32,
@@ -1113,10 +1115,12 @@ destroy_model_primitive :: proc(primitive: ^Model_Primitive) {
 	delete(primitive.key)
 	delete(primitive.vertices)
 	delete(primitive.indices)
+	delete(primitive.page_payloads)
 	geometry.destroy_hierarchy(&primitive.hierarchy)
 	for &lod in primitive.lods {
 		delete(lod.vertices)
 		delete(lod.indices)
+		delete(lod.page_payloads)
 		geometry.destroy_hierarchy(&lod.hierarchy)
 	}
 	delete(primitive.lods)
@@ -1466,6 +1470,13 @@ encode_model_product :: proc(model: ^Model_Product) -> []u8 {
 				model_write_u32(&bytes, index)
 			}
 			model_write_hierarchy(&bytes, primitive.hierarchy)
+			model_write_page_payloads(
+				&bytes,
+				primitive.hierarchy,
+				raw_data(primitive.vertices[:]),
+				len(primitive.vertices),
+				size_of(Model_Vertex),
+			)
 			model_write_u32(&bytes, u32(len(primitive.lods)))
 			for lod in primitive.lods {
 				model_write_u32(&bytes, lod.level)
@@ -1483,6 +1494,13 @@ encode_model_product :: proc(model: ^Model_Product) -> []u8 {
 					model_write_u32(&bytes, index)
 				}
 				model_write_hierarchy(&bytes, lod.hierarchy)
+				model_write_page_payloads(
+					&bytes,
+					lod.hierarchy,
+					raw_data(lod.vertices[:]),
+					len(lod.vertices),
+					size_of(Model_Vertex),
+				)
 			}
 		}
 	}
@@ -1496,6 +1514,31 @@ encode_model_product :: proc(model: ^Model_Product) -> []u8 {
 		model_write_vec3(&bytes, node.transform.scale)
 	}
 	return bytes[:]
+}
+
+model_write_page_payloads :: proc(
+	bytes: ^[dynamic]u8,
+	hierarchy: geometry.Hierarchy,
+	vertices: rawptr,
+	vertex_count, vertex_stride: int,
+) {
+	hierarchy_copy := hierarchy
+	payloads, payload_err := geometry.build_page_payloads(
+		&hierarchy_copy,
+		vertices,
+		vertex_count,
+		vertex_stride,
+	)
+	defer geometry.destroy_page_payloads(&payloads)
+	assert(payload_err == "")
+	model_write_u32(bytes, u32(len(payloads.records)))
+	for record in payloads.records {
+		model_write_u32(bytes, record.vertex_count)
+		model_write_u32(bytes, record.index_count)
+		model_write_u32(bytes, u32(record.size))
+		start := int(record.offset)
+		model_write_bytes(bytes, payloads.bytes[start:start + int(record.size)])
+	}
 }
 
 model_write_hierarchy :: proc(bytes: ^[dynamic]u8, hierarchy: geometry.Hierarchy) {
@@ -1741,6 +1784,13 @@ read_model_product :: proc(path: string) -> (model: Model_Product, err: string) 
 			if ok {
 				ok = model_read_hierarchy(&reader, &primitive.hierarchy, int(vertex_count))
 			}
+			if ok {
+				ok = model_read_page_payloads(
+					&reader,
+					&primitive.hierarchy,
+					&primitive.page_payloads,
+				)
+			}
 			if !ok {
 				destroy_model_primitive(&primitive)
 				destroy_model_mesh(&mesh)
@@ -1820,6 +1870,9 @@ read_model_product :: proc(path: string) -> (model: Model_Product, err: string) 
 				if ok {
 					ok = model_read_hierarchy(&reader, &lod.hierarchy, int(lod_vertex_count))
 				}
+				if ok {
+					ok = model_read_page_payloads(&reader, &lod.hierarchy, &lod.page_payloads)
+				}
 				if !ok {
 					destroy_model_lod(&lod)
 					destroy_model_primitive(&primitive)
@@ -1878,6 +1931,50 @@ read_model_product :: proc(path: string) -> (model: Model_Product, err: string) 
 		return {}, "imported model product has trailing data"
 	}
 	return model, ""
+}
+
+model_read_page_payloads :: proc(
+	reader: ^Model_Reader,
+	hierarchy: ^geometry.Hierarchy,
+	records: ^[]geometry.Page_Payload_Record,
+) -> bool {
+	if reader == nil || hierarchy == nil || records == nil {
+		return false
+	}
+	page_count, ok := model_read_u32(reader)
+	if !ok || int(page_count) != len(hierarchy.pages) {
+		return false
+	}
+	result := make([]geometry.Page_Payload_Record, int(page_count))
+	for &record, page_index in result {
+		record.vertex_count, ok = model_read_u32(reader)
+		if ok {
+			record.index_count, ok = model_read_u32(reader)
+		}
+		byte_count: u32
+		if ok {
+			byte_count, ok = model_read_u32(reader)
+		}
+		expected_size :=
+			u64(record.vertex_count) * u64(size_of(Model_Vertex)) +
+			u64(record.index_count) * u64(size_of(u32))
+		if !ok ||
+		   record.vertex_count == 0 ||
+		   record.index_count != hierarchy.pages[page_index].index_count ||
+		   u64(byte_count) != expected_size ||
+		   u64(byte_count) > u64(len(reader.bytes) - reader.offset) {
+			delete(result)
+			return false
+		}
+		record.offset = u64(reader.offset)
+		record.size = u64(byte_count)
+		if _, payload_ok := model_read_bytes(reader, int(byte_count)); !payload_ok {
+			delete(result)
+			return false
+		}
+	}
+	records^ = result
+	return true
 }
 
 model_read_hierarchy :: proc(

@@ -32,21 +32,25 @@ Transform/Geometry/Material entities. Later duplication, Undo/Redo, or resource 
 increments a model-instance revision; reconciliation waits for that structural signal.
 
 Resource descriptions remain outside ECS. Components store resolved runtime handles. Geometry
-registration derives bounded meshlets. It accepts a validated compiled hierarchy for imported
-models or derives the same hierarchy for other producers. Canonical vertex IDs, monotonic group
-errors, page identities, and pinned fallback flags remain versioned with the Geometry entry.
+registration derives bounded meshlets. It accepts a validated compiled hierarchy and file-backed
+page ranges for imported models or derives the same hierarchy and in-memory page payloads for other
+producers. Canonical vertex IDs, monotonic group errors, page identities, page-source records, and
+pinned fallback flags remain versioned with the Geometry entry.
 
-WGPU consumes a changed Geometry version into aligned ranges of shared vertex/index arenas.
-Canonical and ordinary meshlet streams remain resident. A complete hierarchy page set enters the
-arena through one combined upload when it fits the remaining budget. Otherwise the coarsest pages
-are pinned. GPU feedback identifies wanted groups with projected-error priority and touches groups
-used by visible instances. Completed feedback admits and evicts whole groups under bounded
-per-frame work and the project residency budget.
+WGPU consumes ordinary Geometry versions into aligned shared vertex/index ranges. A complete
+Virtual Geometry that fits the remaining budget retains canonical vertex/index ranges plus
+expanded page indices. Larger resources allocate page-local vertex and index ranges only for
+resident pages, with the coarsest pages pinned.
+
+GPU feedback identifies wanted groups and visible-use touches. Imported misses enqueue immutable
+product ranges on the I/O worker. Versioned completions admit and evict whole groups under bounded
+per-frame work and the combined payload budget while the resident fallback continues drawing.
 
 Capable adapters retain cluster metadata and arena-global indirect templates. They select the
 desired resident frontier and draw a coarse fallback while refinement is missing. Native
 multi-draw consumes cluster commands directly. Other indirect-first-instance adapters compact
-selected instance/cluster pairs into a bounded camera stream and vertex-pull from the arenas.
+selected instance/cluster pairs into bounded camera and streamed-shadow records and vertex-pull
+from the arenas. Fully resident portable resources retain classic indexed shadows.
 Adapters without indirect-first-instance keep whole-primitive submission.
 
 Hot reload stages the resource registry, world, script/native runtime, source set, and playback baseline independently. Failure destroys the staged bundle; success swaps it atomically.

@@ -47,6 +47,18 @@ Geometry_Desc :: struct {
 	indices: []u32,
 }
 
+Geometry_Page_Source_Kind :: enum {
+	Memory,
+	File,
+}
+
+Geometry_Page_Source_Desc :: struct {
+	kind: Geometry_Page_Source_Kind,
+	path: string,
+	records: []geometry.Page_Payload_Record,
+	bytes: []u8,
+}
+
 Material_Desc :: struct {
 	base_color: Vec4,
 	emissive: Vec3,
@@ -128,6 +140,10 @@ Geometry :: struct {
 	cluster_pages: []Geometry_Cluster_Page,
 	cluster_vertices: []u32,
 	cluster_triangles: []u8,
+	page_source_kind: Geometry_Page_Source_Kind,
+	page_source_path: string,
+	page_payload_records: []geometry.Page_Payload_Record,
+	page_payload_bytes: []u8,
 	cluster_max_depth: u32,
 	bounds: Bounds,
 	lod_handles: [shared.MAX_GEOMETRY_LODS - 1]Geometry_Handle,
@@ -344,6 +360,9 @@ destroy_registry :: proc(registry: ^Registry) {
 		delete(geometry.cluster_pages, allocator)
 		delete(geometry.cluster_vertices, allocator)
 		delete(geometry.cluster_triangles, allocator)
+		delete(geometry.page_source_path, allocator)
+		delete(geometry.page_payload_records, allocator)
+		delete(geometry.page_payload_bytes, allocator)
 	}
 	for &material in registry.materials {
 		delete(material.name, allocator)
@@ -450,6 +469,9 @@ clone_registry :: proc(source: ^Registry, destination: ^Registry) -> string {
 		cloned.cluster_pages = clone_slice(geometry.cluster_pages, allocator)
 		cloned.cluster_vertices = clone_slice(geometry.cluster_vertices, allocator)
 		cloned.cluster_triangles = clone_slice(geometry.cluster_triangles, allocator)
+		cloned.page_source_path, _ = strings.clone(geometry.page_source_path, allocator)
+		cloned.page_payload_records = clone_slice(geometry.page_payload_records, allocator)
+		cloned.page_payload_bytes = clone_slice(geometry.page_payload_bytes, allocator)
 		append(&destination.geometries, cloned)
 	}
 	for material in source.materials {
@@ -725,6 +747,7 @@ register_geometry_with_hierarchy :: proc(
 	name: string,
 	desc: Geometry_Desc,
 	prebuilt_hierarchy: ^Geometry_Hierarchy,
+	page_source: ^Geometry_Page_Source_Desc = nil,
 ) -> (
 	Geometry_Handle,
 	string,
@@ -752,11 +775,23 @@ register_geometry_with_hierarchy :: proc(
 		}
 		hierarchy = geometry.clone_hierarchy(prebuilt_hierarchy^, registry.allocator)
 	}
+	prepared_page_source, page_source_err := prepare_geometry_page_source(
+		desc,
+		&hierarchy,
+		page_source,
+		registry.allocator,
+	)
+	if page_source_err != "" {
+		destroy_meshlet_data(&meshlet_data, registry.allocator)
+		destroy_geometry_hierarchy(&hierarchy, registry.allocator)
+		return {}, page_source_err
+	}
 	if index, found := geometry_index_by_name(registry, name); found {
 		geometry := &registry.geometries[index]
 		if geometry.authored {
 			destroy_meshlet_data(&meshlet_data, registry.allocator)
 			destroy_geometry_hierarchy(&hierarchy, registry.allocator)
+			destroy_prepared_geometry_page_source(&prepared_page_source, registry.allocator)
 			return {}, fmt.tprintf("geometry name '%s' belongs to a project resource and cannot be replaced at runtime", name)
 		}
 		had_lods := geometry.lod_count > 0
@@ -770,6 +805,7 @@ register_geometry_with_hierarchy :: proc(
 		delete(geometry.cluster_pages, registry.allocator)
 		delete(geometry.cluster_vertices, registry.allocator)
 		delete(geometry.cluster_triangles, registry.allocator)
+		destroy_geometry_page_source(geometry, registry.allocator)
 		geometry.vertices = clone_slice(desc.vertices, registry.allocator)
 		geometry.indices = clone_slice(desc.indices, registry.allocator)
 		geometry.meshlets = meshlet_data.meshlets
@@ -780,6 +816,7 @@ register_geometry_with_hierarchy :: proc(
 		geometry.cluster_pages = hierarchy.pages
 		geometry.cluster_vertices = hierarchy.vertices
 		geometry.cluster_triangles = hierarchy.triangles
+		install_geometry_page_source(geometry, &prepared_page_source)
 		geometry.cluster_max_depth = hierarchy.max_depth
 		geometry.bounds = calculate_bounds(desc.vertices)
 		geometry.lod_handles = {}
@@ -796,6 +833,7 @@ register_geometry_with_hierarchy :: proc(
 	if clone_err != nil {
 		destroy_meshlet_data(&meshlet_data, registry.allocator)
 		destroy_geometry_hierarchy(&hierarchy, registry.allocator)
+		destroy_prepared_geometry_page_source(&prepared_page_source, registry.allocator)
 		return {}, "failed to allocate geometry name"
 	}
 	append(
@@ -812,6 +850,10 @@ register_geometry_with_hierarchy :: proc(
 			cluster_pages = hierarchy.pages,
 			cluster_vertices = hierarchy.vertices,
 			cluster_triangles = hierarchy.triangles,
+			page_source_kind = prepared_page_source.kind,
+			page_source_path = prepared_page_source.path,
+			page_payload_records = prepared_page_source.records,
+			page_payload_bytes = prepared_page_source.bytes,
 			cluster_max_depth = hierarchy.max_depth,
 			bounds = calculate_bounds(desc.vertices),
 			generation = 1,
@@ -821,6 +863,89 @@ register_geometry_with_hierarchy :: proc(
 	)
 	registry.geometry_topology_revision += 1
 	return {u32(len(registry.geometries) - 1), 1}, ""
+}
+
+prepare_geometry_page_source :: proc(
+	desc: Geometry_Desc,
+	hierarchy: ^Geometry_Hierarchy,
+	source: ^Geometry_Page_Source_Desc,
+	allocator: mem.Allocator,
+) -> (
+	Geometry_Page_Source_Desc,
+	string,
+) {
+	if source == nil {
+		payloads, payload_err := geometry.build_page_payloads(
+			hierarchy,
+			raw_data(desc.vertices),
+			len(desc.vertices),
+			size_of(Vertex),
+			allocator,
+		)
+		if payload_err != "" {
+			return {}, payload_err
+		}
+		return {kind = .Memory, records = payloads.records, bytes = payloads.bytes[:]}, ""
+	}
+	if len(source.records) != len(hierarchy.pages) {
+		return {}, "geometry page source does not match cluster pages"
+	}
+	for record, page_index in source.records {
+		expected_size :=
+			u64(record.vertex_count) * u64(size_of(Vertex)) +
+			u64(record.index_count) * u64(size_of(u32))
+		if record.vertex_count == 0 ||
+		   record.index_count != hierarchy.pages[page_index].index_count ||
+		   record.size != expected_size {
+			return {}, "geometry page source record is invalid"
+		}
+		if source.kind == .Memory && record.offset + record.size > u64(len(source.bytes)) {
+			return {}, "geometry memory page source is truncated"
+		}
+	}
+	if source.kind == .File && source.path == "" {
+		return {}, "geometry file page source path is empty"
+	}
+	result := Geometry_Page_Source_Desc {
+		kind = source.kind,
+	}
+	result.path, _ = strings.clone(source.path, allocator)
+	result.records = clone_slice(source.records, allocator)
+	result.bytes = clone_slice(source.bytes, allocator)
+	return result, ""
+}
+
+destroy_prepared_geometry_page_source :: proc(
+	source: ^Geometry_Page_Source_Desc,
+	allocator: mem.Allocator,
+) {
+	if source == nil {
+		return
+	}
+	delete(source.path, allocator)
+	delete(source.records, allocator)
+	delete(source.bytes, allocator)
+	source^ = {}
+}
+
+destroy_geometry_page_source :: proc(geometry: ^Geometry, allocator: mem.Allocator) {
+	if geometry == nil {
+		return
+	}
+	delete(geometry.page_source_path, allocator)
+	delete(geometry.page_payload_records, allocator)
+	delete(geometry.page_payload_bytes, allocator)
+	geometry.page_source_path = ""
+	geometry.page_payload_records = nil
+	geometry.page_payload_bytes = nil
+}
+
+install_geometry_page_source :: proc(geometry: ^Geometry, source: ^Geometry_Page_Source_Desc) {
+	geometry.page_source_kind = source.kind
+	geometry.page_source_path = source.path
+	geometry.page_payload_records = source.records
+	geometry.page_payload_bytes = source.bytes
+	source^ = {}
 }
 
 set_geometry_lods :: proc(

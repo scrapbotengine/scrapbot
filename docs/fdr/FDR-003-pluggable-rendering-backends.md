@@ -282,18 +282,22 @@ group depth, conservative bounds, monotonic geometric error, refined-group links
 indices with that exact resource version. Imported model products persist the hierarchy. Other
 Geometry producers build the same representation at registration. See ADR-049 and ADR-050.
 
-Partition expanded cluster indices into deterministic, group-aligned pages. Admit a complete
-Geometry page set immediately when it fits the remaining budget; otherwise pin its coarsest
-frontier. On WGPU adapters with indirect-first-instance, project group error into pixels and submit
-the unique cluster frontier surrounding a one-pixel threshold before ordinary cluster culling.
+Partition each hierarchy into deterministic, group-aligned pages containing referenced canonical
+vertices and page-local expanded indices. Retain canonical vertex/index streams plus expanded page
+indices when the complete Geometry fits the remaining combined payload budget; otherwise pin its
+coarsest page frontier. On WGPU adapters
+with indirect-first-instance, project group error into pixels and submit the unique cluster
+frontier surrounding a one-pixel threshold before ordinary cluster culling.
 
 When finer detail is wanted but missing, submit the resident coarse cluster and append its group
 identity plus projected-error priority to the visibility-feedback buffer. Visible instances append
 resident-group usage touches through the same bounded channel. Deterministic hashing spreads those
 touches across 16 frames; missing-group requests remain immediate.
 
-Asynchronous CPU processing applies touches, deduplicates and prioritizes group requests, then
-admits or evicts complete non-pinned groups under the project index budget.
+Asynchronous CPU processing applies touches, deduplicates and prioritizes group requests. Imported
+misses read exact Model-product byte ranges on a dedicated worker. Versioned completions admit or
+evict complete non-pinned groups under the project vertex-and-index payload budget while the
+resident coarse frontier remains drawable.
 
 Per-frame byte and group limits bound streaming work. One admitted group or complete-resource
 preload becomes one combined arena transfer. Residency mutations update affected Geometry batches;
@@ -303,22 +307,26 @@ Native multi-draw adapters submit the retained indexed-indirect command range fo
 shadow work. Other capable adapters compact selected `{instance slot, cluster index}` records into
 a bounded camera stream. Compatible same-material batches share one record span and one
 non-indexed indirect command; the vertex shader pulls cluster indices and attributes from the
-shared geometry arenas. Their four shadow cascades reuse the GPU-selected object LOD through
-separate retained indexed-indirect templates. Stable frames perform no CPU readback, per-cluster
-command generation, or geometry upload.
+shared geometry arenas.
+
+Fully resident portable resources reuse canonical indexed-indirect shadows. Streamed portable
+resources compact page-local shadow records for all four cascades, so shadow casting never depends
+on evicted canonical geometry. Stable frames perform no CPU readback, per-cluster command
+generation, or geometry upload.
 
 The `virtual_geometry` camera view colors selected clusters by identity and hierarchy depth. Amber
-marks a branch whose finer group is not completely resident. Structured results report the index
-budget, residency, feedback, requests, page/group uploads and evictions, deferred groups, selected
-clusters, and threshold rejections.
+marks a branch whose finer group is not completely resident. Structured results report payload
+budget and residency, feedback, requests, asynchronous reads/failures, page/group uploads and
+evictions, deferred groups, selected clusters, and threshold rejections.
 
 **Why:** Geometry detail must vary below object granularity without cracks, importer-specific draw
 paths, or CPU decisions per cluster.
 
-**Tradeoff:** Hierarchy metadata, canonical vertices, and source indices remain resident. This
-phase bounds expanded hierarchy indices only. The compact camera path trades additional GPU
-culling and vertex-pulling cost for portable, bounded CPU submission. Portable shadows use
-conservative whole-object LOD geometry to avoid multiplying that cost across four cascades.
+**Tradeoff:** Canonical CPU vertices, source indices, and hierarchy metadata remain resident for
+backend-neutral fallback, picking, and authoring. Virtual WGPU vertex/index payloads are bounded.
+The compact camera path trades additional GPU culling and vertex-pulling cost for portable,
+bounded CPU submission. Portable shadows retain the canonical fast path when possible and pay the
+four-cascade compact cost only under actual streaming pressure.
 Adapters without indirect-first-instance and capacity-limited layouts keep the existing classic
 indexed and imported-LOD fallback.
 

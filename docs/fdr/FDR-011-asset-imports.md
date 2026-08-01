@@ -103,11 +103,13 @@ Model-root shadow markers are copied onto derived primitive entities during the 
 
 **Decision:** Simplify eligible indexed glTF primitives during import, compact each retained level, and persist its geometry, projected threshold, and measured error in the versioned Model product. Register generated levels as ordinary semantic Geometry subresources and attach them through the shared LOD contract. See ADR-047.
 
-### 13. Persist virtual Geometry hierarchies
+### 13. Persist streamable virtual Geometry pages
 
 **Decision:** Build and validate each imported primitive hierarchy during import. Persist groups,
-clusters, local streams, page identities, and pinned-page flags in the versioned Model product.
-Publish cluster, group, and page counts in import metadata. See ADR-050.
+clusters, local streams, page identities, pinned-page flags, and self-contained vertex/index page
+payloads in the versioned Model product. Runtime Geometry retains validated byte ranges so WGPU
+can read refinement pages asynchronously without an importer-specific draw path. Publish cluster,
+group, and page counts in import metadata. See ADR-050.
 
 **Why:** Runtime startup should consume a compiled geometry product, not repeat simplification and
 page partitioning for every imported model.

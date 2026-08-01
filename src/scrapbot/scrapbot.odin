@@ -539,8 +539,8 @@ run_project_internal_untracked :: proc(
 		run_config.window_width = loaded.config.window.width
 		run_config.window_height = loaded.config.window.height
 	}
-	run_config.virtual_geometry_index_budget_bytes = u64(
-		loaded.config.render.virtual_geometry_index_budget_mb * 1024 * 1024,
+	run_config.virtual_geometry_budget_bytes = u64(
+		loaded.config.render.virtual_geometry_budget_mb * 1024 * 1024,
 	)
 	if err := project.prepare_project_fonts(root, &loaded.config); err != "" {
 		result.err = err

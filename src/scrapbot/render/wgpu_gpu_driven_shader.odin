@@ -1071,6 +1071,7 @@ struct Batch_Info {
 	compact_command_index: u32,
 	compact_visible_offset: u32,
 	compact_visible_capacity: u32,
+	compact_shadow_pages: u32,
 };
 
 struct Meshlet_Info {
@@ -1128,7 +1129,7 @@ struct Cull_Uniform {
 	virtual_error_pixels: f32,
 	projection_y: f32,
 	virtual_feedback_epoch: u32,
-	_padding_0: u32,
+	compact_shadow_pages: u32,
 	_padding_1: u32,
 	_padding_2: u32,
 };
@@ -1540,7 +1541,10 @@ fn cull_instances(invocation: vec3<u32>, submission_mode: u32) {
 	}
 	let batch = batches[batch_index];
 	let active_submission_mode = batch_submission_mode(batch);
-	let compact_shadow_fallback = submission_mode == 0u && active_submission_mode == 2u;
+	let compact_shadow_fallback =
+		batch.compact_shadow_pages == 0u &&
+		submission_mode == 0u &&
+		active_submission_mode == 2u;
 	if (active_submission_mode != submission_mode && !compact_shadow_fallback) {
 		return;
 	}
@@ -1657,7 +1661,8 @@ fn cull_instances(invocation: vec3<u32>, submission_mode: u32) {
 		atomicAdd(&counters.frustum_culled_instances, 1u);
 		append_batch_meshlet_debug(instance, batch, 2u, lod_level);
 	}
-	let owns_shadow = active_submission_mode != 2u || compact_shadow_fallback;
+	let owns_shadow = active_submission_mode != 2u || compact_shadow_fallback ||
+		(batch.compact_shadow_pages != 0u && active_submission_mode == 2u);
 	if (owns_shadow && instance.shadow_flags.x > 0.5 && shadow_sphere_visible(instance.bounds, cascade_index)) {
 		if (batch_uses_meshlets(batch) && !compact_shadow_fallback) {
 			for (

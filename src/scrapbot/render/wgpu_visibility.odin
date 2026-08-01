@@ -2,6 +2,7 @@ package render
 
 import resources "../resources"
 import shared "../shared"
+import "core:os"
 import "core:slice"
 import "vendor:wgpu"
 
@@ -47,11 +48,19 @@ wgpu_recount_virtual_page_residency :: proc(renderer: ^WGPU_Renderer) {
 	if renderer == nil {
 		return
 	}
-	renderer.virtual_geometry_index_resident_bytes = 0
+	renderer.virtual_geometry_resident_bytes = 0
 	renderer.virtual_geometry_page_count = 0
 	renderer.virtual_geometry_resident_page_count = 0
 	renderer.virtual_geometry_pinned_page_count = 0
+	renderer.gpu_compact_shadow_pages = false
 	for cache in renderer.geometry_cache {
+		if cache.virtual_geometry {
+			renderer.virtual_geometry_resident_bytes +=
+				cache.vertex_range.size + cache.index_range.size
+			if cache.valid && cache.vertex_range.size == 0 {
+				renderer.gpu_compact_shadow_pages = true
+			}
+		}
 		renderer.virtual_geometry_page_count += len(cache.cluster_pages)
 		for page in cache.cluster_pages {
 			if page.pinned {
@@ -59,7 +68,8 @@ wgpu_recount_virtual_page_residency :: proc(renderer: ^WGPU_Renderer) {
 			}
 			if page.resident {
 				renderer.virtual_geometry_resident_page_count += 1
-				renderer.virtual_geometry_index_resident_bytes += page.range.size
+				renderer.virtual_geometry_resident_bytes +=
+					page.range.size + page.vertex_range.size
 			}
 		}
 	}
@@ -100,13 +110,16 @@ wgpu_refresh_geometry_page_state :: proc(
 				cluster.refined_group,
 			)
 			first_index: u32
+			base_vertex: u32
 			if page_resident {
 				page := geometry.cluster_pages[cluster.page]
 				first_index =
 					u32(page.range.offset / u64(size_of(u32))) + cluster.page_index_offset
+				base_vertex = u32(page.vertex_range.offset / u64(size_of(resources.Vertex)))
 			}
 			info := &renderer.gpu_meshlet_infos[meshlet_index]
 			info.first_index = first_index
+			info.base_vertex = base_vertex
 			info.page_resident = 1 if page_resident else 0
 			info.refined_resident = 1 if refined_resident else 0
 			info.group_index = u32(cluster.group)
@@ -119,6 +132,7 @@ wgpu_refresh_geometry_page_state :: proc(
 			template := &renderer.gpu_meshlet_indirect_templates[meshlet_index]
 			template.index_count = cluster.triangle_count * 3 if page_resident else 0
 			template.first_index = first_index
+			template.base_vertex = i32(base_vertex)
 		}
 		byte_offset := u64(batch.meshlet_draw_offset) * u64(size_of(WGPU_GPU_Meshlet_Info))
 		wgpu.QueueWriteBuffer(
@@ -169,6 +183,37 @@ WGPU_Virtual_Group_Request :: struct {
 	handle: shared.Geometry_Handle,
 	group_index: u32,
 	priority: f32,
+}
+
+wgpu_consume_virtual_page_io :: proc(renderer: ^WGPU_Renderer, registry: ^resources.Registry) {
+	if renderer == nil || registry == nil {
+		return
+	}
+	for {
+		job, ok := wgpu_virtual_page_io_pop(&renderer.virtual_geometry_page_io)
+		if !ok {
+			break
+		}
+		geometry, geometry_ok := resources.get_geometry(registry, job.handle)
+		cache_index := wgpu_geometry_cache_slot(renderer.geometry_cache[:], job.handle)
+		if geometry_ok &&
+		   geometry.version == job.geometry_version &&
+		   cache_index >= 0 &&
+		   int(job.page_index) < len(renderer.geometry_cache[cache_index].cluster_pages) {
+			page := &renderer.geometry_cache[cache_index].cluster_pages[job.page_index]
+			page.loading = false
+			if !job.err {
+				delete(page.loaded_payload, os.heap_allocator())
+				page.loaded_payload = job.bytes
+				renderer.virtual_geometry_page_read_count += 1
+				renderer.virtual_geometry_page_read_bytes += u64(len(job.bytes))
+				job.bytes = nil
+			} else {
+				renderer.virtual_geometry_page_read_failure_count += 1
+			}
+		}
+		wgpu_virtual_page_io_destroy_job(job)
+	}
 }
 
 wgpu_virtual_group_page_range :: proc "contextless" (
@@ -256,12 +301,14 @@ wgpu_evict_virtual_group :: proc(
 		if page.group_index != oldest_group || !page.resident {
 			continue
 		}
-		renderer.virtual_geometry_index_resident_bytes -= min(
-			renderer.virtual_geometry_index_resident_bytes,
-			page.range.size,
+		renderer.virtual_geometry_resident_bytes -= min(
+			renderer.virtual_geometry_resident_bytes,
+			page.range.size + page.vertex_range.size,
 		)
 		wgpu_arena_release(&renderer.geometry_index_arena.allocator, page.range)
+		wgpu_arena_release(&renderer.geometry_vertex_arena.allocator, page.vertex_range)
 		page.range = {}
+		page.vertex_range = {}
 		page.resident = false
 		renderer.virtual_geometry_page_eviction_count += 1
 	}
@@ -387,23 +434,64 @@ wgpu_process_virtual_page_feedback :: proc(
 		}
 		missing_pages := make([dynamic]u32, 0, int(page_count), context.temp_allocator)
 		allocation_bytes: u64
+		vertex_allocation_bytes: u64
+		index_allocation_bytes: u64
 		for page_index in page_offset ..< page_offset + page_count {
 			if cache.cluster_pages[page_index].resident {
 				continue
 			}
 			append(&missing_pages, page_index)
-			page_bytes := u64(geometry.cluster_pages[page_index].index_count) * u64(size_of(u32))
-			allocation_bytes += wgpu_align_arena_offset(page_bytes, u64(size_of(u32)))
+			record := geometry.page_payload_records[page_index]
+			vertex_bytes := u64(record.vertex_count) * u64(size_of(resources.Vertex))
+			index_bytes := u64(record.index_count) * u64(size_of(u32))
+			vertex_allocation_bytes += wgpu_align_arena_offset(
+				vertex_bytes,
+				u64(size_of(resources.Vertex)),
+			)
+			index_allocation_bytes += wgpu_align_arena_offset(index_bytes, u64(size_of(u32)))
 		}
+		allocation_bytes = vertex_allocation_bytes + index_allocation_bytes
 		if len(missing_pages) == 0 {
 			continue
+		}
+		loaded_payloads: [][]u8
+		if geometry.page_source_kind == .File {
+			loaded_payloads = make([][]u8, len(missing_pages), context.temp_allocator)
+			all_loaded := true
+			for page_index, selection_index in missing_pages {
+				page := &cache.cluster_pages[page_index]
+				record := geometry.page_payload_records[page_index]
+				if u64(len(page.loaded_payload)) == record.size {
+					loaded_payloads[selection_index] = page.loaded_payload
+					continue
+				}
+				all_loaded = false
+				if page.loading {
+					continue
+				}
+				if wgpu_virtual_page_io_schedule(
+					&renderer.virtual_geometry_page_io,
+					request.handle,
+					geometry.version,
+					page_index,
+					geometry.page_source_path,
+					record.offset,
+					record.size,
+				) {
+					page.loading = true
+				}
+			}
+			if !all_loaded {
+				renderer.virtual_geometry_deferred_group_count += 1
+				continue
+			}
 		}
 		if remaining_upload_groups^ <= 0 || allocation_bytes > remaining_upload_bytes^ {
 			renderer.virtual_geometry_deferred_group_count += 1
 			continue
 		}
-		for renderer.virtual_geometry_index_resident_bytes + allocation_bytes >
-		    renderer.virtual_geometry_index_budget_bytes {
+		for renderer.virtual_geometry_resident_bytes + allocation_bytes >
+		    renderer.virtual_geometry_budget_bytes {
 			evicted_handle, evicted := wgpu_evict_virtual_group(
 				renderer,
 				renderer.profile_frame_index,
@@ -415,53 +503,74 @@ wgpu_process_virtual_page_feedback :: proc(
 				append(&changed_handles, evicted_handle)
 			}
 		}
-		if renderer.virtual_geometry_index_resident_bytes + allocation_bytes >
-		   renderer.virtual_geometry_index_budget_bytes {
+		if renderer.virtual_geometry_resident_bytes + allocation_bytes >
+		   renderer.virtual_geometry_budget_bytes {
 			renderer.virtual_geometry_deferred_group_count += 1
 			continue
 		}
-		indices, page_offsets, expand_err := wgpu_expand_cluster_pages_indices(
-			geometry,
-			missing_pages[:],
-		)
-		if expand_err != "" {
-			return expand_err
+		upload, read_err := wgpu_read_virtual_pages(geometry, missing_pages[:], loaded_payloads)
+		if read_err != "" {
+			return read_err
 		}
-		page_bytes := u64(len(indices)) * u64(size_of(u32))
-		allocation := wgpu_arena_allocate(
+		vertex_bytes := u64(len(upload.vertices))
+		index_bytes := u64(len(upload.indices)) * u64(size_of(u32))
+		vertex_allocation := wgpu_arena_allocate(
+			&renderer.geometry_vertex_arena.allocator,
+			vertex_allocation_bytes,
+			u64(size_of(resources.Vertex)),
+		)
+		index_allocation := wgpu_arena_allocate(
 			&renderer.geometry_index_arena.allocator,
-			allocation_bytes,
+			index_allocation_bytes,
 			u64(size_of(u32)),
 		)
-		previous_buffer := renderer.geometry_index_arena.buffer
+		previous_vertex_buffer := renderer.geometry_vertex_arena.buffer
+		previous_index_buffer := renderer.geometry_index_arena.buffer
+		if upload_err := wgpu_geometry_arena_upload(
+			renderer,
+			&renderer.geometry_vertex_arena,
+			vertex_allocation,
+			raw_data(upload.vertices),
+			vertex_bytes,
+		); upload_err != "" {
+			wgpu_arena_release(&renderer.geometry_vertex_arena.allocator, vertex_allocation)
+			wgpu_arena_release(&renderer.geometry_index_arena.allocator, index_allocation)
+			return upload_err
+		}
 		if upload_err := wgpu_geometry_arena_upload(
 			renderer,
 			&renderer.geometry_index_arena,
-			allocation,
-			raw_data(indices),
-			page_bytes,
+			index_allocation,
+			raw_data(upload.indices),
+			index_bytes,
 		); upload_err != "" {
-			wgpu_arena_release(&renderer.geometry_index_arena.allocator, allocation)
+			wgpu_arena_release(&renderer.geometry_vertex_arena.allocator, vertex_allocation)
+			wgpu_arena_release(&renderer.geometry_index_arena.allocator, index_allocation)
 			return upload_err
 		}
 		for page_index, selection_index in missing_pages {
-			page_start := u64(page_offsets[selection_index]) * u64(size_of(u32))
-			page_end := u64(page_offsets[selection_index + 1]) * u64(size_of(u32))
 			page := &cache.cluster_pages[page_index]
 			page.range = {
-				offset = allocation.offset + page_start,
-				size = page_end - page_start,
+				offset = index_allocation.offset + upload.index_offsets[selection_index],
+				size = upload.index_offsets[selection_index + 1] - upload.index_offsets[selection_index],
+			}
+			page.vertex_range = {
+				offset = vertex_allocation.offset + upload.vertex_offsets[selection_index],
+				size = upload.vertex_offsets[selection_index + 1] - upload.vertex_offsets[selection_index],
 			}
 			page.resident = true
 			page.last_used_frame = feedback_frame
+			delete(page.loaded_payload, os.heap_allocator())
+			page.loaded_payload = nil
 		}
-		renderer.virtual_geometry_index_resident_bytes += allocation.size
+		renderer.virtual_geometry_resident_bytes += vertex_allocation.size + index_allocation.size
 		renderer.virtual_geometry_page_upload_count += u64(len(missing_pages))
-		renderer.virtual_geometry_page_upload_bytes += page_bytes
+		renderer.virtual_geometry_page_upload_bytes += vertex_bytes + index_bytes
 		renderer.virtual_geometry_group_upload_count += 1
 		remaining_upload_bytes^ -= allocation_bytes
 		remaining_upload_groups^ -= 1
-		if renderer.geometry_index_arena.buffer != previous_buffer {
+		if renderer.geometry_vertex_arena.buffer != previous_vertex_buffer ||
+		   renderer.geometry_index_arena.buffer != previous_index_buffer {
 			if bind_err := wgpu_rebuild_submission_bind_groups(renderer); bind_err != "" {
 				return bind_err
 			}
@@ -487,6 +596,7 @@ wgpu_visibility_consume_readbacks :: proc(
 	if renderer == nil {
 		return ""
 	}
+	wgpu_consume_virtual_page_io(renderer, registry)
 	wgpu.DevicePoll(renderer.device, false)
 	remaining_upload_bytes := WGPU_VIRTUAL_GEOMETRY_UPLOAD_BUDGET_BYTES
 	remaining_upload_groups := WGPU_VIRTUAL_GEOMETRY_UPLOAD_GROUP_BUDGET
@@ -606,8 +716,8 @@ wgpu_publish_visibility :: proc(renderer: ^WGPU_Renderer, stats: ^Render_Stats) 
 	stats.visible_meshlet_draws = renderer.gpu_visibility_counters.visible_meshlet_draws
 	stats.visible_virtual_clusters = renderer.gpu_visibility_counters.visible_virtual_clusters
 	stats.virtual_rejected_clusters = renderer.gpu_visibility_counters.virtual_rejected_clusters
-	stats.virtual_geometry_page_budget_bytes = renderer.virtual_geometry_index_budget_bytes
-	stats.virtual_geometry_page_resident_bytes = renderer.virtual_geometry_index_resident_bytes
+	stats.virtual_geometry_page_budget_bytes = renderer.virtual_geometry_budget_bytes
+	stats.virtual_geometry_page_resident_bytes = renderer.virtual_geometry_resident_bytes
 	stats.virtual_geometry_pages = renderer.virtual_geometry_page_count
 	stats.virtual_geometry_resident_pages = renderer.virtual_geometry_resident_page_count
 	stats.virtual_geometry_pinned_pages = renderer.virtual_geometry_pinned_page_count
@@ -619,6 +729,9 @@ wgpu_publish_visibility :: proc(renderer: ^WGPU_Renderer, stats: ^Render_Stats) 
 		renderer.gpu_visibility_counters.virtual_page_feedback_overflow
 	stats.virtual_geometry_page_uploads = renderer.virtual_geometry_page_upload_count
 	stats.virtual_geometry_page_upload_bytes = renderer.virtual_geometry_page_upload_bytes
+	stats.virtual_geometry_page_reads = renderer.virtual_geometry_page_read_count
+	stats.virtual_geometry_page_read_bytes = renderer.virtual_geometry_page_read_bytes
+	stats.virtual_geometry_page_read_failures = renderer.virtual_geometry_page_read_failure_count
 	stats.virtual_geometry_page_evictions = renderer.virtual_geometry_page_eviction_count
 	stats.virtual_geometry_page_feedback = min(
 		renderer.gpu_visibility_counters.virtual_page_feedback_count,

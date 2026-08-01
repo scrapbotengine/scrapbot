@@ -20,15 +20,18 @@ The WGPU backend includes:
 
 WGPU retains geometry/material/LOD batches across Transform-only frames. Stable ECS render slots address a backend-owned instance table. Transform changes pack into one dense update stream and one upload before GPU matrix/bounds expansion; static record changes still upload only coalesced dirty ranges. One compute pass produces separate camera-visible and shadow-visible instance lists plus their indirect counts. The renderer supports 131,072 instance slots and grows its draw database geometrically.
 
-Every exact Geometry version occupies aligned ranges in shared WGPU vertex and index arenas.
-Canonical and ordinary meshlet indices remain resident. Virtual-geometry cluster indices use
-group-aligned pages in the same index arena. Changed versions reuse fitting ranges or allocate from
-a coalescing free list; backing buffers grow geometrically.
+Ordinary Geometry versions occupy aligned ranges in shared WGPU vertex and index arenas. Virtual
+Geometry uses self-contained, group-aligned pages containing the referenced vertices and
+page-local indices. Streamed resident pages receive ranges in both arenas; absent pages consume no
+GPU vertex or index memory. A complete resource that fits the remaining budget retains canonical
+vertex/index ranges plus expanded page indices as a faster nonduplicating path. Changed versions
+reuse fitting ranges or allocate from coalescing free lists, and backing buffers grow
+geometrically.
 
 Every registered Geometry also owns deterministic meshlets capped at 64 vertices and 124 triangles,
 including local index streams, conservative sphere bounds, and normal cones. Imported Model
-products persist their hierarchy and page table. Other Geometry producers build the same data only
-when the resource is created or replaced.
+products persist their hierarchy and page payloads. Other Geometry producers build the same data
+in memory only when the resource is created or replaced.
 
 Imported models compile eligible primitives into up to three deterministic compact LOD Geometry resources before runtime bootstrap. Their semantic handles survive harmless source reordering and reimport. The base resource publishes the same thresholds and alternate handles as procedural LOD resources, so CPU/GPU selection and debug views have no importer-specific path.
 
@@ -40,15 +43,31 @@ asynchronous visibility feedback. Feedback includes projected-error priority for
 and actual use touches from visible instances. Deterministic hashing spreads resident touches over
 16 frames; missing-group requests remain immediate.
 
-The CPU processes the highest-priority groups first. It admits and evicts complete groups under
-`render.virtual_geometry_index_budget_mb`, with fixed per-frame byte and group limits. One group
-admission or complete-resource preload uses one combined arena transfer.
+The CPU processes the highest-priority groups first. Imported refinement pages are read from exact
+Model-product byte ranges on a dedicated I/O worker; rendering continues with the nearest resident
+fallback. Completed payloads are admitted and complete groups evicted under
+`render.virtual_geometry_budget_mb`, with fixed per-frame byte and group limits. The budget counts
+both vertex and index residency.
 
-Native multi-draw adapters retain one indexed-indirect command and aligned visible-instance slice per hierarchy cluster, and use that frontier for shadows too. Other capable adapters append selected `{instance slot, cluster index}` records into a bounded camera stream. Compatible same-material batches share one record span and indirect command; the vertex shader pulls cluster indices and attributes directly from the shared geometry arenas. Their shadow cascades reuse the GPU-selected object LOD through classic indexed-indirect commands. Selection, compaction, cascade visibility, and command counts remain GPU-produced.
+Native multi-draw adapters retain one indexed-indirect command and aligned visible-instance slice per hierarchy cluster, and use that frontier for shadows too. Other capable adapters append selected `{instance slot, cluster index}` records into a bounded camera stream. Compatible same-material batches share one record span and indirect command; the vertex shader pulls cluster indices and attributes directly from the shared geometry arenas.
+
+Portable shadows use classic indexed submission while the complete resource is resident. Under
+actual page pressure, they switch to the same page-local compact representation as the camera, so
+evicted canonical geometry is never required. Selection, compaction, cascade visibility, and
+command counts remain GPU-produced.
 
 Small Geometry whose hierarchy cannot simplify retains ordinary meshlets. Those batches require at least two instances to amortize their command range; a single-instance batch keeps one whole-primitive command.
 
-After whole-object rejection and LOD selection, compute tests camera meshlets against the frustum, single-sided normal cone, and Hi-Z; shadow lanes test each cascade frustum. World and depth can mix whole-primitive indirect draws with native cluster multi-draw or portable compact spans. Shadows mix whole-primitive draws with native cluster multi-draw; the portable path deliberately stays indexed. Arena-global offsets let adjacent same-material LOD commands share one native multi-draw span. On the portable camera path, compatible material batches instead share one bounded compact-record span. Meshlets, Meshlet Visibility, and Occlusion Queries force eligible batches through the detailed native/emulated meshlet path so diagnostics cover the complete retained cluster layout.
+After whole-object rejection and LOD selection, compute tests camera meshlets against the frustum,
+single-sided normal cone, and Hi-Z; shadow lanes test each cascade frustum. World and depth can mix
+whole-primitive indirect draws with native cluster multi-draw or portable compact spans. Shadows
+mix whole-primitive draws with native cluster multi-draw, classic indexed spans for complete
+portable resources, and compact page-local spans for streamed portable resources.
+
+Arena-global offsets let adjacent same-material LOD commands share one native multi-draw span. On
+portable compact paths, compatible material batches share bounded record spans. Meshlets, Meshlet
+Visibility, and Occlusion Queries force eligible batches through the detailed native/emulated
+meshlet path so diagnostics cover the complete retained cluster layout.
 
 Set `scrapbot.camera.debug_view` to `base_color`, `world_normals`, `roughness`, `metallic`, `depth`, `meshlets`, `lod`, `meshlet_visibility`, `hiz`, `occlusion_queries`, or `virtual_geometry` to capture the same diagnostics without opening the editor.
 
@@ -77,7 +96,7 @@ Pass `--cpu-culling` to run the same bounding-sphere tests, screen-radius LOD se
 Run `mise test-gpu` for the complete bounded GPU regression suite. It drives a greater-than-64-batch stress scene through compute and CPU visibility. It also verifies adaptive Hi-Z rejection plus asynchronous timestamps and counters.
 
 Run `mise test-virtual-geometry-gpu` for the dedicated residency-pressure gate. Its scripted camera
-steps across distinct procedural 48-page resources under a 16 KiB budget and requires streaming,
+steps across distinct procedural 48-page resources under a 64 KiB payload budget and requires streaming,
 whole-group eviction, fallback residency, bounded feedback, and a nonblank framegrab.
 
 Whole-primitive compute/CPU comparisons permit at most one 8-bit channel step in sixteen channels across a complete frame. This covers harmless backend rounding without accepting a visible mismatch. The LOD fixture instead requires 44 dB PSNR: both paths must choose the same imported object LOD, while the compute path may additionally select its sub-object virtual-geometry frontier.

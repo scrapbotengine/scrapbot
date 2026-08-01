@@ -219,7 +219,7 @@ source = "assets/studio.hdr"
 default_scene = "scenes/main.scene.toml"
 
 [render]
-virtual_geometry_index_budget_mb = 96.5
+virtual_geometry_budget_mb = 96.5
 environment = "a1000000-0000-4000-8000-000000000021"
 environment_intensity = 1.25
 environment_rotation = 90
@@ -234,7 +234,7 @@ background_blur = 0.25
 	)
 	defer destroy_project_config(&config)
 	testing.expect(t, config_result.err == .None)
-	testing.expect_value(t, config.render.virtual_geometry_index_budget_mb, f32(96.5))
+	testing.expect_value(t, config.render.virtual_geometry_budget_mb, f32(96.5))
 	testing.expect_value(t, config.render.environment, resource.id)
 	testing.expect_value(t, config.render.environment_intensity, f32(1.25))
 	testing.expect_value(t, config.render.environment_rotation, f32(90))
@@ -316,7 +316,7 @@ background_blur = 1.5
 		`name = "Invalid Budget"
 default_scene = "scenes/main.scene.toml"
 [render]
-virtual_geometry_index_budget_mb = 0
+virtual_geometry_budget_mb = 0
 `,
 	)
 	defer destroy_project_config(&invalid_budget)
@@ -326,12 +326,23 @@ virtual_geometry_index_budget_mb = 0
 		`name = "Tiny Valid Budget"
 default_scene = "scenes/main.scene.toml"
 [render]
-virtual_geometry_index_budget_mb = 0.015625
+virtual_geometry_budget_mb = 0.015625
 `,
 	)
 	defer destroy_project_config(&tiny_budget)
 	testing.expect(t, tiny_budget_result.err == .None)
-	testing.expect_value(t, tiny_budget.render.virtual_geometry_index_budget_mb, f32(0.015625))
+	testing.expect_value(t, tiny_budget.render.virtual_geometry_budget_mb, f32(0.015625))
+
+	legacy_budget, legacy_budget_result := parse_project_config(
+		`name = "Legacy Budget"
+default_scene = "scenes/main.scene.toml"
+[render]
+virtual_geometry_index_budget_mb = 32
+`,
+	)
+	defer destroy_project_config(&legacy_budget)
+	testing.expect(t, legacy_budget_result.err == .None)
+	testing.expect_value(t, legacy_budget.render.virtual_geometry_budget_mb, f32(32))
 
 	missing_background, missing_background_result := parse_project_config(
 		`name = "Missing Background"

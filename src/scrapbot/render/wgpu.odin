@@ -8,6 +8,7 @@ import ui "../ui"
 import base_runtime "base:runtime"
 import "core:fmt"
 import "core:math"
+import "core:os"
 import "core:path/filepath"
 import "core:time"
 import "vendor:wgpu"
@@ -40,7 +41,7 @@ WGPU_CLUSTER_COUNT_Y :: 9
 WGPU_CLUSTER_COUNT_Z :: 24
 WGPU_CLUSTER_COUNT :: WGPU_CLUSTER_COUNT_X * WGPU_CLUSTER_COUNT_Y * WGPU_CLUSTER_COUNT_Z
 WGPU_CLUSTER_INITIAL_LIGHT_CAPACITY :: 256
-WGPU_VIRTUAL_GEOMETRY_INDEX_BUDGET_BYTES :: u64(64 * 1024 * 1024)
+WGPU_VIRTUAL_GEOMETRY_BUDGET_BYTES :: u64(64 * 1024 * 1024)
 WGPU_VIRTUAL_GEOMETRY_UPLOAD_BUDGET_BYTES :: u64(512 * 1024)
 WGPU_VIRTUAL_GEOMETRY_UPLOAD_GROUP_BUDGET :: 16
 
@@ -361,7 +362,8 @@ WGPU_GPU_Cull_Uniform :: struct {
 	virtual_error_pixels: f32,
 	projection_y: f32,
 	virtual_feedback_epoch: u32,
-	_padding: [3]u32,
+	compact_shadow_pages: u32,
+	_padding: [2]u32,
 }
 #assert(size_of(WGPU_GPU_Cull_Uniform) == 704)
 
@@ -402,8 +404,9 @@ WGPU_GPU_Batch_Info :: struct {
 	compact_command_index: u32,
 	compact_visible_offset: u32,
 	compact_visible_capacity: u32,
+	compact_shadow_pages: u32,
 }
-#assert(size_of(WGPU_GPU_Batch_Info) == 32)
+#assert(size_of(WGPU_GPU_Batch_Info) == 36)
 
 WGPU_GPU_Meshlet_Info :: struct {
 	bounds: [4]f32,
@@ -462,14 +465,18 @@ WGPU_Geometry_Cache :: struct {
 	vertex_count: u32,
 	index_count: u32,
 	valid: bool,
+	virtual_geometry: bool,
 }
 
 WGPU_Cluster_Page_Cache :: struct {
 	range: WGPU_Arena_Range,
+	vertex_range: WGPU_Arena_Range,
 	last_used_frame: u64,
 	group_index: u32,
 	resident: bool,
 	pinned: bool,
+	loading: bool,
+	loaded_payload: []u8,
 }
 
 WGPU_Material_Cache :: struct {
@@ -539,7 +546,7 @@ wgpu_texture_cache_slot :: proc(
 	return -1
 }
 
-wgpu_geometry_cache_slot :: proc(
+wgpu_geometry_cache_slot :: proc "contextless" (
 	cache: []WGPU_Geometry_Cache,
 	handle: shared.Geometry_Handle,
 ) -> int {
@@ -950,17 +957,23 @@ WGPU_Renderer :: struct {
 	geometry_cache: [dynamic]WGPU_Geometry_Cache,
 	geometry_vertex_arena: WGPU_Geometry_Arena,
 	geometry_index_arena: WGPU_Geometry_Arena,
-	virtual_geometry_index_budget_bytes: u64,
-	virtual_geometry_index_resident_bytes: u64,
+	virtual_geometry_budget_bytes: u64,
+	virtual_geometry_resident_bytes: u64,
 	virtual_geometry_page_count: int,
 	virtual_geometry_resident_page_count: int,
 	virtual_geometry_pinned_page_count: int,
 	virtual_geometry_page_upload_count: u64,
 	virtual_geometry_page_upload_bytes: u64,
+	virtual_geometry_page_read_count: u64,
+	virtual_geometry_page_read_bytes: u64,
+	virtual_geometry_page_read_failure_count: u64,
 	virtual_geometry_page_eviction_count: u64,
 	virtual_geometry_group_upload_count: u64,
 	virtual_geometry_group_eviction_count: u64,
 	virtual_geometry_deferred_group_count: u64,
+	virtual_geometry_page_io: WGPU_Virtual_Page_IO,
+	gpu_compact_shadow_pages: bool,
+	cpu_culling: bool,
 	texture_cache: [dynamic]WGPU_Texture_Cache,
 	material_cache: [dynamic]WGPU_Material_Cache,
 	uniform_buffer: wgpu.Buffer,
@@ -2364,8 +2377,10 @@ wgpu_release_geometry_cache_ranges :: proc(
 	wgpu_arena_release(&renderer.geometry_index_arena.allocator, cached.index_range)
 	wgpu_arena_release(&renderer.geometry_index_arena.allocator, cached.meshlet_index_range)
 	for page in cached.cluster_pages {
+		delete(page.loaded_payload, os.heap_allocator())
 		if page.resident {
 			wgpu_arena_release(&renderer.geometry_index_arena.allocator, page.range)
+			wgpu_arena_release(&renderer.geometry_vertex_arena.allocator, page.vertex_range)
 		}
 	}
 	delete(cached.cluster_pages)
@@ -2421,11 +2436,28 @@ wgpu_geometry_cache :: proc(
 		renderer.geometry_index_arena.usage = {.Index, .Storage}
 		renderer.geometry_index_arena.label = "Scrapbot Shared Geometry Index Arena"
 	}
+	virtual_submission := wgpu_virtual_geometry_submission(renderer, geometry)
+	preload_virtual_geometry :=
+		virtual_submission &&
+		wgpu_virtual_geometry_should_preload_pages(
+			renderer,
+			geometry,
+			wgpu_cached_virtual_geometry_bytes(cached),
+		)
 	vertex_bytes := u64(len(geometry.vertices)) * u64(size_of(resources.Vertex))
 	index_bytes := u64(len(geometry.indices)) * u64(size_of(u32))
+	if virtual_submission && !preload_virtual_geometry {
+		vertex_bytes = 0
+	}
+	if virtual_submission && !preload_virtual_geometry {
+		index_bytes = 0
+	}
 	vertex_range := cached.vertex_range
 	vertex_range_reused := vertex_range.size >= vertex_bytes && vertex_range.size > 0
-	if !vertex_range_reused {
+	if vertex_bytes == 0 {
+		vertex_range = {}
+		vertex_range_reused = false
+	} else if !vertex_range_reused {
 		vertex_range = wgpu_arena_allocate(
 			&renderer.geometry_vertex_arena.allocator,
 			wgpu_align_arena_offset(vertex_bytes, u64(size_of(resources.Vertex))),
@@ -2434,7 +2466,10 @@ wgpu_geometry_cache :: proc(
 	}
 	index_range := cached.index_range
 	index_range_reused := index_range.size >= index_bytes && index_range.size > 0
-	if !index_range_reused {
+	if index_bytes == 0 {
+		index_range = {}
+		index_range_reused = false
+	} else if !index_range_reused {
 		index_range = wgpu_arena_allocate(
 			&renderer.geometry_index_arena.allocator,
 			wgpu_align_arena_offset(index_bytes, u64(size_of(u32))),
@@ -2459,13 +2494,14 @@ wgpu_geometry_cache :: proc(
 		for page in cluster_pages {
 			if page.resident {
 				wgpu_arena_release(&renderer.geometry_index_arena.allocator, page.range)
+				wgpu_arena_release(&renderer.geometry_vertex_arena.allocator, page.vertex_range)
 			}
 		}
 		delete(cluster_pages)
 	}
 	if renderer.gpu_meshlet_supported {
 		meshlet_err: string
-		if wgpu_virtual_geometry_submission(renderer, geometry) {
+		if virtual_submission {
 			resize(&cluster_pages, len(geometry.cluster_pages))
 			for group, group_index in geometry.cluster_groups {
 				page_end := group.page_offset + group.page_count
@@ -2473,7 +2509,7 @@ wgpu_geometry_cache :: proc(
 					cluster_pages[page_index].group_index = u32(group_index)
 				}
 			}
-			preload_geometry := wgpu_virtual_geometry_should_preload_pages(renderer, geometry)
+			preload_geometry := preload_virtual_geometry
 			selected_pages := make(
 				[dynamic]u32,
 				0,
@@ -2486,39 +2522,91 @@ wgpu_geometry_cache :: proc(
 					append(&selected_pages, u32(page_index))
 				}
 			}
-			page_indices, page_offsets, page_err := wgpu_expand_cluster_pages_indices(
-				geometry,
-				selected_pages[:],
-			)
-			if page_err != "" {
-				return nil, page_err
-			}
-			page_bytes := u64(len(page_indices)) * u64(size_of(u32))
-			page_range := wgpu_arena_allocate(
-				&renderer.geometry_index_arena.allocator,
-				wgpu_align_arena_offset(page_bytes, u64(size_of(u32))),
-				u64(size_of(u32)),
-			)
-			for page_index, selection_index in selected_pages {
-				page_offset := u64(page_offsets[selection_index]) * u64(size_of(u32))
-				page_end := u64(page_offsets[selection_index + 1]) * u64(size_of(u32))
-				cluster_pages[page_index].range = {
-					offset = page_range.offset + page_offset,
-					size = page_end - page_offset,
+			page_vertex_bytes: u64
+			page_index_bytes: u64
+			if preload_geometry {
+				page_indices, page_offsets, page_err := wgpu_expand_cluster_pages_indices(
+					geometry,
+					selected_pages[:],
+				)
+				if page_err != "" {
+					return nil, page_err
 				}
-				cluster_pages[page_index].resident = true
-			}
-			if upload_err := wgpu_geometry_arena_upload(
-				renderer,
-				&renderer.geometry_index_arena,
-				page_range,
-				raw_data(page_indices),
-				page_bytes,
-			); upload_err != "" {
-				return nil, upload_err
+				page_index_bytes = u64(len(page_indices)) * u64(size_of(u32))
+				page_index_range := wgpu_arena_allocate(
+					&renderer.geometry_index_arena.allocator,
+					wgpu_align_arena_offset(page_index_bytes, u64(size_of(u32))),
+					u64(size_of(u32)),
+				)
+				for page_index, selection_index in selected_pages {
+					page_start := u64(page_offsets[selection_index]) * u64(size_of(u32))
+					page_end := u64(page_offsets[selection_index + 1]) * u64(size_of(u32))
+					cluster_pages[page_index].range = {
+						offset = page_index_range.offset + page_start,
+						size = page_end - page_start,
+					}
+					cluster_pages[page_index].vertex_range.offset = vertex_range.offset
+					cluster_pages[page_index].resident = true
+				}
+				if upload_err := wgpu_geometry_arena_upload(
+					renderer,
+					&renderer.geometry_index_arena,
+					page_index_range,
+					raw_data(page_indices),
+					page_index_bytes,
+				); upload_err != "" {
+					return nil, upload_err
+				}
+				page_vertex_bytes = vertex_bytes
+			} else {
+				page_upload, page_err := wgpu_read_virtual_pages(geometry, selected_pages[:])
+				if page_err != "" {
+					return nil, page_err
+				}
+				page_vertex_bytes = u64(len(page_upload.vertices))
+				page_index_bytes = u64(len(page_upload.indices)) * u64(size_of(u32))
+				page_vertex_range := wgpu_arena_allocate(
+					&renderer.geometry_vertex_arena.allocator,
+					wgpu_align_arena_offset(page_vertex_bytes, u64(size_of(resources.Vertex))),
+					u64(size_of(resources.Vertex)),
+				)
+				page_index_range := wgpu_arena_allocate(
+					&renderer.geometry_index_arena.allocator,
+					wgpu_align_arena_offset(page_index_bytes, u64(size_of(u32))),
+					u64(size_of(u32)),
+				)
+				for page_index, selection_index in selected_pages {
+					cluster_pages[page_index].range = {
+						offset = page_index_range.offset + page_upload.index_offsets[selection_index],
+						size = page_upload.index_offsets[selection_index + 1] - page_upload.index_offsets[selection_index],
+					}
+					cluster_pages[page_index].vertex_range = {
+						offset = page_vertex_range.offset + page_upload.vertex_offsets[selection_index],
+						size = page_upload.vertex_offsets[selection_index + 1] - page_upload.vertex_offsets[selection_index],
+					}
+					cluster_pages[page_index].resident = true
+				}
+				if upload_err := wgpu_geometry_arena_upload(
+					renderer,
+					&renderer.geometry_vertex_arena,
+					page_vertex_range,
+					raw_data(page_upload.vertices),
+					page_vertex_bytes,
+				); upload_err != "" {
+					return nil, upload_err
+				}
+				if upload_err := wgpu_geometry_arena_upload(
+					renderer,
+					&renderer.geometry_index_arena,
+					page_index_range,
+					raw_data(page_upload.indices),
+					page_index_bytes,
+				); upload_err != "" {
+					return nil, upload_err
+				}
 			}
 			renderer.virtual_geometry_page_upload_count += u64(len(selected_pages))
-			renderer.virtual_geometry_page_upload_bytes += page_bytes
+			renderer.virtual_geometry_page_upload_bytes += page_vertex_bytes + page_index_bytes
 			for group in geometry.cluster_groups {
 				if preload_geometry || group.depth == geometry.cluster_max_depth {
 					renderer.virtual_geometry_group_upload_count += 1
@@ -2548,23 +2636,27 @@ wgpu_geometry_cache :: proc(
 	   meshlet_index_range.offset / u64(size_of(u32)) > 0xffff_ffff {
 		return nil, "shared geometry arena offsets exceed indexed-draw limits"
 	}
-	if upload_err := wgpu_geometry_arena_upload(
-		renderer,
-		&renderer.geometry_vertex_arena,
-		vertex_range,
-		raw_data(geometry.vertices),
-		vertex_bytes,
-	); upload_err != "" {
-		return nil, upload_err
+	if vertex_bytes > 0 {
+		if upload_err := wgpu_geometry_arena_upload(
+			renderer,
+			&renderer.geometry_vertex_arena,
+			vertex_range,
+			raw_data(geometry.vertices),
+			vertex_bytes,
+		); upload_err != "" {
+			return nil, upload_err
+		}
 	}
-	if upload_err := wgpu_geometry_arena_upload(
-		renderer,
-		&renderer.geometry_index_arena,
-		index_range,
-		raw_data(geometry.indices),
-		index_bytes,
-	); upload_err != "" {
-		return nil, upload_err
+	if index_bytes > 0 {
+		if upload_err := wgpu_geometry_arena_upload(
+			renderer,
+			&renderer.geometry_index_arena,
+			index_range,
+			raw_data(geometry.indices),
+			index_bytes,
+		); upload_err != "" {
+			return nil, upload_err
+		}
 	}
 	if renderer.gpu_meshlet_supported && len(meshlet_indices) > 0 {
 		meshlet_bytes := u64(len(meshlet_indices)) * u64(size_of(u32))
@@ -2588,8 +2680,10 @@ wgpu_geometry_cache :: proc(
 		wgpu_arena_release(&renderer.geometry_index_arena.allocator, cached.meshlet_index_range)
 	}
 	for page in cached.cluster_pages {
+		delete(page.loaded_payload, os.heap_allocator())
 		if page.resident {
 			wgpu_arena_release(&renderer.geometry_index_arena.allocator, page.range)
+			wgpu_arena_release(&renderer.geometry_vertex_arena.allocator, page.vertex_range)
 		}
 	}
 	delete(cached.cluster_pages)
@@ -2603,6 +2697,7 @@ wgpu_geometry_cache :: proc(
 		vertex_count = u32(len(geometry.vertices)),
 		index_count = u32(len(geometry.indices)),
 		valid = true,
+		virtual_geometry = virtual_submission,
 	}
 	cluster_pages = nil
 	committed = true
@@ -4146,9 +4241,10 @@ wgpu_run_headless :: proc(world: ^World, config: ^Run_Config) -> string {
 		return init_err
 	}
 	wgpu_configure_profile(&renderer, config.profile)
-	renderer.virtual_geometry_index_budget_bytes = config.virtual_geometry_index_budget_bytes
-	if renderer.virtual_geometry_index_budget_bytes == 0 {
-		renderer.virtual_geometry_index_budget_bytes = WGPU_VIRTUAL_GEOMETRY_INDEX_BUDGET_BYTES
+	renderer.virtual_geometry_budget_bytes = config.virtual_geometry_budget_bytes
+	renderer.cpu_culling = config.cpu_culling
+	if renderer.virtual_geometry_budget_bytes == 0 {
+		renderer.virtual_geometry_budget_bytes = WGPU_VIRTUAL_GEOMETRY_BUDGET_BYTES
 	}
 
 	width := u32(WGPU_OFFSCREEN_WIDTH)
@@ -4389,9 +4485,10 @@ wgpu_run_window :: proc(world: ^World, config: ^Run_Config) -> string {
 		return init_err
 	}
 	wgpu_configure_profile(&renderer, config.profile)
-	renderer.virtual_geometry_index_budget_bytes = config.virtual_geometry_index_budget_bytes
-	if renderer.virtual_geometry_index_budget_bytes == 0 {
-		renderer.virtual_geometry_index_budget_bytes = WGPU_VIRTUAL_GEOMETRY_INDEX_BUDGET_BYTES
+	renderer.virtual_geometry_budget_bytes = config.virtual_geometry_budget_bytes
+	renderer.cpu_culling = config.cpu_culling
+	if renderer.virtual_geometry_budget_bytes == 0 {
+		renderer.virtual_geometry_budget_bytes = WGPU_VIRTUAL_GEOMETRY_BUDGET_BYTES
 	}
 	defer wgpu_gpu_timing_drain(&renderer)
 

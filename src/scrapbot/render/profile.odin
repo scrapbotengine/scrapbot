@@ -53,6 +53,9 @@ Profile_Counter_Deltas :: struct {
 	geometry_arena_growths: u64,
 	virtual_geometry_page_uploads: u64,
 	virtual_geometry_page_upload_bytes: u64,
+	virtual_geometry_page_reads: u64,
+	virtual_geometry_page_read_bytes: u64,
+	virtual_geometry_page_read_failures: u64,
 	virtual_geometry_page_evictions: u64,
 	virtual_geometry_group_uploads: u64,
 	virtual_geometry_group_evictions: u64,
@@ -323,6 +326,18 @@ profile_counter_deltas :: proc(current, previous: Render_Stats) -> Profile_Count
 		virtual_geometry_page_upload_bytes = profile_counter_delta(
 			current.virtual_geometry_page_upload_bytes,
 			previous.virtual_geometry_page_upload_bytes,
+		),
+		virtual_geometry_page_reads = profile_counter_delta(
+			current.virtual_geometry_page_reads,
+			previous.virtual_geometry_page_reads,
+		),
+		virtual_geometry_page_read_bytes = profile_counter_delta(
+			current.virtual_geometry_page_read_bytes,
+			previous.virtual_geometry_page_read_bytes,
+		),
+		virtual_geometry_page_read_failures = profile_counter_delta(
+			current.virtual_geometry_page_read_failures,
+			previous.virtual_geometry_page_read_failures,
 		),
 		virtual_geometry_page_evictions = profile_counter_delta(
 			current.virtual_geometry_page_evictions,

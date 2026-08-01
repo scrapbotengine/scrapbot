@@ -268,6 +268,7 @@ wgpu_init_renderer :: proc(
 }
 
 wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
+	wgpu_virtual_page_io_destroy(&renderer.virtual_geometry_page_io)
 	if renderer.device != nil {
 		wgpu.DevicePoll(renderer.device, true)
 	}

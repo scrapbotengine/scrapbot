@@ -77,6 +77,9 @@ Render_Stats :: struct {
 	virtual_geometry_page_request_overflow: u32,
 	virtual_geometry_page_uploads: u64,
 	virtual_geometry_page_upload_bytes: u64,
+	virtual_geometry_page_reads: u64,
+	virtual_geometry_page_read_bytes: u64,
+	virtual_geometry_page_read_failures: u64,
 	virtual_geometry_page_evictions: u64,
 	virtual_geometry_page_feedback: u32,
 	virtual_geometry_group_uploads: u64,
@@ -375,7 +378,7 @@ apply_render_feature_overrides :: proc "contextless" (
 
 Run_Config :: struct {
 	backend: Renderer_Backend,
-	virtual_geometry_index_budget_bytes: u64,
+	virtual_geometry_budget_bytes: u64,
 	cpu_culling: bool,
 	render_feature_overrides: Render_Feature_Overrides,
 	window: bool,

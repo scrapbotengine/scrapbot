@@ -9,6 +9,18 @@ CLUSTER_MAX_TRIANGLES :: 124
 CLUSTER_PAGE_TARGET_BYTES :: 64 * 1024
 CLUSTER_PAGE_TARGET_INDICES :: CLUSTER_PAGE_TARGET_BYTES / size_of(u32)
 
+Page_Payload_Record :: struct {
+	offset: u64,
+	size: u64,
+	vertex_count: u32,
+	index_count: u32,
+}
+
+Page_Payloads :: struct {
+	records: []Page_Payload_Record,
+	bytes: [dynamic]u8,
+}
+
 Cluster_Group :: struct {
 	bounds: [4]f32,
 	error: f32,
@@ -322,4 +334,75 @@ destroy_hierarchy :: proc(hierarchy: ^Hierarchy, allocator := context.allocator)
 	delete(hierarchy.vertices, allocator)
 	delete(hierarchy.triangles, allocator)
 	hierarchy^ = {}
+}
+
+build_page_payloads :: proc(
+	hierarchy: ^Hierarchy,
+	vertices: rawptr,
+	vertex_count, vertex_stride: int,
+	allocator := context.allocator,
+) -> (
+	Page_Payloads,
+	string,
+) {
+	if hierarchy == nil || vertices == nil || vertex_count <= 0 || vertex_stride <= 0 {
+		return {}, "geometry page payload source is empty"
+	}
+	if validation_err := validate_hierarchy(hierarchy, vertex_count); validation_err != "" {
+		return {}, validation_err
+	}
+	result := Page_Payloads {
+		records = make([]Page_Payload_Record, len(hierarchy.pages), allocator),
+		bytes = make([dynamic]u8, 0, allocator),
+	}
+	marks := make([]u32, vertex_count, context.temp_allocator)
+	remap := make([]u32, vertex_count, context.temp_allocator)
+	source := cast([^]u8)vertices
+	for page, page_index in hierarchy.pages {
+		token := u32(page_index + 1)
+		page_start := len(result.bytes)
+		page_vertex_count: u32
+		cluster_end := int(page.cluster_offset + page.cluster_count)
+		for cluster in hierarchy.clusters[int(page.cluster_offset):cluster_end] {
+			vertex_end := int(cluster.vertex_offset + cluster.vertex_count)
+			for canonical_index in hierarchy.vertices[int(cluster.vertex_offset):vertex_end] {
+				if marks[canonical_index] == token {
+					continue
+				}
+				marks[canonical_index] = token
+				remap[canonical_index] = page_vertex_count
+				byte_offset := int(canonical_index) * vertex_stride
+				append(&result.bytes, ..source[byte_offset:byte_offset + vertex_stride])
+				page_vertex_count += 1
+			}
+		}
+		for cluster in hierarchy.clusters[int(page.cluster_offset):cluster_end] {
+			triangle_end := int(cluster.triangle_offset + cluster.triangle_count * 3)
+			local_vertices := hierarchy.vertices[int(cluster.vertex_offset):int(
+				cluster.vertex_offset + cluster.vertex_count,
+			)]
+			for local_index in hierarchy.triangles[int(cluster.triangle_offset):triangle_end] {
+				canonical_index := local_vertices[local_index]
+				value := remap[canonical_index]
+				encoded := [4]u8{u8(value), u8(value >> 8), u8(value >> 16), u8(value >> 24)}
+				append(&result.bytes, ..encoded[:])
+			}
+		}
+		result.records[page_index] = {
+			offset = u64(page_start),
+			size = u64(len(result.bytes) - page_start),
+			vertex_count = page_vertex_count,
+			index_count = page.index_count,
+		}
+	}
+	return result, ""
+}
+
+destroy_page_payloads :: proc(payloads: ^Page_Payloads, allocator := context.allocator) {
+	if payloads == nil {
+		return
+	}
+	delete(payloads.records, allocator)
+	delete(payloads.bytes)
+	payloads^ = {}
 }

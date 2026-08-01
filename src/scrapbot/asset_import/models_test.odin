@@ -117,6 +117,23 @@ test_model_offline_lods_are_deterministic_compact_and_round_trip :: proc(t: ^tes
 		decoded_primitive := decoded.meshes[0].primitives[0]
 		testing.expect_value(
 			t,
+			len(decoded_primitive.page_payloads),
+			len(decoded_primitive.hierarchy.pages),
+		)
+		for record, page_index in decoded_primitive.page_payloads {
+			expected_size :=
+				u64(record.vertex_count) * u64(size_of(Model_Vertex)) +
+				u64(record.index_count) * u64(size_of(u32))
+			testing.expect_value(t, record.size, expected_size)
+			testing.expect_value(
+				t,
+				record.index_count,
+				decoded_primitive.hierarchy.pages[page_index].index_count,
+			)
+			testing.expect(t, record.offset + record.size <= u64(len(encoded)))
+		}
+		testing.expect_value(
+			t,
 			len(decoded_primitive.hierarchy.pages),
 			len(model.meshes[0].primitives[0].hierarchy.pages),
 		)

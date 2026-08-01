@@ -75,6 +75,7 @@ register_project_models :: proc(
 			declaration,
 			&imported,
 			product.byte_count,
+			product.artifact_path,
 		); register_err != "" {
 			asset_import.destroy_model_product(&imported)
 			return fmt.tprintf("resources/%s: %s", declaration.source, register_err)
@@ -102,6 +103,7 @@ register_project_model :: proc(
 	declaration: shared.Project_Resource,
 	imported: ^asset_import.Model_Product,
 	import_byte_count: int = 0,
+	artifact_path: string = "",
 ) -> (
 	Model_Handle,
 	string,
@@ -186,6 +188,15 @@ register_project_model :: proc(
 			return {}, "failed to allocate imported model mesh name"
 		}
 		for &primitive in mesh.primitives {
+			page_source := Geometry_Page_Source_Desc {
+				kind = .File,
+				path = artifact_path,
+				records = primitive.page_payloads,
+			}
+			page_source_pointer: ^Geometry_Page_Source_Desc
+			if artifact_path != "" && len(primitive.page_payloads) > 0 {
+				page_source_pointer = &page_source
+			}
 			vertices := model_geometry_vertices(primitive.vertices[:])
 			geometry_name := fmt.tprintf(
 				"__model_%s_geometry_%016x",
@@ -197,6 +208,7 @@ register_project_model :: proc(
 				geometry_name,
 				{vertices = vertices, indices = primitive.indices[:]},
 				&primitive.hierarchy,
+				page_source_pointer,
 			)
 			delete(vertices)
 			if geometry_err != "" {
@@ -209,6 +221,15 @@ register_project_model :: proc(
 			lod_screen_radii: [shared.MAX_GEOMETRY_LODS - 1]f32
 			lod_simplification_errors: [shared.MAX_GEOMETRY_LODS - 1]f32
 			for &lod, lod_index in primitive.lods {
+				lod_page_source := Geometry_Page_Source_Desc {
+					kind = .File,
+					path = artifact_path,
+					records = lod.page_payloads,
+				}
+				lod_page_source_pointer: ^Geometry_Page_Source_Desc
+				if artifact_path != "" && len(lod.page_payloads) > 0 {
+					lod_page_source_pointer = &lod_page_source
+				}
 				lod_vertices := model_geometry_vertices(lod.vertices[:])
 				lod_geometry_name := fmt.tprintf("%s_lod_%d", geometry_name, lod.level + 1)
 				lod_geometry, lod_geometry_err := register_geometry_with_hierarchy(
@@ -216,6 +237,7 @@ register_project_model :: proc(
 					lod_geometry_name,
 					{vertices = lod_vertices, indices = lod.indices[:]},
 					&lod.hierarchy,
+					lod_page_source_pointer,
 				)
 				delete(lod_vertices)
 				if lod_geometry_err != "" {

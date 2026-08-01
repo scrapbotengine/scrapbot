@@ -6,8 +6,10 @@ import shared "../shared"
 import ui "../ui"
 
 import "core:math"
+import "core:os"
 import "core:strings"
 import "core:testing"
+import "core:thread"
 import "vendor:wgpu"
 
 @(test)
@@ -1932,7 +1934,7 @@ test_wgpu_virtual_geometry_touches_and_evicts_complete_groups :: proc(t: ^testin
 
 	renderer := WGPU_Renderer {
 		geometry_cache = make([dynamic]WGPU_Geometry_Cache, 0, 1),
-		virtual_geometry_index_resident_bytes = 16,
+		virtual_geometry_resident_bytes = 16,
 	}
 	defer delete(renderer.geometry_cache)
 	defer delete(renderer.geometry_index_arena.allocator.free_ranges)
@@ -1951,17 +1953,71 @@ test_wgpu_virtual_geometry_touches_and_evicts_complete_groups :: proc(t: ^testin
 @(test)
 test_wgpu_virtual_geometry_preloads_only_complete_resources_that_fit :: proc(t: ^testing.T) {
 	geometry := resources.Geometry {
+		vertices = []resources.Vertex{{}},
+		indices = []u32{0},
 		cluster_pages = []resources.Geometry_Cluster_Page{{index_count = 8}, {index_count = 16}},
 	}
+	required_bytes :=
+		wgpu_align_arena_offset(u64(size_of(resources.Vertex)), u64(size_of(resources.Vertex))) +
+		wgpu_align_arena_offset(u64(size_of(u32)), u64(size_of(u32))) +
+		u64(24 * size_of(u32))
 	renderer := WGPU_Renderer {
-		virtual_geometry_index_budget_bytes = 128,
-		virtual_geometry_index_resident_bytes = 32,
+		virtual_geometry_budget_bytes = required_bytes + 32,
+		virtual_geometry_resident_bytes = 32,
 	}
 	testing.expect(t, wgpu_virtual_geometry_should_preload_pages(&renderer, &geometry))
-	renderer.virtual_geometry_index_resident_bytes = 40
+	renderer.virtual_geometry_resident_bytes = 33
 	testing.expect(t, !wgpu_virtual_geometry_should_preload_pages(&renderer, &geometry))
-	renderer.virtual_geometry_index_resident_bytes = 129
+	renderer.virtual_geometry_resident_bytes = required_bytes + 32
 	testing.expect(t, !wgpu_virtual_geometry_should_preload_pages(&renderer, &geometry))
+	testing.expect(
+		t,
+		wgpu_virtual_geometry_should_preload_pages(&renderer, &geometry, required_bytes),
+	)
+	renderer.virtual_geometry_resident_bytes = renderer.virtual_geometry_budget_bytes + 1
+	testing.expect(t, !wgpu_virtual_geometry_should_preload_pages(&renderer, &geometry))
+}
+
+@(test)
+test_wgpu_virtual_page_io_reads_bounded_product_ranges :: proc(t: ^testing.T) {
+	root, root_err := os.make_directory_temp("", "scrapbot-page-io-*", context.allocator)
+	testing.expect(t, root_err == nil)
+	if root_err != nil {
+		return
+	}
+	defer os.remove_all(root)
+	defer delete(root)
+	path := strings.concatenate({root, "/pages.bin"})
+	defer delete(path)
+	testing.expect(t, os.write_entire_file(path, []u8{1, 2, 3, 4, 5, 6}) == nil)
+	io: WGPU_Virtual_Page_IO
+	defer wgpu_virtual_page_io_destroy(&io)
+	handle := shared.Geometry_Handle {
+		index = 7,
+		generation = 3,
+	}
+	testing.expect(t, wgpu_virtual_page_io_schedule(&io, handle, 11, 2, path, 2, 3))
+	job: ^WGPU_Virtual_Page_IO_Job
+	for _ in 0 ..< 10000 {
+		ok: bool
+		job, ok = wgpu_virtual_page_io_pop(&io)
+		if ok {
+			break
+		}
+		thread.yield()
+	}
+	testing.expect(t, job != nil)
+	if job != nil {
+		testing.expect(t, !job.err)
+		testing.expect_value(t, job.handle, handle)
+		testing.expect_value(t, job.geometry_version, u32(11))
+		testing.expect_value(t, job.page_index, u32(2))
+		testing.expect_value(t, len(job.bytes), 3)
+		if len(job.bytes) == 3 {
+			testing.expect(t, job.bytes[0] == 3 && job.bytes[1] == 4 && job.bytes[2] == 5)
+		}
+		wgpu_virtual_page_io_destroy_job(job)
+	}
 }
 
 @(test)
@@ -2094,6 +2150,9 @@ test_profile_reports_per_frame_counter_deltas_after_warmup :: proc(t: ^testing.T
 		geometry_arena_growths = 2,
 		virtual_geometry_page_uploads = 5,
 		virtual_geometry_page_upload_bytes = 2048,
+		virtual_geometry_page_reads = 7,
+		virtual_geometry_page_read_bytes = 3072,
+		virtual_geometry_page_read_failures = 1,
 		virtual_geometry_page_evictions = 1,
 		virtual_geometry_group_uploads = 3,
 		virtual_geometry_group_evictions = 1,
@@ -2111,6 +2170,9 @@ test_profile_reports_per_frame_counter_deltas_after_warmup :: proc(t: ^testing.T
 	stats.geometry_arena_growths += 1
 	stats.virtual_geometry_page_uploads += 2
 	stats.virtual_geometry_page_upload_bytes += 512
+	stats.virtual_geometry_page_reads += 3
+	stats.virtual_geometry_page_read_bytes += 1024
+	stats.virtual_geometry_page_read_failures += 2
 	stats.virtual_geometry_page_evictions += 1
 	stats.virtual_geometry_group_uploads += 1
 	stats.virtual_geometry_group_evictions += 1
@@ -2128,6 +2190,9 @@ test_profile_reports_per_frame_counter_deltas_after_warmup :: proc(t: ^testing.T
 	testing.expect_value(t, first.geometry_arena_growths, u64(1))
 	testing.expect_value(t, first.virtual_geometry_page_uploads, u64(2))
 	testing.expect_value(t, first.virtual_geometry_page_upload_bytes, u64(512))
+	testing.expect_value(t, first.virtual_geometry_page_reads, u64(3))
+	testing.expect_value(t, first.virtual_geometry_page_read_bytes, u64(1024))
+	testing.expect_value(t, first.virtual_geometry_page_read_failures, u64(2))
 	testing.expect_value(t, first.virtual_geometry_page_evictions, u64(1))
 	testing.expect_value(t, first.virtual_geometry_group_uploads, u64(1))
 	testing.expect_value(t, first.virtual_geometry_group_evictions, u64(1))
@@ -2212,6 +2277,45 @@ test_wgpu_indirect_template_uses_shared_geometry_arena_offsets :: proc(t: ^testi
 
 	template = wgpu_geometry_indirect_template(&geometry, 44, false)
 	testing.expect_value(t, template.first_instance, u32(0))
+}
+
+@(test)
+test_wgpu_compact_shadows_use_pages_only_for_streamed_geometry :: proc(t: ^testing.T) {
+	renderer := WGPU_Renderer {
+		gpu_meshlet_submission_active = true,
+		geometry_cache = make([dynamic]WGPU_Geometry_Cache, 0, 1),
+	}
+	defer delete(renderer.geometry_cache)
+	batch := WGPU_Draw_Batch {
+		meshlet_submission = true,
+		compact_submission = true,
+	}
+
+	testing.expect_value(
+		t,
+		wgpu_shadow_batch_submission_mode(&renderer, batch),
+		WGPU_Submission_Mode.Classic,
+	)
+	append(&renderer.geometry_cache, WGPU_Geometry_Cache{valid = true, virtual_geometry = true})
+	wgpu_recount_virtual_page_residency(&renderer)
+	testing.expect(t, wgpu_compact_shadow_pages_active(&renderer))
+	testing.expect_value(
+		t,
+		wgpu_shadow_batch_submission_mode(&renderer, batch),
+		WGPU_Submission_Mode.Compact,
+	)
+
+	renderer.geometry_cache[0].vertex_range = {
+		offset = 64,
+		size = 1024,
+	}
+	wgpu_recount_virtual_page_residency(&renderer)
+	testing.expect(t, !wgpu_compact_shadow_pages_active(&renderer))
+	testing.expect_value(
+		t,
+		wgpu_shadow_batch_submission_mode(&renderer, batch),
+		WGPU_Submission_Mode.Classic,
+	)
 }
 
 test_count_frame_system :: proc(data: rawptr, world: ^World, delta_seconds: f32) -> string {
