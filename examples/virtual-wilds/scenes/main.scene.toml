@@ -62,14 +62,14 @@ sun_size = 0.35
 sun_glow = 0.2
 
 [entities.components.scrapbot.volumetric_fog]
-color = [0.22, 0.32, 0.38]
-density = 0.008
-height = 0
-height_falloff = 0.055
+color = [0.28, 0.36, 0.4]
+density = 0.011
+height = -0.35
+height_falloff = 0.042
 max_distance = 150
-anisotropy = 0.62
-ambient_intensity = 0.02
-light_intensity = 2.6
+anisotropy = 0.68
+ambient_intensity = 0.025
+light_intensity = 2.3
 point_light_intensity = 0
 
 [[entities]]
@@ -94,6 +94,65 @@ primitive = "plane"
 
 [entities.material]
 resource = "7b000000-0000-4000-8000-000000000009"
+
+[[entities]]
+id = "7b100000-0000-4000-8000-000000000006"
+name = "Coastal Seabed"
+
+[entities.transform]
+position = [0, -3.2, -50]
+rotation = [0, 0, 0]
+scale = [84, 1, 300]
+
+[entities.mesh]
+primitive = "plane"
+
+[entities.material]
+resource = "7b000000-0000-4000-8000-000000000007"
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "7b100000-0000-4000-8000-000000000007"
+name = "Submerged Shelf Near"
+
+[entities.transform]
+position = [-4, -2.45, -10]
+rotation = [0, 2.72, 0]
+scale = [1.45, 0.58, 1.6]
+
+[entities.model]
+resource = "7b000000-0000-4000-8000-000000000004"
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "7b100000-0000-4000-8000-000000000008"
+name = "Submerged Shelf Middle"
+
+[entities.transform]
+position = [-7.5, -2.8, -45]
+rotation = [0, 0.38, 0]
+scale = [1.8, 0.7, 1.9]
+
+[entities.model]
+resource = "7b000000-0000-4000-8000-000000000004"
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "7b100000-0000-4000-8000-000000000009"
+name = "Submerged Shelf Far"
+
+[entities.transform]
+position = [-5, -3, -78]
+rotation = [0, 2.95, 0]
+scale = [1.65, 0.68, 1.8]
+
+[entities.model]
+resource = "7b000000-0000-4000-8000-000000000004"
+
+[entities.shadow_receiver]
 
 [[entities]]
 id = "7b100000-0000-4000-8000-000000000005"

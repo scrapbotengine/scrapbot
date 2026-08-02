@@ -30,6 +30,15 @@ The material uses Scrapbot's sorted transparent pass and public scene-sampling A
 is therefore a normal consumer of the same shader-resource and material API available to every
 project, not a renderer-only water path.
 
+A broad authored seabed closes the complete camera route beneath the water. Reused instances of
+the Coastal Rocks scan form submerged shelves at several depths, giving absorption, refraction,
+and intersection foam real underwater topology instead of exposing the renderer's empty clear
+color through the surface.
+
+The ordinary public `scrapbot.volumetric_fog` component adds restrained blue-gray coastal haze.
+Its low layer and forward-scattering response soften the distant route and catch the warm sun
+without obscuring the photogrammetry.
+
 The water shader adapts Stefan Gustavson and Ian McEwan's
 [`psrdnoise2.wgsl`](https://github.com/stegu/psrdnoise) at commit
 `419175a270862ce7ae692038fafafb42ec0427e9`. psrdnoise is distributed under the MIT License; the

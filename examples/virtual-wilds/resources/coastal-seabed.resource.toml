@@ -1,9 +1,9 @@
 id = "7b000000-0000-4000-8000-000000000007"
 type = "scrapbot.material"
-name = "Gorge Ground"
+name = "Coastal Seabed"
 
 [material]
-base_color = [0.08, 0.22, 0.3, 1]
+base_color = [0.16, 0.12, 0.075, 1]
 emissive = [0, 0, 0]
 metallic = 0
-roughness = 0.3
+roughness = 0.96
