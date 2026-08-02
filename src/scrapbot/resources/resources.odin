@@ -47,6 +47,13 @@ Geometry_Desc :: struct {
 	indices: []u32,
 }
 
+Geometry_Catalog_Desc :: struct {
+	query_positions: []Vec3,
+	canonical_index_count: u32,
+	hierarchy: ^Geometry_Hierarchy,
+	page_source: ^Geometry_Page_Source_Desc,
+}
+
 Geometry_Query_Proxy :: struct {
 	positions: []Vec3,
 }
@@ -880,6 +887,143 @@ register_geometry_with_hierarchy :: proc(
 			page_payload_bytes = prepared_page_source.bytes,
 			cluster_max_depth = hierarchy.max_depth,
 			bounds = calculate_bounds(desc.vertices),
+			generation = 1,
+			version = 1,
+			alive = true,
+		},
+	)
+	registry.geometry_topology_revision += 1
+	return {u32(len(registry.geometries) - 1), 1}, ""
+}
+
+register_geometry_catalog :: proc(
+	registry: ^Registry,
+	name: string,
+	desc: Geometry_Catalog_Desc,
+) -> (
+	Geometry_Handle,
+	string,
+) {
+	if registry == nil {
+		return {}, "geometry registry is not available"
+	}
+	ensure_allocator(registry)
+	if len(desc.query_positions) == 0 {
+		return {}, "geometry catalog must contain query positions"
+	}
+	if desc.canonical_index_count == 0 || desc.canonical_index_count % 3 != 0 {
+		return {}, "geometry catalog indices must contain triangle lists"
+	}
+	for position in desc.query_positions {
+		if !finite3(position) {
+			return {}, "geometry catalog query positions must be finite"
+		}
+	}
+	if desc.hierarchy == nil || desc.page_source == nil || desc.page_source.kind != .File {
+		return {}, "geometry catalog requires a file-backed cluster hierarchy"
+	}
+	if hierarchy_err := geometry.validate_hierarchy(desc.hierarchy, len(desc.query_positions));
+	   hierarchy_err != "" {
+		return {}, hierarchy_err
+	}
+	hierarchy := geometry.clone_hierarchy(desc.hierarchy^, registry.allocator)
+	meshlet_data, meshlet_err := build_leaf_meshlets(&hierarchy, registry.allocator)
+	if meshlet_err != "" {
+		destroy_geometry_hierarchy(&hierarchy, registry.allocator)
+		return {}, meshlet_err
+	}
+	prepared_page_source, page_source_err := prepare_geometry_page_source(
+		{},
+		&hierarchy,
+		desc.page_source,
+		registry.allocator,
+	)
+	if page_source_err != "" {
+		destroy_meshlet_data(&meshlet_data, registry.allocator)
+		destroy_geometry_hierarchy(&hierarchy, registry.allocator)
+		return {}, page_source_err
+	}
+	query_proxy := Geometry_Query_Proxy {
+		positions = clone_slice(desc.query_positions, registry.allocator),
+	}
+	bounds := calculate_position_bounds(desc.query_positions)
+	if index, found := geometry_index_by_name(registry, name); found {
+		registered := &registry.geometries[index]
+		if registered.authored {
+			destroy_meshlet_data(&meshlet_data, registry.allocator)
+			destroy_geometry_hierarchy(&hierarchy, registry.allocator)
+			destroy_prepared_geometry_page_source(&prepared_page_source, registry.allocator)
+			delete(query_proxy.positions, registry.allocator)
+			return {}, fmt.tprintf("geometry name '%s' belongs to a project resource and cannot be replaced at runtime", name)
+		}
+		had_lods := registered.lod_count > 0
+		delete(registered.vertices, registry.allocator)
+		delete(registered.indices, registry.allocator)
+		delete(registered.query_proxy.positions, registry.allocator)
+		delete(registered.meshlets, registry.allocator)
+		delete(registered.meshlet_vertices, registry.allocator)
+		delete(registered.meshlet_triangles, registry.allocator)
+		delete(registered.cluster_groups, registry.allocator)
+		delete(registered.clusters, registry.allocator)
+		delete(registered.cluster_pages, registry.allocator)
+		delete(registered.cluster_vertices, registry.allocator)
+		delete(registered.cluster_triangles, registry.allocator)
+		destroy_geometry_page_source(registered, registry.allocator)
+		registered.vertices = nil
+		registered.indices = nil
+		registered.query_proxy = query_proxy
+		registered.canonical_vertex_count = u32(len(desc.query_positions))
+		registered.canonical_index_count = desc.canonical_index_count
+		registered.meshlets = meshlet_data.meshlets
+		registered.meshlet_vertices = meshlet_data.vertices
+		registered.meshlet_triangles = meshlet_data.triangles
+		registered.cluster_groups = hierarchy.groups
+		registered.clusters = hierarchy.clusters
+		registered.cluster_pages = hierarchy.pages
+		registered.cluster_vertices = hierarchy.vertices
+		registered.cluster_triangles = hierarchy.triangles
+		install_geometry_page_source(registered, &prepared_page_source)
+		registered.cluster_max_depth = hierarchy.max_depth
+		registered.bounds = bounds
+		registered.lod_handles = {}
+		registered.lod_screen_radii = {}
+		registered.lod_simplification_errors = {}
+		registered.lod_count = 0
+		registered.version += 1
+		if had_lods {
+			registry.geometry_topology_revision += 1
+		}
+		return {u32(index), registered.generation}, ""
+	}
+	cloned_name, clone_err := strings.clone(name, registry.allocator)
+	if clone_err != nil {
+		destroy_meshlet_data(&meshlet_data, registry.allocator)
+		destroy_geometry_hierarchy(&hierarchy, registry.allocator)
+		destroy_prepared_geometry_page_source(&prepared_page_source, registry.allocator)
+		delete(query_proxy.positions, registry.allocator)
+		return {}, "failed to allocate geometry name"
+	}
+	append(
+		&registry.geometries,
+		Geometry {
+			name = cloned_name,
+			query_proxy = query_proxy,
+			canonical_vertex_count = u32(len(desc.query_positions)),
+			canonical_index_count = desc.canonical_index_count,
+			meshlets = meshlet_data.meshlets,
+			meshlet_vertices = meshlet_data.vertices,
+			meshlet_triangles = meshlet_data.triangles,
+			cluster_groups = hierarchy.groups,
+			clusters = hierarchy.clusters,
+			cluster_pages = hierarchy.pages,
+			cluster_vertices = hierarchy.vertices,
+			cluster_triangles = hierarchy.triangles,
+			page_source_kind = prepared_page_source.kind,
+			page_source_path = prepared_page_source.path,
+			page_payload_records = prepared_page_source.records,
+			page_payload_bytes = prepared_page_source.bytes,
+			cluster_max_depth = hierarchy.max_depth,
+			bounds = bounds,
 			generation = 1,
 			version = 1,
 			alive = true,
@@ -2150,6 +2294,22 @@ calculate_bounds :: proc(vertices: []Vertex) -> Bounds {
 			bounds.max.x,
 			vertex.position.x,
 		); bounds.max.y = max(bounds.max.y, vertex.position.y); bounds.max.z = max(bounds.max.z, vertex.position.z)
+	}
+	return bounds
+}
+
+calculate_position_bounds :: proc(positions: []Vec3) -> Bounds {
+	bounds := Bounds {
+		min = positions[0],
+		max = positions[0],
+	}
+	for position in positions[1:] {
+		bounds.min.x = min(bounds.min.x, position.x)
+		bounds.min.y = min(bounds.min.y, position.y)
+		bounds.min.z = min(bounds.min.z, position.z)
+		bounds.max.x = max(bounds.max.x, position.x)
+		bounds.max.y = max(bounds.max.y, position.y)
+		bounds.max.z = max(bounds.max.z, position.z)
 	}
 	return bounds
 }

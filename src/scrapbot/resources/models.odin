@@ -129,7 +129,7 @@ register_project_model :: proc(
 	model.source, _ = strings.clone(declaration.source, registry.allocator)
 	model.asset_source, _ = strings.clone(declaration.model.source, registry.allocator)
 	model.import_byte_count = import_byte_count
-	for material in imported.materials {
+	for &material in imported.materials {
 		model.ignored_texture_count += int(material.ignored_texture_count)
 	}
 	if model.name == "" || model.source == "" || model.asset_source == "" {
@@ -138,7 +138,7 @@ register_project_model :: proc(
 	}
 	id_buffer: [36]u8
 	id_text := shared.resource_uuid_to_string(declaration.id, id_buffer[:])
-	for material in imported.materials {
+	for &material in imported.materials {
 		resource_name := fmt.tprintf(
 			"__model_%s_material_%016x",
 			id_text,
@@ -177,6 +177,7 @@ register_project_model :: proc(
 			return {}, material_err
 		}
 		append(&model.material_handles, handle)
+		asset_import.destroy_model_material(&material)
 	}
 	for &mesh in imported.meshes {
 		model_mesh := Model_Mesh{}
@@ -197,20 +198,35 @@ register_project_model :: proc(
 			if artifact_path != "" && len(primitive.page_payloads) > 0 {
 				page_source_pointer = &page_source
 			}
-			vertices := model_geometry_vertices(primitive.vertices[:])
 			geometry_name := fmt.tprintf(
 				"__model_%s_geometry_%016x",
 				id_text,
 				hash.fnv64a(transmute([]byte)primitive.key),
 			)
-			geometry, geometry_err := register_geometry_with_hierarchy(
-				registry,
-				geometry_name,
-				{vertices = vertices, indices = primitive.indices[:]},
-				&primitive.hierarchy,
-				page_source_pointer,
-			)
-			delete(vertices)
+			geometry: Geometry_Handle
+			geometry_err: string
+			if len(primitive.query_positions) > 0 {
+				geometry, geometry_err = register_geometry_catalog(
+					registry,
+					geometry_name,
+					{
+						query_positions = primitive.query_positions,
+						canonical_index_count = primitive.index_count,
+						hierarchy = &primitive.hierarchy,
+						page_source = page_source_pointer,
+					},
+				)
+			} else {
+				vertices := model_geometry_vertices(primitive.vertices[:])
+				geometry, geometry_err = register_geometry_with_hierarchy(
+					registry,
+					geometry_name,
+					{vertices = vertices, indices = primitive.indices[:]},
+					&primitive.hierarchy,
+					page_source_pointer,
+				)
+				delete(vertices)
+			}
 			if geometry_err != "" {
 				destroy_model(&model, registry.allocator)
 				return {}, geometry_err
@@ -230,16 +246,31 @@ register_project_model :: proc(
 				if artifact_path != "" && len(lod.page_payloads) > 0 {
 					lod_page_source_pointer = &lod_page_source
 				}
-				lod_vertices := model_geometry_vertices(lod.vertices[:])
 				lod_geometry_name := fmt.tprintf("%s_lod_%d", geometry_name, lod.level + 1)
-				lod_geometry, lod_geometry_err := register_geometry_with_hierarchy(
-					registry,
-					lod_geometry_name,
-					{vertices = lod_vertices, indices = lod.indices[:]},
-					&lod.hierarchy,
-					lod_page_source_pointer,
-				)
-				delete(lod_vertices)
+				lod_geometry: Geometry_Handle
+				lod_geometry_err: string
+				if len(lod.query_positions) > 0 {
+					lod_geometry, lod_geometry_err = register_geometry_catalog(
+						registry,
+						lod_geometry_name,
+						{
+							query_positions = lod.query_positions,
+							canonical_index_count = lod.index_count,
+							hierarchy = &lod.hierarchy,
+							page_source = lod_page_source_pointer,
+						},
+					)
+				} else {
+					lod_vertices := model_geometry_vertices(lod.vertices[:])
+					lod_geometry, lod_geometry_err = register_geometry_with_hierarchy(
+						registry,
+						lod_geometry_name,
+						{vertices = lod_vertices, indices = lod.indices[:]},
+						&lod.hierarchy,
+						lod_page_source_pointer,
+					)
+					delete(lod_vertices)
+				}
 				if lod_geometry_err != "" {
 					destroy_model(&model, registry.allocator)
 					return {}, lod_geometry_err
@@ -267,10 +298,12 @@ register_project_model :: proc(
 				model_primitive.material = model.material_handles[primitive.material_index]
 			}
 			append(&model_mesh.primitives, model_primitive)
+			asset_import.destroy_model_primitive(&primitive)
 		}
 		append(&model.meshes, model_mesh)
+		asset_import.destroy_model_mesh(&mesh)
 	}
-	for node in imported.nodes {
+	for &node in imported.nodes {
 		model_node := Model_Node {
 			parent_index = node.parent_index,
 			mesh_index = node.mesh_index,
@@ -283,6 +316,9 @@ register_project_model :: proc(
 			return {}, "failed to allocate imported model node name"
 		}
 		append(&model.nodes, model_node)
+		delete(node.key)
+		delete(node.name)
+		node = {}
 	}
 	if index, found := model_index_by_uuid_any(registry, declaration.id); found {
 		current := &registry.models[index]

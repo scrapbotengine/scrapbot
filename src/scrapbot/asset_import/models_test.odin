@@ -143,11 +143,13 @@ test_model_offline_lods_are_deterministic_compact_and_round_trip :: proc(t: ^tes
 			len(model.meshes[0].primitives[0].hierarchy.clusters),
 		)
 		testing.expect_value(t, len(decoded.meshes[0].primitives[0].lods), 3)
-		decoded_indices := decoded.meshes[0].primitives[0].lods[2].indices
-		source_indices := model.meshes[0].primitives[0].lods[2].indices
-		testing.expect_value(t, len(decoded_indices), len(source_indices))
-		for element, index in source_indices {
-			testing.expect_value(t, decoded_indices[index], element)
+		decoded_lod := decoded.meshes[0].primitives[0].lods[2]
+		source_lod := model.meshes[0].primitives[0].lods[2]
+		testing.expect_value(t, decoded_lod.index_count, u32(len(source_lod.indices)))
+		testing.expect_value(t, decoded_lod.vertex_count, u32(len(source_lod.vertices)))
+		testing.expect_value(t, len(decoded_lod.query_positions), len(source_lod.vertices))
+		for vertex, index in source_lod.vertices {
+			testing.expect_value(t, decoded_lod.query_positions[index], vertex.position)
 		}
 		for lod in decoded_primitive.lods {
 			testing.expect(t, len(lod.hierarchy.pages) > 0)
@@ -393,17 +395,12 @@ test_static_gltf_import_is_incremental_and_round_trips_product :: proc(t: ^testi
 		testing.expect_value(t, model.materials[0].base_color.x, f32(1))
 		testing.expect_value(t, model.meshes[0].name, "Triangle Mesh")
 		primitive := model.meshes[0].primitives[0]
-		testing.expect(t, len(primitive.indices) == 3)
-		if len(primitive.indices) == 3 {
-			testing.expect_value(t, primitive.indices[0], u32(0))
-			testing.expect_value(t, primitive.indices[1], u32(1))
-			testing.expect_value(t, primitive.indices[2], u32(2))
-		}
-		testing.expect(t, math.abs(primitive.vertices[0].normal.z - 1) < 0.0001)
-		testing.expect_value(t, primitive.vertices[0].tangent.x, f32(1))
-		testing.expect_value(t, primitive.vertices[0].tangent.y, f32(0))
-		testing.expect_value(t, primitive.vertices[0].tangent.z, f32(0))
-		testing.expect_value(t, primitive.vertices[0].tangent.w, f32(1))
+		testing.expect_value(t, primitive.vertex_count, u32(3))
+		testing.expect_value(t, primitive.index_count, u32(3))
+		testing.expect_value(t, len(primitive.query_positions), 3)
+		testing.expect_value(t, primitive.query_positions[0], shared.Vec3{0, 1, 0})
+		testing.expect_value(t, len(primitive.hierarchy.clusters), 1)
+		testing.expect_value(t, primitive.hierarchy.clusters[0].triangle_count, u32(1))
 		testing.expect_value(t, model.nodes[0].name, "Triangle Node")
 		testing.expect_value(t, model.nodes[0].mesh_index, i32(0))
 		testing.expect_value(t, model.nodes[0].transform.position.x, f32(1))

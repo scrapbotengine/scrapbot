@@ -283,9 +283,12 @@ indices with that exact resource version. Imported model products persist the hi
 Geometry producers build the same representation at registration. See ADR-049 and ADR-050.
 
 Partition each hierarchy into deterministic, group-aligned pages containing referenced canonical
-vertices and page-local expanded indices. Imported resources retain a position-only CPU query
-proxy plus exact leaf topology instead of full render vertices and source indices. Reconstruct a
-temporary canonical view from leaf-containing pages only for backend cache creation. Retain
+vertices and page-local expanded indices. Imported products persist a compact runtime catalog with
+canonical counts, position-only query data, exact leaf topology, and file page ranges instead of
+standalone full render vertices and source indices. Cache-hit loading streams the catalog, skips
+payload bytes, derives compatibility meshlets from exact leaves, and releases decoded entries as
+they enter registry ownership. Reconstruct a temporary canonical view from leaf-containing pages
+only for backend cache creation. Retain
 canonical GPU vertex/index streams plus expanded page indices when the complete Geometry fits the
 remaining combined payload budget; otherwise pin its coarsest page frontier. On WGPU adapters
 with indirect-first-instance, project group error into pixels and submit the unique cluster

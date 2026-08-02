@@ -23,21 +23,23 @@ scene parse + schema validation + resource UUID resolution
 Native components register before Luau executes, so scripts can retrieve native handles. Asset import completes before runtime resource registration. Scene validation uses the combined engine/native/Luau registry.
 
 Before bootstrap, Model import simplifies eligible primitive index streams, compacts each retained
-level, builds its crack-aware hierarchy, and persists both the LOD chain and deterministic page
-table in the versioned product. Runtime registration validates and publishes those compiled values
-as semantic Geometry subresources.
+level, builds its crack-aware hierarchy, and persists the LOD chain, position-only query data, and
+deterministic page table in the versioned product. Runtime loading reads this catalog directly from
+the file, skips page payload ranges, validates the compiled values, publishes semantic Geometry
+subresources one primitive at a time, and promptly releases the decoded entry.
 
 At bootstrap or reload, Model roots reconcile imported nodes and primitives into derived
 Transform/Geometry/Material entities. Later duplication, Undo/Redo, or resource replacement
 increments a model-instance revision; reconciliation waits for that structural signal.
 
 Resource descriptions remain outside ECS. Components store resolved runtime handles. Geometry
-registration derives bounded meshlets. It accepts a validated compiled hierarchy and file-backed
-page ranges for imported models or derives the same hierarchy and in-memory page payloads for other
-producers. Imported entries retain canonical counts and a position-only query proxy, then release
-their complete CPU render vertices and source indices. Canonical vertex IDs, exact leaf topology,
-monotonic group errors, page identities, page-source records, and pinned fallback flags remain
-versioned with the Geometry entry.
+registration derives bounded meshlets from source geometry or exact compiled hierarchy leaves. It
+accepts a validated compact catalog and file-backed page ranges for imported models or derives the
+same hierarchy and in-memory page payloads for other producers. Imported entries retain canonical
+counts and a position-only query proxy without ever decoding complete CPU render vertices or source
+indices during a cache-hit bootstrap. Canonical vertex IDs, exact leaf topology, monotonic group
+errors, page identities, page-source records, and pinned fallback flags remain versioned with the
+Geometry entry.
 
 Picking iterates exact leaf triangles against resident vertex positions or the query proxy. A
 classic backend path asks the resource for a canonical view. Memory sources lend resident arrays;

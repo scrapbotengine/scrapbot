@@ -13,8 +13,8 @@ import "core:path/filepath"
 import "core:strings"
 import cgltf "vendor:cgltf"
 
-MODEL_IMPORTER_SCHEMA :: "scrapbot.model.v12.vertex-pages"
-MODEL_PRODUCT_MAGIC :: [8]u8{'S', 'B', 'M', 'O', 'D', 'L', '1', '2'}
+MODEL_IMPORTER_SCHEMA :: "scrapbot.model.v13.runtime-catalog"
+MODEL_PRODUCT_MAGIC :: [8]u8{'S', 'B', 'M', 'O', 'D', 'L', '1', '3'}
 
 Model_Vertex :: struct {
 	position, normal: shared.Vec3,
@@ -51,6 +51,8 @@ Model_Primitive :: struct {
 	material_index: i32,
 	vertices: [dynamic]Model_Vertex,
 	indices: [dynamic]u32,
+	query_positions: []shared.Vec3,
+	vertex_count, index_count: u32,
 	hierarchy: geometry.Hierarchy,
 	page_payloads: []geometry.Page_Payload_Record,
 	lods: [dynamic]Model_Primitive_LOD,
@@ -59,6 +61,8 @@ Model_Primitive :: struct {
 Model_Primitive_LOD :: struct {
 	vertices: [dynamic]Model_Vertex,
 	indices: [dynamic]u32,
+	query_positions: []shared.Vec3,
+	vertex_count, index_count: u32,
 	hierarchy: geometry.Hierarchy,
 	page_payloads: []geometry.Page_Payload_Record,
 	level: u32,
@@ -1115,11 +1119,13 @@ destroy_model_primitive :: proc(primitive: ^Model_Primitive) {
 	delete(primitive.key)
 	delete(primitive.vertices)
 	delete(primitive.indices)
+	delete(primitive.query_positions)
 	delete(primitive.page_payloads)
 	geometry.destroy_hierarchy(&primitive.hierarchy)
 	for &lod in primitive.lods {
 		delete(lod.vertices)
 		delete(lod.indices)
+		delete(lod.query_positions)
 		delete(lod.page_payloads)
 		geometry.destroy_hierarchy(&lod.hierarchy)
 	}
@@ -1462,12 +1468,6 @@ encode_model_product :: proc(model: ^Model_Product) -> []u8 {
 			model_write_u32(&bytes, u32(len(primitive.indices)))
 			for vertex in primitive.vertices {
 				model_write_vec3(&bytes, vertex.position)
-				model_write_vec3(&bytes, vertex.normal)
-				model_write_vec2(&bytes, vertex.uv)
-				model_write_vec4(&bytes, vertex.tangent)
-			}
-			for index in primitive.indices {
-				model_write_u32(&bytes, index)
 			}
 			model_write_hierarchy(&bytes, primitive.hierarchy)
 			model_write_page_payloads(
@@ -1486,12 +1486,6 @@ encode_model_product :: proc(model: ^Model_Product) -> []u8 {
 				model_write_u32(&bytes, u32(len(lod.indices)))
 				for vertex in lod.vertices {
 					model_write_vec3(&bytes, vertex.position)
-					model_write_vec3(&bytes, vertex.normal)
-					model_write_vec2(&bytes, vertex.uv)
-					model_write_vec4(&bytes, vertex.tangent)
-				}
-				for index in lod.indices {
-					model_write_u32(&bytes, index)
 				}
 				model_write_hierarchy(&bytes, lod.hierarchy)
 				model_write_page_payloads(
@@ -1588,16 +1582,23 @@ model_write_hierarchy :: proc(bytes: ^[dynamic]u8, hierarchy: geometry.Hierarchy
 }
 
 read_model_product :: proc(path: string) -> (model: Model_Product, err: string) {
-	bytes, read_err := os.read_entire_file(path, context.temp_allocator)
-	if read_err != nil {
-		return {}, fmt.tprintf("failed to read imported model product: %v", read_err)
+	file, open_err := os.open(path)
+	if open_err != nil {
+		return {}, fmt.tprintf("failed to open imported model product: %v", open_err)
+	}
+	defer os.close(file)
+	info, stat_err := os.stat(path, context.temp_allocator)
+	if stat_err != nil || info.size < 0 || info.size > i64(max(int)) {
+		return {}, "failed to inspect imported model product"
 	}
 	reader := Model_Reader {
-		bytes = bytes,
+		file = file,
+		size = int(info.size),
 	}
-	magic, magic_ok := model_read_bytes(&reader, len(MODEL_PRODUCT_MAGIC))
+	magic: [len(MODEL_PRODUCT_MAGIC)]u8
+	magic_ok := model_read_exact(&reader, magic[:])
 	expected_magic := MODEL_PRODUCT_MAGIC
-	if !magic_ok || string(magic) != string(expected_magic[:]) {
+	if !magic_ok || string(magic[:]) != string(expected_magic[:]) {
 		return {}, "imported model product has an invalid header"
 	}
 	ok: bool
@@ -1741,8 +1742,8 @@ read_model_product :: proc(path: string) -> (model: Model_Product, err: string) 
 			}
 			index_count: u32
 			index_count, ok = model_read_u32(&reader)
-			remaining_bytes := u64(len(reader.bytes) - reader.offset)
-			required_bytes := u64(vertex_count) * 48 + u64(index_count) * 4
+			remaining_bytes := u64(reader.size - reader.offset)
+			required_bytes := u64(vertex_count) * 12
 			if !ok ||
 			   vertex_count > 10000000 ||
 			   index_count > 30000000 ||
@@ -1752,33 +1753,16 @@ read_model_product :: proc(path: string) -> (model: Model_Product, err: string) 
 				destroy_model_product(&model)
 				return {}, "imported model geometry counts are invalid"
 			}
-			resize(&primitive.vertices, int(vertex_count))
-			for &vertex in primitive.vertices {
-				vertex.position, ok = model_read_vec3(&reader)
-				if ok {
-					vertex.normal, ok = model_read_vec3(&reader)
-				}
-				if ok {
-					vertex.uv, ok = model_read_vec2(&reader)
-				}
-				if ok {
-					vertex.tangent, ok = model_read_vec4(&reader)
-				}
+			primitive.vertex_count = vertex_count
+			primitive.index_count = index_count
+			primitive.query_positions = make([]shared.Vec3, int(vertex_count))
+			for &position in primitive.query_positions {
+				position, ok = model_read_vec3(&reader)
 				if !ok {
 					destroy_model_primitive(&primitive)
 					destroy_model_mesh(&mesh)
 					destroy_model_product(&model)
-					return {}, "imported model vertices are truncated"
-				}
-			}
-			resize(&primitive.indices, int(index_count))
-			for &index in primitive.indices {
-				index, ok = model_read_u32(&reader)
-				if !ok || int(index) >= len(primitive.vertices) {
-					destroy_model_primitive(&primitive)
-					destroy_model_mesh(&mesh)
-					destroy_model_product(&model)
-					return {}, "imported model indices are invalid"
+					return {}, "imported model query positions are truncated"
 				}
 			}
 			if ok {
@@ -1822,8 +1806,8 @@ read_model_product :: proc(path: string) -> (model: Model_Product, err: string) 
 				if ok {
 					lod_index_count, ok = model_read_u32(&reader)
 				}
-				remaining_lod_bytes := u64(len(reader.bytes) - reader.offset)
-				required_lod_bytes := u64(lod_vertex_count) * 48 + u64(lod_index_count) * 4
+				remaining_lod_bytes := u64(reader.size - reader.offset)
+				required_lod_bytes := u64(lod_vertex_count) * 12
 				if !ok ||
 				   lod_vertex_count > vertex_count ||
 				   lod_index_count >= index_count ||
@@ -1836,35 +1820,17 @@ read_model_product :: proc(path: string) -> (model: Model_Product, err: string) 
 					destroy_model_product(&model)
 					return {}, "imported model LOD geometry counts are invalid"
 				}
-				resize(&lod.vertices, int(lod_vertex_count))
-				for &vertex in lod.vertices {
-					vertex.position, ok = model_read_vec3(&reader)
-					if ok {
-						vertex.normal, ok = model_read_vec3(&reader)
-					}
-					if ok {
-						vertex.uv, ok = model_read_vec2(&reader)
-					}
-					if ok {
-						vertex.tangent, ok = model_read_vec4(&reader)
-					}
+				lod.vertex_count = lod_vertex_count
+				lod.index_count = lod_index_count
+				lod.query_positions = make([]shared.Vec3, int(lod_vertex_count))
+				for &position in lod.query_positions {
+					position, ok = model_read_vec3(&reader)
 					if !ok {
 						destroy_model_lod(&lod)
 						destroy_model_primitive(&primitive)
 						destroy_model_mesh(&mesh)
 						destroy_model_product(&model)
-						return {}, "imported model LOD vertices are truncated"
-					}
-				}
-				resize(&lod.indices, int(lod_index_count))
-				for &index in lod.indices {
-					index, ok = model_read_u32(&reader)
-					if !ok || int(index) >= len(lod.vertices) {
-						destroy_model_lod(&lod)
-						destroy_model_primitive(&primitive)
-						destroy_model_mesh(&mesh)
-						destroy_model_product(&model)
-						return {}, "imported model LOD indices are invalid"
+						return {}, "imported model LOD query positions are truncated"
 					}
 				}
 				if ok {
@@ -1926,7 +1892,7 @@ read_model_product :: proc(path: string) -> (model: Model_Product, err: string) 
 		destroy_model_product(&model)
 		return {}, validation_err
 	}
-	if reader.offset != len(reader.bytes) {
+	if reader.offset != reader.size {
 		destroy_model_product(&model)
 		return {}, "imported model product has trailing data"
 	}
@@ -1962,13 +1928,13 @@ model_read_page_payloads :: proc(
 		   record.vertex_count == 0 ||
 		   record.index_count != hierarchy.pages[page_index].index_count ||
 		   u64(byte_count) != expected_size ||
-		   u64(byte_count) > u64(len(reader.bytes) - reader.offset) {
+		   u64(byte_count) > u64(reader.size - reader.offset) {
 			delete(result)
 			return false
 		}
 		record.offset = u64(reader.offset)
 		record.size = u64(byte_count)
-		if _, payload_ok := model_read_bytes(reader, int(byte_count)); !payload_ok {
+		if !model_skip_bytes(reader, int(byte_count)) {
 			delete(result)
 			return false
 		}
@@ -2019,7 +1985,7 @@ model_read_hierarchy :: proc(
 		u64(page_count) * 16 +
 		u64(vertex_count) * 4 +
 		u64(triangle_byte_count)
-	if required_bytes > u64(len(reader.bytes) - reader.offset) {
+	if required_bytes > u64(reader.size - reader.offset) {
 		return false
 	}
 	hierarchy.max_depth = max_depth
@@ -2121,13 +2087,11 @@ model_read_hierarchy :: proc(
 			return false
 		}
 	}
-	triangles, triangles_ok := model_read_bytes(reader, int(triangle_byte_count))
-	if !triangles_ok {
+	hierarchy.triangles = make([]u8, int(triangle_byte_count))
+	if !model_read_exact(reader, hierarchy.triangles) {
 		geometry.destroy_hierarchy(hierarchy)
 		return false
 	}
-	hierarchy.triangles = make([]u8, len(triangles))
-	copy(hierarchy.triangles, triangles)
 	return geometry.validate_hierarchy(hierarchy, canonical_vertex_count) == ""
 }
 
@@ -2152,7 +2116,7 @@ validate_decoded_model :: proc(model: ^Model_Product) -> string {
 				return "imported model primitive semantic key is empty"
 			}
 			previous_radius := f32(3.402823e38)
-			previous_index_count := len(primitive.indices)
+			previous_index_count := int(primitive.index_count)
 			previous_level := -1
 			for lod in primitive.lods {
 				if lod.level >= shared.MAX_GEOMETRY_LODS - 1 ||
@@ -2164,11 +2128,11 @@ validate_decoded_model :: proc(model: ^Model_Product) -> string {
 				   math.is_nan(lod.simplification_error) ||
 				   math.is_inf(lod.simplification_error) ||
 				   lod.simplification_error < 0 ||
-				   len(lod.indices) >= previous_index_count {
+				   int(lod.index_count) >= previous_index_count {
 					return "imported model LOD metadata is invalid"
 				}
 				previous_radius = lod.screen_radius
-				previous_index_count = len(lod.indices)
+				previous_index_count = int(lod.index_count)
 				previous_level = int(lod.level)
 			}
 		}
@@ -2219,7 +2183,8 @@ validate_decoded_model :: proc(model: ^Model_Product) -> string {
 }
 
 Model_Reader :: struct {
-	bytes: []u8,
+	file: ^os.File,
+	size: int,
 	offset: int,
 }
 
@@ -2280,20 +2245,49 @@ model_write_image :: proc(bytes: ^[dynamic]u8, image: Model_Image) {
 }
 
 model_read_bytes :: proc(reader: ^Model_Reader, count: int) -> ([]u8, bool) {
-	if count < 0 || reader.offset + count > len(reader.bytes) {
+	if reader == nil || reader.file == nil || count < 0 || reader.offset + count > reader.size {
 		return nil, false
 	}
-	result := reader.bytes[reader.offset:reader.offset + count]
+	result := make([]u8, count, context.temp_allocator)
+	read_count, read_err := os.read_at(reader.file, result, i64(reader.offset))
+	if read_err != nil || read_count != count {
+		return nil, false
+	}
 	reader.offset += count
 	return result, true
 }
 
+model_read_exact :: proc(reader: ^Model_Reader, destination: []u8) -> bool {
+	if reader == nil || reader.file == nil || reader.offset + len(destination) > reader.size {
+		return false
+	}
+	read_count, read_err := os.read_at(reader.file, destination, i64(reader.offset))
+	if read_err != nil || read_count != len(destination) {
+		return false
+	}
+	reader.offset += len(destination)
+	return true
+}
+
+model_skip_bytes :: proc(reader: ^Model_Reader, count: int) -> bool {
+	if reader == nil || count < 0 || reader.offset + count > reader.size {
+		return false
+	}
+	reader.offset += count
+	return true
+}
+
 model_read_u32 :: proc(reader: ^Model_Reader) -> (u32, bool) {
-	bytes, ok := model_read_bytes(reader, 4)
-	if !ok {
+	if reader == nil || reader.file == nil || reader.offset + 4 > reader.size {
 		return 0, false
 	}
-	return endian.unchecked_get_u32le(bytes), true
+	bytes: [4]u8
+	read_count, read_err := os.read_at(reader.file, bytes[:], i64(reader.offset))
+	if read_err != nil || read_count != len(bytes) {
+		return 0, false
+	}
+	reader.offset += len(bytes)
+	return endian.unchecked_get_u32le(bytes[:]), true
 }
 
 model_read_i32 :: proc(reader: ^Model_Reader) -> (i32, bool) {
@@ -2395,10 +2389,6 @@ model_read_image :: proc(reader: ^Model_Reader, image: ^Model_Image) -> bool {
 	if !pixel_count_ok || pixel_count > 16384 * 16384 * 4 {
 		return false
 	}
-	texture_bytes, bytes_ok := model_read_bytes(reader, int(pixel_count))
-	if !bytes_ok {
-		return false
-	}
 	if pixel_count == 0 {
 		return width == 0 && height == 0 && mip_count == 0
 	}
@@ -2421,7 +2411,11 @@ model_read_image :: proc(reader: ^Model_Reader, image: ^Model_Image) -> bool {
 		return false
 	}
 	image.pixels = make([]u8, int(pixel_count))
-	copy(image.pixels, texture_bytes)
+	if !model_read_exact(reader, image.pixels) {
+		delete(image.pixels)
+		image.pixels = nil
+		return false
+	}
 	image.width = width
 	image.height = height
 	image.mip_count = mip_count

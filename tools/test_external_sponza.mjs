@@ -80,7 +80,7 @@ function main() {
     readFileSync(join(importedDirectory, metadataName), "utf8"),
   );
   if (
-    metadata.schema !== "scrapbot.model.v12.vertex-pages" ||
+    metadata.schema !== "scrapbot.model.v13.runtime-catalog" ||
     metadata.node_count !== 1 ||
     metadata.mesh_count !== 1 ||
     metadata.primitive_count !== 103 ||

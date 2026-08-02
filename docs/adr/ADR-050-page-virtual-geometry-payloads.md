@@ -28,9 +28,16 @@ All Geometry producers use one resource contract. Imported Geometry points at by
 versioned Model product. Procedural, Luau, native, and built-in Geometry own the same payloads in
 memory. The renderer branches only on source transport, never on project or importer identity.
 
-Model schema v12 persists each self-contained payload beside its hierarchy metadata. Product
-decoding validates page count, vertex/index counts, byte sizes, and file bounds before registering
-file-backed Geometry sources.
+Model schema v13 persists a compact runtime catalog: canonical counts, position-only query data,
+the hierarchy, and exact page ranges. Complete render vertices and source indices exist only in
+self-contained page payloads. The loader reads catalog fields directly from the product file and
+skips payload byte ranges without allocating them. Decoding validates page count, vertex/index
+counts, byte sizes, and file bounds before registering file-backed Geometry sources.
+
+Runtime registration derives compatibility meshlets from the exact hierarchy leaves. It clones
+one primitive at a time into the Geometry registry and releases the decoded catalog entry
+immediately, so bootstrap does not retain both the complete decoded Model product and the complete
+registered resource set.
 
 File-backed Geometry retains canonical vertex/index counts, a position-only CPU query proxy, exact
 leaf-cluster topology, and its immutable page source. It does not retain the complete render-vertex
@@ -102,6 +109,10 @@ CPU culling, resource previews, and adapters without the virtual path reconstruc
 canonical view at Geometry-cache invalidation, upload it, and release it before the frame proceeds.
 Procedural and runtime Geometry keeps resident arrays because its page source is memory-backed and
 there is no persistent product from which to recover backend fallback data.
+
+Cache-hit Model bootstrap no longer reads the complete artifact or reconstructs full canonical
+geometry. On the pinned Sponza workload this reduced engine-allocator startup peak from
+872,400,880 bytes to 449,408,061 bytes while preserving the same retained resource contract.
 
 Sponza and the pressure fixture use ordinary engine behavior. No resource name, example path, or
 scene-specific policy participates in paging.

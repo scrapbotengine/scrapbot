@@ -173,6 +173,63 @@ destroy_meshlet_data :: proc(data: ^Meshlet_Data, allocator: mem.Allocator) {
 	data^ = {}
 }
 
+build_leaf_meshlets :: proc(
+	hierarchy: ^Geometry_Hierarchy,
+	allocator: mem.Allocator,
+) -> (
+	Meshlet_Data,
+	string,
+) {
+	if hierarchy == nil || len(hierarchy.clusters) == 0 {
+		return {}, "geometry cluster hierarchy is empty"
+	}
+	leaf_count := 0
+	for cluster in hierarchy.clusters {
+		if cluster.refined_group == -1 {
+			leaf_count += 1
+		}
+	}
+	if leaf_count == 0 {
+		return {}, "geometry cluster hierarchy has no leaf clusters"
+	}
+	vertex_count, triangle_byte_count := 0, 0
+	for cluster in hierarchy.clusters {
+		if cluster.refined_group == -1 {
+			vertex_count += int(cluster.vertex_count)
+			triangle_byte_count += int(cluster.triangle_count * 3)
+		}
+	}
+	result := Meshlet_Data {
+		meshlets = make([]Meshlet, leaf_count, allocator),
+		vertices = make([]u32, vertex_count, allocator),
+		triangles = make([]u8, triangle_byte_count, allocator),
+	}
+	meshlet_cursor, vertex_cursor, triangle_cursor := 0, 0, 0
+	for cluster in hierarchy.clusters {
+		if cluster.refined_group != -1 {
+			continue
+		}
+		vertex_start := int(cluster.vertex_offset)
+		vertex_end := vertex_start + int(cluster.vertex_count)
+		triangle_start := int(cluster.triangle_offset)
+		triangle_end := triangle_start + int(cluster.triangle_count * 3)
+		copy(result.vertices[vertex_cursor:], hierarchy.vertices[vertex_start:vertex_end])
+		copy(result.triangles[triangle_cursor:], hierarchy.triangles[triangle_start:triangle_end])
+		result.meshlets[meshlet_cursor] = {
+			vertex_offset = u32(vertex_cursor),
+			triangle_offset = u32(triangle_cursor),
+			vertex_count = cluster.vertex_count,
+			triangle_count = cluster.triangle_count,
+			bounds = cluster.bounds,
+			cone_axis_cutoff = cluster.cone_axis_cutoff,
+		}
+		meshlet_cursor += 1
+		vertex_cursor += int(cluster.vertex_count)
+		triangle_cursor += int(cluster.triangle_count * 3)
+	}
+	return result, ""
+}
+
 destroy_geometry_hierarchy :: proc(data: ^Geometry_Hierarchy, allocator: mem.Allocator) {
 	if data == nil {
 		return

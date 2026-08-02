@@ -30,12 +30,15 @@ geometrically.
 
 Every registered Geometry also owns deterministic meshlets capped at 64 vertices and 124 triangles,
 including local index streams, conservative sphere bounds, and normal cones. Imported Model
-products persist their hierarchy and page payloads. Other Geometry producers build the same data
-in memory only when the resource is created or replaced.
+products persist a compact runtime catalog plus their page payloads; cache-hit loading reads the
+catalog directly from the file, skips payload byte ranges, and derives compatibility meshlets from
+exact hierarchy leaves. Other Geometry producers build the same data in memory only when the
+resource is created or replaced.
 
-Imported Geometry does not keep its complete CPU render vertices and source indices after
-registration. It retains canonical counts, exact leaf-cluster topology, and a position-only query
-proxy for picking and tooling. Classic rendering, `--cpu-culling`, resource previews, and adapters
+Imported Geometry does not decode its complete CPU render vertices and source indices during a
+cache-hit bootstrap. It retains canonical counts, exact leaf-cluster topology, and a position-only
+query proxy for picking and tooling. Registration publishes and releases decoded catalog entries
+incrementally. Classic rendering, `--cpu-culling`, resource previews, and adapters
 without virtual submission reconstruct a temporary canonical view from leaf-containing product
 pages when that Geometry version enters the WGPU cache. The upload consumes and releases the view;
 stable frames do not repeat reconstruction or file reads. Procedural/runtime Geometry retains its
