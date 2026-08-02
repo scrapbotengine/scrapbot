@@ -75,7 +75,7 @@ class Primitive {
     this.quad([x - hx, y - hy, z - hz], [x + hx, y - hy, z - hz], [x + hx, y - hy, z + hz], [x - hx, y - hy, z + hz], [0, -1, 0]);
   }
 
-  cylinderY(center, radius, halfHeight, segments) {
+  cylinderY(center, radius, halfHeight, segments, { capBottom = true, capTop = true } = {}) {
     const [cx, cy, cz] = center;
     const sideBase = this.positions.length / 3;
     for (let segment = 0; segment <= segments; segment += 1) {
@@ -90,6 +90,7 @@ class Primitive {
       this.indices.push(base, base + 1, base + 3, base, base + 3, base + 2);
     }
     for (const sign of [-1, 1]) {
+      if ((sign < 0 && !capBottom) || (sign > 0 && !capTop)) continue;
       const centerIndex = this.vertex([cx, cy + halfHeight * sign, cz], [0, sign, 0]);
       const rimBase = this.positions.length / 3;
       for (let segment = 0; segment <= segments; segment += 1) {
@@ -126,6 +127,20 @@ class Primitive {
       this.quad([x0o, y0o, centerZ - depth], [x1o, y1o, centerZ - depth], [x1o, y1o, centerZ + depth], [x0o, y0o, centerZ + depth], outerNormal);
       this.quad([x1i, y1i, centerZ - depth], [x0i, y0i, centerZ - depth], [x0i, y0i, centerZ + depth], [x1i, y1i, centerZ + depth], innerNormal);
     }
+    this.quad(
+      [inner, 8, centerZ - depth],
+      [radius, 8, centerZ - depth],
+      [radius, 8, centerZ + depth],
+      [inner, 8, centerZ + depth],
+      [0, -1, 0],
+    );
+    this.quad(
+      [-radius, 8, centerZ - depth],
+      [-inner, 8, centerZ - depth],
+      [-inner, 8, centerZ + depth],
+      [-radius, 8, centerZ + depth],
+      [0, -1, 0],
+    );
   }
 
   ringZ(center, innerRadius, outerRadius, depth, segments) {
@@ -230,11 +245,19 @@ function buildArchive(config) {
     const z = startZ - bay * bayLength;
     for (const side of [-1, 1]) {
       const x = side * 11.7;
-      stone.cylinderY([x, 3.8, z], 0.72, 3.8, config.columnSegments);
+      const shaftBottom = 0.7;
+      const shaftTop = 7.27;
+      stone.cylinderY(
+        [x, (shaftBottom + shaftTop) * 0.5, z],
+        0.72,
+        (shaftTop - shaftBottom) * 0.5,
+        config.columnSegments,
+        { capBottom: false, capTop: false },
+      );
       stone.cylinderY([x, 0.35, z], 1.05, 0.35, config.columnSegments);
-      stone.cylinderY([x, 7.55, z], 1.08, 0.28, config.columnSegments);
-      metal.cylinderY([x, 1.05, z], 0.82, 0.12, config.columnSegments);
-      metal.cylinderY([x, 6.8, z], 0.84, 0.10, config.columnSegments);
+      stone.cylinderY([x, 7.635, z], 1.08, 0.365, config.columnSegments);
+      metal.cylinderY([x, 1.05, z], 0.82, 0.12, config.columnSegments, { capBottom: false, capTop: false });
+      metal.cylinderY([x, 6.8, z], 0.84, 0.10, config.columnSegments, { capBottom: false, capTop: false });
       addReliefPanel(stone, side, bay, z - bayLength * 0.5, bayLength, config.panelSegments);
     }
     stone.arch(z, 11.7, 0.55, 0.28, config.archSegments);
@@ -369,7 +392,7 @@ if (options.check) {
   if (glb.readUInt32LE(0) !== 0x46546c67 || glb.readUInt32LE(4) !== 2 || glb.readUInt32LE(8) !== glb.length) {
     throw new Error("generated GLB header is inconsistent");
   }
-  if (options.preset === "small" && (result.triangles !== 69_816 || result.vertices !== 58_584)) {
+  if (options.preset === "small" && (result.triangles !== 67_032 || result.vertices !== 55_608)) {
     throw new Error(`small preset contract drifted: ${result.vertices} vertices, ${result.triangles} triangles`);
   }
   if (options.preset === "small" && result.primitives.length !== 10) {

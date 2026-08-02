@@ -12,6 +12,10 @@ glTF primitive. They remain children of one imported model and reuse only three 
 renderer independently culls their hierarchy work, then merges compatible regions into bounded
 material submission spans.
 
+Columns are assembled as adjoining exterior sections rather than overlapping capped cylinders,
+and each arch closes its endpoint against the capital. This keeps close inspection and directional
+self-shadowing free from hidden coplanar or internal faces.
+
 ## Generate the archive
 
 Generate the quick development asset and run it in the editor:
@@ -27,7 +31,7 @@ the repository's pinned Node.js runtime.
 Three presets trade generation/import time for source detail:
 
 - `small` is the fast iteration asset, with roughly 70,000 source triangles.
-- `showcase` creates roughly 380,000 unique source triangles and is the intended demonstration. It
+- `showcase` creates roughly 360,000 unique source triangles and is the intended demonstration. It
   stays inside the current portable compact-layout capacity and the checked-in 64 MiB
   fine-geometry residency budget.
 - `unhinged` creates roughly 19 million source triangles for deliberate import and residency
