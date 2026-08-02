@@ -330,6 +330,7 @@ wgpu_build_directional_shadow_cascades :: proc(
 	has_camera: bool,
 	width, height: u32,
 	direction: Vec3,
+	shadow_map_size: u32 = WGPU_SHADOW_MAP_SIZE,
 ) -> WGPU_Shadow_Cascades {
 	eye := Vec3{0, 2, 6}
 	rotation := Vec3{}
@@ -413,7 +414,7 @@ wgpu_build_directional_shadow_cascades :: proc(
 			radius = max(radius, wgpu_vec3_length(vec3_sub(corner, center)))
 		}
 		radius = max(math.ceil(radius * 16) / 16, 0.25)
-		texel_size := 2 * radius / f32(WGPU_SHADOW_MAP_SIZE)
+		texel_size := 2 * radius / f32(max(shadow_map_size, u32(1)))
 		result.texel_sizes[cascade_index] = texel_size
 		right_coordinate := vec3_dot(center, light_right)
 		up_coordinate := vec3_dot(center, light_up)

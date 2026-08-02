@@ -79,12 +79,162 @@ wgpu_recount_virtual_page_residency :: proc(renderer: ^WGPU_Renderer) {
 	}
 }
 
-wgpu_refresh_geometry_page_state :: proc(
+WGPU_Virtual_Group_Parent :: struct {
+	child: u32,
+	parent: u32,
+}
+
+wgpu_build_refined_group_cluster_index :: proc(
+	geometry: ^resources.Geometry,
+) -> (
+	cluster_offsets, clusters, parent_offsets, parents: [dynamic]u32,
+) {
+	if geometry == nil || len(geometry.cluster_groups) == 0 {
+		return
+	}
+	resize(&cluster_offsets, len(geometry.cluster_groups) + 1)
+	parent_pairs := make(
+		[dynamic]WGPU_Virtual_Group_Parent,
+		0,
+		len(geometry.cluster_groups),
+		context.temp_allocator,
+	)
+	for cluster in geometry.clusters {
+		if cluster.refined_group >= 0 &&
+		   int(cluster.refined_group) < len(geometry.cluster_groups) {
+			cluster_offsets[cluster.refined_group + 1] += 1
+			if cluster.group >= 0 && int(cluster.group) < len(geometry.cluster_groups) {
+				append(
+					&parent_pairs,
+					WGPU_Virtual_Group_Parent {
+						child = u32(cluster.refined_group),
+						parent = u32(cluster.group),
+					},
+				)
+			}
+		}
+	}
+	for index in 1 ..< len(cluster_offsets) {
+		cluster_offsets[index] += cluster_offsets[index - 1]
+	}
+	resize(&clusters, int(cluster_offsets[len(cluster_offsets) - 1]))
+	cursors := make([]u32, len(geometry.cluster_groups), context.temp_allocator)
+	copy(cursors, cluster_offsets[:len(cursors)])
+	for cluster, cluster_index in geometry.clusters {
+		if cluster.refined_group < 0 ||
+		   int(cluster.refined_group) >= len(geometry.cluster_groups) {
+			continue
+		}
+		group_index := int(cluster.refined_group)
+		clusters[cursors[group_index]] = u32(cluster_index)
+		cursors[group_index] += 1
+	}
+	slice.sort_by(parent_pairs[:], proc(a, b: WGPU_Virtual_Group_Parent) -> bool {
+		if a.child != b.child {
+			return a.child < b.child
+		}
+		return a.parent < b.parent
+	})
+	resize(&parent_offsets, len(geometry.cluster_groups) + 1)
+	previous := WGPU_Virtual_Group_Parent {
+		child = ~u32(0),
+		parent = ~u32(0),
+	}
+	for pair in parent_pairs {
+		if pair == previous {
+			continue
+		}
+		parent_offsets[pair.child + 1] += 1
+		append(&parents, pair.parent)
+		previous = pair
+	}
+	for index in 1 ..< len(parent_offsets) {
+		parent_offsets[index] += parent_offsets[index - 1]
+	}
+	return
+}
+
+wgpu_adjust_virtual_fallback_protection :: proc "contextless" (
+	groups: []WGPU_Cluster_Group_Cache,
+	parent_offsets, parents: []u32,
+	child_group: u32,
+	delta: int,
+) {
+	if int(child_group + 1) >= len(parent_offsets) {
+		return
+	}
+	for parent_index in parent_offsets[child_group] ..< parent_offsets[child_group + 1] {
+		parent_group := parents[parent_index]
+		if int(parent_group) >= len(groups) {
+			continue
+		}
+		if delta > 0 {
+			groups[parent_group].resident_refinement_count += u32(delta)
+		} else if delta < 0 {
+			groups[parent_group].resident_refinement_count -= min(
+				groups[parent_group].resident_refinement_count,
+				u32(-delta),
+			)
+		}
+	}
+}
+
+WGPU_Virtual_Group_Change :: struct {
+	handle: shared.Geometry_Handle,
+	group_index: u32,
+}
+
+wgpu_append_virtual_group_change :: proc(
+	changes: ^[dynamic]WGPU_Virtual_Group_Change,
+	handle: shared.Geometry_Handle,
+	group_index: u32,
+) {
+	change := WGPU_Virtual_Group_Change {
+		handle = handle,
+		group_index = group_index,
+	}
+	if !slice.contains(changes[:], change) {
+		append(changes, change)
+	}
+}
+
+wgpu_refresh_virtual_group_changes :: proc(
+	renderer: ^WGPU_Renderer,
+	registry: ^resources.Registry,
+	changes: []WGPU_Virtual_Group_Change,
+) -> string {
+	processed_handles := make([dynamic]shared.Geometry_Handle, 0, 0, context.temp_allocator)
+	for change in changes {
+		if slice.contains(processed_handles[:], change.handle) {
+			continue
+		}
+		append(&processed_handles, change.handle)
+		handle_groups := make([dynamic]u32, 0, 0, context.temp_allocator)
+		for candidate in changes {
+			if candidate.handle == change.handle &&
+			   !slice.contains(handle_groups[:], candidate.group_index) {
+				append(&handle_groups, candidate.group_index)
+			}
+		}
+		if refresh_err := wgpu_refresh_geometry_group_state(
+			renderer,
+			registry,
+			change.handle,
+			handle_groups[:],
+		); refresh_err != "" {
+			return refresh_err
+		}
+	}
+	return ""
+}
+
+wgpu_refresh_geometry_group_state :: proc(
 	renderer: ^WGPU_Renderer,
 	registry: ^resources.Registry,
 	handle: shared.Geometry_Handle,
+	changed_groups: []u32,
 ) -> string {
-	if renderer == nil || registry == nil {
+	if renderer == nil || registry == nil || len(changed_groups) == 0 {
 		return ""
 	}
 	geometry_resource, ok := resources.get_geometry(registry, handle)
@@ -96,11 +246,48 @@ wgpu_refresh_geometry_page_state :: proc(
 		return ""
 	}
 	geometry := &renderer.geometry_cache[cache_index]
+	dirty_clusters := make([dynamic]u32, 0, len(changed_groups) * 16, context.temp_allocator)
+	for group_index in changed_groups {
+		if int(group_index) >= len(geometry_resource.cluster_groups) {
+			continue
+		}
+		group := geometry_resource.cluster_groups[group_index]
+		cluster_end := min(
+			u64(group.cluster_offset) + u64(group.cluster_count),
+			u64(len(geometry_resource.clusters)),
+		)
+		for cluster_index in group.cluster_offset ..< u32(cluster_end) {
+			append(&dirty_clusters, cluster_index)
+		}
+		if len(geometry.refined_group_cluster_offsets) !=
+		   len(geometry_resource.cluster_groups) + 1 {
+			continue
+		}
+		dependent_offset := geometry.refined_group_cluster_offsets[group_index]
+		dependent_end := geometry.refined_group_cluster_offsets[group_index + 1]
+		append(&dirty_clusters, ..geometry.refined_group_clusters[dependent_offset:dependent_end])
+	}
+	if len(dirty_clusters) == 0 {
+		return ""
+	}
+	slice.sort(dirty_clusters[:])
+	unique_count := 1
+	for index in 1 ..< len(dirty_clusters) {
+		if dirty_clusters[index] == dirty_clusters[unique_count - 1] {
+			continue
+		}
+		dirty_clusters[unique_count] = dirty_clusters[index]
+		unique_count += 1
+	}
+	resize(&dirty_clusters, unique_count)
 	for batch in renderer.draw_batch_cache.batches[:renderer.draw_batch_cache.batch_count] {
 		if !batch.virtual_geometry || batch.geometry != handle {
 			continue
 		}
-		for cluster, local_index in geometry_resource.clusters {
+		per_meshlet_capacity := wgpu_meshlet_visible_instance_capacity(batch.instance_count)
+		for local_index_u32 in dirty_clusters {
+			local_index := int(local_index_u32)
+			cluster := geometry_resource.clusters[local_index]
 			meshlet_index := int(batch.meshlet_draw_offset) + local_index
 			if meshlet_index < 0 || meshlet_index >= len(renderer.gpu_meshlet_infos) {
 				continue
@@ -141,41 +328,53 @@ wgpu_refresh_geometry_page_state :: proc(
 			template.first_index = first_index
 			template.base_vertex = i32(base_vertex)
 		}
-		byte_offset := u64(batch.meshlet_draw_offset) * u64(size_of(WGPU_GPU_Meshlet_Info))
-		wgpu.QueueWriteBuffer(
-			renderer.queue,
-			renderer.gpu_meshlet_info_buffer,
-			byte_offset,
-			raw_data(renderer.gpu_meshlet_infos[int(batch.meshlet_draw_offset):]),
-			uint(len(geometry_resource.clusters) * size_of(WGPU_GPU_Meshlet_Info)),
-		)
-		template_offset :=
-			u64(batch.meshlet_draw_offset) * u64(size_of(WGPU_Draw_Indexed_Indirect))
-		wgpu.QueueWriteBuffer(
-			renderer.queue,
-			renderer.gpu_meshlet_indirect_template_buffer,
-			template_offset,
-			raw_data(renderer.gpu_meshlet_indirect_templates[int(batch.meshlet_draw_offset):]),
-			uint(len(geometry_resource.clusters) * size_of(WGPU_Draw_Indexed_Indirect)),
-		)
-		per_meshlet_capacity := wgpu_meshlet_visible_instance_capacity(batch.instance_count)
-		identity_count := int(batch.meshlet_draw_count * per_meshlet_capacity)
-		identities := make([]u32, identity_count, context.temp_allocator)
-		for local_index in 0 ..< int(batch.meshlet_draw_count) {
-			identity :=
-				renderer.gpu_meshlet_infos[int(batch.meshlet_draw_offset) + local_index].identity
-			for instance_index in 0 ..< int(per_meshlet_capacity) {
-				identities[local_index * int(per_meshlet_capacity) + instance_index] = identity
+		run_offset := 0
+		for run_offset < len(dirty_clusters) {
+			run_end := run_offset + 1
+			for run_end < len(dirty_clusters) &&
+			    dirty_clusters[run_end] == dirty_clusters[run_end - 1] + 1 {
+				run_end += 1
 			}
+			first_local := int(dirty_clusters[run_offset])
+			last_local := int(dirty_clusters[run_end - 1]) + 1
+			first_meshlet := int(batch.meshlet_draw_offset) + first_local
+			last_meshlet := int(batch.meshlet_draw_offset) + last_local
+			wgpu.QueueWriteBuffer(
+				renderer.queue,
+				renderer.gpu_meshlet_info_buffer,
+				u64(first_meshlet) * u64(size_of(WGPU_GPU_Meshlet_Info)),
+				raw_data(renderer.gpu_meshlet_infos[first_meshlet:last_meshlet]),
+				uint((last_meshlet - first_meshlet) * size_of(WGPU_GPU_Meshlet_Info)),
+			)
+			wgpu.QueueWriteBuffer(
+				renderer.queue,
+				renderer.gpu_meshlet_indirect_template_buffer,
+				u64(first_meshlet) * u64(size_of(WGPU_Draw_Indexed_Indirect)),
+				raw_data(renderer.gpu_meshlet_indirect_templates[first_meshlet:last_meshlet]),
+				uint((last_meshlet - first_meshlet) * size_of(WGPU_Draw_Indexed_Indirect)),
+			)
+			identity_count := (last_local - first_local) * int(per_meshlet_capacity)
+			identities := make([]u32, identity_count, context.temp_allocator)
+			for local_index in first_local ..< last_local {
+				meshlet_index := int(batch.meshlet_draw_offset) + local_index
+				identity := renderer.gpu_meshlet_infos[meshlet_index].identity
+				identity_base := (local_index - first_local) * int(per_meshlet_capacity)
+				for instance_index in 0 ..< int(per_meshlet_capacity) {
+					identities[identity_base + instance_index] = identity
+				}
+			}
+			identity_offset :=
+				u64(batch.meshlet_visible_offset + u32(first_local) * per_meshlet_capacity) *
+				u64(size_of(u32))
+			wgpu.QueueWriteBuffer(
+				renderer.queue,
+				renderer.gpu_meshlet_identity_buffer,
+				identity_offset,
+				raw_data(identities),
+				uint(len(identities) * size_of(u32)),
+			)
+			run_offset = run_end
 		}
-		identity_offset := u64(batch.meshlet_visible_offset) * u64(size_of(u32))
-		wgpu.QueueWriteBuffer(
-			renderer.queue,
-			renderer.gpu_meshlet_identity_buffer,
-			identity_offset,
-			raw_data(identities),
-			uint(len(identities) * size_of(u32)),
-		)
 	}
 	return ""
 }
@@ -186,6 +385,8 @@ WGPU_VIRTUAL_PAGE_FEEDBACK_PREFETCH :: u32(4)
 WGPU_VIRTUAL_PAGE_TOUCH_CADENCE :: u64(16)
 WGPU_VIRTUAL_PAGE_FEEDBACK_GRACE_FRAMES ::
 	WGPU_VIRTUAL_PAGE_TOUCH_CADENCE + u64(WGPU_GPU_TIMESTAMP_FRAMES * 2)
+WGPU_VIRTUAL_PAGE_PRIORITY_HYSTERESIS :: f32(1.2)
+WGPU_VIRTUAL_PAGE_MAX_HOLD_FRAMES :: WGPU_VIRTUAL_PAGE_FEEDBACK_GRACE_FRAMES * 3
 
 wgpu_virtual_page_admission_frame :: proc "contextless" (
 	current_frame, feedback_frame: u64,
@@ -200,6 +401,65 @@ WGPU_Virtual_Group_Request :: struct {
 	group_index: u32,
 	priority: f32,
 	prefetch: bool,
+}
+
+WGPU_Virtual_Eviction_Candidate :: struct {
+	cache_index: int,
+	group_index: u32,
+	last_used_frame: u64,
+	priority: f32,
+	prefetched: bool,
+	expired: bool,
+}
+
+wgpu_build_virtual_eviction_candidates :: proc(
+	renderer: ^WGPU_Renderer,
+	protected_frame: u64,
+) -> [dynamic]WGPU_Virtual_Eviction_Candidate {
+	candidates := make([dynamic]WGPU_Virtual_Eviction_Candidate, 0, 0, context.temp_allocator)
+	if renderer == nil {
+		return candidates
+	}
+	for cache, cache_index in renderer.geometry_cache {
+		for group, group_index in cache.cluster_groups {
+			if !group.resident || group.pinned || group.resident_refinement_count > 0 {
+				continue
+			}
+			old_enough :=
+				protected_frame > WGPU_VIRTUAL_PAGE_FEEDBACK_GRACE_FRAMES &&
+				group.last_used_frame + WGPU_VIRTUAL_PAGE_FEEDBACK_GRACE_FRAMES < protected_frame
+			if !group.prefetched && !old_enough {
+				continue
+			}
+			expired :=
+				protected_frame > WGPU_VIRTUAL_PAGE_MAX_HOLD_FRAMES &&
+				group.last_used_frame + WGPU_VIRTUAL_PAGE_MAX_HOLD_FRAMES < protected_frame
+			append(
+				&candidates,
+				WGPU_Virtual_Eviction_Candidate {
+					cache_index = cache_index,
+					group_index = u32(group_index),
+					last_used_frame = group.last_used_frame,
+					priority = group.priority,
+					prefetched = group.prefetched,
+					expired = expired,
+				},
+			)
+		}
+	}
+	slice.sort_by(candidates[:], proc(a, b: WGPU_Virtual_Eviction_Candidate) -> bool {
+		if a.prefetched != b.prefetched {
+			return a.prefetched
+		}
+		if a.expired != b.expired {
+			return a.expired
+		}
+		if a.priority != b.priority {
+			return a.priority < b.priority
+		}
+		return a.last_used_frame < b.last_used_frame
+	})
+	return candidates
 }
 
 wgpu_consume_virtual_page_io :: proc(renderer: ^WGPU_Renderer, registry: ^resources.Registry) {
@@ -256,17 +516,29 @@ wgpu_touch_virtual_group :: proc "contextless" (
 	geometry: ^resources.Geometry,
 	group_index: u32,
 	frame: u64,
+	priority: f32,
 ) -> (
 	prefetch_hit: bool,
+	promoted_pages: u32,
 ) {
 	page_offset, page_count, ok := wgpu_virtual_group_page_range(geometry, group_index)
-	if !ok || cache == nil || int(page_offset + page_count) > len(cache.cluster_pages) {
-		return false
+	if !ok ||
+	   cache == nil ||
+	   int(group_index) >= len(cache.cluster_groups) ||
+	   int(page_offset + page_count) > len(cache.cluster_pages) {
+		return false, 0
 	}
+	group := &cache.cluster_groups[group_index]
+	prefetch_hit = group.prefetched
+	group.prefetched = false
+	group.last_used_frame = max(group.last_used_frame, frame)
+	group.priority = max(priority, 0)
 	for page_index in page_offset ..< page_offset + page_count {
 		page := &cache.cluster_pages[page_index]
 		if page.resident {
-			prefetch_hit = prefetch_hit || page.prefetched
+			if page.prefetched {
+				promoted_pages += 1
+			}
 			page.prefetched = false
 			page.last_used_frame = max(page.last_used_frame, frame)
 		}
@@ -274,68 +546,35 @@ wgpu_touch_virtual_group :: proc "contextless" (
 	return
 }
 
-wgpu_evict_virtual_group :: proc(
+wgpu_evict_virtual_group_at :: proc(
 	renderer: ^WGPU_Renderer,
-	protected_frame: u64,
-	prefer_prefetched: bool,
+	cache_index: int,
+	group_index: u32,
 ) -> (
 	handle: shared.Geometry_Handle,
 	evicted: bool,
 ) {
-	if renderer == nil {
+	if renderer == nil ||
+	   cache_index < 0 ||
+	   cache_index >= len(renderer.geometry_cache) ||
+	   int(group_index) >= len(renderer.geometry_cache[cache_index].cluster_groups) {
 		return {}, false
 	}
-	oldest_frame := ~u64(0)
-	oldest_cache := -1
-	oldest_group := ~u32(0)
-	oldest_prefetched := false
-	first_pass := 0 if prefer_prefetched else 1
-	for selection_pass in first_pass ..< 2 {
-		require_prefetched := selection_pass == 0
-		for cache, cache_index in renderer.geometry_cache {
-			page_index := 0
-			for page_index < len(cache.cluster_pages) {
-				group_index := cache.cluster_pages[page_index].group_index
-				group_end := page_index
-				resident := true
-				pinned := false
-				prefetched := true
-				last_used: u64
-				for group_end < len(cache.cluster_pages) &&
-				    cache.cluster_pages[group_end].group_index == group_index {
-					page := cache.cluster_pages[group_end]
-					resident = resident && page.resident
-					pinned = pinned || page.pinned
-					prefetched = prefetched && page.prefetched
-					last_used = max(last_used, page.last_used_frame)
-					group_end += 1
-				}
-				old_enough :=
-					protected_frame > WGPU_VIRTUAL_PAGE_FEEDBACK_GRACE_FRAMES &&
-					last_used + WGPU_VIRTUAL_PAGE_FEEDBACK_GRACE_FRAMES < protected_frame
-				eligible :=
-					resident &&
-					!pinned &&
-					((require_prefetched && prefetched) || (!require_prefetched && old_enough))
-				if eligible && last_used < oldest_frame {
-					oldest_frame = last_used
-					oldest_cache = cache_index
-					oldest_group = group_index
-					oldest_prefetched = prefetched
-				}
-				page_index = group_end
-			}
-		}
-		if oldest_cache >= 0 {
-			break
-		}
-	}
-	if oldest_cache < 0 {
+	cache := &renderer.geometry_cache[cache_index]
+	group := &cache.cluster_groups[group_index]
+	if !group.resident || group.pinned || group.resident_refinement_count > 0 {
 		return {}, false
 	}
-	cache := &renderer.geometry_cache[oldest_cache]
+	wgpu_adjust_virtual_fallback_protection(
+		cache.cluster_groups[:],
+		cache.refined_group_parent_offsets[:],
+		cache.refined_group_parents[:],
+		group_index,
+		-1,
+	)
+	oldest_prefetched := group.prefetched
 	for &page in cache.cluster_pages {
-		if page.group_index != oldest_group || !page.resident {
+		if page.group_index != group_index || !page.resident {
 			continue
 		}
 		renderer.virtual_geometry_resident_bytes -= min(
@@ -347,14 +586,123 @@ wgpu_evict_virtual_group :: proc(
 		page.range = {}
 		page.vertex_range = {}
 		page.resident = false
+		renderer.virtual_geometry_resident_page_count -= min(
+			renderer.virtual_geometry_resident_page_count,
+			1,
+		)
+		if page.prefetched {
+			renderer.virtual_geometry_prefetched_page_count -= min(
+				renderer.virtual_geometry_prefetched_page_count,
+				1,
+			)
+		}
 		page.prefetched = false
 		renderer.virtual_geometry_page_eviction_count += 1
 	}
 	if oldest_prefetched {
 		renderer.virtual_geometry_prefetch_eviction_count += 1
 	}
+	group.resident = false
+	group.prefetched = false
+	group.priority = 0
 	renderer.virtual_geometry_group_eviction_count += 1
 	return cache.handle, true
+}
+
+wgpu_evict_virtual_group :: proc(
+	renderer: ^WGPU_Renderer,
+	protected_frame: u64,
+	prefer_prefetched: bool,
+	incoming_priority: f32 = 0,
+) -> (
+	handle: shared.Geometry_Handle,
+	group_index: u32,
+	evicted: bool,
+) {
+	if renderer == nil {
+		return {}, 0, false
+	}
+	oldest_frame := ~u64(0)
+	oldest_cache := -1
+	oldest_group := ~u32(0)
+	first_pass := 0 if prefer_prefetched else 1
+	for selection_pass in first_pass ..< 2 {
+		require_prefetched := selection_pass == 0
+		for cache, cache_index in renderer.geometry_cache {
+			for group, group_index in cache.cluster_groups {
+				last_used := group.last_used_frame
+				old_enough :=
+					protected_frame > WGPU_VIRTUAL_PAGE_FEEDBACK_GRACE_FRAMES &&
+					last_used + WGPU_VIRTUAL_PAGE_FEEDBACK_GRACE_FRAMES < protected_frame
+				priority_wins :=
+					incoming_priority >= group.priority * WGPU_VIRTUAL_PAGE_PRIORITY_HYSTERESIS
+				expired :=
+					protected_frame > WGPU_VIRTUAL_PAGE_MAX_HOLD_FRAMES &&
+					last_used + WGPU_VIRTUAL_PAGE_MAX_HOLD_FRAMES < protected_frame
+				eligible :=
+					group.resident &&
+					!group.pinned &&
+					group.resident_refinement_count == 0 &&
+					((require_prefetched && group.prefetched) ||
+							(!require_prefetched && old_enough && (priority_wins || expired)))
+				if eligible && last_used < oldest_frame {
+					oldest_frame = last_used
+					oldest_cache = cache_index
+					oldest_group = u32(group_index)
+				}
+			}
+		}
+		if oldest_cache >= 0 {
+			break
+		}
+	}
+	if oldest_cache < 0 {
+		return {}, 0, false
+	}
+	handle, evicted = wgpu_evict_virtual_group_at(renderer, oldest_cache, oldest_group)
+	return handle, oldest_group, evicted
+}
+
+wgpu_evict_virtual_candidate :: proc(
+	renderer: ^WGPU_Renderer,
+	candidates: []WGPU_Virtual_Eviction_Candidate,
+	cursor: ^int,
+	incoming_priority: f32,
+) -> (
+	handle: shared.Geometry_Handle,
+	group_index: u32,
+	evicted: bool,
+) {
+	if renderer == nil || cursor == nil {
+		return {}, 0, false
+	}
+	for cursor^ < len(candidates) {
+		candidate := candidates[cursor^]
+		cursor^ += 1
+		if candidate.cache_index < 0 || candidate.cache_index >= len(renderer.geometry_cache) {
+			continue
+		}
+		cache := &renderer.geometry_cache[candidate.cache_index]
+		if int(candidate.group_index) >= len(cache.cluster_groups) {
+			continue
+		}
+		group := cache.cluster_groups[candidate.group_index]
+		if !group.resident || group.pinned || group.resident_refinement_count > 0 {
+			continue
+		}
+		priority_wins :=
+			incoming_priority >= candidate.priority * WGPU_VIRTUAL_PAGE_PRIORITY_HYSTERESIS
+		if !candidate.prefetched && !candidate.expired && !priority_wins {
+			continue
+		}
+		handle, evicted = wgpu_evict_virtual_group_at(
+			renderer,
+			candidate.cache_index,
+			candidate.group_index,
+		)
+		return handle, candidate.group_index, evicted
+	}
+	return {}, 0, false
 }
 
 wgpu_process_virtual_page_feedback :: proc(
@@ -385,7 +733,8 @@ wgpu_process_virtual_page_feedback :: proc(
 		min(int(counters.virtual_page_request_count), feedback_count),
 		context.temp_allocator,
 	)
-	prefetch_hit_handles := make([dynamic]shared.Geometry_Handle, 0, 0, context.temp_allocator)
+	changed_groups: [dynamic]WGPU_Virtual_Group_Change
+	defer delete(changed_groups)
 	for feedback in counters.virtual_page_feedback[:feedback_count] {
 		handle := shared.Geometry_Handle{feedback.geometry_index, feedback.geometry_generation}
 		geometry, geometry_ok := resources.get_geometry(registry, handle)
@@ -398,11 +747,20 @@ wgpu_process_virtual_page_feedback :: proc(
 		}
 		cache := &renderer.geometry_cache[cache_index]
 		if feedback.flags & WGPU_VIRTUAL_PAGE_FEEDBACK_TOUCH != 0 {
-			if wgpu_touch_virtual_group(cache, geometry, feedback.group_index, feedback_frame) {
+			prefetch_hit, promoted_pages := wgpu_touch_virtual_group(
+				cache,
+				geometry,
+				feedback.group_index,
+				feedback_frame,
+				feedback.priority,
+			)
+			renderer.virtual_geometry_prefetched_page_count -= min(
+				renderer.virtual_geometry_prefetched_page_count,
+				int(promoted_pages),
+			)
+			if prefetch_hit {
 				renderer.virtual_geometry_prefetch_hit_count += 1
-				if !slice.contains(prefetch_hit_handles[:], handle) {
-					append(&prefetch_hit_handles, handle)
-				}
+				wgpu_append_virtual_group_change(&changed_groups, handle, feedback.group_index)
 			}
 		}
 		request := feedback.flags & WGPU_VIRTUAL_PAGE_FEEDBACK_REQUEST != 0
@@ -420,14 +778,12 @@ wgpu_process_virtual_page_feedback :: proc(
 		}
 	}
 	if len(requests) == 0 {
-		for handle in prefetch_hit_handles {
-			if refresh_err := wgpu_refresh_geometry_page_state(renderer, registry, handle);
-			   refresh_err != "" {
-				return refresh_err
-			}
-		}
-		if len(prefetch_hit_handles) > 0 {
-			wgpu_recount_virtual_page_residency(renderer)
+		if refresh_err := wgpu_refresh_virtual_group_changes(
+			renderer,
+			registry,
+			changed_groups[:],
+		); refresh_err != "" {
+			return refresh_err
 		}
 		return ""
 	}
@@ -475,9 +831,11 @@ wgpu_process_virtual_page_feedback :: proc(
 		}
 		return a.group_index < b.group_index
 	})
-	changed_handles: [dynamic]shared.Geometry_Handle
-	defer delete(changed_handles)
-	append(&changed_handles, ..prefetch_hit_handles[:])
+	eviction_candidates := wgpu_build_virtual_eviction_candidates(
+		renderer,
+		renderer.profile_frame_index,
+	)
+	eviction_cursor := 0
 	for request in unique_requests {
 		geometry, geometry_ok := resources.get_geometry(registry, request.handle)
 		if !geometry_ok {
@@ -490,12 +848,28 @@ wgpu_process_virtual_page_feedback :: proc(
 		cache := &renderer.geometry_cache[cache_index]
 		resident, _, _ := wgpu_cluster_group_residency(geometry, cache, i32(request.group_index))
 		if resident {
-			if !request.prefetch &&
-			   wgpu_touch_virtual_group(cache, geometry, request.group_index, feedback_frame) {
+			prefetch_hit := false
+			promoted_pages: u32
+			if !request.prefetch {
+				prefetch_hit, promoted_pages = wgpu_touch_virtual_group(
+					cache,
+					geometry,
+					request.group_index,
+					feedback_frame,
+					request.priority,
+				)
+			}
+			renderer.virtual_geometry_prefetched_page_count -= min(
+				renderer.virtual_geometry_prefetched_page_count,
+				int(promoted_pages),
+			)
+			if prefetch_hit {
 				renderer.virtual_geometry_prefetch_hit_count += 1
-				if !slice.contains(changed_handles[:], request.handle) {
-					append(&changed_handles, request.handle)
-				}
+				wgpu_append_virtual_group_change(
+					&changed_groups,
+					request.handle,
+					request.group_index,
+				)
 			}
 			continue
 		}
@@ -566,17 +940,19 @@ wgpu_process_virtual_page_feedback :: proc(
 		}
 		for renderer.virtual_geometry_resident_bytes + allocation_bytes >
 		    renderer.virtual_geometry_budget_bytes {
-			evicted_handle, evicted := wgpu_evict_virtual_group(
+			if request.prefetch {
+				break
+			}
+			evicted_handle, evicted_group, evicted := wgpu_evict_virtual_candidate(
 				renderer,
-				renderer.profile_frame_index,
-				!request.prefetch,
+				eviction_candidates[:],
+				&eviction_cursor,
+				request.priority,
 			)
 			if !evicted {
 				break
 			}
-			if !slice.contains(changed_handles[:], evicted_handle) {
-				append(&changed_handles, evicted_handle)
-			}
+			wgpu_append_virtual_group_change(&changed_groups, evicted_handle, evicted_group)
 		}
 		if renderer.virtual_geometry_resident_bytes + allocation_bytes >
 		   renderer.virtual_geometry_budget_bytes {
@@ -646,7 +1022,27 @@ wgpu_process_virtual_page_feedback :: proc(
 			delete(page.loaded_payload, os.heap_allocator())
 			page.loaded_payload = nil
 		}
+		group_state := &cache.cluster_groups[request.group_index]
+		group_state.last_used_frame = wgpu_virtual_page_admission_frame(
+			renderer.profile_frame_index,
+			feedback_frame,
+		)
+		group_state.resident_since_frame = renderer.profile_frame_index
+		group_state.priority = max(request.priority, 0)
+		group_state.resident = true
+		group_state.prefetched = request.prefetch
+		wgpu_adjust_virtual_fallback_protection(
+			cache.cluster_groups[:],
+			cache.refined_group_parent_offsets[:],
+			cache.refined_group_parents[:],
+			request.group_index,
+			1,
+		)
 		renderer.virtual_geometry_resident_bytes += vertex_allocation.size + index_allocation.size
+		renderer.virtual_geometry_resident_page_count += len(missing_pages)
+		if request.prefetch {
+			renderer.virtual_geometry_prefetched_page_count += len(missing_pages)
+		}
 		renderer.virtual_geometry_page_upload_count += u64(len(missing_pages))
 		renderer.virtual_geometry_page_upload_bytes += vertex_bytes + index_bytes
 		renderer.virtual_geometry_group_upload_count += 1
@@ -661,17 +1057,12 @@ wgpu_process_virtual_page_feedback :: proc(
 				return bind_err
 			}
 		}
-		if !slice.contains(changed_handles[:], request.handle) {
-			append(&changed_handles, request.handle)
-		}
+		wgpu_append_virtual_group_change(&changed_groups, request.handle, request.group_index)
 	}
-	for handle in changed_handles {
-		if refresh_err := wgpu_refresh_geometry_page_state(renderer, registry, handle);
-		   refresh_err != "" {
-			return refresh_err
-		}
+	if refresh_err := wgpu_refresh_virtual_group_changes(renderer, registry, changed_groups[:]);
+	   refresh_err != "" {
+		return refresh_err
 	}
-	wgpu_recount_virtual_page_residency(renderer)
 	return ""
 }
 

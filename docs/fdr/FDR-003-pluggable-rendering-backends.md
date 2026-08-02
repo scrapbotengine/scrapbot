@@ -1,7 +1,7 @@
 # FDR-003: Pluggable rendering backends
 
 **Status:** Active
-**Last reviewed:** 2026-08-01
+**Last reviewed:** 2026-08-02
 
 ## Overview
 
@@ -13,7 +13,9 @@ Pluggable rendering backends allow Scrapbot to start with `wgpu-native` while ke
 - The current implementation supports the null backend.
 - Users can select a renderer backend from the CLI.
 - The `wgpu` backend renders full indexed geometry with shared metallic-roughness GGX materials, mipmapped base-color/normal/occlusion/emissive images, a perspective camera, ambient/directional/point lighting, and optional scene-authored image-based environment lighting.
-- The first directional light produces four stabilized, camera-relative 2048×2048 shadow cascades. Only entities with `ShadowCaster` contribute slope-biased depth, and only entities with `ShadowReceiver` sample the cascades through a wider tent-weighted nine-comparison PCF kernel after a cascade-texel-scaled receiver-normal offset. The last 10% of each cascade blends into the next; the final cascade blends to unshadowed beyond the configured shadow distance.
+- The first directional light produces four stabilized, camera-relative shadow cascades. WGPU retains 2048×2048 capacity and, when dynamic resolution is enabled, can rasterize a quantized 2048, 1024, or 512 square region from the same allocation.
+- Shadow quality follows the camera's filtered GPU budget only after sustained pressure. It steps down after world scale has already yielded quality, waits between transitions, and restores resolution only with prolonged headroom. Policy-owner changes reset the ladder to full quality.
+- Only entities with `ShadowCaster` contribute slope-biased depth. Only entities with `ShadowReceiver` sample the cascades through a tent-weighted nine-comparison PCF kernel after a cascade-texel-scaled receiver-normal offset. The last 10% of each cascade blends into the next; the final cascade blends to unshadowed beyond the configured shadow distance.
 - Lights are extracted into compact backend-neutral frame data: accumulated ambient light, four directional lights, and a growable retained point-light list. WGPU grows its point-light and cluster-index buffers geometrically and deterministically builds a 16×9×24 view-frustum grid on the GPU. Every cluster can reference the complete retained list, preventing dense moving lights from popping at an internal overflow boundary. Editor-inset rendering uses the viewport's origin and extent for fragment-to-cluster lookup. Above the procedural horizon, World Environment contributes the first derived directional-light slot without creating an authored entity; explicit ECS lights fill the remaining directional slots.
 - The HDR pipeline:
   - samples base-color and emissive images as sRGB while material data and imported environments remain linear;
@@ -304,30 +306,37 @@ touches across 16 frames; missing-group requests remain immediate.
 With renderer prefetch enabled, smoothed camera motion projects a bounded future position and view
 direction into a widened future frustum. The GPU may request likely refinement groups without
 rendering, touching, or otherwise making them authoritative. Demand sorts first and may reclaim
-speculative residency immediately. Speculative admission may reclaim only groups older than the
-visible-use grace window; visible use promotes a prefetched group and records a hit.
+speculative residency immediately. Prefetch uses spare budget and never evicts demand-resident
+geometry. Visible use promotes a prefetched group and records a hit.
 
 Asynchronous CPU processing applies touches, deduplicates and prioritizes group requests. Imported
 misses read exact Model-product byte ranges on a dedicated worker. Versioned completions admit or
-evict complete non-pinned groups under the project vertex-and-index payload budget while the
-resident coarse frontier remains drawable. A newly uploaded group begins its visible-use grace
-window in the admission frame, rather than spending that protection while its older GPU request is
-still crossing the asynchronous readback boundary.
+evict complete non-pinned groups under the project vertex-and-index payload budget. Each feedback
+batch builds one priority-ordered eviction plan. Lower-priority detail cannot displace a stronger
+recent working set, and an admitted refinement protects every direct parent group that can replace
+it. Eviction releases the child before its parents become eligible, so the exact resident coarse
+frontier remains drawable. A newly uploaded group begins its visible-use grace window in the
+admission frame, rather than spending that protection while its older GPU request is still crossing
+the asynchronous readback boundary.
 
 Per-frame byte and group limits bound streaming work. One admitted group or complete-resource
-preload becomes one combined arena transfer. Residency mutations update affected Geometry batches;
-stable frames do no page work.
+preload becomes one combined arena transfer. Residency mutations use persistent group-to-cluster
+and refinement-to-parent indices to patch only changed clusters and their direct dependents.
+Adjacent changes coalesce into bounded GPU writes; stable frames do no page work.
 
 Native multi-draw adapters submit the retained indexed-indirect command range for camera and
 shadow work. Other capable adapters compact selected `{instance slot, cluster index}` records into
-a bounded camera stream. Compatible same-material batches share one record span and one
-non-indexed indirect command; the vertex shader pulls cluster indices and attributes from the
-shared geometry arenas.
+a bounded camera stream. Their first compute stage builds batch-local instance candidates; parallel
+camera and shadow stages then process one hierarchy cluster per invocation. Separate bindings keep
+each stage within WebGPU's guaranteed eight-storage-buffer compute limit. Compatible same-material
+batches share one record span and one non-indexed indirect command; the vertex shader pulls cluster
+indices and attributes from the shared geometry arenas.
 
 Fully resident portable resources reuse canonical indexed-indirect shadows. Streamed portable
 resources compact page-local shadow records for all four cascades, so shadow casting never depends
-on evicted canonical geometry. Stable frames perform no CPU readback, per-cluster command
-generation, or geometry upload.
+on evicted canonical geometry. Cascade-scaled hierarchy error thresholds retain near-cascade detail
+and progressively coarsen distant shadow frontiers. Stable frames perform no CPU readback,
+per-cluster command generation, or geometry upload.
 
 The `virtual_geometry` camera view colors selected clusters by identity and hierarchy depth. Amber
 marks a branch whose finer group is not completely resident; cyan marks a selected page that

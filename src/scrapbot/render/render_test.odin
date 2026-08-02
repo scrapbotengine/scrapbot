@@ -858,6 +858,7 @@ test_performance_diagnostics_publish_retained_rolling_snapshot :: proc(t: ^testi
 		gpu_frame_ms = 2.25,
 		gpu_scene_ms = 1.75,
 		render_scale = 0.75,
+		shadow_resolution = 1024,
 		instance_slots = 12,
 		frustum_candidates = 11,
 		frustum_culled_instances = 4,
@@ -882,6 +883,7 @@ test_performance_diagnostics_publish_retained_rolling_snapshot :: proc(t: ^testi
 	testing.expect(t, snapshot.gpu_frame_ms == 2.25)
 	testing.expect(t, snapshot.gpu_scene_ms == 1.75)
 	testing.expect_value(t, snapshot.render_scale, f32(0.75))
+	testing.expect_value(t, snapshot.shadow_resolution, u32(1024))
 	testing.expect(t, snapshot.gpu_timestamps_valid)
 	testing.expect(t, snapshot.entity_count == 2)
 	testing.expect(t, snapshot.retained_batches == 7)
@@ -1715,6 +1717,11 @@ test_wgpu_meshlet_submission_policy_amortizes_indirect_commands :: proc(t: ^test
 	testing.expect(t, !wgpu_meshlet_batch_submission(0, 8))
 	testing.expect(t, !wgpu_meshlet_batch_submission(16, 1))
 	testing.expect(t, wgpu_meshlet_batch_submission(16, 2))
+	testing.expect_value(t, wgpu_virtual_shadow_error_pixels(1, 0), f32(8))
+	testing.expect_value(t, wgpu_virtual_shadow_error_pixels(1, 1), f32(32))
+	testing.expect_value(t, wgpu_virtual_shadow_error_pixels(1, 2), f32(128))
+	testing.expect_value(t, wgpu_virtual_shadow_error_pixels(1, 3), f32(512))
+	testing.expect_value(t, wgpu_virtual_shadow_error_pixels(1, 99), f32(512))
 
 	testing.expect(t, !wgpu_meshlet_debug_forces_submission(.Lit))
 	testing.expect(t, wgpu_meshlet_debug_forces_submission(.Meshlets))
@@ -1889,8 +1896,17 @@ test_wgpu_culling_shader_stays_within_portable_storage_binding_floor :: proc(t: 
 	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "prefetch_virtual_cluster"))
 	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "predictive_camera_planes"))
 	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "meshlet.refined_resident == 0u"))
-	testing.expect(t, strings.count(WGPU_GPU_DRIVEN_SHADER, "_padding: u32") == 1)
-	testing.expect(t, strings.count(WGPU_GPU_CULL_SHADER, "_padding: u32") == 1)
+	testing.expect(
+		t,
+		strings.contains(WGPU_GPU_DRIVEN_SHADER, "request_enabled: u32,\n\tbatch_index: u32"),
+	)
+	testing.expect(
+		t,
+		strings.contains(WGPU_GPU_CULL_SHADER, "request_enabled: u32,\n\tbatch_index: u32"),
+	)
+	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "cull_compact_candidate"))
+	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "cull_compact_camera_clusters"))
+	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "cull_compact_shadow_clusters"))
 	testing.expect_value(t, size_of(WGPU_GPU_Meshlet_Info) % 16, 0)
 }
 
@@ -1981,8 +1997,10 @@ test_wgpu_virtual_geometry_touches_and_evicts_complete_groups :: proc(t: ^testin
 	cache := WGPU_Geometry_Cache {
 		handle = {index = 4, generation = 2},
 		cluster_pages = make([dynamic]WGPU_Cluster_Page_Cache, 4),
+		cluster_groups = make([dynamic]WGPU_Cluster_Group_Cache, 2),
 	}
 	defer delete(cache.cluster_pages)
+	defer delete(cache.cluster_groups)
 	for index in 0 ..< 4 {
 		cache.cluster_pages[index] = {
 			range = {offset = u64(index * 4), size = 4},
@@ -1997,7 +2015,18 @@ test_wgpu_virtual_geometry_touches_and_evicts_complete_groups :: proc(t: ^testin
 	testing.expect_value(t, page_count, u32(2))
 	cache.cluster_pages[2].prefetched = true
 	cache.cluster_pages[3].prefetched = true
-	testing.expect(t, wgpu_touch_virtual_group(&cache, &geometry, 1, 12))
+	cache.cluster_groups[0] = {
+		last_used_frame = 1,
+		resident = true,
+	}
+	cache.cluster_groups[1] = {
+		last_used_frame = 8,
+		resident = true,
+		prefetched = true,
+	}
+	prefetch_hit, promoted_pages := wgpu_touch_virtual_group(&cache, &geometry, 1, 12, 3)
+	testing.expect(t, prefetch_hit)
+	testing.expect_value(t, promoted_pages, u32(2))
 	testing.expect_value(t, cache.cluster_pages[2].last_used_frame, u64(12))
 	testing.expect_value(t, cache.cluster_pages[3].last_used_frame, u64(12))
 	testing.expect(t, !cache.cluster_pages[2].prefetched)
@@ -2010,9 +2039,10 @@ test_wgpu_virtual_geometry_touches_and_evicts_complete_groups :: proc(t: ^testin
 	defer delete(renderer.geometry_cache)
 	defer delete(renderer.geometry_index_arena.allocator.free_ranges)
 	append(&renderer.geometry_cache, cache)
-	handle, evicted := wgpu_evict_virtual_group(&renderer, 40, false)
+	handle, group_index, evicted := wgpu_evict_virtual_group(&renderer, 40, false)
 	testing.expect(t, evicted)
 	testing.expect_value(t, handle, cache.handle)
+	testing.expect_value(t, group_index, u32(0))
 	testing.expect(t, !renderer.geometry_cache[0].cluster_pages[0].resident)
 	testing.expect(t, !renderer.geometry_cache[0].cluster_pages[1].resident)
 	testing.expect(t, renderer.geometry_cache[0].cluster_pages[2].resident)
@@ -2039,6 +2069,8 @@ test_wgpu_virtual_geometry_demand_reclaims_prefetch_before_visible_residency :: 
 	}
 	resize(&cache.cluster_pages, 2)
 	defer delete(cache.cluster_pages)
+	resize(&cache.cluster_groups, 2)
+	defer delete(cache.cluster_groups)
 	cache.cluster_pages[0] = {
 		range = {offset = 0, size = 4},
 		last_used_frame = 1,
@@ -2052,9 +2084,19 @@ test_wgpu_virtual_geometry_demand_reclaims_prefetch_before_visible_residency :: 
 		resident = true,
 		prefetched = true,
 	}
+	cache.cluster_groups[0] = {
+		last_used_frame = 1,
+		resident = true,
+	}
+	cache.cluster_groups[1] = {
+		last_used_frame = 39,
+		resident = true,
+		prefetched = true,
+	}
 
-	_, evicted := wgpu_evict_virtual_group(&renderer, 40, true)
+	_, group_index, evicted := wgpu_evict_virtual_group(&renderer, 40, true)
 	testing.expect(t, evicted)
+	testing.expect_value(t, group_index, u32(1))
 	testing.expect(t, cache.cluster_pages[0].resident)
 	testing.expect(t, !cache.cluster_pages[1].resident)
 	testing.expect_value(t, renderer.virtual_geometry_prefetch_eviction_count, u64(1))
@@ -2070,14 +2112,20 @@ test_wgpu_virtual_geometry_prefetch_preserves_recent_residency :: proc(t: ^testi
 	cache := &renderer.geometry_cache[0]
 	resize(&cache.cluster_pages, 1)
 	defer delete(cache.cluster_pages)
+	resize(&cache.cluster_groups, 1)
+	defer delete(cache.cluster_groups)
 	cache.cluster_pages[0] = {
 		range = {size = 4},
 		last_used_frame = 39,
 		group_index = 0,
 		resident = true,
 	}
+	cache.cluster_groups[0] = {
+		last_used_frame = 39,
+		resident = true,
+	}
 
-	_, evicted := wgpu_evict_virtual_group(&renderer, 40, false)
+	_, _, evicted := wgpu_evict_virtual_group(&renderer, 40, false)
 	testing.expect(t, !evicted)
 	testing.expect(t, cache.cluster_pages[0].resident)
 }
@@ -2086,6 +2134,94 @@ test_wgpu_virtual_geometry_prefetch_preserves_recent_residency :: proc(t: ^testi
 test_wgpu_virtual_geometry_admission_starts_its_grace_window_at_upload :: proc(t: ^testing.T) {
 	testing.expect_value(t, wgpu_virtual_page_admission_frame(40, 36), u64(40))
 	testing.expect_value(t, wgpu_virtual_page_admission_frame(40, 40), u64(40))
+}
+
+@(test)
+test_wgpu_virtual_geometry_indexes_only_direct_refinement_dependencies :: proc(t: ^testing.T) {
+	geometry := resources.Geometry {
+		cluster_groups = make([]resources.Geometry_Cluster_Group, 3),
+		clusters = []resources.Geometry_Cluster {
+			{group = 2, refined_group = 1},
+			{group = 2, refined_group = 0},
+			{group = 1, refined_group = 0},
+			{group = 0, refined_group = -1},
+		},
+	}
+	defer delete(geometry.cluster_groups)
+	cluster_offsets, clusters, parent_offsets, parents := wgpu_build_refined_group_cluster_index(
+		&geometry,
+	)
+	defer delete(cluster_offsets)
+	defer delete(clusters)
+	defer delete(parent_offsets)
+	defer delete(parents)
+	expected_cluster_offsets := [?]u32{0, 2, 3, 3}
+	expected_clusters := [?]u32{1, 2, 0}
+	expected_parent_offsets := [?]u32{0, 2, 3, 3}
+	expected_parents := [?]u32{1, 2, 2}
+	testing.expect_value(t, len(cluster_offsets), len(expected_cluster_offsets))
+	testing.expect_value(t, len(clusters), len(expected_clusters))
+	testing.expect_value(t, len(parent_offsets), len(expected_parent_offsets))
+	testing.expect_value(t, len(parents), len(expected_parents))
+	for value, index in expected_cluster_offsets {
+		testing.expect_value(t, cluster_offsets[index], value)
+	}
+	for value, index in expected_clusters {
+		testing.expect_value(t, clusters[index], value)
+	}
+	for value, index in expected_parent_offsets {
+		testing.expect_value(t, parent_offsets[index], value)
+	}
+	for value, index in expected_parents {
+		testing.expect_value(t, parents[index], value)
+	}
+
+	groups := make([]WGPU_Cluster_Group_Cache, 3)
+	defer delete(groups)
+	wgpu_adjust_virtual_fallback_protection(groups, parent_offsets[:], parents[:], 0, 1)
+	testing.expect_value(t, groups[0].resident_refinement_count, u32(0))
+	testing.expect_value(t, groups[1].resident_refinement_count, u32(1))
+	testing.expect_value(t, groups[2].resident_refinement_count, u32(1))
+	wgpu_adjust_virtual_fallback_protection(groups, parent_offsets[:], parents[:], 0, -1)
+	testing.expect_value(t, groups[1].resident_refinement_count, u32(0))
+	testing.expect_value(t, groups[2].resident_refinement_count, u32(0))
+}
+
+@(test)
+test_wgpu_virtual_geometry_eviction_plan_protects_fallbacks_and_priority :: proc(t: ^testing.T) {
+	renderer := WGPU_Renderer {
+		geometry_cache = make([dynamic]WGPU_Geometry_Cache, 1),
+	}
+	defer delete(renderer.geometry_cache)
+	cache := &renderer.geometry_cache[0]
+	resize(&cache.cluster_groups, 3)
+	defer delete(cache.cluster_groups)
+	cache.cluster_groups[0] = {
+		last_used_frame = 1,
+		priority = 1,
+		resident = true,
+		resident_refinement_count = 1,
+	}
+	cache.cluster_groups[1] = {
+		last_used_frame = 1,
+		priority = 4,
+		resident = true,
+	}
+	cache.cluster_groups[2] = {
+		last_used_frame = 20,
+		priority = 2,
+		resident = true,
+		prefetched = true,
+	}
+	candidates := wgpu_build_virtual_eviction_candidates(&renderer, 50)
+	testing.expect_value(t, len(candidates), 2)
+	testing.expect_value(t, candidates[0].group_index, u32(2))
+	testing.expect_value(t, candidates[1].group_index, u32(1))
+	cursor := 1
+	_, _, evicted := wgpu_evict_virtual_candidate(&renderer, candidates[:], &cursor, 2)
+	testing.expect(t, !evicted)
+	testing.expect(t, cache.cluster_groups[0].resident)
+	testing.expect(t, cache.cluster_groups[1].resident)
 }
 
 @(test)
@@ -2616,10 +2752,11 @@ test_volumetric_fog_shader_is_energy_normalized_shadowed_and_temporally_resolved
 	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "textureSampleCompareLevel"))
 	testing.expect(
 		t,
-		strings.contains(
-			WGPU_TEMPORAL_AA_SHADER,
-			"let texel = 1.0 / vec2<f32>(textureDimensions(shadow_map).xy)",
-		),
+		strings.contains(WGPU_TEMPORAL_AA_SHADER, "let uv_scale = render.shadow_map_parameters.x"),
+	)
+	testing.expect(
+		t,
+		strings.contains(WGPU_TEMPORAL_AA_SHADER, "clamp(atlas_uv + offset, uv_min, uv_max)"),
 	)
 	testing.expect(
 		t,
@@ -2877,4 +3014,71 @@ test_dynamic_resolution_resets_when_policy_owner_camera_changes :: proc(t: ^test
 	testing.expect_value(t, scale, f32(1))
 	testing.expect_value(t, state.policy_owner, second_owner)
 	testing.expect(t, !state.has_filtered_sample)
+}
+
+@(test)
+test_adaptive_shadow_resolution_uses_quantized_budget_steps :: proc(t: ^testing.T) {
+	dynamic_state := Dynamic_Resolution_State {
+		initialized = true,
+		enabled = true,
+		maximum_scale = 1,
+		minimum_scale = 0.6,
+		target_ms = 16.667,
+		effective_scale = 0.8,
+		has_filtered_sample = true,
+		filtered_gpu_ms = 24,
+	}
+	state: Adaptive_Shadow_Resolution_State
+	resolution := adaptive_shadow_resolution(&state, &dynamic_state, 2048, 512)
+	testing.expect_value(t, resolution, u32(2048))
+	for serial in 1 ..= ADAPTIVE_SHADOW_OVER_BUDGET_SAMPLES {
+		dynamic_state.last_sample_serial = u64(serial)
+		dynamic_state.has_filtered_sample = true
+		dynamic_state.filtered_gpu_ms = 24
+		resolution = adaptive_shadow_resolution(&state, &dynamic_state, 2048, 512)
+	}
+	testing.expect_value(t, resolution, u32(1024))
+	testing.expect(t, !dynamic_state.has_filtered_sample)
+
+	state.cooldown_samples = 0
+	dynamic_state.effective_scale = dynamic_state.minimum_scale
+	for serial in 100 ..< 100 + ADAPTIVE_SHADOW_OVER_BUDGET_SAMPLES {
+		dynamic_state.last_sample_serial = u64(serial)
+		dynamic_state.has_filtered_sample = true
+		dynamic_state.filtered_gpu_ms = 24
+		resolution = adaptive_shadow_resolution(&state, &dynamic_state, 2048, 512)
+	}
+	testing.expect_value(t, resolution, u32(512))
+}
+
+@(test)
+test_adaptive_shadow_resolution_restores_quality_only_with_large_headroom :: proc(t: ^testing.T) {
+	dynamic_state := Dynamic_Resolution_State {
+		initialized = true,
+		enabled = true,
+		maximum_scale = 1,
+		minimum_scale = 0.6,
+		target_ms = 16.667,
+		effective_scale = 1,
+		has_filtered_sample = true,
+		filtered_gpu_ms = 8,
+	}
+	state := Adaptive_Shadow_Resolution_State {
+		initialized = true,
+		enabled = true,
+		effective_resolution = 512,
+	}
+	resolution := u32(512)
+	for serial in 1 ..= ADAPTIVE_SHADOW_UNDER_BUDGET_SAMPLES {
+		dynamic_state.last_sample_serial = u64(serial)
+		dynamic_state.has_filtered_sample = true
+		dynamic_state.filtered_gpu_ms = 8
+		resolution = adaptive_shadow_resolution(&state, &dynamic_state, 2048, 512)
+	}
+	testing.expect_value(t, resolution, u32(1024))
+	testing.expect(t, !dynamic_state.has_filtered_sample)
+
+	dynamic_state.enabled = false
+	resolution = adaptive_shadow_resolution(&state, &dynamic_state, 2048, 512)
+	testing.expect_value(t, resolution, u32(2048))
 }

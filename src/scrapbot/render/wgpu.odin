@@ -167,10 +167,11 @@ WGPU_GPU_Render_Uniform :: struct {
 	camera_position: [4]f32,
 	shadow_cascade_splits: [4]f32,
 	shadow_cascade_texel_sizes: [4]f32,
+	shadow_map_parameters: [4]f32,
 	debug: [4]u32,
 	camera_clip: [4]f32,
 }
-#assert(size_of(WGPU_GPU_Render_Uniform) == 624)
+#assert(size_of(WGPU_GPU_Render_Uniform) == 640)
 
 WGPU_GPU_Point_Light :: struct {
 	position_range: [4]f32,
@@ -367,9 +368,10 @@ WGPU_GPU_Cull_Uniform :: struct {
 	virtual_feedback_epoch: u32,
 	compact_shadow_pages: u32,
 	virtual_prefetch_enabled: u32,
-	_padding: u32,
+	meshlet_count: u32,
+	virtual_shadow_error_pixels: [4]f32,
 }
-#assert(size_of(WGPU_GPU_Cull_Uniform) == 816)
+#assert(size_of(WGPU_GPU_Cull_Uniform) == 832)
 
 WGPU_Draw_Indexed_Indirect :: struct {
 	index_count: u32,
@@ -436,7 +438,7 @@ WGPU_GPU_Meshlet_Info :: struct {
 	group_index: u32,
 	request_group_index: u32,
 	request_enabled: u32,
-	_padding: u32,
+	batch_index: u32,
 }
 // WGSL storage-array elements round this vec4-bearing structure to a 16-byte stride.
 #assert(size_of(WGPU_GPU_Meshlet_Info) == 144)
@@ -466,10 +468,25 @@ WGPU_Geometry_Cache :: struct {
 	index_range: WGPU_Arena_Range,
 	meshlet_index_range: WGPU_Arena_Range,
 	cluster_pages: [dynamic]WGPU_Cluster_Page_Cache,
+	cluster_groups: [dynamic]WGPU_Cluster_Group_Cache,
+	refined_group_cluster_offsets: [dynamic]u32,
+	refined_group_clusters: [dynamic]u32,
+	refined_group_parent_offsets: [dynamic]u32,
+	refined_group_parents: [dynamic]u32,
 	vertex_count: u32,
 	index_count: u32,
 	valid: bool,
 	virtual_geometry: bool,
+}
+
+WGPU_Cluster_Group_Cache :: struct {
+	last_used_frame: u64,
+	resident_since_frame: u64,
+	priority: f32,
+	resident: bool,
+	pinned: bool,
+	prefetched: bool,
+	resident_refinement_count: u32,
 }
 
 WGPU_Cluster_Page_Cache :: struct {
@@ -712,11 +729,15 @@ WGPU_Renderer :: struct {
 	gpu_cull_pipeline: wgpu.ComputePipeline,
 	gpu_meshlet_cull_pipeline: wgpu.ComputePipeline,
 	gpu_compact_cull_pipeline: wgpu.ComputePipeline,
+	gpu_compact_cluster_cull_pipeline: wgpu.ComputePipeline,
+	gpu_compact_shadow_cluster_cull_pipeline: wgpu.ComputePipeline,
 	gpu_cull_pipeline_layout: wgpu.PipelineLayout,
 	gpu_cull_bind_group_layout: wgpu.BindGroupLayout,
 	gpu_cull_bind_group: wgpu.BindGroup,
 	gpu_meshlet_cull_bind_group: wgpu.BindGroup,
 	gpu_compact_cull_bind_group: wgpu.BindGroup,
+	gpu_compact_camera_cull_bind_group: wgpu.BindGroup,
+	gpu_compact_shadow_cull_bind_group: wgpu.BindGroup,
 	gpu_meshlet_debug_shader: wgpu.ShaderModule,
 	gpu_meshlet_debug_pipeline: wgpu.RenderPipeline,
 	gpu_meshlet_debug_pipeline_layout: wgpu.PipelineLayout,
@@ -773,6 +794,7 @@ WGPU_Renderer :: struct {
 	gpu_meshlet_shadow_visible_buffer: wgpu.Buffer,
 	gpu_compact_visible_buffer: wgpu.Buffer,
 	gpu_compact_shadow_visible_buffer: wgpu.Buffer,
+	gpu_compact_candidate_count_buffer: wgpu.Buffer,
 	gpu_meshlet_indirect_template_buffer: wgpu.Buffer,
 	gpu_meshlet_indirect_buffer: wgpu.Buffer,
 	gpu_meshlet_shadow_indirect_buffer: wgpu.Buffer,
@@ -871,6 +893,8 @@ WGPU_Renderer :: struct {
 	gpu_timestamp_frame_ms: f64,
 	gpu_timestamp_scene_ms: f64,
 	dynamic_resolution: Dynamic_Resolution_State,
+	adaptive_shadow_resolution: Adaptive_Shadow_Resolution_State,
+	shadow_map_resolution: u32,
 	profile: ^Profile_Collector,
 	profile_frame_index: u64,
 	shadow_bind_group_layout: wgpu.BindGroupLayout,
@@ -1097,6 +1121,12 @@ wgpu_dynamic_resolution_scale :: proc(
 		}
 	}
 	renderer.gpu_timestamp_resolution_sample_count = 0
+	renderer.shadow_map_resolution = adaptive_shadow_resolution(
+		&renderer.adaptive_shadow_resolution,
+		&renderer.dynamic_resolution,
+		WGPU_SHADOW_MAP_SIZE,
+		WGPU_SHADOW_MAP_MIN_SIZE,
+	)
 	if wgpu_gpu_timing_active(renderer) {
 		readback := &renderer.gpu_timestamp_readbacks[renderer.gpu_timestamp_active_slot]
 		readback.dynamic_resolution_generation = renderer.dynamic_resolution.generation
@@ -1325,8 +1355,8 @@ wgpu_profile_workload :: proc(
 		shadow_cascades = WGPU_SHADOW_CASCADE_COUNT
 		shadow = {
 			enabled = true,
-			width = WGPU_SHADOW_MAP_SIZE,
-			height = WGPU_SHADOW_MAP_SIZE,
+			width = max(renderer.shadow_map_resolution, WGPU_SHADOW_MAP_MIN_SIZE),
+			height = max(renderer.shadow_map_resolution, WGPU_SHADOW_MAP_MIN_SIZE),
 			passes = shadow_cascades,
 			draws = shadow_draws * u64(shadow_cascades),
 			instances = shadow_instances,
@@ -2278,6 +2308,7 @@ wgpu_texture_cache :: proc(
 WGPU_OFFSCREEN_WIDTH :: u32(1280)
 WGPU_OFFSCREEN_HEIGHT :: u32(720)
 WGPU_SHADOW_MAP_SIZE :: u32(2048)
+WGPU_SHADOW_MAP_MIN_SIZE :: u32(512)
 
 wgpu_rebuild_draw_batch_cache :: proc(
 	cache: ^WGPU_Draw_Batch_Cache,
@@ -2400,6 +2431,11 @@ wgpu_release_geometry_cache_ranges :: proc(
 		}
 	}
 	delete(cached.cluster_pages)
+	delete(cached.cluster_groups)
+	delete(cached.refined_group_cluster_offsets)
+	delete(cached.refined_group_clusters)
+	delete(cached.refined_group_parent_offsets)
+	delete(cached.refined_group_parents)
 	cached^ = {}
 }
 
@@ -2505,6 +2541,11 @@ wgpu_geometry_cache :: proc(
 	meshlet_index_range := cached.meshlet_index_range
 	meshlet_range_reused := true
 	cluster_pages: [dynamic]WGPU_Cluster_Page_Cache
+	cluster_groups: [dynamic]WGPU_Cluster_Group_Cache
+	refined_group_cluster_offsets: [dynamic]u32
+	refined_group_clusters: [dynamic]u32
+	refined_group_parent_offsets: [dynamic]u32
+	refined_group_parents: [dynamic]u32
 	committed := false
 	defer if !committed {
 		if !vertex_range_reused {
@@ -2523,15 +2564,29 @@ wgpu_geometry_cache :: proc(
 			}
 		}
 		delete(cluster_pages)
+		delete(cluster_groups)
+		delete(refined_group_cluster_offsets)
+		delete(refined_group_clusters)
+		delete(refined_group_parent_offsets)
+		delete(refined_group_parents)
 	}
 	if renderer.gpu_meshlet_supported {
 		meshlet_err: string
 		if virtual_submission {
 			resize(&cluster_pages, len(geometry.cluster_pages))
+			resize(&cluster_groups, len(geometry.cluster_groups))
+			refined_group_cluster_offsets, refined_group_clusters, refined_group_parent_offsets, refined_group_parents =
+				wgpu_build_refined_group_cluster_index(geometry)
 			for group, group_index in geometry.cluster_groups {
 				page_end := group.page_offset + group.page_count
 				for page_index in group.page_offset ..< page_end {
 					cluster_pages[page_index].group_index = u32(group_index)
+				}
+				cluster_groups[group_index].pinned = true
+				for page_index in group.page_offset ..< page_end {
+					cluster_groups[group_index].pinned =
+						cluster_groups[group_index].pinned &&
+						geometry.cluster_pages[page_index].pinned
 				}
 			}
 			preload_geometry := preload_virtual_geometry
@@ -2637,6 +2692,25 @@ wgpu_geometry_cache :: proc(
 					renderer.virtual_geometry_group_upload_count += 1
 				}
 			}
+			for &group, group_index in cluster_groups {
+				resource_group := geometry.cluster_groups[group_index]
+				group.resident = true
+				for page_index in resource_group.page_offset ..< resource_group.page_offset + resource_group.page_count {
+					group.resident = group.resident && cluster_pages[page_index].resident
+				}
+				group.resident_since_frame = renderer.profile_frame_index if group.resident else 0
+			}
+			for group, group_index in cluster_groups {
+				if group.resident {
+					wgpu_adjust_virtual_fallback_protection(
+						cluster_groups[:],
+						refined_group_parent_offsets[:],
+						refined_group_parents[:],
+						u32(group_index),
+						1,
+					)
+				}
+			}
 			meshlet_range_reused = false
 			meshlet_index_range = {}
 		} else {
@@ -2712,6 +2786,11 @@ wgpu_geometry_cache :: proc(
 		}
 	}
 	delete(cached.cluster_pages)
+	delete(cached.cluster_groups)
+	delete(cached.refined_group_cluster_offsets)
+	delete(cached.refined_group_clusters)
+	delete(cached.refined_group_parent_offsets)
+	delete(cached.refined_group_parents)
 	cached^ = {
 		handle = handle,
 		version = geometry.version,
@@ -2719,12 +2798,22 @@ wgpu_geometry_cache :: proc(
 		index_range = index_range,
 		meshlet_index_range = meshlet_index_range,
 		cluster_pages = cluster_pages,
+		cluster_groups = cluster_groups,
+		refined_group_cluster_offsets = refined_group_cluster_offsets,
+		refined_group_clusters = refined_group_clusters,
+		refined_group_parent_offsets = refined_group_parent_offsets,
+		refined_group_parents = refined_group_parents,
 		vertex_count = u32(resources.geometry_canonical_vertex_count(geometry)),
 		index_count = u32(resources.geometry_fallback_index_count(geometry)),
 		valid = true,
 		virtual_geometry = virtual_submission,
 	}
 	cluster_pages = nil
+	cluster_groups = nil
+	refined_group_cluster_offsets = nil
+	refined_group_clusters = nil
+	refined_group_parent_offsets = nil
+	refined_group_parents = nil
 	committed = true
 	wgpu_recount_virtual_page_residency(renderer)
 	return cached, ""
@@ -3481,6 +3570,15 @@ wgpu_encode_shadow_cascade_pass :: proc(
 	)
 	if pass == nil { return "failed to begin wgpu shadow pass" }
 	defer wgpu.RenderPassEncoderRelease(pass)
+	shadow_resolution := f32(max(renderer.shadow_map_resolution, WGPU_SHADOW_MAP_MIN_SIZE))
+	wgpu.RenderPassEncoderSetViewport(pass, 0, 0, shadow_resolution, shadow_resolution, 0, 1)
+	wgpu.RenderPassEncoderSetScissorRect(
+		pass,
+		0,
+		0,
+		u32(shadow_resolution),
+		u32(shadow_resolution),
+	)
 	if len(batches) > 0 {
 		wgpu.RenderPassEncoderSetVertexBuffer(
 			pass,
@@ -3765,6 +3863,8 @@ wgpu_draw_frame :: proc(
 		config.stats.clustered_lighting = true
 		config.stats.shadow_cascades =
 			WGPU_SHADOW_CASCADE_COUNT if renderer.render_list.directional_light_count > 0 else 0
+		config.stats.shadow_resolution =
+			renderer.shadow_map_resolution if renderer.render_list.directional_light_count > 0 else 0
 		config.stats.cluster_count = WGPU_CLUSTER_COUNT
 		config.stats.cluster_max_lights = renderer.gpu_cluster_light_capacity
 		config.stats.clustered_point_lights = renderer.gpu_clustered_light_count
@@ -4026,6 +4126,8 @@ wgpu_render_offscreen_frame :: proc(
 		config.stats.clustered_lighting = true
 		config.stats.shadow_cascades =
 			WGPU_SHADOW_CASCADE_COUNT if renderer.render_list.directional_light_count > 0 else 0
+		config.stats.shadow_resolution =
+			renderer.shadow_map_resolution if renderer.render_list.directional_light_count > 0 else 0
 		config.stats.cluster_count = WGPU_CLUSTER_COUNT
 		config.stats.cluster_max_lights = renderer.gpu_cluster_light_capacity
 		config.stats.clustered_point_lights = renderer.gpu_clustered_light_count
@@ -4228,6 +4330,11 @@ wgpu_write_framegrab_readback :: proc(
 			userdata1 = &map_state,
 		},
 	)
+	// Capture replay deliberately sits outside measured telemetry. Drain the
+	// submitted queue before applying the short callback timeout so a heavily
+	// backlogged GPU is not mistaken for a failed map request.
+	wgpu.DevicePoll(renderer.device, true)
+	wgpu.InstanceProcessEvents(renderer.instance)
 	if !wgpu_wait_for_buffer_map(renderer.instance, &map_state) {
 		message := string(map_state.message[:map_state.message_length])
 		if message == "" {

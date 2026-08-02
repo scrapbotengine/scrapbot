@@ -119,6 +119,7 @@ struct Render_Uniform {
 	camera_position: vec4<f32>,
 	shadow_cascade_splits: vec4<f32>,
 	shadow_cascade_texel_sizes: vec4<f32>,
+	shadow_map_parameters: vec4<f32>,
 	debug: vec4<u32>,
 	camera_clip: vec4<f32>,
 };
@@ -208,7 +209,7 @@ struct Meshlet_Info {
 	group_index: u32,
 	request_group_index: u32,
 	request_enabled: u32,
-	_padding: u32,
+	batch_index: u32,
 };
 
 @group(0) @binding(0) var<uniform> render: Render_Uniform;
@@ -647,8 +648,12 @@ fn directional_shadow_cascade(
 	if (any(uv < vec2<f32>(0.0)) || any(uv > vec2<f32>(1.0)) || projected.z < 0.0 || projected.z > 1.0) {
 		return 1.0;
 	}
-	let dimensions = vec2<f32>(textureDimensions(shadow_map).xy);
-	let texel = 1.0 / dimensions;
+	let uv_scale = render.shadow_map_parameters.x;
+	let texel = render.shadow_map_parameters.y;
+	let atlas_uv = uv * uv_scale;
+	let half_texel = texel * 0.5;
+	let uv_min = vec2<f32>(half_texel);
+	let uv_max = vec2<f32>(uv_scale - half_texel);
 	var visibility = 0.0;
 	for (var y: i32 = -1; y <= 1; y = y + 1) {
 		for (var x: i32 = -1; x <= 1; x = x + 1) {
@@ -658,7 +663,11 @@ fn directional_shadow_cascade(
 			visibility += weight * textureSampleCompare(
 				shadow_map,
 				shadow_sampler,
-				uv + vec2<f32>(f32(x), f32(y)) * texel * 1.5,
+				clamp(
+					atlas_uv + vec2<f32>(f32(x), f32(y)) * texel * 1.5,
+					uv_min,
+					uv_max,
+				),
 				i32(cascade_index),
 				projected.z - 0.00035,
 			);
@@ -1102,7 +1111,7 @@ struct Meshlet_Info {
 	group_index: u32,
 	request_group_index: u32,
 	request_enabled: u32,
-	_padding: u32,
+	batch_index: u32,
 };
 
 struct Draw_Indexed_Indirect {
@@ -1137,7 +1146,8 @@ struct Cull_Uniform {
 	virtual_feedback_epoch: u32,
 	compact_shadow_pages: u32,
 	virtual_prefetch_enabled: u32,
-	_padding_1: u32,
+	meshlet_count: u32,
+	virtual_shadow_error_pixels: vec4<f32>,
 };
 
 struct Virtual_Page_Feedback {
@@ -1328,6 +1338,34 @@ fn virtual_cluster_selected(
 	}
 	let refined_under_threshold = !wants_refinement;
 	return group_over_threshold && refined_under_threshold;
+}
+
+fn virtual_shadow_error_pixels(cascade_index: u32) -> f32 {
+	return cull.virtual_shadow_error_pixels[min(cascade_index, 3u)];
+}
+
+fn virtual_shadow_cluster_selected(
+	instance: GPU_Instance,
+	meshlet: Meshlet_Info,
+	cascade_index: u32,
+) -> bool {
+	if (meshlet.virtual_geometry == 0u) {
+		return true;
+	}
+	if (meshlet.page_resident == 0u) {
+		return false;
+	}
+	let error_pixels = virtual_shadow_error_pixels(cascade_index);
+	let group_over_threshold =
+		virtual_projected_error(instance, meshlet.group_bounds, meshlet.group_error) >
+		error_pixels;
+	let wants_refinement = meshlet.refined_error > 0.0 &&
+		virtual_projected_error(instance, meshlet.refined_bounds, meshlet.refined_error) >
+		error_pixels;
+	if (group_over_threshold && wants_refinement && meshlet.refined_resident == 0u) {
+		return true;
+	}
+	return group_over_threshold && !wants_refinement;
 }
 
 fn prefetch_virtual_cluster(
@@ -1606,6 +1644,255 @@ fn append_batch_meshlet_debug(
 	}
 }
 
+const COMPACT_CANDIDATE_CAMERA = 1u;
+const COMPACT_CANDIDATE_PREDICTIVE = 2u;
+const COMPACT_CANDIDATE_SHADOW_BASE = 4u;
+
+fn cull_compact_candidate(invocation: vec3<u32>) {
+	let slot = invocation.x;
+	if (slot >= cull.slot_count) {
+		return;
+	}
+	let instance = instances[slot];
+	let lod_level = select_lod(instance);
+	let batch_index = instance.batch_indices[lod_level];
+	if (instance.enabled == 0u || batch_index >= cull.batch_count) {
+		return;
+	}
+	let batch = batches[batch_index];
+	if (batch_submission_mode(batch) != 2u) {
+		return;
+	}
+	var flags = 0u;
+	let camera_visible = camera_sphere_visible(instance.bounds);
+	let predictive_visible =
+		cull.virtual_prefetch_enabled != 0u &&
+		predictive_sphere_visible(instance.bounds);
+	if (camera_visible) {
+		atomicAdd(&counters.frustum_candidates, 1u);
+		let instance_occlusion = camera_sphere_occlusion(instance.bounds);
+		if (instance_occlusion.occluded != 0u) {
+			atomicAdd(&counters.occlusion_culled_instances, 1u);
+			if (render_debug_is_occlusion_queries()) {
+				append_occlusion_debug(instance.bounds, instance_occlusion, lod_level, 0u);
+			} else {
+				append_batch_meshlet_debug(instance, batch, 3u, lod_level);
+			}
+		} else {
+			flags = flags | COMPACT_CANDIDATE_CAMERA;
+			mark_visible_batch(batch_index);
+			atomicAdd(&counters.visible_instances, 1u);
+			atomicAdd(&counters.lod_visible_instances[lod_level], 1u);
+		}
+	} else {
+		atomicAdd(&counters.frustum_culled_instances, 1u);
+		append_batch_meshlet_debug(instance, batch, 2u, lod_level);
+	}
+	if (predictive_visible) {
+		flags = flags | COMPACT_CANDIDATE_PREDICTIVE;
+	}
+	if (instance.shadow_flags.x > 0.5) {
+		for (var cascade_index = 0u; cascade_index < 4u; cascade_index = cascade_index + 1u) {
+			if (shadow_sphere_visible(instance.bounds, cascade_index)) {
+				flags = flags | (COMPACT_CANDIDATE_SHADOW_BASE << cascade_index);
+				atomicAdd(&counters.shadow_visible_instances, 1u);
+			}
+		}
+	}
+	if (flags == 0u) {
+		return;
+	}
+	let candidate_index = atomicAdd(&shadow_indirect[batch_index].instance_count, 1u);
+	if (candidate_index < batch.visible_capacity) {
+		visible_instances[batch.visible_offset + candidate_index] =
+			(slot & 0x00ffffffu) | (flags << 24u);
+	}
+}
+
+fn cull_compact_camera_meshlet(
+	instance: GPU_Instance,
+	slot: u32,
+	batch: Batch_Info,
+	meshlet: Meshlet_Info,
+	meshlet_index: u32,
+	lod_level: u32,
+	predictive_visible: bool,
+) {
+	if (!virtual_cluster_selected(instance, meshlet, true)) {
+		if (meshlet.virtual_geometry != 0u) {
+			atomicAdd(&counters.virtual_rejected_clusters, 1u);
+		}
+		return;
+	}
+	if (predictive_visible) {
+		prefetch_virtual_cluster(instance, meshlet, true);
+	}
+	let bounds = world_meshlet_bounds(instance, meshlet);
+	if (!camera_sphere_visible(bounds)) {
+		atomicAdd(&counters.frustum_culled_meshlets, 1u);
+		append_meshlet_debug(bounds, 4u, lod_level, meshlet_index + 1u);
+		return;
+	}
+	if (meshlet_cone_culled(instance, meshlet, bounds)) {
+		atomicAdd(&counters.cone_culled_meshlets, 1u);
+		append_meshlet_debug(bounds, 5u, lod_level, meshlet_index + 1u);
+		return;
+	}
+	let meshlet_occlusion = camera_sphere_occlusion(bounds);
+	if (render_debug_is_occlusion_queries()) {
+		append_occlusion_debug(bounds, meshlet_occlusion, lod_level, meshlet_index + 1u);
+	}
+	if (meshlet_occlusion.occluded != 0u) {
+		atomicAdd(&counters.occlusion_culled_meshlets, 1u);
+		if (!render_debug_is_occlusion_queries()) {
+			append_meshlet_debug(bounds, 6u, lod_level, meshlet_index + 1u);
+		}
+		return;
+	}
+	if (
+		meshlet.virtual_geometry != 0u &&
+		virtual_page_touch_sample(meshlet, slot)
+	) {
+		append_virtual_page_feedback(
+			meshlet,
+			meshlet.group_index,
+			virtual_projected_error(instance, meshlet.group_bounds, meshlet.group_error),
+			2u,
+		);
+	}
+	let local_index = atomicAdd(
+		&indirect[batch.compact_command_index].instance_count,
+		1u,
+	);
+	if (local_index == 0u) {
+		atomicAdd(&counters.visible_meshlet_draws, 1u);
+	}
+	if (meshlet.virtual_geometry != 0u) {
+		atomicAdd(&counters.visible_virtual_clusters, 1u);
+	}
+	let record_offset = batch.compact_visible_offset + local_index;
+	if (local_index < batch.compact_visible_capacity) {
+		visible_instances[record_offset * 2u] = slot;
+		visible_instances[record_offset * 2u + 1u] = meshlet_index;
+		atomicAdd(&counters.visible_meshlets, 1u);
+	}
+}
+
+fn cull_compact_shadow_meshlet(
+	instance: GPU_Instance,
+	slot: u32,
+	batch: Batch_Info,
+	meshlet: Meshlet_Info,
+	meshlet_index: u32,
+	cascade_index: u32,
+) {
+	if (!virtual_shadow_cluster_selected(instance, meshlet, cascade_index)) {
+		return;
+	}
+	let bounds = world_meshlet_bounds(instance, meshlet);
+	if (!shadow_sphere_visible(bounds, cascade_index)) {
+		return;
+	}
+	let indirect_index = cascade_index * cull.batch_count + batch.compact_command_index;
+	let local_index = atomicAdd(&indirect[indirect_index].instance_count, 1u);
+	let record_offset =
+		cascade_index * cull.meshlet_shadow_visible_stride +
+		batch.compact_visible_offset + local_index;
+	if (local_index < batch.compact_visible_capacity) {
+		visible_instances[record_offset * 2u] = slot;
+		visible_instances[record_offset * 2u + 1u] = meshlet_index;
+		atomicAdd(&counters.shadow_visible_meshlets, 1u);
+	}
+}
+
+fn compact_cluster_batch(meshlet_index: u32) -> u32 {
+	if (meshlet_index >= cull.meshlet_count) {
+		return cull.batch_count;
+	}
+	return meshlets[meshlet_index].batch_index;
+}
+
+fn cull_compact_camera_clusters(invocation: vec3<u32>) {
+	let meshlet_index = invocation.x;
+	let batch_index = compact_cluster_batch(meshlet_index);
+	if (batch_index >= cull.batch_count) {
+		return;
+	}
+	let meshlet = meshlets[meshlet_index];
+	let batch = batches[batch_index];
+	if (batch_submission_mode(batch) != 2u) {
+		return;
+	}
+	let candidate_count = min(
+		atomicLoad(&shadow_indirect[batch_index].instance_count),
+		batch.visible_capacity,
+	);
+	for (var candidate_index = 0u; candidate_index < candidate_count; candidate_index = candidate_index + 1u) {
+		let candidate = shadow_visible_instances[batch.visible_offset + candidate_index];
+		let slot = candidate & 0x00ffffffu;
+		let flags = candidate >> 24u;
+		let instance = instances[slot];
+		let lod_level = select_lod(instance);
+		if (instance.batch_indices[lod_level] != batch_index) {
+			continue;
+		}
+		let camera_visible = (flags & COMPACT_CANDIDATE_CAMERA) != 0u;
+		let predictive_visible = (flags & COMPACT_CANDIDATE_PREDICTIVE) != 0u;
+		if (camera_visible) {
+			cull_compact_camera_meshlet(
+				instance,
+				slot,
+				batch,
+				meshlet,
+				meshlet_index,
+				lod_level,
+				predictive_visible,
+			);
+		} else if (predictive_visible) {
+			prefetch_virtual_cluster(instance, meshlet, false);
+		}
+	}
+}
+
+fn cull_compact_shadow_clusters(invocation: vec3<u32>) {
+	let meshlet_index = invocation.x;
+	let cascade_index = invocation.y;
+	let batch_index = compact_cluster_batch(meshlet_index);
+	if (batch_index >= cull.batch_count || cascade_index >= 4u) {
+		return;
+	}
+	let meshlet = meshlets[meshlet_index];
+	let batch = batches[batch_index];
+	if (batch_submission_mode(batch) != 2u) {
+		return;
+	}
+	let candidate_count = min(
+		atomicLoad(&shadow_indirect[batch_index].instance_count),
+		batch.visible_capacity,
+	);
+	for (var candidate_index = 0u; candidate_index < candidate_count; candidate_index = candidate_index + 1u) {
+		let candidate = shadow_visible_instances[batch.visible_offset + candidate_index];
+		let slot = candidate & 0x00ffffffu;
+		let flags = candidate >> 24u;
+		let instance = instances[slot];
+		let lod_level = select_lod(instance);
+		if (instance.batch_indices[lod_level] != batch_index) {
+			continue;
+		}
+		let shadow_flag = COMPACT_CANDIDATE_SHADOW_BASE << cascade_index;
+		if ((flags & shadow_flag) != 0u) {
+			cull_compact_shadow_meshlet(
+				instance,
+				slot,
+				batch,
+				meshlet,
+				meshlet_index,
+				cascade_index,
+			);
+		}
+	}
+}
+
 fn cull_instances(invocation: vec3<u32>, submission_mode: u32) {
 	let slot = invocation.x;
 	let cascade_index = invocation.y;
@@ -1781,7 +2068,7 @@ fn cull_instances(invocation: vec3<u32>, submission_mode: u32) {
 			) {
 				let meshlet_index = batch.meshlet_offset + local_meshlet;
 				let meshlet = meshlets[meshlet_index];
-				if (!virtual_cluster_selected(instance, meshlet, false)) {
+				if (!virtual_shadow_cluster_selected(instance, meshlet, cascade_index)) {
 					continue;
 				}
 				let bounds = world_meshlet_bounds(instance, meshlet);
@@ -1837,7 +2124,17 @@ fn cull_meshlet_instances(@builtin(global_invocation_id) invocation: vec3<u32>) 
 
 @compute @workgroup_size(64)
 fn cull_compact_instances(@builtin(global_invocation_id) invocation: vec3<u32>) {
-	cull_instances(invocation, 2u);
+	cull_compact_candidate(invocation);
+}
+
+@compute @workgroup_size(64)
+fn cull_compact_cluster_instances(@builtin(global_invocation_id) invocation: vec3<u32>) {
+	cull_compact_camera_clusters(invocation);
+}
+
+@compute @workgroup_size(64)
+fn cull_compact_shadow_cluster_instances(@builtin(global_invocation_id) invocation: vec3<u32>) {
+	cull_compact_shadow_clusters(invocation);
 }
 `
 
@@ -1888,6 +2185,7 @@ struct Render_Uniform {
 	camera_position: vec4<f32>,
 	shadow_cascade_splits: vec4<f32>,
 	shadow_cascade_texel_sizes: vec4<f32>,
+	shadow_map_parameters: vec4<f32>,
 	debug: vec4<u32>,
 	camera_clip: vec4<f32>,
 };
@@ -1953,6 +2251,7 @@ struct Render_Uniform {
 	camera_position: vec4<f32>,
 	shadow_cascade_splits: vec4<f32>,
 	shadow_cascade_texel_sizes: vec4<f32>,
+	shadow_map_parameters: vec4<f32>,
 	debug: vec4<u32>,
 	camera_clip: vec4<f32>,
 };

@@ -93,6 +93,7 @@ Render_Stats :: struct {
 	meshlet_visible_capacity: int,
 	clustered_lighting: bool,
 	shadow_cascades: int,
+	shadow_resolution: u32,
 	cluster_count: int,
 	cluster_max_lights: int,
 	clustered_point_lights: int,
@@ -187,6 +188,17 @@ Dynamic_Resolution_State :: struct {
 	cooldown_samples: int,
 }
 
+Adaptive_Shadow_Resolution_State :: struct {
+	initialized: bool,
+	enabled: bool,
+	policy_owner: shared.Entity_UUID,
+	effective_resolution: u32,
+	last_sample_serial: u64,
+	over_budget_samples: int,
+	under_budget_samples: int,
+	cooldown_samples: int,
+}
+
 DYNAMIC_RESOLUTION_SCALE_STEP :: f32(0.05)
 DYNAMIC_RESOLUTION_OVER_BUDGET_RATIO :: f64(1.08)
 DYNAMIC_RESOLUTION_UNDER_BUDGET_RATIO :: f64(0.72)
@@ -194,6 +206,12 @@ DYNAMIC_RESOLUTION_OVER_BUDGET_SAMPLES :: 3
 DYNAMIC_RESOLUTION_UNDER_BUDGET_SAMPLES :: 30
 DYNAMIC_RESOLUTION_CHANGE_COOLDOWN_SAMPLES :: 8
 DYNAMIC_RESOLUTION_FILTER_ALPHA :: f64(0.2)
+
+ADAPTIVE_SHADOW_OVER_BUDGET_SAMPLES :: 8
+ADAPTIVE_SHADOW_UNDER_BUDGET_SAMPLES :: 180
+ADAPTIVE_SHADOW_CHANGE_COOLDOWN_SAMPLES :: 60
+ADAPTIVE_SHADOW_FIRST_STEP_SCALE_RATIO :: f32(0.8)
+ADAPTIVE_SHADOW_UNDER_BUDGET_RATIO :: f64(0.6)
 
 dynamic_resolution_quantize :: proc "contextless" (scale, minimum, maximum: f32) -> f32 {
 	steps := math.round(scale / DYNAMIC_RESOLUTION_SCALE_STEP)
@@ -297,6 +315,101 @@ dynamic_resolution_scale :: proc "contextless" (
 	state.over_budget_samples = 0
 	state.under_budget_samples = 0
 	return state.effective_scale
+}
+
+dynamic_resolution_reject_measurements :: proc "contextless" (state: ^Dynamic_Resolution_State) {
+	if state == nil {
+		return
+	}
+	state.generation += 1
+	state.filtered_gpu_ms = 0
+	state.has_filtered_sample = false
+	state.over_budget_samples = 0
+	state.under_budget_samples = 0
+	state.cooldown_samples = DYNAMIC_RESOLUTION_CHANGE_COOLDOWN_SAMPLES
+}
+
+adaptive_shadow_resolution :: proc "contextless" (
+	state: ^Adaptive_Shadow_Resolution_State,
+	dynamic_state: ^Dynamic_Resolution_State,
+	maximum_resolution, minimum_resolution: u32,
+) -> u32 {
+	if state == nil || dynamic_state == nil {
+		return maximum_resolution
+	}
+	minimum := min(max(minimum_resolution, u32(1)), maximum_resolution)
+	enabled := dynamic_state.enabled
+	policy_changed :=
+		!state.initialized ||
+		state.enabled != enabled ||
+		state.policy_owner != dynamic_state.policy_owner
+	if policy_changed {
+		state^ = {
+			initialized = true,
+			enabled = enabled,
+			policy_owner = dynamic_state.policy_owner,
+			effective_resolution = maximum_resolution,
+			last_sample_serial = dynamic_state.last_sample_serial,
+		}
+	}
+	if !enabled {
+		state.effective_resolution = maximum_resolution
+		return state.effective_resolution
+	}
+	if !dynamic_state.has_filtered_sample ||
+	   dynamic_state.last_sample_serial == 0 ||
+	   dynamic_state.last_sample_serial == state.last_sample_serial {
+		return state.effective_resolution
+	}
+	state.last_sample_serial = dynamic_state.last_sample_serial
+	if state.cooldown_samples > 0 {
+		state.cooldown_samples -= 1
+		return state.effective_resolution
+	}
+	first_step_scale := max(
+		dynamic_state.minimum_scale,
+		dynamic_state.maximum_scale * ADAPTIVE_SHADOW_FIRST_STEP_SCALE_RATIO,
+	)
+	can_reduce :=
+		state.effective_resolution > minimum &&
+		((state.effective_resolution == maximum_resolution &&
+					dynamic_state.effective_scale <= first_step_scale) ||
+				dynamic_state.effective_scale <= dynamic_state.minimum_scale)
+	over_budget :=
+		can_reduce &&
+		dynamic_state.filtered_gpu_ms >
+			f64(dynamic_state.target_ms) * DYNAMIC_RESOLUTION_OVER_BUDGET_RATIO
+	can_increase :=
+		state.effective_resolution < maximum_resolution &&
+		dynamic_state.effective_scale >= dynamic_state.maximum_scale
+	under_budget :=
+		can_increase &&
+		dynamic_state.filtered_gpu_ms <
+			f64(dynamic_state.target_ms) * ADAPTIVE_SHADOW_UNDER_BUDGET_RATIO
+	if over_budget {
+		state.over_budget_samples += 1
+		state.under_budget_samples = 0
+	} else if under_budget {
+		state.under_budget_samples += 1
+		state.over_budget_samples = 0
+	} else {
+		state.over_budget_samples = 0
+		state.under_budget_samples = 0
+	}
+	next_resolution := state.effective_resolution
+	if state.over_budget_samples >= ADAPTIVE_SHADOW_OVER_BUDGET_SAMPLES {
+		next_resolution = max(state.effective_resolution / 2, minimum)
+	} else if state.under_budget_samples >= ADAPTIVE_SHADOW_UNDER_BUDGET_SAMPLES {
+		next_resolution = min(state.effective_resolution * 2, maximum_resolution)
+	}
+	if next_resolution != state.effective_resolution {
+		state.effective_resolution = next_resolution
+		state.over_budget_samples = 0
+		state.under_budget_samples = 0
+		state.cooldown_samples = ADAPTIVE_SHADOW_CHANGE_COOLDOWN_SAMPLES
+		dynamic_resolution_reject_measurements(dynamic_state)
+	}
+	return state.effective_resolution
 }
 
 PERFORMANCE_DIAGNOSTICS_PUBLISH_INTERVAL_FRAMES :: 5
@@ -494,6 +607,7 @@ performance_diagnostics_commit_frame :: proc(
 	snapshot.gpu_frame_ms = stats.gpu_frame_ms
 	snapshot.gpu_scene_ms = stats.gpu_scene_ms
 	snapshot.render_scale = stats.render_scale
+	snapshot.shadow_resolution = stats.shadow_resolution
 	snapshot.gpu_timestamps_valid = stats.gpu_timestamps_valid
 	snapshot.entity_count = world.scene_entity_count + world.runtime_entity_count
 	snapshot.retained_batches = stats.draw_batches

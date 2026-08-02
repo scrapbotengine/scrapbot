@@ -57,15 +57,19 @@ resident pages, with the coarsest pages pinned.
 
 GPU feedback identifies visible demand, bounded future-camera prefetch, and visible-use touches.
 Imported misses enqueue immutable product ranges on the I/O worker. Versioned completions admit and
-evict whole groups under bounded per-frame work and the combined payload budget while the resident
-fallback continues drawing. Demand sorts first and may reclaim speculative residency; prefetch may
-replace only groups beyond the visible-use grace window.
+evict whole groups under bounded per-frame work and the combined payload budget. One priority-ordered
+plan serves every eviction in the feedback batch. Demand may reclaim speculative residency;
+prefetch uses spare capacity only. A resident child protects its direct parent fallback, and release
+orders child before parent eligibility. Persistent dependency indices patch only affected cluster
+ranges rather than regenerating a Geometry's complete GPU residency table.
 
 Capable adapters retain cluster metadata and arena-global indirect templates. They select the
 desired resident frontier and draw a coarse fallback while refinement is missing. Native
 multi-draw consumes cluster commands directly. Other indirect-first-instance adapters compact
-selected instance/cluster pairs into bounded camera and streamed-shadow records and vertex-pull
-from the arenas. Fully resident portable resources retain classic indexed shadows.
+batch-local instance candidates, then test hierarchy clusters in parallel into bounded camera and
+streamed-shadow records before vertex-pulling from the arenas. Shadow cascades use progressively
+coarser hierarchy error thresholds, scaled again when adaptive shadow resolution selects a smaller
+raster region. Fully resident portable resources retain classic indexed shadows.
 Adapters without indirect-first-instance keep whole-primitive submission.
 
 Hot reload stages the resource registry, world, script/native runtime, source set, and playback baseline independently. Failure destroys the staged bundle; success swaps it atomically.

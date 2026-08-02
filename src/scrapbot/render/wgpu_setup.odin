@@ -372,6 +372,12 @@ wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
 	if renderer.gpu_compact_cull_bind_group != nil {
 		wgpu.BindGroupRelease(renderer.gpu_compact_cull_bind_group)
 	}
+	if renderer.gpu_compact_camera_cull_bind_group != nil {
+		wgpu.BindGroupRelease(renderer.gpu_compact_camera_cull_bind_group)
+	}
+	if renderer.gpu_compact_shadow_cull_bind_group != nil {
+		wgpu.BindGroupRelease(renderer.gpu_compact_shadow_cull_bind_group)
+	}
 	if renderer.gpu_cull_pipeline != nil {
 		wgpu.ComputePipelineRelease(renderer.gpu_cull_pipeline)
 	}
@@ -380,6 +386,12 @@ wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
 	}
 	if renderer.gpu_compact_cull_pipeline != nil {
 		wgpu.ComputePipelineRelease(renderer.gpu_compact_cull_pipeline)
+	}
+	if renderer.gpu_compact_cluster_cull_pipeline != nil {
+		wgpu.ComputePipelineRelease(renderer.gpu_compact_cluster_cull_pipeline)
+	}
+	if renderer.gpu_compact_shadow_cluster_cull_pipeline != nil {
+		wgpu.ComputePipelineRelease(renderer.gpu_compact_shadow_cluster_cull_pipeline)
 	}
 	if renderer.gpu_cull_pipeline_layout != nil {
 		wgpu.PipelineLayoutRelease(renderer.gpu_cull_pipeline_layout)
@@ -536,6 +548,7 @@ wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
 		renderer.gpu_meshlet_shadow_visible_buffer,
 		renderer.gpu_compact_visible_buffer,
 		renderer.gpu_compact_shadow_visible_buffer,
+		renderer.gpu_compact_candidate_count_buffer,
 		renderer.gpu_meshlet_indirect_template_buffer,
 		renderer.gpu_meshlet_indirect_buffer,
 		renderer.gpu_meshlet_shadow_indirect_buffer,
@@ -572,6 +585,11 @@ wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
 	}
 	for &cached in renderer.geometry_cache {
 		delete(cached.cluster_pages)
+		delete(cached.cluster_groups)
+		delete(cached.refined_group_cluster_offsets)
+		delete(cached.refined_group_clusters)
+		delete(cached.refined_group_parent_offsets)
+		delete(cached.refined_group_parents)
 	}
 	wgpu_destroy_geometry_arena(&renderer.geometry_vertex_arena)
 	wgpu_destroy_geometry_arena(&renderer.geometry_index_arena)
@@ -829,6 +847,7 @@ wgpu_create_render_pipeline :: proc(renderer: ^WGPU_Renderer) -> string {
 		},
 	)
 	if renderer.shadow_texture == nil { return "failed to create wgpu shadow texture" }
+	renderer.shadow_map_resolution = WGPU_SHADOW_MAP_SIZE
 	renderer.shadow_view = wgpu.TextureCreateView(
 		renderer.shadow_texture,
 		&wgpu.TextureViewDescriptor {

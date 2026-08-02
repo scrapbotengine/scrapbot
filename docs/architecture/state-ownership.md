@@ -23,6 +23,7 @@ Scrapbot separates authoritative project/runtime state from derived indexes, cac
 | Render-instance membership and retained render list | ECS render extraction | Derived from Transform/geometry/material/shadow membership and resource resolution | Structural/static dirty queue, separate exact Transform queue, and resource revisions. Static extraction supersedes a same-frame Transform entry. Entity and slot reverse indexes are bidirectional ownership maps: delayed removal of a stale owner must never erase a newly reused slot's mapping. Batch appearance/disappearance advances topology exactly at the membership boundary. |
 | GPU instances, whole-primitive and meshlet draw/visibility data, lights, shadows, postprocess targets, pipelines, and resource caches | WGPU backend | Derived backend state | Exact dirty queues, resource versions, camera/viewport revisions, target shape, capacity or meshlet-policy threshold changes, world replacement, or backend lifetime. Meshlet index/metadata/template state follows Geometry versions and retained batch capacity; each batch retains its classic/meshlet selection, while current-frame counts reset from templates. Windowed runs add an SDL-backed surface; headless runs own only an offscreen color target and allocate readback storage on explicit capture. See [WGPU derived state](#wgpu-derived-state). |
 | Active-camera render policy | Authored `scrapbot.camera`; consumed by WGPU | Authoritative ECS policy with derived dynamic-scale, target/execution/history, and exposure state | Manual scale is the dynamic ceiling; minimum scale and target GPU milliseconds bound the optional controller. Completed asynchronous scene spans use ordered pass boundaries, end before native UI, and are consumed individually and exactly once. Samples are filtered and stepped with hysteresis. They are tagged with a generation; scale/policy changes and a different stable project-camera UUID reset state and reject delayed evidence. Missing timestamp-query support falls back to the ceiling. The editor fly camera contributes pose/lens but retains the project camera as policy owner. Effective scale selects a retained world/depth/post grid while final composition and UI use the native output grid. A scale step replaces only size-dependent targets and rejects temporal history; stable scale reuses them. Automatic exposure owns one persistent GPU scalar and performs no CPU readback; disabling it restores scalar `1` once. TAA-mode changes reject history; disabled TAA omits jitter and history sampling, while disabled automatic exposure/AO/SSR/bloom omit their compute dispatches. AO quality updates one uniform and bounded shader loop, without target recreation. Retained postprocess targets stay allocated across feature toggles to avoid allocation churn. |
+| Adaptive directional-shadow resolution | Active-camera render policy; owned by WGPU | Derived quantized raster size over retained maximum-capacity layers | Dynamic-resolution timing evidence may select 2048, 1024, or 512 pixels after sustained pressure. A tier change rejects old timing evidence and starts a cooldown. Policy-owner changes or disabling dynamic resolution restore 2048. Stable frames keep the same texture, views, and bind groups; viewport/scissor, cascade texel stabilization, PCF coordinates, and virtual-shadow hierarchy thresholds consume the active size. |
 | Global volumetric medium | Authored singleton `scrapbot.volumetric_fog`; consumed by WGPU | Authoritative generic ECS payload plus renderer-owned half-resolution scattering/transmittance target | Membership/value changes follow ordinary custom-component lifecycle and revisions. Postprocessing visits only the named storage's compact active set and copies the selected payload into the retained temporal uniform. Nonzero density dispatches the half-resolution ray march; zero density skips it. Target size follows explicit post-target invalidation, not ordinary stable frames. |
 | Project/editor/overlay UI vertex buffers | WGPU backend | Derived from UI output streams | Independent monotonic stream revisions; stable streams retain CPU/GPU buffers. Target size, editor viewport, or authored canvas changes invalidate the project stream key. Project commands use the canvas's vector scale plus viewport translation and clipping; pointer input and diagnostics invert the same transform. The compositor paints project UI, viewport-clipped editor-world overlays, then editor chrome so docked tabs and panels occlude scene tools. |
 | Embedded UI viewport membership and targets | `ui.State` / WGPU backend | Derived from authored `scrapbot.ui_viewport`, layout, and resource/World state | Structural UI dirtiness maintains compact viewport-node membership. Layout refreshes only bounded visible surfaces. WGPU reuses eight independently sized target slots, quantized from 64–1024 pixels per axis. Static Texture/Model/Material preview scenes cache by component, target shape, exact resource version, and relevant registry revisions; World targets consume the retained render list. |
@@ -79,19 +80,19 @@ whole-primitive fallback.
 
 The compute culler projects monotonic hierarchy-group errors into pixels and accepts a cluster when
 its group exceeds one pixel while its refined group is absent or is at or below one pixel. This
-selects one complete camera frontier. Native multi-draw cascade visibility applies its ordinary
-sphere and normal-cone tests to that frontier. Portable cascade visibility instead uses the
-camera-selected whole-object LOD and classic indexed-indirect output.
+selects one complete camera frontier. Shadow selection uses the same hierarchy with cascade-scaled
+error thresholds, preserving near detail while bounding distant-cascade work.
 
 Stable frames copy separate active camera and shadow templates, run object-first compute culling,
-and submit matching command ranges. The portable camera branch appends records and increments its
-retained span command entirely on the GPU. Its classic dispatch owns the four indexed shadow lanes;
-its compact dispatch owns one camera lane. Mixed frames encode separate classic and cluster
-dispatches inside that pass so each stays within the portable storage-binding limit; instances
-return immediately from the dispatch that does not own their selected batch. Stable frames do not
-rescan resources, rebuild cluster metadata, upload debug identities, or regenerate compact records
-on the CPU. Adapters without indirect-first-instance and layouts above the bounded visibility
-capacity use the retained whole-primitive database.
+and submit matching command ranges. Portable compact submission first appends bounded batch-local
+instance candidates. Parallel camera and shadow dispatches then assign one hierarchy cluster to
+each invocation instead of making one instance invocation loop the complete hierarchy. Separate
+candidate, camera, and shadow bind groups reuse the baseline eight-storage-buffer layout.
+
+Mixed frames encode classic, native-cluster, and portable compact work in the same visibility pass.
+Stable frames do not rescan resources, rebuild cluster metadata, upload debug identities, or
+regenerate compact records on the CPU. Adapters without indirect-first-instance and layouts above
+the bounded visibility capacity use the retained whole-primitive database.
 
 The retained batch count follows topology invalidation. Camera-visible batches, nonempty meshlet
 draws, selected virtual clusters, and hierarchy-threshold rejections are frame-valued GPU counters.
@@ -125,10 +126,12 @@ GPU demand requests, future-camera prefetch requests, and cadence-sampled visibl
 through the bounded asynchronous visibility ring. WGPU owns smoothed camera-motion history; cuts,
 world changes, missing history, and stable cameras disable prediction. Feedback schedules
 file-backed refinement on one renderer-owned I/O worker; handle/generation/version-tagged
-completions are discarded when stale. Demand-first, group-atomic admission protects recently visible
-groups, permits demand to reclaim speculative groups immediately, and promotes a prefetched group
-on sampled visible use. Only affected Geometry commands update. Stable frames do no page scan, file
-read, upload, or residency mutation.
+completions are discarded when stale. Demand-first, group-atomic admission uses one ordered eviction
+plan per feedback batch, protects stronger recent demand, and never lets speculative prefetch evict
+demand residency. Resident refinements retain their direct coarse parents until the refinement is
+released. Geometry caches own persistent group-to-cluster and refinement-to-parent indices, so only
+changed cluster ranges and their direct dependents upload. Stable frames do no page scan, file read,
+upload, or residency mutation.
 
 Batch bind groups are released before cache storage is cleared. Exact lighting/background handle or content-version changes rebuild only the shared environment binding. The sky camera/projection uniform uploads only after an exact value change.
 
@@ -137,6 +140,8 @@ Batch bind groups are released before cache storage is cleared. Exact lighting/b
 Changed point lights upload into geometrically growing storage. Camera, viewport, light, or capacity changes trigger deterministic cluster reconstruction. Every cluster can reference the complete retained light list.
 
 Fragment lookup includes the rendered viewport origin and extent, so editor chrome cannot offset cluster selection. Four camera-relative shadow matrices own independent visibility slices and texture-array layers.
+
+The layers retain 2048² capacity. A quantized active viewport bounds raster work without reallocating bindings. Cascade stabilization, receiver bias, PCF atlas remapping, and shadow hierarchy detail all use the same active resolution.
 
 Frustum and LOD work uses the unjittered camera. TAA's eight projection samples remain within a quarter pixel. Retained history lives on the stable output grid, so reprojection uses unjittered current/previous camera matrices and removes the current sample offset before sampling history. A matching depth is selected from the local 2×2 history footprint, while YCoCg variance clipping limits stale color. Retained Hi-Z depth tracks the exact jittered projection that produced it and expands projected bounds by one pixel to remain conservative across TAA samples.
 

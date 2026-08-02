@@ -144,6 +144,19 @@ wgpu_meshlet_batch_submission :: proc "contextless" (meshlet_count, instance_cou
 	return meshlet_count > 0 && instance_count >= WGPU_MESHLET_MIN_BATCH_INSTANCES
 }
 
+wgpu_virtual_shadow_error_pixels :: proc "contextless" (
+	camera_error_pixels: f32,
+	cascade_index: int,
+	resolution_scale: f32 = 1,
+) -> f32 {
+	multipliers := [4]f32{8, 32, 128, 512}
+	return(
+		camera_error_pixels *
+		multipliers[clamp(cascade_index, 0, len(multipliers) - 1)] /
+		max(resolution_scale, 0.01) \
+	)
+}
+
 wgpu_meshlet_debug_forces_submission :: proc "contextless" (
 	debug_view: shared.Render_Debug_View,
 ) -> bool {
@@ -924,6 +937,79 @@ wgpu_make_cull_bind_group :: proc(
 	)
 }
 
+WGPU_Compact_Cull_Bind_Group_Mode :: enum {
+	Candidates,
+	Camera,
+	Shadow,
+}
+
+wgpu_make_compact_cull_bind_group :: proc(
+	renderer: ^WGPU_Renderer,
+	batch_buffer: wgpu.Buffer,
+	batch_capacity: int,
+	candidate_buffer: wgpu.Buffer,
+	candidate_capacity: int,
+	camera_indirect_buffer, shadow_indirect_buffer: wgpu.Buffer,
+	draw_capacity: int,
+	mode: WGPU_Compact_Cull_Bind_Group_Mode,
+	label: string,
+) -> wgpu.BindGroup {
+	instance_bytes := u64(WGPU_MAX_GPU_INSTANCES) * u64(size_of(WGPU_GPU_Instance))
+	batch_bytes := u64(batch_capacity) * u64(size_of(WGPU_GPU_Batch_Info))
+	candidate_bytes := u64(candidate_capacity) * u64(size_of(u32))
+	compact_bytes :=
+		u64(renderer.gpu_meshlet_visible_buffer_capacity) * u64(size_of(WGPU_GPU_Compact_Record))
+	count_bytes := u64(WGPU_MAX_GPU_INSTANCES) * u64(size_of(WGPU_Draw_Indexed_Indirect))
+	visible_buffer := renderer.gpu_compact_visible_buffer
+	visible_bytes := compact_bytes
+	indirect_buffer := camera_indirect_buffer
+	indirect_bytes := u64(draw_capacity) * u64(size_of(WGPU_Draw_Indexed_Indirect))
+	if mode == .Candidates {
+		visible_buffer = candidate_buffer
+		visible_bytes = candidate_bytes
+		indirect_buffer = renderer.gpu_compact_candidate_count_buffer
+		indirect_bytes = count_bytes
+	} else if mode == .Shadow {
+		visible_buffer = renderer.gpu_compact_shadow_visible_buffer
+		visible_bytes = compact_bytes * WGPU_SHADOW_CASCADE_COUNT
+		indirect_buffer = shadow_indirect_buffer
+		indirect_bytes *= WGPU_SHADOW_CASCADE_COUNT
+	}
+	entries := [?]wgpu.BindGroupEntry {
+		{binding = 0, buffer = renderer.gpu_instance_buffer, size = instance_bytes},
+		{binding = 1, buffer = batch_buffer, size = batch_bytes},
+		{binding = 2, buffer = visible_buffer, size = visible_bytes},
+		{binding = 3, buffer = candidate_buffer, size = candidate_bytes},
+		{binding = 4, buffer = indirect_buffer, size = indirect_bytes},
+		{binding = 5, buffer = renderer.gpu_compact_candidate_count_buffer, size = count_bytes},
+		{
+			binding = 6,
+			buffer = renderer.gpu_cull_uniform_buffer,
+			size = u64(size_of(WGPU_GPU_Cull_Uniform)),
+		},
+		{binding = 7, textureView = renderer.gpu_hiz_view},
+		{
+			binding = 8,
+			buffer = renderer.gpu_visibility_counter_buffer,
+			size = WGPU_GPU_VISIBILITY_COUNTER_BUFFER_SIZE,
+		},
+		{
+			binding = 9,
+			buffer = renderer.gpu_meshlet_info_buffer,
+			size = u64(renderer.gpu_meshlet_draw_capacity) * u64(size_of(WGPU_GPU_Meshlet_Info)),
+		},
+	}
+	return wgpu.DeviceCreateBindGroup(
+		renderer.device,
+		&wgpu.BindGroupDescriptor {
+			label = label,
+			layout = renderer.gpu_cull_bind_group_layout,
+			entryCount = uint(len(entries)),
+			entries = raw_data(entries[:]),
+		},
+	)
+}
+
 wgpu_rebuild_meshlet_debug_bind_group :: proc(renderer: ^WGPU_Renderer) -> string {
 	if renderer.gpu_meshlet_debug_bind_group != nil {
 		wgpu.BindGroupRelease(renderer.gpu_meshlet_debug_bind_group)
@@ -1468,9 +1554,33 @@ wgpu_create_gpu_driven_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 			compute = {module = renderer.gpu_cull_shader, entryPoint = "cull_compact_instances"},
 		},
 	)
+	renderer.gpu_compact_cluster_cull_pipeline = wgpu.DeviceCreateComputePipeline(
+		renderer.device,
+		&wgpu.ComputePipelineDescriptor {
+			label = "Scrapbot GPU Parallel Compact Cluster Culling Pipeline",
+			layout = renderer.gpu_cull_pipeline_layout,
+			compute = {
+				module = renderer.gpu_cull_shader,
+				entryPoint = "cull_compact_cluster_instances",
+			},
+		},
+	)
+	renderer.gpu_compact_shadow_cluster_cull_pipeline = wgpu.DeviceCreateComputePipeline(
+		renderer.device,
+		&wgpu.ComputePipelineDescriptor {
+			label = "Scrapbot GPU Parallel Compact Shadow Cluster Culling Pipeline",
+			layout = renderer.gpu_cull_pipeline_layout,
+			compute = {
+				module = renderer.gpu_cull_shader,
+				entryPoint = "cull_compact_shadow_cluster_instances",
+			},
+		},
+	)
 	if renderer.gpu_cull_pipeline == nil ||
 	   renderer.gpu_meshlet_cull_pipeline == nil ||
-	   renderer.gpu_compact_cull_pipeline == nil {
+	   renderer.gpu_compact_cull_pipeline == nil ||
+	   renderer.gpu_compact_cluster_cull_pipeline == nil ||
+	   renderer.gpu_compact_shadow_cluster_cull_pipeline == nil {
 		return "failed to create GPU culling pipelines"
 	}
 	if hiz_err := wgpu_create_hiz_pipelines(renderer); hiz_err != "" {
@@ -1591,6 +1701,12 @@ wgpu_create_gpu_driven_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 		u64(size_of(WGPU_GPU_Compact_Record)) *
 		WGPU_SHADOW_CASCADE_COUNT,
 	)
+	renderer.gpu_compact_candidate_count_buffer = wgpu_create_gpu_buffer(
+		renderer,
+		"Scrapbot GPU Compact Candidate Counts",
+		{.Storage, .CopyDst},
+		u64(WGPU_MAX_GPU_INSTANCES) * u64(size_of(WGPU_Draw_Indexed_Indirect)),
+	)
 	renderer.gpu_meshlet_indirect_template_buffer = wgpu_create_gpu_buffer(
 		renderer,
 		"Scrapbot GPU Meshlet Indirect Template",
@@ -1664,6 +1780,7 @@ wgpu_create_gpu_driven_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 	   renderer.gpu_meshlet_shadow_visible_buffer == nil ||
 	   renderer.gpu_compact_visible_buffer == nil ||
 	   renderer.gpu_compact_shadow_visible_buffer == nil ||
+	   renderer.gpu_compact_candidate_count_buffer == nil ||
 	   renderer.gpu_meshlet_indirect_template_buffer == nil ||
 	   renderer.gpu_meshlet_indirect_buffer == nil ||
 	   renderer.gpu_meshlet_shadow_indirect_buffer == nil ||
@@ -1728,22 +1845,47 @@ wgpu_create_gpu_driven_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 		"Scrapbot GPU Meshlet Culling Bind Group",
 		meshlet = true,
 	)
-	renderer.gpu_compact_cull_bind_group = wgpu_make_cull_bind_group(
+	renderer.gpu_compact_cull_bind_group = wgpu_make_compact_cull_bind_group(
 		renderer,
 		renderer.gpu_batch_info_buffer,
 		renderer.gpu_draw_capacity,
-		renderer.gpu_compact_visible_buffer,
-		renderer.gpu_compact_shadow_visible_buffer,
-		renderer.gpu_meshlet_visible_buffer_capacity,
+		renderer.gpu_visible_buffer,
+		renderer.gpu_visible_buffer_capacity,
 		renderer.gpu_indirect_buffer,
 		renderer.gpu_shadow_indirect_buffer,
 		renderer.gpu_draw_capacity,
-		"Scrapbot GPU Compact Cluster Culling Bind Group",
-		compact = true,
+		.Candidates,
+		"Scrapbot GPU Compact Candidate Culling Bind Group",
+	)
+	renderer.gpu_compact_camera_cull_bind_group = wgpu_make_compact_cull_bind_group(
+		renderer,
+		renderer.gpu_batch_info_buffer,
+		renderer.gpu_draw_capacity,
+		renderer.gpu_visible_buffer,
+		renderer.gpu_visible_buffer_capacity,
+		renderer.gpu_indirect_buffer,
+		renderer.gpu_shadow_indirect_buffer,
+		renderer.gpu_draw_capacity,
+		.Camera,
+		"Scrapbot GPU Compact Camera Cluster Culling Bind Group",
+	)
+	renderer.gpu_compact_shadow_cull_bind_group = wgpu_make_compact_cull_bind_group(
+		renderer,
+		renderer.gpu_batch_info_buffer,
+		renderer.gpu_draw_capacity,
+		renderer.gpu_visible_buffer,
+		renderer.gpu_visible_buffer_capacity,
+		renderer.gpu_indirect_buffer,
+		renderer.gpu_shadow_indirect_buffer,
+		renderer.gpu_draw_capacity,
+		.Shadow,
+		"Scrapbot GPU Compact Shadow Cluster Culling Bind Group",
 	)
 	if renderer.gpu_cull_bind_group == nil ||
 	   renderer.gpu_meshlet_cull_bind_group == nil ||
-	   renderer.gpu_compact_cull_bind_group == nil {
+	   renderer.gpu_compact_cull_bind_group == nil ||
+	   renderer.gpu_compact_camera_cull_bind_group == nil ||
+	   renderer.gpu_compact_shadow_cull_bind_group == nil {
 		if renderer.gpu_cull_bind_group != nil {
 			wgpu.BindGroupRelease(renderer.gpu_cull_bind_group)
 			renderer.gpu_cull_bind_group = nil
@@ -1755,6 +1897,14 @@ wgpu_create_gpu_driven_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 		if renderer.gpu_compact_cull_bind_group != nil {
 			wgpu.BindGroupRelease(renderer.gpu_compact_cull_bind_group)
 			renderer.gpu_compact_cull_bind_group = nil
+		}
+		if renderer.gpu_compact_camera_cull_bind_group != nil {
+			wgpu.BindGroupRelease(renderer.gpu_compact_camera_cull_bind_group)
+			renderer.gpu_compact_camera_cull_bind_group = nil
+		}
+		if renderer.gpu_compact_shadow_cull_bind_group != nil {
+			wgpu.BindGroupRelease(renderer.gpu_compact_shadow_cull_bind_group)
+			renderer.gpu_compact_shadow_cull_bind_group = nil
 		}
 		return "failed to create GPU culling bind groups"
 	}
@@ -1825,20 +1975,47 @@ wgpu_rebuild_cull_bind_group :: proc(renderer: ^WGPU_Renderer) -> string {
 		"Scrapbot GPU Meshlet Culling Bind Group",
 		meshlet = true,
 	)
-	compact_bind_group := wgpu_make_cull_bind_group(
+	compact_bind_group := wgpu_make_compact_cull_bind_group(
 		renderer,
 		renderer.gpu_batch_info_buffer,
 		renderer.gpu_draw_capacity,
-		renderer.gpu_compact_visible_buffer,
-		renderer.gpu_compact_shadow_visible_buffer,
-		renderer.gpu_meshlet_visible_buffer_capacity,
+		renderer.gpu_visible_buffer,
+		renderer.gpu_visible_buffer_capacity,
 		renderer.gpu_indirect_buffer,
 		renderer.gpu_shadow_indirect_buffer,
 		renderer.gpu_draw_capacity,
-		"Scrapbot GPU Compact Cluster Culling Bind Group",
-		compact = true,
+		.Candidates,
+		"Scrapbot GPU Compact Candidate Culling Bind Group",
 	)
-	if bind_group == nil || meshlet_bind_group == nil || compact_bind_group == nil {
+	compact_camera_bind_group := wgpu_make_compact_cull_bind_group(
+		renderer,
+		renderer.gpu_batch_info_buffer,
+		renderer.gpu_draw_capacity,
+		renderer.gpu_visible_buffer,
+		renderer.gpu_visible_buffer_capacity,
+		renderer.gpu_indirect_buffer,
+		renderer.gpu_shadow_indirect_buffer,
+		renderer.gpu_draw_capacity,
+		.Camera,
+		"Scrapbot GPU Compact Camera Cluster Culling Bind Group",
+	)
+	compact_shadow_bind_group := wgpu_make_compact_cull_bind_group(
+		renderer,
+		renderer.gpu_batch_info_buffer,
+		renderer.gpu_draw_capacity,
+		renderer.gpu_visible_buffer,
+		renderer.gpu_visible_buffer_capacity,
+		renderer.gpu_indirect_buffer,
+		renderer.gpu_shadow_indirect_buffer,
+		renderer.gpu_draw_capacity,
+		.Shadow,
+		"Scrapbot GPU Compact Shadow Cluster Culling Bind Group",
+	)
+	if bind_group == nil ||
+	   meshlet_bind_group == nil ||
+	   compact_bind_group == nil ||
+	   compact_camera_bind_group == nil ||
+	   compact_shadow_bind_group == nil {
 		if bind_group != nil {
 			wgpu.BindGroupRelease(bind_group)
 		}
@@ -1847,6 +2024,12 @@ wgpu_rebuild_cull_bind_group :: proc(renderer: ^WGPU_Renderer) -> string {
 		}
 		if compact_bind_group != nil {
 			wgpu.BindGroupRelease(compact_bind_group)
+		}
+		if compact_camera_bind_group != nil {
+			wgpu.BindGroupRelease(compact_camera_bind_group)
+		}
+		if compact_shadow_bind_group != nil {
+			wgpu.BindGroupRelease(compact_shadow_bind_group)
 		}
 		return "failed to rebuild GPU culling bind groups"
 	}
@@ -1859,9 +2042,17 @@ wgpu_rebuild_cull_bind_group :: proc(renderer: ^WGPU_Renderer) -> string {
 	if renderer.gpu_compact_cull_bind_group != nil {
 		wgpu.BindGroupRelease(renderer.gpu_compact_cull_bind_group)
 	}
+	if renderer.gpu_compact_camera_cull_bind_group != nil {
+		wgpu.BindGroupRelease(renderer.gpu_compact_camera_cull_bind_group)
+	}
+	if renderer.gpu_compact_shadow_cull_bind_group != nil {
+		wgpu.BindGroupRelease(renderer.gpu_compact_shadow_cull_bind_group)
+	}
 	renderer.gpu_cull_bind_group = bind_group
 	renderer.gpu_meshlet_cull_bind_group = meshlet_bind_group
 	renderer.gpu_compact_cull_bind_group = compact_bind_group
+	renderer.gpu_compact_camera_cull_bind_group = compact_camera_bind_group
+	renderer.gpu_compact_shadow_cull_bind_group = compact_shadow_bind_group
 	return ""
 }
 
@@ -2032,7 +2223,7 @@ wgpu_ensure_gpu_draw_buffers :: proc(
 	renderer.gpu_draw_database_rebuild_count += 1
 	clear(&renderer.gpu_indirect_templates)
 	clear(&renderer.gpu_shadow_indirect_templates)
-	return ""
+	return wgpu_rebuild_cull_bind_group(renderer)
 }
 
 wgpu_ensure_gpu_meshlet_buffers :: proc(
@@ -2695,6 +2886,7 @@ wgpu_refresh_gpu_batch_layout :: proc(
 					group_index = u32(cluster.group),
 					request_group_index = request_group,
 					request_enabled = 1 if request_enabled else 0,
+					batch_index = u32(batch_index),
 				}
 				level_byte := group.depth * 255 / max(geometry_resource.cluster_max_depth, 1)
 				identity := (level_byte << 24) | (u32(meshlet_index + 1) & 0x003f_ffff)
@@ -2732,6 +2924,7 @@ wgpu_refresh_gpu_batch_layout :: proc(
 					base_vertex = u32(base_vertex),
 					triangle_count = meshlet.triangle_count,
 					identity = u32(meshlet_index + 1),
+					batch_index = u32(batch_index),
 				}
 				renderer.gpu_meshlet_indirect_templates[meshlet_index] = {
 					index_count = meshlet.triangle_count * 3,
@@ -3706,6 +3899,7 @@ wgpu_prepare_gpu_draw_batches :: proc(
 			u32(viewport.width),
 			u32(viewport.height),
 			render_list.directional_lights[0].light.direction,
+			max(renderer.shadow_map_resolution, WGPU_SHADOW_MAP_MIN_SIZE),
 		)
 	}
 	uniform.view_projection = jittered_view_projection
@@ -3713,6 +3907,13 @@ wgpu_prepare_gpu_draw_batches :: proc(
 	uniform.shadow_view_projections = shadow_cascades.matrices
 	uniform.shadow_cascade_splits = shadow_cascades.splits
 	uniform.shadow_cascade_texel_sizes = shadow_cascades.texel_sizes
+	shadow_resolution := max(renderer.shadow_map_resolution, WGPU_SHADOW_MAP_MIN_SIZE)
+	uniform.shadow_map_parameters = {
+		f32(shadow_resolution) / f32(WGPU_SHADOW_MAP_SIZE),
+		1.0 / f32(WGPU_SHADOW_MAP_SIZE),
+		f32(shadow_resolution),
+		f32(WGPU_SHADOW_MAP_SIZE),
+	}
 	camera_position := Vec3{0, 2, 6}
 	if render_list.has_camera {
 		camera_position = render_list.camera.transform.position
@@ -4053,6 +4254,15 @@ wgpu_prepare_gpu_draw_batches :: proc(
 		virtual_feedback_epoch = u32(renderer.profile_frame_index),
 		compact_shadow_pages = 1 if wgpu_compact_shadow_pages_active(renderer) else 0,
 		virtual_prefetch_enabled = 1 if prediction.enabled else 0,
+		meshlet_count = u32(renderer.gpu_meshlet_draw_count),
+	}
+	for cascade_index in 0 ..< WGPU_SHADOW_CASCADE_COUNT {
+		cull_uniform.virtual_shadow_error_pixels[cascade_index] = wgpu_virtual_shadow_error_pixels(
+			cull_uniform.virtual_error_pixels,
+			cascade_index,
+			f32(max(renderer.shadow_map_resolution, WGPU_SHADOW_MAP_MIN_SIZE)) /
+			f32(WGPU_SHADOW_MAP_SIZE),
+		)
 	}
 	for cascade_index in 0 ..< WGPU_SHADOW_CASCADE_COUNT {
 		cull_uniform.shadow_planes[cascade_index] = wgpu_extract_frustum_planes(
@@ -4132,6 +4342,12 @@ wgpu_encode_gpu_culling :: proc(
 		)
 	}
 	wgpu_visibility_reset(renderer, encoder, batch_count)
+	wgpu.CommandEncoderClearBuffer(
+		encoder,
+		renderer.gpu_compact_candidate_count_buffer,
+		0,
+		u64(batch_count) * u64(size_of(WGPU_Draw_Indexed_Indirect)),
+	)
 	copy_size := u64(batch_count) * u64(size_of(WGPU_Draw_Indexed_Indirect))
 	wgpu.CommandEncoderCopyBufferToBuffer(
 		encoder,
@@ -4213,11 +4429,32 @@ wgpu_encode_gpu_culling :: proc(
 	if renderer.gpu_compact_submission_active {
 		wgpu.ComputePassEncoderSetPipeline(pass, renderer.gpu_compact_cull_pipeline)
 		wgpu.ComputePassEncoderSetBindGroup(pass, 0, renderer.gpu_compact_cull_bind_group)
-		compact_cascade_count := u32(1)
-		if renderer.gpu_cull_uniform.compact_shadow_pages != 0 {
-			compact_cascade_count = WGPU_SHADOW_CASCADE_COUNT
+		wgpu.ComputePassEncoderDispatchWorkgroups(pass, workgroups, 1, 1)
+		if renderer.gpu_meshlet_draw_count > 0 {
+			cluster_workgroups := u32((renderer.gpu_meshlet_draw_count + 63) / 64)
+			wgpu.ComputePassEncoderSetPipeline(pass, renderer.gpu_compact_cluster_cull_pipeline)
+			wgpu.ComputePassEncoderSetBindGroup(
+				pass,
+				0,
+				renderer.gpu_compact_camera_cull_bind_group,
+			)
+			wgpu.ComputePassEncoderDispatchWorkgroups(pass, cluster_workgroups, 1, 1)
+			wgpu.ComputePassEncoderSetPipeline(
+				pass,
+				renderer.gpu_compact_shadow_cluster_cull_pipeline,
+			)
+			wgpu.ComputePassEncoderSetBindGroup(
+				pass,
+				0,
+				renderer.gpu_compact_shadow_cull_bind_group,
+			)
+			wgpu.ComputePassEncoderDispatchWorkgroups(
+				pass,
+				cluster_workgroups,
+				WGPU_SHADOW_CASCADE_COUNT,
+				1,
+			)
 		}
-		wgpu.ComputePassEncoderDispatchWorkgroups(pass, workgroups, compact_cascade_count, 1)
 	}
 	wgpu.ComputePassEncoderEnd(pass)
 	if capture_debug_evidence {
@@ -4317,6 +4554,7 @@ wgpu_prepare_cpu_culling :: proc(
 			width,
 			height,
 			render_list.directional_lights[0].light.direction,
+			max(renderer.shadow_map_resolution, WGPU_SHADOW_MAP_MIN_SIZE),
 		)
 	}
 	camera_planes := wgpu_extract_frustum_planes(view_projection)

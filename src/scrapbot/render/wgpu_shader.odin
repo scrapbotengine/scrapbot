@@ -752,6 +752,7 @@ struct Render_Uniform {
 	camera_position: vec4<f32>,
 	shadow_cascade_splits: vec4<f32>,
 	shadow_cascade_texel_sizes: vec4<f32>,
+	shadow_map_parameters: vec4<f32>,
 };
 
 struct Point_Light {
@@ -927,7 +928,12 @@ fn fog_shadow_cascade(world_position: vec3<f32>, cascade_index: u32) -> f32 {
 	) {
 		return 1.0;
 	}
-	let texel = 1.0 / vec2<f32>(textureDimensions(shadow_map).xy);
+	let uv_scale = render.shadow_map_parameters.x;
+	let texel = render.shadow_map_parameters.y;
+	let atlas_uv = uv * uv_scale;
+	let half_texel = texel * 0.5;
+	let uv_min = vec2<f32>(half_texel);
+	let uv_max = vec2<f32>(uv_scale - half_texel);
 	var visibility = 0.0;
 	for (var y = 0u; y < 2u; y += 1u) {
 		for (var x = 0u; x < 2u; x += 1u) {
@@ -935,7 +941,7 @@ fn fog_shadow_cascade(world_position: vec3<f32>, cascade_index: u32) -> f32 {
 			visibility += textureSampleCompareLevel(
 				shadow_map,
 				shadow_sampler,
-				uv + offset,
+				clamp(atlas_uv + offset, uv_min, uv_max),
 				i32(cascade_index),
 				projected.z - 0.0007,
 			);

@@ -57,21 +57,26 @@ and actual use touches from visible instances. Deterministic hashing spreads res
 The CPU processes the highest-priority groups first. Imported refinement pages are read from exact
 Model-product byte ranges on a dedicated I/O worker; rendering continues with the nearest resident
 fallback. Completed payloads are admitted and complete groups evicted under
-`render.virtual_geometry_budget_mb`, with fixed per-frame byte and group limits. The budget counts
-both vertex and index residency.
+`render.virtual_geometry_budget_mb`, with fixed per-frame byte and group limits. Demand protects a
+stronger recent working set, prefetch never displaces demand residency, and each resident child
+keeps its direct parent fallback available until the child is released. Residency changes patch
+only affected cluster ranges. The budget counts both vertex and index residency.
 
 Native multi-draw adapters retain one indexed-indirect command and exact per-cluster
 visible-instance slice, and use that frontier for shadows too. These shared-buffer slices reserve
 one element per possible instance; they do not inherit classic batches' 256-byte dynamic-binding
 alignment. Other capable adapters append selected `{instance slot, cluster index}` records into a
-bounded camera stream. Compatible same-material batches share one record span and indirect
-command; the vertex shader pulls cluster indices and attributes directly from the shared geometry
-arenas.
+bounded camera stream. A first GPU pass builds batch-local instance candidates. Parallel camera
+and shadow passes then test one hierarchy cluster per invocation, avoiding a serial complete-model
+walk for a large single-instance resource. Compatible same-material batches share one record span
+and indirect command; the vertex shader pulls cluster indices and attributes directly from the
+shared geometry arenas.
 
 Portable shadows use classic indexed submission while the complete resource is resident. Under
 actual page pressure, they switch to the same page-local compact representation as the camera, so
 evicted canonical geometry is never required. Selection, compaction, cascade visibility, and
-command counts remain GPU-produced.
+command counts remain GPU-produced. Near cascades retain a finer hierarchy frontier; farther
+cascades use progressively coarser error thresholds to bound vertex-pulling and raster work.
 
 Small Geometry whose hierarchy cannot simplify retains ordinary meshlets. Those batches require at least two instances to amortize their command range; a single-instance batch keeps one whole-primitive command.
 
@@ -377,9 +382,13 @@ Shadow participation is explicit and independent:
 
 `shadow_caster` makes an entity contribute to the first directional light's shadow cascades. `shadow_receiver` makes it sample the selected cascade while evaluating directional light. An entity may have either marker, both, or neither.
 
-WGPU uses four 2048×2048 layers, practical logarithmic/uniform camera-depth splits out to 80 world units, texel-stabilized light projections, per-cascade GPU caster culling, slope-scaled caster depth bias, cascade-texel-scaled receiver-normal offset, and a wider tent-weighted nine-comparison PCF kernel. The final 10% of each slice blends into its successor. The final slice fades to unshadowed beyond the shadow distance.
+WGPU retains four 2048×2048 layers. With dynamic resolution enabled, the frame-budget controller can rasterize a quantized 2048, 1024, or 512 square region without reallocating that texture or rebuilding bindings.
 
-Point-light shadows, multiple shadowed directional lights, and configurable quality are not yet provided.
+The active size also controls cascade stabilization, bias, filtering, and virtual-geometry detail selection. A lower-resolution shadow pass therefore avoids processing geometric detail it cannot represent. The editor's Performance panel reports the active `SHADOW MAP` size.
+
+The cascades use practical logarithmic/uniform camera-depth splits out to 80 world units, texel-stabilized light projections, per-cascade GPU caster culling, slope-scaled caster depth bias, cascade-texel-scaled receiver-normal offset, and a tent-weighted nine-comparison PCF kernel. The final 10% of each slice blends into its successor. The final slice fades to unshadowed beyond the shadow distance.
+
+Point-light shadows, multiple shadowed directional lights, and authored shadow-quality bounds are not yet provided.
 
 ## Null renderer
 
@@ -425,7 +434,7 @@ The output directory contains:
 
 Each row includes active CPU time, exact per-pass GPU time, their summed GPU frame duration, logical and physical dimensions, pixel density, viewport, shaded pixels, and a raw renderer snapshot. The snapshot includes effective `render_scale`, whether dynamic resolution is active, and its filtered scalable-GPU signal.
 
-The `workload` object records the dispatch size, render extent, encoded draw-submission spans, instances, or sample count behind each pass. It makes a timing actionable: for example, it distinguishes an expensive shader at a modest resolution from expected cost at a HiDPI physical resolution.
+The `workload` object records the dispatch size, render extent, encoded draw-submission spans, instances, or sample count behind each pass. Shadow workload dimensions report the active raster resolution rather than retained capacity. This makes a timing actionable: for example, it distinguishes an expensive shader at a modest resolution from expected cost at a HiDPI physical resolution.
 
 `counter_deltas` turns cumulative upload, rebuild, dispatch, resize, redraw, cache-hit, geometry-
 arena mutation, and virtual page/group totals into the work attributable to that frame. Stable
@@ -446,13 +455,18 @@ dynamic_resolution_min_scale = 0.6
 dynamic_resolution_target_ms = 16.667
 ```
 
-The manual scale is the ceiling, not a second multiplier. WGPU processes every completed timestamp sample once, removes native UI time, filters the result, and uses hysteretic 5% steps. It lowers scale faster than it raises it to avoid oscillation. Delayed samples from an old scale or active project camera are discarded.
+The manual scale is the ceiling, not a second multiplier. WGPU processes every completed timestamp sample once, removes native UI time, filters the result, and uses hysteretic 5% world-resolution steps. It lowers scale faster than it raises it to avoid oscillation. Delayed samples from an old scale or active project camera are discarded.
+
+The same budget can lower directional-shadow rasterization from 2048² to 1024² and, under stronger sustained pressure, 512². Shadow changes use longer hysteresis and cooldown windows than world-resolution changes. Quality returns only after the world reaches its authored ceiling and maintains substantial headroom, preventing adjacent tiers from oscillating.
 
 Scale changes reject temporal history and resize only scale-dependent targets. An unchanged scale reuses all retained targets. Backends without timestamps stay at `resolution_scale`.
 
 Use a long enough warmup when profiling adaptive policy. The measured rows should represent its settled scale rather than startup convergence. For fixed-scale feature comparisons, disable dynamic resolution.
 
-Image capture uses a fresh second replay. PNG mapping can stall the pipeline, so capture time never enters the telemetry report. Keep the range narrow and use `--framegrab-region` when only one area matters.
+Image capture uses a fresh second replay. Before applying its bounded map-request timeout, capture
+drains the submitted GPU queue so a deliberately unpaced heavy replay is not mistaken for a failed
+readback. PNG mapping can stall the pipeline, so capture time never enters the telemetry report.
+Keep the range narrow and use `--framegrab-region` when only one area matters.
 
 For valid before/after comparisons, hold these constant:
 

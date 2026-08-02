@@ -4,8 +4,8 @@ This file tracks current actionable engineering work. The broad product roadmap 
 
 ## Rendering
 
-- [ ] Eliminate visible coarse/fine popping under constrained virtual-geometry budgets with stable working-set admission or hysteretic transitions, then add a consecutive-frame GPU regression.
-- [ ] Parallelize detailed cluster traversal within a single large render batch instead of looping its complete hierarchy inside one visible-instance invocation.
+- [ ] Extend the frame-budget controller with quantized post-effect tiers and authored quality bounds, then maintain a repeatable 60 Hz baseline matrix across representative integrated/discrete GPUs.
+- [ ] Smooth one-way coarse-to-fine virtual-geometry admission transitions and add a consecutive-frame GPU regression; dependency-protected eviction already prevents random fine-to-coarse loss.
 - [ ] Compress Model v15 catalogs, material images, and virtual-Geometry pages with independently decodable page records; measure import time, product size, startup, and streaming cost on `impossible-archive` unhinged.
 - [ ] Strip source assets from exported games and package the same validated runtime products used by development runs.
 - [ ] Re-evaluate Metal multi-draw and benchmark virtual geometry after wgpu's native ICB paths land ([issue #61](https://github.com/scrapbotengine/scrapbot/issues/61)).

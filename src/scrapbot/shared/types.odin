@@ -1488,6 +1488,7 @@ Performance_Diagnostics :: struct {
 	gpu_frame_ms: f64,
 	gpu_scene_ms: f64,
 	render_scale: f32,
+	shadow_resolution: u32,
 	gpu_timestamps_valid: bool,
 	entity_count: int,
 	retained_batches: int,
