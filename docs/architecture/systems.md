@@ -34,7 +34,7 @@ These are the engine-owned rows published to the editor's Systems panel. They ar
 
 - **Phase/order:** First engine-owned phase after scheduled project simulation.
 - **Inputs:** SDL scene-view input, editor visibility/capture state, editor-camera Transform and movement settings.
-- **Outputs:** Mutated transient editor-camera pose and input-capture state.
+- **Outputs:** Mutated transient editor-camera pose and input-capture state. The fly camera inherits the project lens and far plane but caps its near plane at one centimeter for close surface inspection.
 - **Stable-frame behavior:** With no captured movement/look input, it performs bounded camera/input checks and does not rebuild scene or render membership.
 - **Boundary:** Main-thread CPU editor system; never replaces or mutates the authored project camera.
 - **Source/tests:** `render/render.odin`, `ecs/editor.odin`; `ecs/editor_test.odin`, `render/render_test.odin`.

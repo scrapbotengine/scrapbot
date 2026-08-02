@@ -34,6 +34,7 @@ This file tracks current actionable engineering work. The broad product roadmap 
 - [ ] Extend project/native component schemas with enum choices so dynamic fields can use the reflected enum picker.
 - [ ] Add transform snapping and multi-selection editing.
 - [ ] Add a scalable picking broad phase or GPU identity pass before exact triangle tests.
+- [ ] Add opt-in collision-aware editor fly-camera navigation on top of a scalable scene-query broad phase.
 
 ## Testing And Diagnostics
 

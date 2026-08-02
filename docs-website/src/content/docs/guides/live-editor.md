@@ -124,6 +124,11 @@ Use the `VIEW / CAMERA` menu inside the Game surface to inspect the rendered inp
 | `Ctrl` | Move down |
 | Release right mouse button | Return to normal pointer interaction |
 
+The transient fly camera inherits the project camera's field of view, far plane, and render policy,
+but uses a near plane no larger than one centimeter. This keeps close surface inspection coherent;
+the fly camera does not currently collide with project geometry, so crossing inside a closed mesh
+still reveals its back-face-culled interior.
+
 Closing and reopening the editor preserves the scene-camera viewpoint for the current run.
 
 While the editor is open, project and runtime cameras appear as blue, world-scaled wireframe bodies. A body naturally becomes smaller on screen as the scene viewpoint moves away.

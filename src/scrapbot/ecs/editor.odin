@@ -6,6 +6,7 @@ import "core:math"
 EDITOR_SCENE_CAMERA_NAME :: "Editor Scene Camera"
 EDITOR_SCENE_CAMERA_MOVE_SPEED :: f32(5)
 EDITOR_SCENE_CAMERA_LOOK_SENSITIVITY :: f32(0.0025)
+EDITOR_SCENE_CAMERA_NEAR :: f32(0.01)
 
 reconcile_editor_scene_camera :: proc(
 	world: ^World,
@@ -33,6 +34,10 @@ reconcile_editor_scene_camera :: proc(
 		transform = source.transform
 		camera = source.camera
 	}
+	// The editor fly camera is an inspection tool. Keep the project's lens and
+	// far plane, but allow close surface inspection without slicing nearby
+	// geometry into screen-sized near-plane wedges.
+	camera.near = min(camera.near, EDITOR_SCENE_CAMERA_NEAR)
 
 	entity_index, created := create_world_entity(
 		world,
