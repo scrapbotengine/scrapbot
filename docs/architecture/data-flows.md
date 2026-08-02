@@ -23,11 +23,14 @@ scene parse + schema validation + resource UUID resolution
 Native components register before Luau executes, so scripts can retrieve native handles. Asset import completes before runtime resource registration. Scene validation uses the combined engine/native/Luau registry.
 
 Before bootstrap, Model import simplifies eligible primitive index streams, compacts each retained
-level, builds its crack-aware hierarchy, and persists the LOD chain, position-only query data, and
-deterministic page table in a common versioned product envelope. Runtime loading validates the
-product kind and chunk directory, buffers catalog reads, skips page payload ranges, validates the
-compiled values, publishes semantic Geometry subresources one primitive at a time, and promptly
-releases the decoded entry.
+level, and builds its crack-aware hierarchy. The sequential product writer emits material images,
+pinned coarse pages, and evictable detail pages before writing a descriptor catalog containing the
+LOD chain, position-only query data, hierarchy, and exact payload ranges.
+
+Runtime loading validates the product kind, chunk directory, chunk headers, and every catalog
+range. It buffers only catalog fields, reads material images from the image chunk, publishes
+semantic Geometry subresources one primitive at a time, and promptly releases each decoded entry.
+Geometry page bytes remain file-backed in the coarse or detail chunk.
 
 At bootstrap or reload, Model roots reconcile imported nodes and primitives into derived
 Transform/Geometry/Material entities. Later duplication, Undo/Redo, or resource replacement

@@ -131,8 +131,22 @@ ADR-051.
 **Why:** Runtime discovery, range validation, future compression, and export packaging should not
 be reinvented for every importer. Development and exported games must consume the same products.
 
-**Tradeoff:** Model v14 initially uses one runtime chunk. Independently loadable catalog, image,
-and Geometry-page chunks require later schema revisions.
+**Tradeoff:** The envelope adds a small fixed directory and requires each importer to validate its
+own chunk relationships.
+
+### 15. Split and stream large Model products
+
+**Decision:** Model v15 separates material images, pinned coarse pages, evictable detail pages, and
+the runtime catalog into four product chunks. Build the product with the common sequential writer;
+spool detail pages temporarily and emit the descriptor catalog only after exact ranges are known.
+
+**Why:** Runtime startup should not walk gigabytes of payload bytes to discover a catalog. Import
+should not require enough spare memory for both the decoded source model and a second complete
+artifact-sized byte array.
+
+**Tradeoff:** First import temporarily writes detail bytes twice: once to the spool and once to the
+finished product. Compression is intentionally separate because virtual-Geometry pages need
+independent decoding rather than whole-detail-chunk decompression.
 
 ## Related
 

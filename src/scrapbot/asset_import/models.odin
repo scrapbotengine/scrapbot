@@ -13,8 +13,12 @@ import "core:path/filepath"
 import "core:strings"
 import cgltf "vendor:cgltf"
 
-MODEL_IMPORTER_SCHEMA :: "scrapbot.model.v14.asset-product"
-MODEL_PRODUCT_MAGIC :: [8]u8{'S', 'B', 'M', 'O', 'D', 'L', '1', '4'}
+MODEL_IMPORTER_SCHEMA :: "scrapbot.model.v15.split-product"
+MODEL_CATALOG_MAGIC :: [8]u8{'S', 'B', 'M', 'C', 'A', 'T', '1', '5'}
+MODEL_IMAGE_CHUNK_MAGIC :: [8]u8{'S', 'B', 'M', 'I', 'M', 'G', '1', '5'}
+MODEL_COARSE_CHUNK_MAGIC :: [8]u8{'S', 'B', 'M', 'C', 'R', 'S', '1', '5'}
+MODEL_DETAIL_CHUNK_MAGIC :: [8]u8{'S', 'B', 'M', 'D', 'T', 'L', '1', '5'}
+MODEL_PRODUCT_CHUNK_COUNT :: 4
 MODEL_READER_BUFFER_SIZE :: 64 * 1024
 
 Model_Vertex :: struct {
@@ -27,6 +31,7 @@ Model_Image :: struct {
 	pixels: []u8,
 	width, height, mip_count: u32,
 	sampler: shared.Texture_Sampler,
+	product_offset, product_size: u64,
 }
 
 Model_Material :: struct {
@@ -200,22 +205,17 @@ ensure_model_import :: proc(
 			return {}, false, fmt.tprintf("failed to import glTF model %s: %s", declaration.model.source, model_err)
 		}
 		defer destroy_model_product(&model)
-		artifact := encode_model_product(&model)
-		defer delete(artifact)
-		metadata = model_metadata(declaration.model.source, source_hash, artifact, &model)
-		metadata_bytes, marshal_err := json.marshal(metadata)
-		if marshal_err != nil {
-			return {}, false, "failed to encode model import metadata"
-		}
-		defer delete(metadata_bytes)
-		if write_err := write_import_product_atomically(
+		written_metadata, write_err := write_model_product_atomically(
 			artifact_path,
-			artifact,
 			metadata_path,
-			metadata_bytes,
-		); write_err != "" {
+			declaration.model.source,
+			source_hash,
+			&model,
+		)
+		if write_err != "" {
 			return {}, false, write_err
 		}
+		metadata = written_metadata
 		imported = true
 	}
 	product_source, source_clone_err := strings.clone(declaration.model.source)
@@ -1326,14 +1326,14 @@ model_primitive_fingerprint :: proc(primitive: ^Model_Primitive) -> u64 {
 model_metadata :: proc(
 	source: string,
 	source_hash: u64,
-	artifact: []u8,
+	byte_count: int,
 	model: ^Model_Product,
 ) -> Model_Metadata {
 	metadata := Model_Metadata {
 		schema = MODEL_IMPORTER_SCHEMA,
 		source = source,
 		source_hash = source_hash,
-		byte_count = len(artifact),
+		byte_count = byte_count,
 		node_count = len(model.nodes),
 		mesh_count = len(model.meshes),
 		material_count = len(model.materials),
@@ -1432,113 +1432,408 @@ read_model_cache :: proc(
 	return metadata, true
 }
 
-encode_model_product :: proc(model: ^Model_Product) -> []u8 {
-	bytes: [dynamic]u8
-	begin_ok := asset_product_begin(&bytes, .Model, 1)
-	assert(begin_ok)
-	chunk_offset, chunk_ok := asset_product_begin_chunk(&bytes, 0, .Model_Runtime)
-	assert(chunk_ok)
-	magic := MODEL_PRODUCT_MAGIC
-	model_write_bytes(&bytes, magic[:])
-	model_write_u32(&bytes, u32(len(model.materials)))
-	model_write_u32(&bytes, u32(len(model.meshes)))
-	model_write_u32(&bytes, u32(len(model.nodes)))
-	for material in model.materials {
-		model_write_string(&bytes, material.key)
-		model_write_string(&bytes, material.name)
-		model_write_vec4(&bytes, material.base_color)
-		model_write_vec3(&bytes, material.emissive)
-		model_write_f32(&bytes, material.metallic_factor)
-		model_write_f32(&bytes, material.roughness_factor)
-		model_write_f32(&bytes, material.normal_scale)
-		model_write_f32(&bytes, material.occlusion_strength)
-		model_write_u32(&bytes, u32(material.alpha_mode))
-		model_write_f32(&bytes, material.alpha_cutoff)
-		model_write_u32(&bytes, 1 if material.double_sided else 0)
-		model_write_image(&bytes, material.base_color_image)
-		model_write_image(&bytes, material.metallic_roughness_image)
-		model_write_image(&bytes, material.normal_image)
-		model_write_image(&bytes, material.occlusion_image)
-		model_write_image(&bytes, material.emissive_image)
-		model_write_u32(&bytes, material.ignored_texture_count)
+encode_model_product_for_test :: proc(model: ^Model_Product) -> []u8 {
+	root, root_err := os.make_directory_temp("", "scrapbot-model-product-*", context.allocator)
+	assert(root_err == nil)
+	defer os.remove_all(root)
+	defer delete(root)
+	path, path_err := filepath.join({root, "model.bin"})
+	assert(path_err == nil)
+	defer delete(path)
+	detail_path, detail_path_err := filepath.join({root, "detail.pages"})
+	assert(detail_path_err == nil)
+	defer delete(detail_path)
+	_, write_err := write_model_product_file(path, detail_path, model)
+	assert(write_err == "")
+	bytes, read_err := os.read_entire_file(path, context.allocator)
+	assert(read_err == nil)
+	return bytes
+}
+
+write_model_product_atomically :: proc(
+	artifact_path, metadata_path, source: string,
+	source_hash: u64,
+	model: ^Model_Product,
+) -> (
+	metadata: Model_Metadata,
+	err: string,
+) {
+	artifact_temp := fmt.tprintf("%s.tmp", artifact_path)
+	detail_temp := fmt.tprintf("%s.pages.tmp", artifact_path)
+	metadata_temp := fmt.tprintf("%s.tmp", metadata_path)
+	defer os.remove(artifact_temp)
+	defer os.remove(detail_temp)
+	defer os.remove(metadata_temp)
+	byte_count, product_err := write_model_product_file(artifact_temp, detail_temp, model)
+	if product_err != "" {
+		return {}, product_err
 	}
-	for mesh in model.meshes {
-		model_write_string(&bytes, mesh.key)
-		model_write_string(&bytes, mesh.name)
-		model_write_u32(&bytes, u32(len(mesh.primitives)))
-		for primitive in mesh.primitives {
-			model_write_string(&bytes, primitive.key)
-			model_write_i32(&bytes, primitive.material_index)
-			model_write_u32(&bytes, u32(len(primitive.vertices)))
-			model_write_u32(&bytes, u32(len(primitive.indices)))
-			for vertex in primitive.vertices {
-				model_write_vec3(&bytes, vertex.position)
+	metadata = model_metadata(source, source_hash, byte_count, model)
+	metadata_bytes, marshal_err := json.marshal(metadata)
+	if marshal_err != nil {
+		return {}, "failed to encode model import metadata"
+	}
+	defer delete(metadata_bytes)
+	if write_err := os.write_entire_file(metadata_temp, metadata_bytes); write_err != nil {
+		return {}, fmt.tprintf("failed to write imported model metadata: %v", write_err)
+	}
+	if rename_err := os.rename(artifact_temp, artifact_path); rename_err != nil {
+		return {}, fmt.tprintf("failed to install imported model product: %v", rename_err)
+	}
+	if rename_err := os.rename(metadata_temp, metadata_path); rename_err != nil {
+		return {}, fmt.tprintf("failed to install imported model metadata: %v", rename_err)
+	}
+	return metadata, ""
+}
+
+write_model_product_file :: proc(
+	path, detail_path: string,
+	model: ^Model_Product,
+) -> (
+	int,
+	string,
+) {
+	if model == nil {
+		return 0, "imported model product is unavailable"
+	}
+	file, create_err := os.create(path)
+	if create_err != nil {
+		return 0, fmt.tprintf("failed to create imported model product: %v", create_err)
+	}
+	file_open := true
+	defer if file_open {
+		os.close(file)
+	}
+	detail_file, detail_err := os.create(detail_path)
+	if detail_err != nil {
+		return 0, fmt.tprintf("failed to create imported model page spool: %v", detail_err)
+	}
+	defer os.close(detail_file)
+	writer, begin_err := asset_product_stream_begin(file, .Model, MODEL_PRODUCT_CHUNK_COUNT)
+	if begin_err != "" {
+		return 0, begin_err
+	}
+	defer destroy_asset_product_stream_writer(&writer)
+	if !asset_product_stream_begin_chunk(&writer, .Model_Material_Images) {
+		return 0, "failed to begin imported model image chunk"
+	}
+	image_magic := MODEL_IMAGE_CHUNK_MAGIC
+	if !asset_product_stream_write(&writer, image_magic[:]) ||
+	   !model_stream_images(&writer, model) ||
+	   !asset_product_stream_finish_chunk(&writer) {
+		return 0, "failed to write imported model image chunk"
+	}
+	if !asset_product_stream_begin_chunk(&writer, .Model_Coarse_Geometry) {
+		return 0, "failed to begin imported model coarse-geometry chunk"
+	}
+	coarse_magic := MODEL_COARSE_CHUNK_MAGIC
+	if !asset_product_stream_write(&writer, coarse_magic[:]) {
+		return 0, "failed to write imported model coarse-geometry chunk"
+	}
+	detail_size, pages_err := model_stream_geometry_pages(&writer, detail_file, model)
+	if pages_err != "" || !asset_product_stream_finish_chunk(&writer) {
+		return 0,
+			pages_err if pages_err != "" else "failed to finish imported model coarse-geometry chunk"
+	}
+	if !asset_product_stream_begin_chunk(&writer, .Model_Detail_Geometry) {
+		return 0, "failed to begin imported model detail-geometry chunk"
+	}
+	detail_magic := MODEL_DETAIL_CHUNK_MAGIC
+	if !asset_product_stream_write(&writer, detail_magic[:]) {
+		return 0, "failed to write imported model detail-geometry chunk"
+	}
+	detail_base := writer.offset
+	model_rebase_detail_page_records(model, detail_base)
+	if !model_copy_page_spool(&writer, detail_file, detail_size) ||
+	   !asset_product_stream_finish_chunk(&writer) {
+		return 0, "failed to write imported model detail-geometry chunk"
+	}
+	if !asset_product_stream_begin_chunk(&writer, .Model_Catalog) ||
+	   !model_stream_catalog(&writer, model) ||
+	   !asset_product_stream_finish_chunk(&writer) {
+		return 0, "failed to write imported model catalog chunk"
+	}
+	byte_count, finish_err := asset_product_stream_finish(&writer)
+	if finish_err != "" {
+		return 0, finish_err
+	}
+	if close_err := os.close(file); close_err != nil {
+		return 0, "failed to close imported model product"
+	}
+	file_open = false
+	return byte_count, ""
+}
+
+model_stream_images :: proc(writer: ^Asset_Product_Stream_Writer, model: ^Model_Product) -> bool {
+	for &material in model.materials {
+		images := [?]^Model_Image {
+			&material.base_color_image,
+			&material.metallic_roughness_image,
+			&material.normal_image,
+			&material.occlusion_image,
+			&material.emissive_image,
+		}
+		for image in images {
+			image.product_offset = 0
+			image.product_size = 0
+			if len(image.pixels) == 0 {
+				continue
 			}
-			model_write_hierarchy(&bytes, primitive.hierarchy)
-			model_write_page_payloads(
-				&bytes,
-				primitive.hierarchy,
-				raw_data(primitive.vertices[:]),
-				len(primitive.vertices),
-				size_of(Model_Vertex),
-			)
-			model_write_u32(&bytes, u32(len(primitive.lods)))
-			for lod in primitive.lods {
-				model_write_u32(&bytes, lod.level)
-				model_write_f32(&bytes, lod.screen_radius)
-				model_write_f32(&bytes, lod.simplification_error)
-				model_write_u32(&bytes, u32(len(lod.vertices)))
-				model_write_u32(&bytes, u32(len(lod.indices)))
-				for vertex in lod.vertices {
-					model_write_vec3(&bytes, vertex.position)
-				}
-				model_write_hierarchy(&bytes, lod.hierarchy)
-				model_write_page_payloads(
-					&bytes,
-					lod.hierarchy,
-					raw_data(lod.vertices[:]),
-					len(lod.vertices),
-					size_of(Model_Vertex),
-				)
+			image.product_offset = writer.offset
+			image.product_size = u64(len(image.pixels))
+			if !asset_product_stream_write(writer, image.pixels) {
+				return false
 			}
 		}
 	}
-	for node in model.nodes {
-		model_write_string(&bytes, node.key)
-		model_write_string(&bytes, node.name)
-		model_write_i32(&bytes, node.parent_index)
-		model_write_i32(&bytes, node.mesh_index)
-		model_write_vec3(&bytes, node.transform.position)
-		model_write_vec3(&bytes, node.transform.rotation)
-		model_write_vec3(&bytes, node.transform.scale)
-	}
-	finish_ok := asset_product_finish_chunk(&bytes, 0, chunk_offset)
-	assert(finish_ok)
-	return bytes[:]
+	return true
 }
 
-model_write_page_payloads :: proc(
-	bytes: ^[dynamic]u8,
+model_stream_geometry_pages :: proc(
+	writer: ^Asset_Product_Stream_Writer,
+	detail_file: ^os.File,
+	model: ^Model_Product,
+) -> (
+	detail_size: u64,
+	err: string,
+) {
+	for &mesh in model.meshes {
+		for &primitive in mesh.primitives {
+			detail_size, err = model_stream_page_payloads(
+				writer,
+				detail_file,
+				primitive.hierarchy,
+				raw_data(primitive.vertices[:]),
+				len(primitive.vertices),
+				&primitive.page_payloads,
+				detail_size,
+			)
+			if err != "" {
+				return detail_size, err
+			}
+			for &lod in primitive.lods {
+				detail_size, err = model_stream_page_payloads(
+					writer,
+					detail_file,
+					lod.hierarchy,
+					raw_data(lod.vertices[:]),
+					len(lod.vertices),
+					&lod.page_payloads,
+					detail_size,
+				)
+				if err != "" {
+					return detail_size, err
+				}
+			}
+		}
+	}
+	return detail_size, ""
+}
+
+model_stream_page_payloads :: proc(
+	writer: ^Asset_Product_Stream_Writer,
+	detail_file: ^os.File,
 	hierarchy: geometry.Hierarchy,
 	vertices: rawptr,
-	vertex_count, vertex_stride: int,
+	vertex_count: int,
+	records: ^[]geometry.Page_Payload_Record,
+	detail_offset: u64,
+) -> (
+	u64,
+	string,
 ) {
+	detail_cursor := detail_offset
 	hierarchy_copy := hierarchy
 	payloads, payload_err := geometry.build_page_payloads(
 		&hierarchy_copy,
 		vertices,
 		vertex_count,
-		vertex_stride,
+		size_of(Model_Vertex),
 	)
+	if payload_err != "" {
+		return detail_offset, payload_err
+	}
 	defer geometry.destroy_page_payloads(&payloads)
-	assert(payload_err == "")
-	model_write_u32(bytes, u32(len(payloads.records)))
-	for record in payloads.records {
+	delete(records^)
+	records^ = make([]geometry.Page_Payload_Record, len(payloads.records))
+	for source_record, page_index in payloads.records {
+		start := int(source_record.offset)
+		payload := payloads.bytes[start:start + int(source_record.size)]
+		record := source_record
+		if hierarchy.pages[page_index].pinned {
+			record.offset = writer.offset
+			if !asset_product_stream_write(writer, payload) {
+				return detail_cursor, "failed to stream imported model coarse page"
+			}
+		} else {
+			record.offset = detail_cursor
+			written, write_err := os.write(detail_file, payload)
+			if write_err != nil || written != len(payload) {
+				return detail_cursor, "failed to spool imported model detail page"
+			}
+			detail_cursor += u64(written)
+		}
+		records^[page_index] = record
+	}
+	return detail_cursor, ""
+}
+
+model_rebase_detail_page_records :: proc(model: ^Model_Product, detail_base: u64) {
+	for &mesh in model.meshes {
+		for &primitive in mesh.primitives {
+			model_rebase_page_records(primitive.hierarchy, primitive.page_payloads, detail_base)
+			for &lod in primitive.lods {
+				model_rebase_page_records(lod.hierarchy, lod.page_payloads, detail_base)
+			}
+		}
+	}
+}
+
+model_rebase_page_records :: proc(
+	hierarchy: geometry.Hierarchy,
+	records: []geometry.Page_Payload_Record,
+	detail_base: u64,
+) {
+	for &record, page_index in records {
+		if !hierarchy.pages[page_index].pinned {
+			record.offset += detail_base
+		}
+	}
+}
+
+model_copy_page_spool :: proc(
+	writer: ^Asset_Product_Stream_Writer,
+	detail_file: ^os.File,
+	detail_size: u64,
+) -> bool {
+	buffer := make([]u8, 1024 * 1024, context.temp_allocator)
+	offset: u64
+	for offset < detail_size {
+		count := int(min(u64(len(buffer)), detail_size - offset))
+		read_count, read_err := os.read_at(detail_file, buffer[:count], i64(offset))
+		if read_err != nil ||
+		   read_count != count ||
+		   !asset_product_stream_write(writer, buffer[:count]) {
+			return false
+		}
+		offset += u64(count)
+	}
+	return true
+}
+
+model_stream_catalog :: proc(writer: ^Asset_Product_Stream_Writer, model: ^Model_Product) -> bool {
+	bytes: [dynamic]u8
+	defer delete(bytes)
+	magic := MODEL_CATALOG_MAGIC
+	model_write_bytes(&bytes, magic[:])
+	model_write_u32(&bytes, u32(len(model.materials)))
+	model_write_u32(&bytes, u32(len(model.meshes)))
+	model_write_u32(&bytes, u32(len(model.nodes)))
+	if !model_stream_catalog_record(writer, &bytes) {
+		return false
+	}
+	for material in model.materials {
+		model_write_material_record(&bytes, material)
+		if !model_stream_catalog_record(writer, &bytes) {
+			return false
+		}
+	}
+	for mesh in model.meshes {
+		model_write_string(&bytes, mesh.key)
+		model_write_string(&bytes, mesh.name)
+		model_write_u32(&bytes, u32(len(mesh.primitives)))
+		if !model_stream_catalog_record(writer, &bytes) {
+			return false
+		}
+		for primitive in mesh.primitives {
+			model_write_primitive_record(&bytes, primitive)
+			if !model_stream_catalog_record(writer, &bytes) {
+				return false
+			}
+		}
+	}
+	for node in model.nodes {
+		model_write_node_record(&bytes, node)
+		if !model_stream_catalog_record(writer, &bytes) {
+			return false
+		}
+	}
+	return true
+}
+
+model_stream_catalog_record :: proc(
+	writer: ^Asset_Product_Stream_Writer,
+	bytes: ^[dynamic]u8,
+) -> bool {
+	if len(bytes^) == 0 || !asset_product_stream_write(writer, bytes^[:]) {
+		return false
+	}
+	clear(bytes)
+	return true
+}
+
+model_write_material_record :: proc(bytes: ^[dynamic]u8, material: Model_Material) {
+	model_write_string(bytes, material.key)
+	model_write_string(bytes, material.name)
+	model_write_vec4(bytes, material.base_color)
+	model_write_vec3(bytes, material.emissive)
+	model_write_f32(bytes, material.metallic_factor)
+	model_write_f32(bytes, material.roughness_factor)
+	model_write_f32(bytes, material.normal_scale)
+	model_write_f32(bytes, material.occlusion_strength)
+	model_write_u32(bytes, u32(material.alpha_mode))
+	model_write_f32(bytes, material.alpha_cutoff)
+	model_write_u32(bytes, 1 if material.double_sided else 0)
+	model_write_image_descriptor(bytes, material.base_color_image)
+	model_write_image_descriptor(bytes, material.metallic_roughness_image)
+	model_write_image_descriptor(bytes, material.normal_image)
+	model_write_image_descriptor(bytes, material.occlusion_image)
+	model_write_image_descriptor(bytes, material.emissive_image)
+	model_write_u32(bytes, material.ignored_texture_count)
+}
+
+model_write_primitive_record :: proc(bytes: ^[dynamic]u8, primitive: Model_Primitive) {
+	model_write_string(bytes, primitive.key)
+	model_write_i32(bytes, primitive.material_index)
+	model_write_u32(bytes, u32(len(primitive.vertices)))
+	model_write_u32(bytes, u32(len(primitive.indices)))
+	for vertex in primitive.vertices {
+		model_write_vec3(bytes, vertex.position)
+	}
+	model_write_hierarchy(bytes, primitive.hierarchy)
+	model_write_page_records(bytes, primitive.page_payloads)
+	model_write_u32(bytes, u32(len(primitive.lods)))
+	for lod in primitive.lods {
+		model_write_u32(bytes, lod.level)
+		model_write_f32(bytes, lod.screen_radius)
+		model_write_f32(bytes, lod.simplification_error)
+		model_write_u32(bytes, u32(len(lod.vertices)))
+		model_write_u32(bytes, u32(len(lod.indices)))
+		for vertex in lod.vertices {
+			model_write_vec3(bytes, vertex.position)
+		}
+		model_write_hierarchy(bytes, lod.hierarchy)
+		model_write_page_records(bytes, lod.page_payloads)
+	}
+}
+
+model_write_node_record :: proc(bytes: ^[dynamic]u8, node: Model_Node) {
+	model_write_string(bytes, node.key)
+	model_write_string(bytes, node.name)
+	model_write_i32(bytes, node.parent_index)
+	model_write_i32(bytes, node.mesh_index)
+	model_write_vec3(bytes, node.transform.position)
+	model_write_vec3(bytes, node.transform.rotation)
+	model_write_vec3(bytes, node.transform.scale)
+}
+
+model_write_page_records :: proc(bytes: ^[dynamic]u8, records: []geometry.Page_Payload_Record) {
+	model_write_u32(bytes, u32(len(records)))
+	for record in records {
 		model_write_u32(bytes, record.vertex_count)
 		model_write_u32(bytes, record.index_count)
-		model_write_u32(bytes, u32(record.size))
-		start := int(record.offset)
-		model_write_bytes(bytes, payloads.bytes[start:start + int(record.size)])
+		model_write_u64(bytes, record.offset)
+		model_write_u64(bytes, record.size)
 	}
 }
 
@@ -1588,6 +1883,34 @@ model_write_hierarchy :: proc(bytes: ^[dynamic]u8, hierarchy: geometry.Hierarchy
 	model_write_bytes(bytes, hierarchy.triangles)
 }
 
+model_validate_chunk_magic :: proc(
+	file: ^os.File,
+	chunk: Asset_Product_Chunk,
+	magic: [8]u8,
+) -> bool {
+	if chunk.stored_size < u64(len(magic)) || chunk.offset > u64(max(i64)) {
+		return false
+	}
+	actual: [8]u8
+	expected := magic
+	return(
+		asset_product_read_exact(file, actual[:], int(chunk.offset)) &&
+		string(actual[:]) == string(expected[:]) \
+	)
+}
+
+model_chunk_contains :: proc(chunk: Asset_Product_Chunk, offset, size: u64) -> bool {
+	chunk_end := chunk.offset + chunk.stored_size
+	end := offset + size
+	return(
+		size > 0 &&
+		chunk_end >= chunk.offset &&
+		end >= offset &&
+		offset >= chunk.offset + 8 &&
+		end <= chunk_end \
+	)
+}
+
 read_model_product :: proc(path: string) -> (model: Model_Product, err: string) {
 	file, open_err := os.open(path)
 	if open_err != nil {
@@ -1606,15 +1929,31 @@ read_model_product :: proc(path: string) -> (model: Model_Product, err: string) 
 		return {}, directory_err
 	}
 	defer destroy_asset_product_directory(&directory)
-	chunk, chunk_found := asset_product_find_chunk(&directory, .Model_Runtime)
-	if !chunk_found || chunk.offset > u64(max(int)) || chunk.stored_size > u64(max(int)) {
-		return {}, "imported model runtime chunk is missing"
+	if len(directory.chunks) != MODEL_PRODUCT_CHUNK_COUNT {
+		return {}, "imported model product chunk count is invalid"
 	}
-	reader.offset = int(chunk.offset)
-	reader.size = int(chunk.offset + chunk.stored_size)
-	magic: [len(MODEL_PRODUCT_MAGIC)]u8
+	image_chunk, image_found := asset_product_find_chunk(&directory, .Model_Material_Images)
+	coarse_chunk, coarse_found := asset_product_find_chunk(&directory, .Model_Coarse_Geometry)
+	detail_chunk, detail_found := asset_product_find_chunk(&directory, .Model_Detail_Geometry)
+	catalog_chunk, catalog_found := asset_product_find_chunk(&directory, .Model_Catalog)
+	if !image_found || !coarse_found || !detail_found || !catalog_found {
+		return {}, "imported model product chunks are missing"
+	}
+	if !model_validate_chunk_magic(file, image_chunk, MODEL_IMAGE_CHUNK_MAGIC) ||
+	   !model_validate_chunk_magic(file, coarse_chunk, MODEL_COARSE_CHUNK_MAGIC) ||
+	   !model_validate_chunk_magic(file, detail_chunk, MODEL_DETAIL_CHUNK_MAGIC) {
+		return {}, "imported model product has an invalid chunk header"
+	}
+	if catalog_chunk.offset > u64(max(int)) ||
+	   catalog_chunk.stored_size > u64(max(int)) ||
+	   catalog_chunk.offset + catalog_chunk.stored_size > u64(max(int)) {
+		return {}, "imported model catalog chunk is invalid"
+	}
+	reader.offset = int(catalog_chunk.offset)
+	reader.size = int(catalog_chunk.offset + catalog_chunk.stored_size)
+	magic: [len(MODEL_CATALOG_MAGIC)]u8
 	magic_ok := model_read_exact(&reader, magic[:])
-	expected_magic := MODEL_PRODUCT_MAGIC
+	expected_magic := MODEL_CATALOG_MAGIC
 	if !magic_ok || string(magic[:]) != string(expected_magic[:]) {
 		return {}, "imported model product has an invalid header"
 	}
@@ -1699,7 +2038,7 @@ read_model_product :: proc(path: string) -> (model: Model_Product, err: string) 
 			if !ok {
 				break
 			}
-			ok = model_read_image(&reader, image)
+			ok = model_read_image(&reader, image, image_chunk)
 		}
 		if !ok {
 			destroy_model_material(&material)
@@ -1790,6 +2129,8 @@ read_model_product :: proc(path: string) -> (model: Model_Product, err: string) 
 					&reader,
 					&primitive.hierarchy,
 					&primitive.page_payloads,
+					coarse_chunk,
+					detail_chunk,
 				)
 			}
 			if !ok {
@@ -1854,7 +2195,13 @@ read_model_product :: proc(path: string) -> (model: Model_Product, err: string) 
 					ok = model_read_hierarchy(&reader, &lod.hierarchy, int(lod_vertex_count))
 				}
 				if ok {
-					ok = model_read_page_payloads(&reader, &lod.hierarchy, &lod.page_payloads)
+					ok = model_read_page_payloads(
+						&reader,
+						&lod.hierarchy,
+						&lod.page_payloads,
+						coarse_chunk,
+						detail_chunk,
+					)
 				}
 				if !ok {
 					destroy_model_lod(&lod)
@@ -1920,6 +2267,7 @@ model_read_page_payloads :: proc(
 	reader: ^Model_Reader,
 	hierarchy: ^geometry.Hierarchy,
 	records: ^[]geometry.Page_Payload_Record,
+	coarse_chunk, detail_chunk: Asset_Product_Chunk,
 ) -> bool {
 	if reader == nil || hierarchy == nil || records == nil {
 		return false
@@ -1930,25 +2278,24 @@ model_read_page_payloads :: proc(
 	}
 	result := make([]geometry.Page_Payload_Record, int(page_count))
 	for &record, page_index in result {
-		header: [12]u8
-		ok = model_read_exact_direct(reader, header[:])
+		header: [24]u8
+		ok = model_read_exact(reader, header[:])
 		record.vertex_count = endian.unchecked_get_u32le(header[0:])
 		record.index_count = endian.unchecked_get_u32le(header[4:])
-		byte_count := endian.unchecked_get_u32le(header[8:])
+		record.offset = endian.unchecked_get_u64le(header[8:])
+		record.size = endian.unchecked_get_u64le(header[16:])
 		expected_size :=
 			u64(record.vertex_count) * u64(size_of(Model_Vertex)) +
 			u64(record.index_count) * u64(size_of(u32))
+		expected_chunk := detail_chunk
+		if hierarchy.pages[page_index].pinned {
+			expected_chunk = coarse_chunk
+		}
 		if !ok ||
 		   record.vertex_count == 0 ||
 		   record.index_count != hierarchy.pages[page_index].index_count ||
-		   u64(byte_count) != expected_size ||
-		   u64(byte_count) > u64(reader.size - reader.offset) {
-			delete(result)
-			return false
-		}
-		record.offset = u64(reader.offset)
-		record.size = u64(byte_count)
-		if !model_skip_bytes(reader, int(byte_count)) {
+		   record.size != expected_size ||
+		   !model_chunk_contains(expected_chunk, record.offset, record.size) {
 			delete(result)
 			return false
 		}
@@ -2212,6 +2559,12 @@ model_write_u32 :: proc(bytes: ^[dynamic]u8, value: u32) {
 	endian.unchecked_put_u32le(bytes^[offset:], value)
 }
 
+model_write_u64 :: proc(bytes: ^[dynamic]u8, value: u64) {
+	offset := len(bytes^)
+	resize(bytes, offset + 8)
+	endian.unchecked_put_u64le(bytes^[offset:], value)
+}
+
 model_write_i32 :: proc(bytes: ^[dynamic]u8, value: i32) {
 	model_write_u32(bytes, transmute(u32)value)
 }
@@ -2249,7 +2602,7 @@ model_write_vec4 :: proc(bytes: ^[dynamic]u8, value: shared.Vec4) {
 	model_write_f32(bytes, value.w)
 }
 
-model_write_image :: proc(bytes: ^[dynamic]u8, image: Model_Image) {
+model_write_image_descriptor :: proc(bytes: ^[dynamic]u8, image: Model_Image) {
 	model_write_u32(bytes, image.width)
 	model_write_u32(bytes, image.height)
 	model_write_u32(bytes, image.mip_count)
@@ -2258,8 +2611,8 @@ model_write_image :: proc(bytes: ^[dynamic]u8, image: Model_Image) {
 	model_write_u32(bytes, u32(image.sampler.mipmap_filter))
 	model_write_u32(bytes, u32(image.sampler.address_u))
 	model_write_u32(bytes, u32(image.sampler.address_v))
-	model_write_u32(bytes, u32(len(image.pixels)))
-	model_write_bytes(bytes, image.pixels)
+	model_write_u64(bytes, image.product_offset)
+	model_write_u64(bytes, image.product_size)
 }
 
 model_read_bytes :: proc(reader: ^Model_Reader, count: int) -> ([]u8, bool) {
@@ -2344,6 +2697,17 @@ model_read_u32 :: proc(reader: ^Model_Reader) -> (u32, bool) {
 	return endian.unchecked_get_u32le(bytes[:]), true
 }
 
+model_read_u64 :: proc(reader: ^Model_Reader) -> (u64, bool) {
+	if reader == nil || reader.file == nil || reader.offset + 8 > reader.size {
+		return 0, false
+	}
+	bytes: [8]u8
+	if !model_read_exact(reader, bytes[:]) {
+		return 0, false
+	}
+	return endian.unchecked_get_u64le(bytes[:]), true
+}
+
 model_read_i32 :: proc(reader: ^Model_Reader) -> (i32, bool) {
 	value, ok := model_read_u32(reader)
 	return transmute(i32)value, ok
@@ -2406,7 +2770,11 @@ model_read_vec4 :: proc(reader: ^Model_Reader) -> (shared.Vec4, bool) {
 	return {x, y, z, w}, ok_w
 }
 
-model_read_image :: proc(reader: ^Model_Reader, image: ^Model_Image) -> bool {
+model_read_image :: proc(
+	reader: ^Model_Reader,
+	image: ^Model_Image,
+	image_chunk: Asset_Product_Chunk,
+) -> bool {
 	if image == nil {
 		return false
 	}
@@ -2439,12 +2807,13 @@ model_read_image :: proc(reader: ^Model_Reader, image: ^Model_Image) -> bool {
 	   address_v > u32(shared.Texture_Address_Mode.Repeat) {
 		return false
 	}
-	pixel_count, pixel_count_ok := model_read_u32(reader)
-	if !pixel_count_ok || pixel_count > 16384 * 16384 * 4 {
+	product_offset, offset_ok := model_read_u64(reader)
+	product_size, size_ok := model_read_u64(reader)
+	if !offset_ok || !size_ok || product_size > 16384 * 16384 * 4 {
 		return false
 	}
-	if pixel_count == 0 {
-		return width == 0 && height == 0 && mip_count == 0
+	if product_size == 0 {
+		return product_offset == 0 && width == 0 && height == 0 && mip_count == 0
 	}
 	if width == 0 ||
 	   height == 0 ||
@@ -2461,11 +2830,13 @@ model_read_image :: proc(reader: ^Model_Reader, image: ^Model_Image) -> bool {
 		mip_width = max(mip_width / 2, 1)
 		mip_height = max(mip_height / 2, 1)
 	}
-	if expected != u64(pixel_count) {
+	if expected != product_size ||
+	   !model_chunk_contains(image_chunk, product_offset, product_size) {
 		return false
 	}
-	image.pixels = make([]u8, int(pixel_count))
-	if !model_read_exact(reader, image.pixels) {
+	image.pixels = make([]u8, int(product_size))
+	read_count, read_err := os.read_at(reader.file, image.pixels, i64(product_offset))
+	if read_err != nil || read_count != len(image.pixels) {
 		delete(image.pixels)
 		image.pixels = nil
 		return false
@@ -2473,6 +2844,8 @@ model_read_image :: proc(reader: ^Model_Reader, image: ^Model_Image) -> bool {
 	image.width = width
 	image.height = height
 	image.mip_count = mip_count
+	image.product_offset = product_offset
+	image.product_size = product_size
 	image.sampler = {
 		mag_filter = shared.Texture_Filter(mag_filter),
 		min_filter = shared.Texture_Filter(min_filter),

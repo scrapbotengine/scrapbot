@@ -33,11 +33,24 @@ files into a larger archive, but it must not re-import source assets or invent a
 representation. Source assets remain authoritative authoring inputs; products remain disposable,
 reproducible derivatives.
 
-The first consumer is Model schema v14. It stores its existing runtime stream in a typed product
-chunk and reads the chunk through a bounded buffered reader. Large page payload ranges remain
-skipped and file-backed. Later schema revisions may split the runtime catalog, material images,
-coarse bootstrap data, and virtual-Geometry pages into independently compressed chunks without
-changing the outer product contract.
+The first consumer was Model schema v14. It stored its existing runtime stream in one typed chunk
+and established the common envelope plus bounded buffered reads.
+
+Model schema v15 uses four chunks:
+
+- material image mip payloads;
+- pinned coarse-Geometry pages required for the fallback frontier;
+- evictable detail-Geometry pages requested by virtual-Geometry streaming;
+- a catalog of materials, nodes, hierarchy data, query positions, and validated payload ranges.
+
+Import writes the product sequentially instead of assembling a complete artifact byte array.
+Pinned pages stream directly into the product. Detail pages use a bounded temporary spool so they
+can become one contiguous chunk without rebuilding page payloads or retaining the entire product
+in memory. The catalog is written last, after exact file ranges are known.
+
+Chunk-level or page-level compression may be added without changing the outer product contract.
+Randomly accessed Geometry pages must remain independently decodable; compressing the complete
+detail chunk as one stream is not acceptable.
 
 ## Consequences
 
@@ -45,7 +58,14 @@ Runtime loaders can reject malformed, truncated, overlapping, mismatched, or uns
 before interpreting type-specific bytes. Model cache-hit startup performs bulk catalog reads rather
 than millions of scalar system calls while preserving exact page ranges for asynchronous streaming.
 
-The initial Model migration has one runtime chunk, so it establishes the container and fixes read
-amplification without yet reducing product size. Chunk splitting, compression, deduplication,
-memory-mapped catalogs, source-free export packaging, and incremental per-chunk rebuilds remain
-separate measured changes.
+Model startup can read the catalog without scanning image or Geometry payloads. Material images
+are loaded from validated image-chunk ranges. Geometry registration retains only absolute ranges
+into the immutable coarse or detail chunk, so the existing asynchronous page reader remains the
+sole refinement I/O path.
+
+Streaming construction bounds peak serialization memory by one primitive-level page build, one
+primitive-level catalog record, and a fixed copy buffer. It uses temporary disk capacity for detail
+pages during import.
+
+Compression, deduplication, memory-mapped catalogs, source-free export packaging, and incremental
+per-chunk rebuilds remain separate measured changes.

@@ -12,6 +12,10 @@ ASSET_PRODUCT_MAX_CHUNKS :: 1024
 
 Asset_Product_Chunk_Kind :: enum u32 {
 	Model_Runtime = 1,
+	Model_Material_Images,
+	Model_Coarse_Geometry,
+	Model_Detail_Geometry,
+	Model_Catalog,
 }
 
 Asset_Product_Chunk :: struct {
@@ -26,6 +30,147 @@ Asset_Product_Chunk :: struct {
 Asset_Product_Directory :: struct {
 	kind: Product_Kind,
 	chunks: []Asset_Product_Chunk,
+}
+
+Asset_Product_Stream_Writer :: struct {
+	file: ^os.File,
+	kind: Product_Kind,
+	chunks: []Asset_Product_Chunk,
+	offset: u64,
+	entry_index: int,
+	chunk_open: bool,
+}
+
+destroy_asset_product_stream_writer :: proc(writer: ^Asset_Product_Stream_Writer) {
+	if writer == nil {
+		return
+	}
+	delete(writer.chunks)
+	writer^ = {}
+}
+
+asset_product_stream_begin :: proc(
+	file: ^os.File,
+	kind: Product_Kind,
+	chunk_count: int,
+) -> (
+	writer: Asset_Product_Stream_Writer,
+	err: string,
+) {
+	if file == nil || chunk_count <= 0 || chunk_count > ASSET_PRODUCT_MAX_CHUNKS {
+		return {}, "asset product stream arguments are invalid"
+	}
+	file_size, size_err := os.file_size(file)
+	if size_err != nil || file_size != 0 {
+		return {}, "asset product stream requires an empty file"
+	}
+	position, seek_err := os.seek(file, 0, .Start)
+	if seek_err != nil || position != 0 {
+		return {}, "failed to position asset product stream"
+	}
+	directory_size := ASSET_PRODUCT_HEADER_SIZE + chunk_count * ASSET_PRODUCT_CHUNK_ENTRY_SIZE
+	prefix := make([]u8, directory_size, context.temp_allocator)
+	written, write_err := os.write(file, prefix)
+	if write_err != nil || written != len(prefix) {
+		return {}, "failed to reserve asset product directory"
+	}
+	writer = {
+		file = file,
+		kind = kind,
+		chunks = make([]Asset_Product_Chunk, chunk_count),
+		offset = u64(directory_size),
+	}
+	return writer, ""
+}
+
+asset_product_stream_begin_chunk :: proc(
+	writer: ^Asset_Product_Stream_Writer,
+	kind: Asset_Product_Chunk_Kind,
+	index: u32 = 0,
+) -> bool {
+	if writer == nil ||
+	   writer.file == nil ||
+	   writer.chunk_open ||
+	   writer.entry_index >= len(writer.chunks) ||
+	   kind == Asset_Product_Chunk_Kind(0) {
+		return false
+	}
+	for chunk in writer.chunks[:writer.entry_index] {
+		if chunk.kind == kind && chunk.index == index {
+			return false
+		}
+	}
+	writer.chunks[writer.entry_index] = {
+		kind = kind,
+		index = index,
+		offset = writer.offset,
+	}
+	writer.chunk_open = true
+	return true
+}
+
+asset_product_stream_write :: proc(writer: ^Asset_Product_Stream_Writer, bytes: []u8) -> bool {
+	if writer == nil || writer.file == nil || !writer.chunk_open || len(bytes) == 0 {
+		return false
+	}
+	written, write_err := os.write(writer.file, bytes)
+	if write_err != nil || written != len(bytes) {
+		return false
+	}
+	writer.offset += u64(written)
+	return true
+}
+
+asset_product_stream_finish_chunk :: proc(writer: ^Asset_Product_Stream_Writer) -> bool {
+	if writer == nil || !writer.chunk_open || writer.entry_index >= len(writer.chunks) {
+		return false
+	}
+	chunk := &writer.chunks[writer.entry_index]
+	chunk.stored_size = writer.offset - chunk.offset
+	chunk.decoded_size = chunk.stored_size
+	if chunk.stored_size == 0 {
+		return false
+	}
+	writer.entry_index += 1
+	writer.chunk_open = false
+	return true
+}
+
+asset_product_stream_finish :: proc(writer: ^Asset_Product_Stream_Writer) -> (int, string) {
+	if writer == nil ||
+	   writer.file == nil ||
+	   writer.chunk_open ||
+	   writer.entry_index != len(writer.chunks) ||
+	   writer.offset > u64(max(int)) {
+		return 0, "asset product stream is incomplete"
+	}
+	prefix := make(
+		[]u8,
+		ASSET_PRODUCT_HEADER_SIZE + len(writer.chunks) * ASSET_PRODUCT_CHUNK_ENTRY_SIZE,
+		context.temp_allocator,
+	)
+	magic := ASSET_PRODUCT_MAGIC
+	copy(prefix[:len(magic)], magic[:])
+	asset_product_put_u32(prefix, 8, ASSET_PRODUCT_FORMAT_VERSION)
+	asset_product_put_u32(prefix, 12, u32(writer.kind) + 1)
+	asset_product_put_u32(prefix, 16, u32(len(writer.chunks)))
+	for chunk, entry_index in writer.chunks {
+		entry_offset := ASSET_PRODUCT_HEADER_SIZE + entry_index * ASSET_PRODUCT_CHUNK_ENTRY_SIZE
+		asset_product_put_u32(prefix, entry_offset, u32(chunk.kind))
+		asset_product_put_u32(prefix, entry_offset + 4, chunk.index)
+		asset_product_put_u32(prefix, entry_offset + 8, chunk.flags)
+		asset_product_put_u64(prefix, entry_offset + 16, chunk.offset)
+		asset_product_put_u64(prefix, entry_offset + 24, chunk.stored_size)
+		asset_product_put_u64(prefix, entry_offset + 32, chunk.decoded_size)
+	}
+	written, write_err := os.write_at(writer.file, prefix, 0)
+	if write_err != nil || written != len(prefix) {
+		return 0, "failed to commit asset product directory"
+	}
+	if sync_err := os.sync(writer.file); sync_err != nil {
+		return 0, "failed to synchronize asset product"
+	}
+	return int(writer.offset), ""
 }
 
 destroy_asset_product_directory :: proc(directory: ^Asset_Product_Directory) {

@@ -29,6 +29,7 @@ export default defineConfig({
 					label: 'Engine Guides',
 					items: [
 						{ label: 'ECS Overview', slug: 'guides/ecs' },
+						{ label: 'Asset Pipeline', slug: 'guides/asset-pipeline' },
 						{ label: 'ECS UI', slug: 'guides/ecs-ui' },
 						{ label: 'Luau Scripting', slug: 'guides/luau-scripting' },
 						{ label: 'Native Extensions', slug: 'guides/native-extensions' },

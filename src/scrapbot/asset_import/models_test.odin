@@ -94,7 +94,7 @@ test_model_offline_lods_are_deterministic_compact_and_round_trip :: proc(t: ^tes
 	primitive = {}
 	append(&model.meshes, mesh)
 	defer destroy_model_product(&model)
-	encoded := encode_model_product(&model)
+	encoded := encode_model_product_for_test(&model)
 	defer delete(encoded)
 	root, temp_err := os.make_directory_temp("", "scrapbot-model-lods-*", context.allocator)
 	testing.expect(t, temp_err == nil)
@@ -110,6 +110,46 @@ test_model_offline_lods_are_deterministic_compact_and_round_trip :: proc(t: ^tes
 	}
 	defer delete(path)
 	testing.expect(t, os.write_entire_file(path, encoded) == nil)
+	product_file, open_err := os.open(path)
+	testing.expect(t, open_err == nil)
+	product_directory: Asset_Product_Directory
+	if open_err == nil {
+		directory_err: string
+		product_directory, directory_err = read_asset_product_directory(
+			product_file,
+			len(encoded),
+			.Model,
+		)
+		testing.expectf(
+			t,
+			directory_err == "",
+			"split product directory failed: %s",
+			directory_err,
+		)
+		os.close(product_file)
+	}
+	defer destroy_asset_product_directory(&product_directory)
+	testing.expect_value(t, len(product_directory.chunks), MODEL_PRODUCT_CHUNK_COUNT)
+	image_chunk, image_found := asset_product_find_chunk(
+		&product_directory,
+		.Model_Material_Images,
+	)
+	coarse_chunk, coarse_found := asset_product_find_chunk(
+		&product_directory,
+		.Model_Coarse_Geometry,
+	)
+	detail_chunk, detail_found := asset_product_find_chunk(
+		&product_directory,
+		.Model_Detail_Geometry,
+	)
+	catalog_chunk, catalog_found := asset_product_find_chunk(&product_directory, .Model_Catalog)
+	testing.expect(t, image_found)
+	testing.expect(t, coarse_found)
+	testing.expect(t, detail_found)
+	testing.expect(t, catalog_found)
+	testing.expect(t, image_chunk.offset < coarse_chunk.offset)
+	testing.expect(t, coarse_chunk.offset < detail_chunk.offset)
+	testing.expect(t, detail_chunk.offset < catalog_chunk.offset)
 	decoded, decode_err := read_model_product(path)
 	defer destroy_model_product(&decoded)
 	testing.expectf(t, decode_err == "", "LOD product round trip failed: %s", decode_err)
@@ -131,6 +171,11 @@ test_model_offline_lods_are_deterministic_compact_and_round_trip :: proc(t: ^tes
 				decoded_primitive.hierarchy.pages[page_index].index_count,
 			)
 			testing.expect(t, record.offset + record.size <= u64(len(encoded)))
+			expected_chunk := detail_chunk
+			if decoded_primitive.hierarchy.pages[page_index].pinned {
+				expected_chunk = coarse_chunk
+			}
+			testing.expect(t, model_chunk_contains(expected_chunk, record.offset, record.size))
 		}
 		testing.expect_value(
 			t,
@@ -450,7 +495,7 @@ test_model_product_reader_rejects_corruption :: proc(t: ^testing.T) {
 			transform = {scale = {1, 1, 1}},
 		},
 	)
-	encoded := encode_model_product(&invalid_hierarchy)
+	encoded := encode_model_product_for_test(&invalid_hierarchy)
 	defer delete(encoded)
 	testing.expect(t, os.write_entire_file(path, encoded) == nil)
 	invalid, invalid_err := read_model_product(path)
