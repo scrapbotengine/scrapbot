@@ -1,0 +1,13 @@
+id = "7b000000-0000-4000-8000-000000000009"
+type = "scrapbot.material"
+name = "Coastal Water"
+
+[material]
+base_color = [1, 1, 1, 1]
+emissive = [0, 0, 0]
+metallic = 0
+roughness = 0.18
+shader = "7b000000-0000-4000-8000-000000000008"
+shader_parameters = [0.08, 0.58, 0.7, 0.78, 0.018, 0.22, 0.36, 0.018, 0.82, 1.05, 1.1, 0.001, 0.16, 0.72, 0.7, 0.65]
+alpha_mode = "blend"
+double_sided = true

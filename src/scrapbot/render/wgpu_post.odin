@@ -839,6 +839,7 @@ wgpu_create_post_texture :: proc(
 }
 
 wgpu_release_post_targets :: proc(renderer: ^WGPU_Renderer) {
+	wgpu_release_custom_shader_target(renderer)
 	for index in 0 ..< len(renderer.temporal_color_textures) {
 		if renderer.automatic_exposure_bind_groups[index] != nil {
 			wgpu.BindGroupRelease(renderer.automatic_exposure_bind_groups[index])
@@ -1088,7 +1089,7 @@ wgpu_ensure_post_targets :: proc(
 		renderer.device,
 		&wgpu.TextureDescriptor {
 			label = "Scrapbot HDR Scene Texture",
-			usage = {.RenderAttachment, .TextureBinding},
+			usage = {.RenderAttachment, .TextureBinding, .CopySrc},
 			dimension = ._2D,
 			size = {width = width, height = height, depthOrArrayLayers = 1},
 			format = .RGBA16Float,
@@ -1102,6 +1103,9 @@ wgpu_ensure_post_targets :: proc(
 	renderer.hdr_view = wgpu.TextureCreateView(renderer.hdr_texture)
 	if renderer.hdr_view == nil {
 		return "failed to create HDR scene texture view"
+	}
+	if err := wgpu_ensure_custom_shader_target(renderer, width, height, depth_view); err != "" {
+		return err
 	}
 
 	err: string

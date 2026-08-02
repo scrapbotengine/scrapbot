@@ -263,6 +263,9 @@ wgpu_init_renderer :: proc(
 	if err = wgpu_create_gpu_driven_pipelines(&renderer); err != "" {
 		return renderer, err
 	}
+	if err = wgpu_create_custom_shader_resources(&renderer); err != "" {
+		return renderer, err
+	}
 	if err = wgpu_create_post_process_pipelines(&renderer); err != "" {
 		return renderer, err
 	}
@@ -279,6 +282,7 @@ wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
 	if renderer.device != nil {
 		wgpu.DevicePoll(renderer.device, true)
 	}
+	wgpu_release_custom_shader_resources(renderer)
 	wgpu_release_gpu_timing(renderer)
 	wgpu_release_environment_resources(renderer)
 	if renderer.configured {
@@ -743,7 +747,7 @@ wgpu_create_render_pipeline :: proc(renderer: ^WGPU_Renderer) -> string {
 		},
 		{
 			binding = 6,
-			visibility = {.Fragment},
+			visibility = {.Vertex, .Fragment},
 			buffer = {type = .Uniform, minBindingSize = u64(size_of(WGPU_Material_Uniform))},
 		},
 		{binding = 7, visibility = {.Fragment}, sampler = {type = .Filtering}},

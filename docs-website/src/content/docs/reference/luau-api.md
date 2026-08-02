@@ -167,7 +167,7 @@ end)
 | --- | --- |
 | `scrapbot.geometry.create(name, descriptor)` | Register position/normal/UV vertices, optional `Vec4` tangents (`xyz` direction, `w` handedness), and `u32` triangle indices. |
 | `scrapbot.geometry.cube(name, size?)` | Generate and register indexed cube geometry. |
-| `scrapbot.geometry.plane(name, width?, depth?)` | Generate and register indexed plane geometry. |
+| `scrapbot.geometry.plane(name, width?, depth?, columns?, rows?)` | Generate an indexed plane; optional subdivisions support displaced surfaces. |
 | `scrapbot.geometry.icosphere(name, radius?, subdivisions?)` | Generate an indexed icosphere. Subdivisions range from 0 to 4. |
 | `scrapbot.geometry.sphere(name, radius?, segments?, rings?)` | Generate an indexed UV sphere. |
 | `scrapbot.geometry.pyramid(name, width?, height?, depth?)` | Generate an indexed square pyramid. |

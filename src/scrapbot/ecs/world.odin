@@ -741,9 +741,12 @@ mark_all_render_entities_dirty :: proc(world: ^World) {
 	if world == nil {
 		return
 	}
-	for entity, index in world.entities {
+	clear(&world.render_dirty_entities)
+	for &entity, index in world.entities {
 		if entity.alive {
-			mark_render_entity_dirty(world, index)
+			entity.render_dirty = true
+			append(&world.render_dirty_entities, index)
+			mark_render_extract_entity_dirty(world, index)
 		}
 	}
 }

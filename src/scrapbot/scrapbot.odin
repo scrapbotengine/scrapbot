@@ -809,6 +809,8 @@ run_project_internal_untracked :: proc(
 		result.err = script_result.err
 		return result
 	}
+	ecs.mark_all_render_entities_dirty(&world)
+	ecs.reconcile_render_instances(&world, &frame_runtime.resources)
 	if !script_result.ran {
 		frame_runtime.script_runtime.registry = registry
 		frame_runtime.script_runtime.world = &world
@@ -879,6 +881,14 @@ init_render_resources :: proc(
 	defer delete(cube_desc.vertices); defer delete(cube_desc.indices)
 	cube_handle, register_err := resources.register_geometry(registry, "cube", cube_desc)
 	if register_err != "" { return register_err }
+	plane_desc, plane_err := resources.plane(1, 1, 64, 64)
+	if plane_err != "" { return plane_err }
+	defer delete(plane_desc.vertices)
+	defer delete(plane_desc.indices)
+	plane_handle, plane_register_err := resources.register_geometry(registry, "plane", plane_desc)
+	if plane_register_err != "" {
+		return plane_register_err
+	}
 	material_handle, material_err := resources.register_material(
 		registry,
 		"default",
@@ -919,6 +929,9 @@ init_render_resources :: proc(
 	   err != "" {
 		return err
 	}
+	if err := resources.register_project_shaders(registry, root, project_resources); err != "" {
+		return err
+	}
 	if err := resources.register_project_materials(registry, root, project_resources); err != "" {
 		return err
 	}
@@ -938,10 +951,23 @@ init_render_resources :: proc(
 	}
 	for entity, index in world.entities {
 		if entity.mesh_index >= 0 && entity.geometry_resource == "" {
-			ecs.add_geometry(world, index, cube_handle)
+			geometry_handle := cube_handle
+			if entity.mesh_index < len(world.meshes) &&
+			   world.meshes[entity.mesh_index].primitive == "plane" {
+				geometry_handle = plane_handle
+			}
+			ecs.add_geometry(world, index, geometry_handle)
 		}
 		if entity.mesh_index >= 0 && entity.material_resource == "" {
 			ecs.add_material(world, index, material_handle)
+		}
+		if entity.mesh_index >= 0 && entity.material_resource != "" {
+			if material_id, valid := shared.resource_uuid_parse(entity.material_resource); valid {
+				if authored_material, found := resources.material_by_uuid(registry, material_id);
+				   found {
+					ecs.resolve_material_reference(world, index, authored_material)
+				}
+			}
 		}
 	}
 	return ""

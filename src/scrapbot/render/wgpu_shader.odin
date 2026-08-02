@@ -22,6 +22,7 @@ struct Material_Uniform {
 	pbr_factors: vec4<f32>,
 	flags: vec4<f32>,
 	alpha: vec4<f32>,
+	shader_parameters: array<vec4<f32>, 4>,
 };
 
 struct Environment_Uniform {

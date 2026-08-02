@@ -124,6 +124,36 @@ texture = "b1000000-0000-4000-8000-000000000002"
 
 `base_color` defaults to white, `emissive` defaults to black and accepts finite non-negative HDR values, `metallic` defaults to `0`, and `roughness` defaults to `0.8`. Metallic and roughness are finite factors from `0` to `1`. `texture` is optional. Scrapbot loads authored resources into its runtime registry before resolving scene entities. A changed resource preserves its runtime handle and increments its content version; removal invalidates old handles. Resource files participate in hot reload and host-native packaging.
 
+Materials may also reference an authored project shader:
+
+```toml
+[material]
+shader = "b1000000-0000-4000-8000-000000000006"
+shader_parameters = [0.05, 0.4, 0.5, 0.75, 0, 0.1, 0.2, 0.02, 1, 1, 1, 0.01, 0.2, 0.7, 0.8, 1]
+alpha_mode = "blend"
+double_sided = true
+```
+
+`shader_parameters` is four generic `Vec4` slots in row-major order. `alpha_mode` accepts `opaque`, `mask`, or `blend`; blended materials require a custom shader. They render after opaque geometry, test but do not write depth, and may sample the opaque scene color and depth through the shader ABI.
+
+Shader resources point at WGSL hook source under `shaders/`:
+
+```toml
+id = "b1000000-0000-4000-8000-000000000006"
+type = "scrapbot.shader"
+name = "Coastal Water"
+
+[shader]
+source = "shaders/coastal-water.wgsl"
+cull_mode = "none"
+```
+
+The source defines `fn scrapbot_vertex(input: Scrapbot_Vertex) -> Scrapbot_Vertex` and `fn scrapbot_fragment(input: Scrapbot_Fragment) -> Scrapbot_Surface`. Scrapbot owns entry points, camera and instance transport, render targets, and blending.
+
+Hooks can read the four parameters, time, pixel size, opaque scene color, and opaque depth through `scrapbot_parameter`, `scrapbot_time_seconds`, `scrapbot_delta_seconds`, `scrapbot_frame_index`, `scrapbot_pixel_size`, `scrapbot_scene_color`, and `scrapbot_scene_depth`.
+
+Custom shaders currently require `alpha_mode = "blend"`. Opaque custom materials need matching displaced depth-prepass and shadow contracts before they can be enabled safely. Blended draws are sorted back-to-front per instance on the CPU; a bounded GPU sort for very large transparent sets remains tracked work.
+
 UI-theme resources customize the shared semantic recipe vocabulary:
 
 ```toml
@@ -373,7 +403,7 @@ Built-in primitive convenience:
 primitive = "cube"
 ```
 
-The mesh component currently resolves `cube` into the built-in cube geometry and default material needed by the entity. It is the compact path used by generated projects.
+The mesh component resolves `cube` or `plane` into built-in geometry and supplies the default material when no authored material is present. The plane is a reusable 64×64 grid suitable for vertex-displaced surfaces. This is the compact primitive path used by generated projects and small text-authored scenes.
 
 Imported model instance:
 

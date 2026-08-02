@@ -211,6 +211,8 @@ validate_scene_resource_references :: proc(
 	defer delete(known_geometries)
 	known_textures := make(map[shared.Resource_UUID]bool)
 	defer delete(known_textures)
+	known_shaders := make(map[shared.Resource_UUID]bool)
+	defer delete(known_shaders)
 	known_models := make(map[shared.Resource_UUID]bool)
 	defer delete(known_models)
 	known_icon_sets := make(map[shared.Resource_UUID]bool)
@@ -225,6 +227,8 @@ validate_scene_resource_references :: proc(
 			known_geometries[resource.id] = true
 		} else if resource.kind == .Texture {
 			known_textures[resource.id] = true
+		} else if resource.kind == .Shader {
+			known_shaders[resource.id] = true
 		} else if resource.kind == .Model {
 			known_models[resource.id] = true
 		} else if resource.kind == .Icon_Set {
@@ -242,6 +246,16 @@ validate_scene_resource_references :: proc(
 				"resource material '%s' references unknown texture resource '%s'",
 				resource.name,
 				shared.resource_uuid_to_string(resource.material.texture, id_buffer[:]),
+			)
+		}
+		if resource.kind == .Material &&
+		   resource.material.shader != (shared.Resource_UUID{}) &&
+		   !known_shaders[resource.material.shader] {
+			id_buffer: [36]u8
+			return fmt.tprintf(
+				"resource material '%s' references unknown shader resource '%s'",
+				resource.name,
+				shared.resource_uuid_to_string(resource.material.shader, id_buffer[:]),
 			)
 		}
 	}

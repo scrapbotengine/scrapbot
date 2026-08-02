@@ -28,6 +28,7 @@ Environment_Handle :: shared.Environment_Handle
 Icon_Set_Handle :: shared.Icon_Set_Handle
 Model_Handle :: shared.Model_Handle
 Material_Handle :: shared.Material_Handle
+Shader_Handle :: shared.Shader_Handle
 Font_Handle :: shared.Font_Handle
 UI_Theme_Handle :: shared.UI_Theme_Handle
 
@@ -80,6 +81,8 @@ Material_Desc :: struct {
 	alpha_mode: shared.Material_Alpha_Mode,
 	alpha_cutoff: f32,
 	double_sided: bool,
+	shader: Shader_Handle,
+	shader_parameters: [4]Vec4,
 	pbr: bool,
 	texture: Texture_Handle,
 	texture_pixels: []u8,
@@ -175,8 +178,21 @@ Material :: struct {
 	source: string,
 	texture_asset: string,
 	texture_id: shared.Resource_UUID,
+	shader_id: shared.Resource_UUID,
 	authored: bool,
 	desc: Material_Desc,
+	generation: u32,
+	version: u32,
+	alive: bool,
+}
+
+Shader :: struct {
+	id: shared.Resource_UUID,
+	name: string,
+	source: string,
+	asset_source: string,
+	wgsl: string,
+	cull_mode: shared.Shader_Cull_Mode,
 	generation: u32,
 	version: u32,
 	alive: bool,
@@ -227,6 +243,7 @@ Project_Material_Snapshot :: struct {
 	source: string,
 	texture_asset: string,
 	texture_id: shared.Resource_UUID,
+	shader_id: shared.Resource_UUID,
 	desc: Material_Desc,
 }
 
@@ -260,6 +277,7 @@ Registry :: struct {
 	icon_sets: [dynamic]Icon_Set,
 	models: [dynamic]Model,
 	materials: [dynamic]Material,
+	shaders: [dynamic]Shader,
 	fonts: [dynamic]Font,
 	ui_themes: [dynamic]UI_Theme,
 	geometry_topology_revision: u64,
@@ -269,6 +287,7 @@ Registry :: struct {
 	model_revision: u64,
 	ui_theme_revision: u64,
 	material_revision: u64,
+	shader_revision: u64,
 	active_environment: Environment_Handle,
 	environment_intensity: f32,
 	environment_reflection_intensity: f32,
@@ -320,6 +339,9 @@ ensure_allocator :: proc(registry: ^Registry) {
 	   nil { registry.geometries = make([dynamic]Geometry, registry.allocator) }
 	if registry.materials ==
 	   nil { registry.materials = make([dynamic]Material, registry.allocator) }
+	if registry.shaders == nil {
+		registry.shaders = make([dynamic]Shader, registry.allocator)
+	}
 	if registry.textures == nil {
 		registry.textures = make([dynamic]Texture, registry.allocator)
 	}
@@ -385,6 +407,12 @@ destroy_registry :: proc(registry: ^Registry) {
 		delete(material.texture_asset, allocator)
 		destroy_material_desc(&material.desc, allocator)
 	}
+	for &shader in registry.shaders {
+		delete(shader.name, allocator)
+		delete(shader.source, allocator)
+		delete(shader.asset_source, allocator)
+		delete(shader.wgsl, allocator)
+	}
 	for &texture in registry.textures {
 		delete(texture.name, allocator)
 		delete(texture.source, allocator)
@@ -413,6 +441,7 @@ destroy_registry :: proc(registry: ^Registry) {
 	}
 	delete(registry.geometries)
 	delete(registry.materials)
+	delete(registry.shaders)
 	delete(registry.textures)
 	delete(registry.environments)
 	delete(registry.icon_sets)
@@ -433,6 +462,7 @@ clone_registry :: proc(source: ^Registry, destination: ^Registry) -> string {
 	init_registry(destination, allocator)
 	destination.geometry_topology_revision = source.geometry_topology_revision
 	destination.material_revision = source.material_revision
+	destination.shader_revision = source.shader_revision
 	destination.texture_revision = source.texture_revision
 	destination.environment_revision = source.environment_revision
 	destination.icon_set_revision = source.icon_set_revision
@@ -515,6 +545,21 @@ clone_registry :: proc(source: ^Registry, destination: ^Registry) -> string {
 		cloned.texture_asset = texture_asset
 		cloned.desc = clone_material_desc(material.desc, allocator)
 		append(&destination.materials, cloned)
+	}
+	for shader in source.shaders {
+		cloned := shader
+		cloned.name, _ = strings.clone(shader.name, allocator)
+		cloned.source, _ = strings.clone(shader.source, allocator)
+		cloned.asset_source, _ = strings.clone(shader.asset_source, allocator)
+		cloned.wgsl, _ = strings.clone(shader.wgsl, allocator)
+		if cloned.name == "" ||
+		   cloned.source == "" ||
+		   cloned.asset_source == "" ||
+		   cloned.wgsl == "" {
+			destroy_registry(destination)
+			return "failed to clone shader metadata"
+		}
+		append(&destination.shaders, cloned)
 	}
 	for texture in source.textures {
 		cloned := texture
@@ -1431,6 +1476,7 @@ register_project_material :: proc(
 	name, source: string,
 	desc: Material_Desc,
 	texture_id: shared.Resource_UUID = {},
+	shader_id: shared.Resource_UUID = {},
 ) -> (
 	Material_Handle,
 	string,
@@ -1468,6 +1514,7 @@ register_project_material :: proc(
 		material.source = cloned_source
 		material.texture_asset = ""
 		material.texture_id = texture_id
+		material.shader_id = shader_id
 		material.authored = true
 		material.desc = clone_material_desc(normalized_desc, registry.allocator)
 		material.alive = true
@@ -1493,6 +1540,7 @@ register_project_material :: proc(
 			name = cloned_name,
 			source = cloned_source,
 			texture_id = texture_id,
+			shader_id = shader_id,
 			authored = true,
 			desc = clone_material_desc(normalized_desc, registry.allocator),
 			generation = 1,
@@ -1525,6 +1573,7 @@ capture_project_material :: proc(
 	snapshot.source, _ = strings.clone(material.source)
 	snapshot.texture_asset, _ = strings.clone(material.texture_asset)
 	snapshot.texture_id = material.texture_id
+	snapshot.shader_id = material.shader_id
 	snapshot.desc = clone_material_desc(material.desc, context.allocator)
 	return snapshot, true
 }
@@ -1541,6 +1590,7 @@ clone_project_material_snapshot :: proc(
 	result.source, _ = strings.clone(source.source)
 	result.texture_asset, _ = strings.clone(source.texture_asset)
 	result.texture_id = source.texture_id
+	result.shader_id = source.shader_id
 	result.desc = clone_material_desc(source.desc, context.allocator)
 	return result
 }
@@ -1642,6 +1692,7 @@ apply_project_material_snapshot :: proc(
 		snapshot.source,
 		snapshot.desc,
 		snapshot.texture_id,
+		snapshot.shader_id,
 	)
 	return err
 }
@@ -1718,6 +1769,12 @@ register_project_materials :: proc(
 			emissive = declaration.material.emissive,
 			metallic_factor = declaration.material.metallic,
 			roughness_factor = declaration.material.roughness,
+			alpha_mode = declaration.material.alpha_mode,
+			alpha_cutoff = declaration.material.alpha_cutoff,
+			double_sided = declaration.material.double_sided,
+		}
+		for parameter, parameter_index in declaration.material.shader_parameters {
+			desc.shader_parameters[parameter_index] = Vec4(parameter)
 		}
 		if declaration.material.texture != (shared.Resource_UUID{}) {
 			texture_handle, found := texture_handle_by_uuid(registry, declaration.material.texture)
@@ -1730,6 +1787,18 @@ register_project_materials :: proc(
 				)
 			}
 			desc.texture = texture_handle
+		}
+		if declaration.material.shader != (shared.Resource_UUID{}) {
+			shader_handle, found := shader_handle_by_uuid(registry, declaration.material.shader)
+			if !found {
+				id_buffer: [36]u8
+				return fmt.tprintf(
+					"resources/%s: shader resource %s is not registered",
+					declaration.source,
+					shared.resource_uuid_to_string(declaration.material.shader, id_buffer[:]),
+				)
+			}
+			desc.shader = shader_handle
 		}
 		append(
 			&prepared,
@@ -1745,6 +1814,7 @@ register_project_materials :: proc(
 			declaration.source,
 			item.desc,
 			declaration.material.texture,
+			declaration.material.shader,
 		)
 		if register_err != "" {
 			return fmt.tprintf("resources/%s: %s", declaration.source, register_err)
@@ -1887,6 +1957,42 @@ roughness = %.9g
 				shared.resource_uuid_to_string(material.texture_id, texture_buffer[:]),
 			)
 		}
+		if material.shader_id != (shared.Resource_UUID{}) {
+			shader_buffer: [36]u8
+			fmt.sbprintf(
+				&builder,
+				"shader = \"%s\"\n",
+				shared.resource_uuid_to_string(material.shader_id, shader_buffer[:]),
+			)
+			fmt.sbprintf(
+				&builder,
+				"shader_parameters = [%.9g, %.9g, %.9g, %.9g, %.9g, %.9g, %.9g, %.9g, %.9g, %.9g, %.9g, %.9g, %.9g, %.9g, %.9g, %.9g]\n",
+				material.desc.shader_parameters[0].x,
+				material.desc.shader_parameters[0].y,
+				material.desc.shader_parameters[0].z,
+				material.desc.shader_parameters[0].w,
+				material.desc.shader_parameters[1].x,
+				material.desc.shader_parameters[1].y,
+				material.desc.shader_parameters[1].z,
+				material.desc.shader_parameters[1].w,
+				material.desc.shader_parameters[2].x,
+				material.desc.shader_parameters[2].y,
+				material.desc.shader_parameters[2].z,
+				material.desc.shader_parameters[2].w,
+				material.desc.shader_parameters[3].x,
+				material.desc.shader_parameters[3].y,
+				material.desc.shader_parameters[3].z,
+				material.desc.shader_parameters[3].w,
+			)
+		}
+		if material.desc.alpha_mode != .Opaque {
+			alpha_mode := "mask" if material.desc.alpha_mode == .Mask else "blend"
+			fmt.sbprintf(&builder, "alpha_mode = \"%s\"\n", alpha_mode)
+			fmt.sbprintf(&builder, "alpha_cutoff = %.9g\n", material.desc.alpha_cutoff)
+		}
+		if material.desc.double_sided {
+			fmt.sbprintf(&builder, "double_sided = true\n")
+		}
 		source, clone_err := strings.clone(strings.to_string(builder))
 		strings.builder_destroy(&builder)
 		if clone_err != nil {
@@ -1909,7 +2015,16 @@ roughness = %.9g
 		   parsed.material.emissive != material.desc.emissive ||
 		   parsed.material.metallic != material.desc.metallic_factor ||
 		   parsed.material.roughness != material.desc.roughness_factor ||
-		   parsed.material.texture != material.texture_id {
+		   parsed.material.texture != material.texture_id ||
+		   parsed.material.shader != material.shader_id ||
+		   !material_shader_parameters_equal(
+				   parsed.material.shader_parameters,
+				   material.desc.shader_parameters,
+			   ) ||
+		   parsed.material.alpha_mode != material.desc.alpha_mode ||
+		   (parsed.material.alpha_mode == .Mask &&
+				   parsed.material.alpha_cutoff != material.desc.alpha_cutoff) ||
+		   parsed.material.double_sided != material.desc.double_sided {
 			delete(source)
 			delete(resource_path)
 			return "generated project material changed meaning during serialization"
@@ -1924,6 +2039,15 @@ roughness = %.9g
 		)
 	}
 	return ""
+}
+
+material_shader_parameters_equal :: proc(a: [4]shared.Vec4, b: [4]Vec4) -> bool {
+	for value, index in a {
+		if value != shared.Vec4(b[index]) {
+			return false
+		}
+	}
+	return true
 }
 
 register_textured_material :: proc(
@@ -2152,6 +2276,12 @@ material_index_by_uuid_any :: proc(registry: ^Registry, id: shared.Resource_UUID
 }
 
 validate_material_desc :: proc(desc: Material_Desc) -> string {
+	if desc.alpha_mode == .Blend && desc.shader == (Shader_Handle{}) {
+		return "blended materials require a custom shader"
+	}
+	if desc.shader != (Shader_Handle{}) && desc.alpha_mode != .Blend {
+		return "custom shaders currently require blend alpha mode"
+	}
 	if !finite4(desc.base_color) {
 		return "material base color must be finite"
 	}
@@ -2359,27 +2489,49 @@ cube :: proc(size: f32 = 1) -> (Geometry_Desc, string) {
 	return {vertices, indices}, ""
 }
 
-plane :: proc(width: f32 = 1, depth: f32 = 1) -> (Geometry_Desc, string) {
+plane :: proc(
+	width: f32 = 1,
+	depth: f32 = 1,
+	columns: int = 1,
+	rows: int = 1,
+) -> (
+	Geometry_Desc,
+	string,
+) {
 	if !finite(width) ||
 	   !finite(depth) ||
 	   width <= 0 ||
 	   depth <= 0 { return {}, "plane dimensions must be positive and finite" }
-	w, d := width / 2, depth / 2
-	vertices := make([]Vertex, 4)
-	vertices[0] = {
-		{-w, 0, -d},
-		{0, 1, 0},
-		{0, 0},
-		{},
-	}; vertices[1] = {{w, 0, -d}, {0, 1, 0}, {1, 0}, {}}
-	vertices[2] = {
-		{w, 0, d},
-		{0, 1, 0},
-		{1, 1},
-		{},
-	}; vertices[3] = {{-w, 0, d}, {0, 1, 0}, {0, 1}, {}}
-	indices := make([]u32, 6)
-	copy(indices, []u32{0, 1, 2, 0, 2, 3})
+	if columns < 1 || rows < 1 || columns > 512 || rows > 512 {
+		return {}, "plane columns and rows must be between 1 and 512"
+	}
+	vertices := make([]Vertex, (columns + 1) * (rows + 1))
+	for row in 0 ..= rows {
+		v := f32(row) / f32(rows)
+		for column in 0 ..= columns {
+			u := f32(column) / f32(columns)
+			vertices[row * (columns + 1) + column] = {
+				position = {(u - 0.5) * width, 0, (v - 0.5) * depth},
+				normal = {0, 1, 0},
+				uv = {u, v},
+				tangent = {1, 0, 0, 1},
+			}
+		}
+	}
+	indices := make([]u32, columns * rows * 6)
+	for row in 0 ..< rows {
+		for column in 0 ..< columns {
+			vertex := u32(row * (columns + 1) + column)
+			next_row := vertex + u32(columns + 1)
+			offset := (row * columns + column) * 6
+			indices[offset + 0] = vertex
+			indices[offset + 1] = next_row
+			indices[offset + 2] = vertex + 1
+			indices[offset + 3] = vertex + 1
+			indices[offset + 4] = next_row
+			indices[offset + 5] = next_row + 1
+		}
+	}
 	return {vertices, indices}, ""
 }
 

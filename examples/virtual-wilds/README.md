@@ -21,6 +21,12 @@ streamable cluster pages. The 128 MiB residency budget is intentionally smaller 
 detail set, so the camera tour exercises visible page demand, predictive prefetch, and eviction
 while coarse geometry remains available.
 
+The route also demonstrates project-authored vertex and fragment hooks. A subdivided procedural
+plane becomes animated coastal water; its shader combines multi-frequency displacement,
+screen-space refraction, depth-tinted shallows, Fresnel response, and depth-intersection foam along
+the scanned beach. The material uses Scrapbot's sorted transparent pass, so the example is a normal
+consumer of the same shader-resource and material API available to every project.
+
 All scanned assets are from [Poly Haven](https://polyhaven.com/) and licensed CC0. See
 [`tests/fixtures/external/README.md`](../../tests/fixtures/external/README.md) for pinned sources,
 authors, and fixture policy.

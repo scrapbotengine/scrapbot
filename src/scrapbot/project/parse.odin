@@ -33,6 +33,7 @@ parse_project_resource :: proc(
 	resource.model.lod_count = shared.MAX_GEOMETRY_LODS - 1
 	resource.material.base_color = {1, 1, 1, 1}
 	resource.material.roughness = 0.8
+	resource.material.alpha_cutoff = 0.5
 	resource.geometry_lod.radius = 0.5
 	resource.ui_theme.theme = shared.ui_theme_reduced_dark()
 	section := ""
@@ -65,6 +66,10 @@ parse_project_resource :: proc(
 		}
 		if line == "[icon_set]" {
 			section = "icon_set"
+			continue
+		}
+		if line == "[shader]" {
+			section = "shader"
 			continue
 		}
 		if line == "[geometry_lod]" {
@@ -212,6 +217,40 @@ parse_project_resource :: proc(
 			}
 			continue
 		}
+		if section == "shader" {
+			switch key {
+				case "source":
+					resource.shader.source, found = parse_basic_string(value)
+					if found && !valid_resource_shader_path(resource.shader.source) {
+						return resource, fail(
+							.Invalid_Path,
+							"shader.source must be a safe .wgsl path under shaders/",
+						)
+					}
+				case "cull_mode":
+					mode: string
+					mode, found = parse_basic_string(value)
+					if found {
+						switch mode {
+							case "back":
+								resource.shader.cull_mode = .Back
+							case "none":
+								resource.shader.cull_mode = .None
+							case:
+								found = false
+						}
+					}
+				case:
+					return resource, fail(
+						.Invalid_Field,
+						fmt.tprintf("unknown shader field '%s'", key),
+					)
+			}
+			if !found {
+				return resource, fail(.Invalid_Field, fmt.tprintf("invalid shader.%s", key))
+			}
+			continue
+		}
 		if section == "material" {
 			switch key {
 				case "base_color":
@@ -228,6 +267,33 @@ parse_project_resource :: proc(
 					if found {
 						resource.material.texture, found = shared.resource_uuid_parse(raw_texture)
 					}
+				case "shader":
+					raw_shader: string
+					raw_shader, found = parse_basic_string(value)
+					if found {
+						resource.material.shader, found = shared.resource_uuid_parse(raw_shader)
+					}
+				case "shader_parameters":
+					resource.material.shader_parameters, found = parse_shader_parameters(value)
+				case "alpha_mode":
+					mode: string
+					mode, found = parse_basic_string(value)
+					if found {
+						switch mode {
+							case "opaque":
+								resource.material.alpha_mode = .Opaque
+							case "mask":
+								resource.material.alpha_mode = .Mask
+							case "blend":
+								resource.material.alpha_mode = .Blend
+							case:
+								found = false
+						}
+					}
+				case "alpha_cutoff":
+					resource.material.alpha_cutoff, found = parse_f32(value)
+				case "double_sided":
+					resource.material.double_sided, found = parse_bool(value)
 				case:
 					return resource, fail(
 						.Invalid_Field,
@@ -460,6 +526,8 @@ parse_project_resource :: proc(
 			resource.kind = .Environment
 		case "scrapbot.icon_set":
 			resource.kind = .Icon_Set
+		case "scrapbot.shader":
+			resource.kind = .Shader
 		case "scrapbot.material":
 			resource.kind = .Material
 		case "scrapbot.geometry_lod":
@@ -528,6 +596,10 @@ parse_project_resource :: proc(
 		if resource.icon_set.source == "" {
 			return resource, fail(.Missing_Field, "icon_set.source is required")
 		}
+	} else if resource.kind == .Shader {
+		if resource.shader.source == "" {
+			return resource, fail(.Missing_Field, "shader.source is required")
+		}
 	} else if resource.kind == .Material {
 		if !finite_vec4(resource.material.base_color) {
 			return resource, fail(.Invalid_Field, "material.base_color must be finite")
@@ -558,6 +630,20 @@ parse_project_resource :: proc(
 				.Invalid_Field,
 				"material.roughness must be finite and between zero and one",
 			)
+		}
+		if math.is_nan(resource.material.alpha_cutoff) ||
+		   math.is_inf(resource.material.alpha_cutoff) ||
+		   resource.material.alpha_cutoff < 0 ||
+		   resource.material.alpha_cutoff > 1 {
+			return resource, fail(
+				.Invalid_Field,
+				"material.alpha_cutoff must be finite and between zero and one",
+			)
+		}
+		for parameter in resource.material.shader_parameters {
+			if !finite_vec4(parameter) {
+				return resource, fail(.Invalid_Field, "material.shader_parameters must be finite")
+			}
 		}
 	} else if resource.kind == .Geometry_LOD {
 		geometry := resource.geometry_lod
@@ -3133,6 +3219,40 @@ valid_resource_icon_set_path :: proc(path: string) -> bool {
 		return false
 	}
 	return true
+}
+
+valid_resource_shader_path :: proc(path: string) -> bool {
+	return(
+		strings.has_prefix(path, "shaders/") &&
+		strings.has_suffix(path, ".wgsl") &&
+		is_safe_relative_path(path) \
+	)
+}
+
+parse_shader_parameters :: proc(value: string) -> (result: [4]shared.Vec4, ok: bool) {
+	parts, parsed := parse_number_array(value, 16)
+	if !parsed {
+		return result, false
+	}
+	defer delete(parts)
+	for part, index in parts {
+		component, component_ok := parse_f32(part)
+		if !component_ok {
+			return result, false
+		}
+		parameter := &result[index / 4]
+		switch index % 4 {
+			case 0:
+				parameter.x = component
+			case 1:
+				parameter.y = component
+			case 2:
+				parameter.z = component
+			case 3:
+				parameter.w = component
+		}
+	}
+	return result, true
 }
 
 finite_render_config :: proc(value: shared.Project_Render_Config) -> bool {

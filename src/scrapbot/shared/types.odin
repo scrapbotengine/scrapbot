@@ -85,6 +85,7 @@ Project_Resource_Kind :: enum {
 	Model,
 	Environment,
 	Icon_Set,
+	Shader,
 	Material,
 	Geometry_LOD,
 	UI_Theme,
@@ -124,6 +125,12 @@ Texture_Sampler :: struct {
 Material_Alpha_Mode :: enum {
 	Opaque,
 	Mask,
+	Blend,
+}
+
+Shader_Cull_Mode :: enum {
+	Back,
+	None,
 }
 
 Project_Texture_Resource :: struct {
@@ -148,12 +155,22 @@ Project_Icon_Set_Resource :: struct {
 	source: string,
 }
 
+Project_Shader_Resource :: struct {
+	source: string,
+	cull_mode: Shader_Cull_Mode,
+}
+
 Project_Material_Resource :: struct {
 	base_color: Vec4,
 	emissive: Vec3,
 	metallic: f32,
 	roughness: f32,
 	texture: Resource_UUID,
+	shader: Resource_UUID,
+	shader_parameters: [4]Vec4,
+	alpha_mode: Material_Alpha_Mode,
+	alpha_cutoff: f32,
+	double_sided: bool,
 }
 
 Project_Geometry_LOD_Resource :: struct {
@@ -177,6 +194,7 @@ Project_Resource :: struct {
 	model: Project_Model_Resource,
 	environment: Project_Environment_Resource,
 	icon_set: Project_Icon_Set_Resource,
+	shader: Project_Shader_Resource,
 	material: Project_Material_Resource,
 	geometry_lod: Project_Geometry_LOD_Resource,
 	ui_theme: Project_UI_Theme_Resource,
@@ -288,6 +306,9 @@ Model_Handle :: struct {
 	index, generation: u32,
 }
 Material_Handle :: struct {
+	index, generation: u32,
+}
+Shader_Handle :: struct {
 	index, generation: u32,
 }
 Font_Handle :: struct {

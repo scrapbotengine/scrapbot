@@ -218,8 +218,15 @@ WGPU_Material_Uniform :: struct {
 	pbr_factors: [4]f32,
 	flags: [4]f32,
 	alpha: [4]f32,
+	shader_parameters: [4][4]f32,
 }
-#assert(size_of(WGPU_Material_Uniform) == 48)
+#assert(size_of(WGPU_Material_Uniform) == 112)
+
+WGPU_Custom_Shader_Uniform :: struct {
+	viewport: [4]f32,
+	time: [4]f32,
+}
+#assert(size_of(WGPU_Custom_Shader_Uniform) == 32)
 
 WGPU_Environment_Uniform :: struct {
 	intensity: f32,
@@ -314,6 +321,7 @@ WGPU_Draw_Batch :: struct {
 	first_instance: u32,
 	instance_count: u32,
 	meshlet_submission: bool,
+	custom_shader: bool,
 	virtual_geometry: bool,
 	compact_submission: bool,
 	compact_command_index: u32,
@@ -546,6 +554,21 @@ WGPU_Material_Cache :: struct {
 	owns_texture: [5]bool,
 	double_sided: bool,
 	valid: bool,
+}
+
+WGPU_Custom_Shader_Cache :: struct {
+	handle: shared.Shader_Handle,
+	version: u32,
+	module: wgpu.ShaderModule,
+	blend_pipeline: wgpu.RenderPipeline,
+	valid: bool,
+}
+
+WGPU_Transparent_Draw :: struct {
+	instance_slot: u32,
+	geometry: shared.Geometry_Handle,
+	material: shared.Material_Handle,
+	distance_squared: f32,
 }
 
 WGPU_Texture_Cache :: struct {
@@ -1053,6 +1076,21 @@ WGPU_Renderer :: struct {
 	cpu_culling: bool,
 	texture_cache: [dynamic]WGPU_Texture_Cache,
 	material_cache: [dynamic]WGPU_Material_Cache,
+	custom_shader_cache: [dynamic]WGPU_Custom_Shader_Cache,
+	custom_shader_bind_group_layout: wgpu.BindGroupLayout,
+	custom_shader_pipeline_layout: wgpu.PipelineLayout,
+	custom_shader_uniform_buffer: wgpu.Buffer,
+	custom_shader_sampler: wgpu.Sampler,
+	custom_shader_scene_texture: wgpu.Texture,
+	custom_shader_scene_view: wgpu.TextureView,
+	custom_shader_bind_group: wgpu.BindGroup,
+	custom_shader_scene_width: u32,
+	custom_shader_scene_height: u32,
+	custom_shader_elapsed_seconds: f32,
+	transparent_visible_buffer: wgpu.Buffer,
+	transparent_world_bind_group: wgpu.BindGroup,
+	transparent_draws: [dynamic]WGPU_Transparent_Draw,
+	transparent_visible_slots: [dynamic]u32,
 	uniform_buffer: wgpu.Buffer,
 	depth_texture: wgpu.Texture,
 	depth_view: wgpu.TextureView,
@@ -2050,9 +2088,10 @@ wgpu_material_cache :: proc(
 		alpha = {
 			material.desc.alpha_cutoff,
 			1 if len(material.desc.normal_image.pixels) > 0 else 0,
-			0,
+			1 if material.desc.alpha_mode == .Blend else 0,
 			0,
 		},
+		shader_parameters = transmute([4][4]f32)material.desc.shader_parameters,
 	}
 	cached.uniform_buffer = wgpu.DeviceCreateBuffer(
 		renderer.device,
@@ -2886,6 +2925,7 @@ wgpu_encode_render_pass :: proc(
 	); err != "" {
 		return err
 	}
+	wgpu_update_custom_shader_uniform(renderer, layout.render_viewport, delta_time)
 	if err := wgpu_encode_sky_pass(renderer, encoder, layout.render_viewport); err != "" {
 		return err
 	}
@@ -2976,6 +3016,12 @@ wgpu_encode_render_pass :: proc(
 		for batch_index < len(batches) {
 			batch := batches[batch_index]
 			span := wgpu_draw_submission_span(renderer, batches, batch_index)
+			material, material_alive := resources.get_material(registry, batch.material)
+			if !material_alive { return "render material handle is stale during world pass" }
+			if material.desc.alpha_mode == .Blend {
+				batch_index = span.next_batch
+				continue
+			}
 			material_cached, material_err := wgpu_material_cache(
 				renderer,
 				registry,
@@ -3060,6 +3106,16 @@ wgpu_encode_render_pass :: proc(
 		}
 	}
 	wgpu.RenderPassEncoderEnd(render_pass)
+	wgpu_prepare_transparent_draws(renderer, registry, &renderer.render_list)
+	if err := wgpu_encode_transparent_pass(
+		renderer,
+		encoder,
+		render_depth_view,
+		registry,
+		layout.render_viewport,
+	); err != "" {
+		return err
+	}
 	record_system_profile_phase(config, .Render_World, world_start)
 	if renderer.gpu_hiz_requested {
 		if err := wgpu_encode_hiz_pyramid(renderer, encoder, render_depth_view); err != "" {
@@ -3386,6 +3442,10 @@ wgpu_encode_depth_prepass :: proc(
 		if !material_alive {
 			return "render material handle is stale during depth prepass"
 		}
+		if material.desc.alpha_mode == .Blend || material.desc.shader != (shared.Shader_Handle{}) {
+			batch_index = span.next_batch
+			continue
+		}
 		masked := material.desc.alpha_mode == .Mask
 		uses_mask_fragment := masked || batch.virtual_geometry
 		pipeline := renderer.gpu_driven_depth_pipeline
@@ -3641,6 +3701,11 @@ wgpu_encode_shadow_cascade_pass :: proc(
 			material, material_alive := resources.get_material(registry, batch.material)
 			if !material_alive {
 				return "render material handle is stale during shadow pass"
+			}
+			if material.desc.alpha_mode == .Blend ||
+			   material.desc.shader != (shared.Shader_Handle{}) {
+				batch_index = span.next_batch
+				continue
 			}
 			masked := material.desc.alpha_mode == .Mask
 			uses_mask_fragment := masked || batch.virtual_geometry
@@ -3950,6 +4015,14 @@ wgpu_draw_frame :: proc(
 	}
 	cluster_dispatches_before := renderer.gpu_cluster_dispatch_count
 	if err = wgpu_encode_clustered_lighting(renderer, encoder); err != "" {
+		return false, false, err
+	}
+	if err = wgpu_ensure_post_targets(
+		renderer,
+		layout.render_width,
+		layout.render_height,
+		render_depth_view,
+	); err != "" {
 		return false, false, err
 	}
 	record_system_profile_phase(config, .Render_Cull, cull_start)

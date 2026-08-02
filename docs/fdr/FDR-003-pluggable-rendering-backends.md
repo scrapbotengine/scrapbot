@@ -382,6 +382,14 @@ four-cascade compact cost only under actual streaming pressure. Adapters without
 indirect-first-instance and capacity-limited layouts keep the existing classic indexed and
 imported-LOD fallback.
 
+### 24. Compose project shader hooks into an engine-owned render contract
+
+**Decision:** Let projects provide `scrapbot_vertex` and `scrapbot_fragment` WGSL hooks while the backend owns entry points, resources, instance transport, render targets, and pass ordering. Blended hooks receive the opaque scene color/depth and render in a depth-tested, no-depth-write pass.
+
+**Why:** Projects need expressive surface and displacement effects without copying Scrapbot's backend ABI or turning the editor/example into a private renderer.
+
+**Tradeoff:** The first portable path sorts transparent instances back-to-front on the CPU. A bounded GPU sort for large transparent sets, imported glTF blending, structured compiler diagnostics, and displaced depth/shadow variants remain explicit follow-up work.
+
 ## Related
 
 - **ADRs:** ADR-003, ADR-005, ADR-010, ADR-011, ADR-029, ADR-034, ADR-038, ADR-039, ADR-046, ADR-047, ADR-048, ADR-049, ADR-050

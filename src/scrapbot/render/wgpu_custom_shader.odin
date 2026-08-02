@@ -1,0 +1,742 @@
+package render
+
+import resources "../resources"
+import shared "../shared"
+import ui "../ui"
+import "core:fmt"
+import "core:slice"
+import "core:strings"
+import "vendor:wgpu"
+
+WGPU_CUSTOM_SHADER_PRELUDE :: `
+struct Render_Uniform {
+	view_projection: mat4x4<f32>,
+	view: mat4x4<f32>,
+	shadow_view_projections: array<mat4x4<f32>, 4>,
+	ambient: vec4<f32>,
+	directional_direction_intensity: array<vec4<f32>, 4>,
+	directional_color: array<vec4<f32>, 4>,
+	light_counts: vec4<u32>,
+	camera_position: vec4<f32>,
+	shadow_cascade_splits: vec4<f32>,
+	shadow_cascade_texel_sizes: vec4<f32>,
+	shadow_map_parameters: vec4<f32>,
+	debug: vec4<u32>,
+	camera_clip: vec4<f32>,
+	virtual_geometry: vec4<f32>,
+	virtual_geometry_epoch: vec4<u32>,
+};
+struct GPU_Instance {
+	model: mat4x4<f32>,
+	normal_model: mat4x4<f32>,
+	color: vec4<f32>,
+	emissive: vec4<f32>,
+	shadow_flags: vec4<f32>,
+	bounds: vec4<f32>,
+	batch_indices: array<u32, 4>,
+	lod_screen_radii: array<f32, 4>,
+	lod_count: u32,
+	enabled: u32,
+	padding: vec2<u32>,
+};
+struct Material_Uniform {
+	pbr_factors: vec4<f32>,
+	flags: vec4<f32>,
+	alpha: vec4<f32>,
+	shader_parameters: array<vec4<f32>, 4>,
+};
+struct Shadow_Cascade_Uniform {
+	index: u32,
+	padding_0: u32,
+	padding_1: u32,
+	padding_2: u32,
+};
+struct Custom_Uniform {
+	viewport: vec4<f32>,
+	time: vec4<f32>,
+};
+@group(0) @binding(0) var<uniform> render: Render_Uniform;
+@group(0) @binding(3) var<storage, read> instances: array<GPU_Instance>;
+@group(0) @binding(4) var<storage, read> visible_instances: array<u32>;
+@group(0) @binding(9) var<uniform> shadow_cascade: Shadow_Cascade_Uniform;
+@group(1) @binding(0) var base_color_texture: texture_2d<f32>;
+@group(1) @binding(1) var base_color_sampler: sampler;
+@group(1) @binding(6) var<uniform> material: Material_Uniform;
+@group(3) @binding(0) var scrapbot_opaque_color: texture_2d<f32>;
+@group(3) @binding(1) var scrapbot_linear_sampler: sampler;
+@group(3) @binding(2) var scrapbot_opaque_depth: texture_depth_2d;
+@group(3) @binding(3) var<uniform> scrapbot_custom: Custom_Uniform;
+
+struct Vertex_Input {
+	@location(0) position: vec3<f32>,
+	@location(1) normal: vec3<f32>,
+	@location(2) uv: vec2<f32>,
+	@location(3) tangent: vec4<f32>,
+};
+struct Scrapbot_Vertex {
+	position: vec3<f32>,
+	normal: vec3<f32>,
+	uv: vec2<f32>,
+	tangent: vec4<f32>,
+};
+struct Scrapbot_Fragment {
+	world_position: vec3<f32>,
+	world_normal: vec3<f32>,
+	uv: vec2<f32>,
+	screen_uv: vec2<f32>,
+	view_direction: vec3<f32>,
+	base_color: vec4<f32>,
+	view_depth: f32,
+	fragment_depth: f32,
+	scene_depth: f32,
+};
+struct Scrapbot_Surface {
+	color: vec4<f32>,
+	normal: vec3<f32>,
+	roughness: f32,
+	indirect_diffuse: vec3<f32>,
+	bloom: f32,
+};
+
+fn scrapbot_parameter(index: u32) -> vec4<f32> {
+	return material.shader_parameters[min(index, 3u)];
+}
+fn scrapbot_time_seconds() -> f32 { return scrapbot_custom.time.x; }
+fn scrapbot_delta_seconds() -> f32 { return scrapbot_custom.time.y; }
+fn scrapbot_frame_index() -> f32 { return scrapbot_custom.time.z; }
+fn scrapbot_pixel_size() -> vec2<f32> { return vec2<f32>(1.0) / max(scrapbot_custom.viewport.zw, vec2<f32>(1.0)); }
+fn scrapbot_scene_color(uv: vec2<f32>) -> vec3<f32> {
+	return textureSampleLevel(scrapbot_opaque_color, scrapbot_linear_sampler, clamp(uv, vec2<f32>(0.0), vec2<f32>(1.0)), 0.0).rgb;
+}
+fn scrapbot_scene_depth(uv: vec2<f32>) -> f32 {
+	let dimensions = vec2<i32>(textureDimensions(scrapbot_opaque_depth));
+	let pixel = clamp(vec2<i32>(uv * vec2<f32>(dimensions)), vec2<i32>(0), dimensions - vec2<i32>(1));
+	return textureLoad(scrapbot_opaque_depth, pixel, 0);
+}
+`
+
+WGPU_CUSTOM_SHADER_FOOTER :: `
+struct Custom_Vertex_Output {
+	@builtin(position) position: vec4<f32>,
+	@location(0) world_position: vec3<f32>,
+	@location(1) world_normal: vec3<f32>,
+	@location(2) uv: vec2<f32>,
+	@location(3) color: vec4<f32>,
+	@location(4) view_depth: f32,
+};
+struct Custom_Fragment_Output {
+	@location(0) color: vec4<f32>,
+	@location(1) surface: vec4<f32>,
+	@location(2) indirect_diffuse: vec4<f32>,
+};
+fn custom_vertex(input: Vertex_Input) -> Scrapbot_Vertex {
+	return scrapbot_vertex(Scrapbot_Vertex(input.position, input.normal, input.uv, input.tangent));
+}
+fn custom_position(input: Vertex_Input, instance: GPU_Instance) -> vec4<f32> {
+	let vertex = custom_vertex(input);
+	return instance.model * vec4<f32>(vertex.position, 1.0);
+}
+fn custom_vertex_output(input: Vertex_Input, instance: GPU_Instance) -> Custom_Vertex_Output {
+	let vertex = custom_vertex(input);
+	let world = instance.model * vec4<f32>(vertex.position, 1.0);
+	var output: Custom_Vertex_Output;
+	output.position = render.view_projection * world;
+	output.world_position = world.xyz;
+	output.world_normal = normalize((instance.normal_model * vec4<f32>(vertex.normal, 0.0)).xyz);
+	output.uv = vertex.uv;
+	output.color = instance.color;
+	output.view_depth = -(render.view * world).z;
+	return output;
+}
+@vertex fn vs_main(input: Vertex_Input, @builtin(instance_index) visible_index: u32) -> Custom_Vertex_Output {
+	return custom_vertex_output(input, instances[visible_instances[visible_index]]);
+}
+fn octahedral_encode(direction: vec3<f32>) -> vec2<f32> {
+	let denominator = abs(direction.x) + abs(direction.y) + abs(direction.z);
+	var encoded = direction.xy / max(denominator, 0.000001);
+	if (direction.z < 0.0) { encoded = (vec2<f32>(1.0) - abs(encoded.yx)) * sign(encoded); }
+	return encoded;
+}
+@fragment fn fs_main(input: Custom_Vertex_Output) -> Custom_Fragment_Output {
+	let screen_uv = (input.position.xy - scrapbot_custom.viewport.xy) / scrapbot_custom.viewport.zw;
+	let texture_color = textureSample(base_color_texture, base_color_sampler, input.uv) * input.color;
+	let fragment = Scrapbot_Fragment(
+		input.world_position,
+		normalize(input.world_normal),
+		input.uv,
+		screen_uv,
+		normalize(render.camera_position.xyz - input.world_position),
+		texture_color,
+		input.view_depth,
+		input.position.z,
+		scrapbot_scene_depth(screen_uv),
+	);
+	let result = scrapbot_fragment(fragment);
+	var output: Custom_Fragment_Output;
+	output.color = vec4<f32>(result.color.rgb, select(clamp(result.bloom, 0.0, 1.0), clamp(result.color.a, 0.0, 1.0), material.alpha.z > 0.5));
+	output.surface = vec4<f32>(octahedral_encode(normalize(result.normal)) * 0.5 + vec2<f32>(0.5), clamp(result.roughness, 0.0, 1.0), 1.0);
+	output.indirect_diffuse = vec4<f32>(max(result.indirect_diffuse, vec3<f32>(0.0)), 1.0);
+	return output;
+}
+`
+
+wgpu_custom_shader_source :: proc(shader: ^resources.Shader) -> (string, string) {
+	if shader == nil {
+		return "", "shader resource is unavailable"
+	}
+	builder := strings.builder_make()
+	defer strings.builder_destroy(&builder)
+	strings.write_string(&builder, WGPU_CUSTOM_SHADER_PRELUDE)
+	strings.write_string(&builder, shader.wgsl)
+	strings.write_string(&builder, WGPU_CUSTOM_SHADER_FOOTER)
+	source, err := strings.clone(strings.to_string(builder))
+	if err != nil {
+		return "", "failed to compose custom shader source"
+	}
+	return source, ""
+}
+
+wgpu_custom_shader_cache_slot :: proc(
+	cache: []WGPU_Custom_Shader_Cache,
+	handle: shared.Shader_Handle,
+) -> int {
+	for item, index in cache {
+		if item.handle == handle {
+			return index
+		}
+	}
+	return -1
+}
+
+wgpu_release_custom_shader_cache_entry :: proc(entry: ^WGPU_Custom_Shader_Cache) {
+	if entry == nil {
+		return
+	}
+	if entry.blend_pipeline != nil { wgpu.RenderPipelineRelease(entry.blend_pipeline) }
+	if entry.module != nil { wgpu.ShaderModuleRelease(entry.module) }
+	entry^ = {}
+}
+
+wgpu_custom_shader_cache :: proc(
+	renderer: ^WGPU_Renderer,
+	registry: ^resources.Registry,
+	handle: shared.Shader_Handle,
+) -> (
+	^WGPU_Custom_Shader_Cache,
+	string,
+) {
+	shader, alive := resources.get_shader(registry, handle)
+	if !alive {
+		return nil, "custom shader handle is stale"
+	}
+	index := wgpu_custom_shader_cache_slot(renderer.custom_shader_cache[:], handle)
+	if index < 0 {
+		index = len(renderer.custom_shader_cache)
+		append(&renderer.custom_shader_cache, WGPU_Custom_Shader_Cache{})
+	}
+	entry := &renderer.custom_shader_cache[index]
+	if entry.valid && entry.version == shader.version {
+		return entry, ""
+	}
+	wgpu_release_custom_shader_cache_entry(entry)
+	entry.handle = handle
+	entry.version = shader.version
+	source, source_err := wgpu_custom_shader_source(shader)
+	if source_err != "" {
+		return nil, source_err
+	}
+	defer delete(source)
+	chain := wgpu.ShaderSourceWGSL {
+		chain = {sType = .ShaderSourceWGSL},
+		code = source,
+	}
+	entry.module = wgpu.DeviceCreateShaderModule(
+		renderer.device,
+		&wgpu.ShaderModuleDescriptor{nextInChain = &chain, label = "Scrapbot Project Shader"},
+	)
+	if entry.module == nil {
+		return nil, fmt.tprintf("failed to compile shader '%s'", shader.name)
+	}
+	attributes := [?]wgpu.VertexAttribute {
+		{format = .Float32x3, offset = 0, shaderLocation = 0},
+		{format = .Float32x3, offset = 12, shaderLocation = 1},
+		{format = .Float32x2, offset = 24, shaderLocation = 2},
+		{format = .Float32x4, offset = 32, shaderLocation = 3},
+	}
+	vertex_layout := wgpu.VertexBufferLayout {
+		arrayStride = u64(size_of(resources.Vertex)),
+		stepMode = .Vertex,
+		attributeCount = uint(len(attributes)),
+		attributes = raw_data(attributes[:]),
+	}
+	cull_mode := wgpu.CullMode.Back
+	if shader.cull_mode == .None {
+		cull_mode = .None
+	}
+	entry.blend_pipeline = wgpu_create_custom_world_pipeline(
+		renderer,
+		entry.module,
+		&vertex_layout,
+		cull_mode,
+		true,
+	)
+	if entry.blend_pipeline == nil {
+		wgpu_release_custom_shader_cache_entry(entry)
+		return nil, fmt.tprintf("failed to create pipelines for shader '%s'", shader.name)
+	}
+	entry.valid = true
+	return entry, ""
+}
+
+wgpu_create_custom_world_pipeline :: proc(
+	renderer: ^WGPU_Renderer,
+	module: wgpu.ShaderModule,
+	vertex_layout: ^wgpu.VertexBufferLayout,
+	cull_mode: wgpu.CullMode,
+	blended: bool,
+) -> wgpu.RenderPipeline {
+	blend := wgpu.BlendState {
+		color = {operation = .Add, srcFactor = .SrcAlpha, dstFactor = .OneMinusSrcAlpha},
+		alpha = {operation = .Add, srcFactor = .Zero, dstFactor = .One},
+	}
+	write_all := wgpu.ColorWriteMaskFlags_All
+	write_secondary := write_all
+	if blended {
+		write_secondary = {}
+	}
+	targets := [3]wgpu.ColorTargetState {
+		{
+			format = .RGBA16Float,
+			blend = &blend if blended else nil,
+			writeMask = wgpu.ColorWriteMaskFlags_All,
+		},
+		{format = .RGBA16Float, writeMask = write_secondary},
+		{format = .RGBA16Float, writeMask = write_secondary},
+	}
+	fragment := wgpu.FragmentState {
+		module = module,
+		entryPoint = "fs_main",
+		targetCount = 3,
+		targets = raw_data(targets[:]),
+	}
+	return wgpu.DeviceCreateRenderPipeline(
+		renderer.device,
+		&wgpu.RenderPipelineDescriptor {
+			label = "Scrapbot Custom Material Pipeline",
+			layout = renderer.custom_shader_pipeline_layout,
+			vertex = {
+				module = module,
+				entryPoint = "vs_main",
+				bufferCount = 1,
+				buffers = vertex_layout,
+			},
+			primitive = {topology = .TriangleList, frontFace = .CCW, cullMode = cull_mode},
+			depthStencil = &wgpu.DepthStencilState {
+				format = .Depth24Plus,
+				depthWriteEnabled = .False if blended else .True,
+				depthCompare = .LessEqual,
+			},
+			multisample = {count = 1, mask = 0xffff_ffff},
+			fragment = &fragment,
+		},
+	)
+}
+
+wgpu_create_custom_shader_resources :: proc(renderer: ^WGPU_Renderer) -> string {
+	entries := [?]wgpu.BindGroupLayoutEntry {
+		{
+			binding = 0,
+			visibility = {.Fragment},
+			texture = {sampleType = .Float, viewDimension = ._2D},
+		},
+		{binding = 1, visibility = {.Fragment}, sampler = {type = .Filtering}},
+		{
+			binding = 2,
+			visibility = {.Fragment},
+			texture = {sampleType = .Depth, viewDimension = ._2D},
+		},
+		{
+			binding = 3,
+			visibility = {.Vertex, .Fragment},
+			buffer = {type = .Uniform, minBindingSize = u64(size_of(WGPU_Custom_Shader_Uniform))},
+		},
+	}
+	renderer.custom_shader_bind_group_layout = wgpu.DeviceCreateBindGroupLayout(
+		renderer.device,
+		&wgpu.BindGroupLayoutDescriptor {
+			label = "Scrapbot Custom Shader Bind Group Layout",
+			entryCount = uint(len(entries)),
+			entries = raw_data(entries[:]),
+		},
+	)
+	if renderer.custom_shader_bind_group_layout == nil {
+		return "failed to create custom shader bind group layout"
+	}
+	layouts := [?]wgpu.BindGroupLayout {
+		renderer.gpu_driven_world_bind_group_layout,
+		renderer.material_bind_group_layout,
+		renderer.environment_bind_group_layout,
+		renderer.custom_shader_bind_group_layout,
+	}
+	renderer.custom_shader_pipeline_layout = wgpu.DeviceCreatePipelineLayout(
+		renderer.device,
+		&wgpu.PipelineLayoutDescriptor {
+			label = "Scrapbot Custom Shader Pipeline Layout",
+			bindGroupLayoutCount = uint(len(layouts)),
+			bindGroupLayouts = raw_data(layouts[:]),
+		},
+	)
+	renderer.custom_shader_uniform_buffer = wgpu.DeviceCreateBuffer(
+		renderer.device,
+		&wgpu.BufferDescriptor {
+			label = "Scrapbot Custom Shader Uniform Buffer",
+			usage = {.Uniform, .CopyDst},
+			size = u64(size_of(WGPU_Custom_Shader_Uniform)),
+		},
+	)
+	renderer.transparent_visible_buffer = wgpu.DeviceCreateBuffer(
+		renderer.device,
+		&wgpu.BufferDescriptor {
+			label = "Scrapbot Transparent Visible Instance Buffer",
+			usage = {.Storage, .CopyDst},
+			size = u64(WGPU_MAX_GPU_INSTANCES) * u64(size_of(u32)),
+		},
+	)
+	renderer.custom_shader_sampler = wgpu.DeviceCreateSampler(
+		renderer.device,
+		&wgpu.SamplerDescriptor {
+			label = "Scrapbot Custom Shader Scene Sampler",
+			addressModeU = .ClampToEdge,
+			addressModeV = .ClampToEdge,
+			addressModeW = .ClampToEdge,
+			magFilter = .Linear,
+			minFilter = .Linear,
+			mipmapFilter = .Nearest,
+			maxAnisotropy = 1,
+		},
+	)
+	if renderer.custom_shader_pipeline_layout == nil ||
+	   renderer.custom_shader_uniform_buffer == nil ||
+	   renderer.transparent_visible_buffer == nil ||
+	   renderer.custom_shader_sampler == nil {
+		return "failed to create custom shader renderer resources"
+	}
+	return ""
+}
+
+wgpu_release_custom_shader_resources :: proc(renderer: ^WGPU_Renderer) {
+	if renderer == nil { return }
+	for index in 0 ..< len(renderer.custom_shader_cache) {
+		wgpu_release_custom_shader_cache_entry(&renderer.custom_shader_cache[index])
+	}
+	delete(renderer.custom_shader_cache)
+	delete(renderer.transparent_draws)
+	delete(renderer.transparent_visible_slots)
+	wgpu_release_custom_shader_target(renderer)
+	if renderer.transparent_world_bind_group !=
+	   nil { wgpu.BindGroupRelease(renderer.transparent_world_bind_group) }
+	renderer.transparent_world_bind_group = nil
+	if renderer.transparent_visible_buffer !=
+	   nil { wgpu.BufferRelease(renderer.transparent_visible_buffer) }
+	renderer.transparent_visible_buffer = nil
+	if renderer.custom_shader_uniform_buffer !=
+	   nil { wgpu.BufferRelease(renderer.custom_shader_uniform_buffer) }
+	renderer.custom_shader_uniform_buffer = nil
+	if renderer.custom_shader_sampler !=
+	   nil { wgpu.SamplerRelease(renderer.custom_shader_sampler) }
+	renderer.custom_shader_sampler = nil
+	if renderer.custom_shader_pipeline_layout !=
+	   nil { wgpu.PipelineLayoutRelease(renderer.custom_shader_pipeline_layout) }
+	renderer.custom_shader_pipeline_layout = nil
+	if renderer.custom_shader_bind_group_layout !=
+	   nil { wgpu.BindGroupLayoutRelease(renderer.custom_shader_bind_group_layout) }
+	renderer.custom_shader_bind_group_layout = nil
+}
+
+wgpu_release_custom_shader_target :: proc(renderer: ^WGPU_Renderer) {
+	if renderer.custom_shader_bind_group != nil {
+		wgpu.BindGroupRelease(renderer.custom_shader_bind_group)
+		renderer.custom_shader_bind_group = nil
+	}
+	if renderer.custom_shader_scene_view != nil {
+		wgpu.TextureViewRelease(renderer.custom_shader_scene_view)
+		renderer.custom_shader_scene_view = nil
+	}
+	if renderer.custom_shader_scene_texture != nil {
+		wgpu.TextureRelease(renderer.custom_shader_scene_texture)
+		renderer.custom_shader_scene_texture = nil
+	}
+	renderer.custom_shader_scene_width = 0
+	renderer.custom_shader_scene_height = 0
+}
+
+wgpu_ensure_custom_shader_target :: proc(
+	renderer: ^WGPU_Renderer,
+	width, height: u32,
+	depth_view: wgpu.TextureView,
+) -> string {
+	if renderer.custom_shader_scene_width == width &&
+	   renderer.custom_shader_scene_height == height &&
+	   renderer.custom_shader_scene_view != nil &&
+	   renderer.custom_shader_bind_group != nil {
+		return ""
+	}
+	wgpu_release_custom_shader_target(renderer)
+	renderer.custom_shader_scene_texture = wgpu.DeviceCreateTexture(
+		renderer.device,
+		&wgpu.TextureDescriptor {
+			label = "Scrapbot Opaque Scene Copy",
+			usage = {.CopyDst, .TextureBinding},
+			dimension = ._2D,
+			size = {width = width, height = height, depthOrArrayLayers = 1},
+			format = .RGBA16Float,
+			mipLevelCount = 1,
+			sampleCount = 1,
+		},
+	)
+	if renderer.custom_shader_scene_texture ==
+	   nil { return "failed to create custom shader scene texture" }
+	renderer.custom_shader_scene_view = wgpu.TextureCreateView(
+		renderer.custom_shader_scene_texture,
+	)
+	if renderer.custom_shader_scene_view ==
+	   nil { return "failed to create custom shader scene view" }
+	bind_entries := [?]wgpu.BindGroupEntry {
+		{binding = 0, textureView = renderer.custom_shader_scene_view},
+		{binding = 1, sampler = renderer.custom_shader_sampler},
+		{binding = 2, textureView = depth_view},
+		{
+			binding = 3,
+			buffer = renderer.custom_shader_uniform_buffer,
+			size = u64(size_of(WGPU_Custom_Shader_Uniform)),
+		},
+	}
+	renderer.custom_shader_bind_group = wgpu.DeviceCreateBindGroup(
+		renderer.device,
+		&wgpu.BindGroupDescriptor {
+			label = "Scrapbot Custom Shader Bind Group",
+			layout = renderer.custom_shader_bind_group_layout,
+			entryCount = uint(len(bind_entries)),
+			entries = raw_data(bind_entries[:]),
+		},
+	)
+	if renderer.custom_shader_bind_group ==
+	   nil { return "failed to create custom shader bind group" }
+	renderer.custom_shader_scene_width = width
+	renderer.custom_shader_scene_height = height
+	return ""
+}
+
+wgpu_rebuild_transparent_world_bind_group :: proc(renderer: ^WGPU_Renderer) -> string {
+	if renderer.transparent_world_bind_group != nil {
+		wgpu.BindGroupRelease(renderer.transparent_world_bind_group)
+		renderer.transparent_world_bind_group = nil
+	}
+	if renderer.geometry_vertex_arena.buffer == nil ||
+	   renderer.geometry_index_arena.buffer == nil {
+		return ""
+	}
+	renderer.transparent_world_bind_group = wgpu_make_batch_bind_group(
+		renderer,
+		renderer.transparent_visible_buffer,
+		0,
+		WGPU_MAX_GPU_INSTANCES,
+		"Scrapbot Transparent World Bind Group",
+	)
+	if renderer.transparent_world_bind_group ==
+	   nil { return "failed to create transparent world bind group" }
+	return ""
+}
+
+wgpu_prepare_transparent_draws :: proc(
+	renderer: ^WGPU_Renderer,
+	registry: ^resources.Registry,
+	render_list: ^Render_List,
+) {
+	if renderer == nil || registry == nil || render_list == nil {
+		return
+	}
+	clear(&renderer.transparent_draws)
+	eye := render_list.camera.transform.position
+	for slot in 0 ..< min(renderer.gpu_slot_count, len(renderer.gpu_instance_sources)) {
+		if slot >= len(renderer.gpu_instance_source_transforms) {
+			continue
+		}
+		source := renderer.gpu_instance_sources[slot]
+		material, material_ok := resources.get_material(registry, source.material)
+		if !material_ok ||
+		   material.desc.alpha_mode != .Blend ||
+		   material.desc.shader == (shared.Shader_Handle{}) {
+			continue
+		}
+		offset := vec3_sub(renderer.gpu_instance_source_transforms[slot].position, eye)
+		append(
+			&renderer.transparent_draws,
+			WGPU_Transparent_Draw {
+				instance_slot = u32(slot),
+				geometry = source.geometry,
+				material = source.material,
+				distance_squared = offset.x * offset.x + offset.y * offset.y + offset.z * offset.z,
+			},
+		)
+	}
+	slice.sort_by(renderer.transparent_draws[:], proc(a, b: WGPU_Transparent_Draw) -> bool {
+		return a.distance_squared > b.distance_squared
+	})
+}
+
+wgpu_update_custom_shader_uniform :: proc(
+	renderer: ^WGPU_Renderer,
+	viewport: ui.Rect,
+	delta_time: f32,
+) {
+	renderer.custom_shader_elapsed_seconds += max(delta_time, 0)
+	uniform := WGPU_Custom_Shader_Uniform {
+		viewport = {viewport.x, viewport.y, max(viewport.width, 1), max(viewport.height, 1)},
+		time = {
+			renderer.custom_shader_elapsed_seconds,
+			delta_time,
+			f32(renderer.profile_frame_index),
+			0,
+		},
+	}
+	wgpu.QueueWriteBuffer(
+		renderer.queue,
+		renderer.custom_shader_uniform_buffer,
+		0,
+		&uniform,
+		uint(size_of(uniform)),
+	)
+}
+
+wgpu_encode_transparent_pass :: proc(
+	renderer: ^WGPU_Renderer,
+	encoder: wgpu.CommandEncoder,
+	depth_view: wgpu.TextureView,
+	registry: ^resources.Registry,
+	viewport: ui.Rect,
+) -> string {
+	if len(renderer.transparent_draws) == 0 { return "" }
+	if renderer.transparent_world_bind_group == nil || renderer.custom_shader_bind_group == nil {
+		return "transparent renderer bind groups are unavailable"
+	}
+	resize(&renderer.transparent_visible_slots, len(renderer.transparent_draws))
+	for draw, index in renderer.transparent_draws {
+		renderer.transparent_visible_slots[index] = draw.instance_slot
+	}
+	wgpu.QueueWriteBuffer(
+		renderer.queue,
+		renderer.transparent_visible_buffer,
+		0,
+		raw_data(renderer.transparent_visible_slots[:]),
+		uint(len(renderer.transparent_visible_slots) * size_of(u32)),
+	)
+	wgpu.CommandEncoderCopyTextureToTexture(
+		encoder,
+		&wgpu.TexelCopyTextureInfo{texture = renderer.hdr_texture, aspect = .All},
+		&wgpu.TexelCopyTextureInfo{texture = renderer.custom_shader_scene_texture, aspect = .All},
+		&wgpu.Extent3D {
+			width = renderer.custom_shader_scene_width,
+			height = renderer.custom_shader_scene_height,
+			depthOrArrayLayers = 1,
+		},
+	)
+	color_attachments := [3]wgpu.RenderPassColorAttachment {
+		{
+			view = renderer.hdr_view,
+			depthSlice = wgpu.DEPTH_SLICE_UNDEFINED,
+			loadOp = .Load,
+			storeOp = .Store,
+		},
+		{
+			view = renderer.surface_view,
+			depthSlice = wgpu.DEPTH_SLICE_UNDEFINED,
+			loadOp = .Load,
+			storeOp = .Store,
+		},
+		{
+			view = renderer.indirect_diffuse_view,
+			depthSlice = wgpu.DEPTH_SLICE_UNDEFINED,
+			loadOp = .Load,
+			storeOp = .Store,
+		},
+	}
+	depth_attachment := wgpu.RenderPassDepthStencilAttachment {
+		view = depth_view,
+		depthLoadOp = .Undefined,
+		depthStoreOp = .Undefined,
+		depthClearValue = 1,
+		depthReadOnly = true,
+		stencilLoadOp = .Undefined,
+		stencilStoreOp = .Undefined,
+		stencilReadOnly = true,
+	}
+	pass := wgpu.CommandEncoderBeginRenderPass(
+		encoder,
+		&wgpu.RenderPassDescriptor {
+			label = "Scrapbot Transparent Material Pass",
+			colorAttachmentCount = uint(len(color_attachments)),
+			colorAttachments = raw_data(color_attachments[:]),
+			depthStencilAttachment = &depth_attachment,
+		},
+	)
+	if pass == nil { return "failed to begin transparent material pass" }
+	defer wgpu.RenderPassEncoderRelease(pass)
+	wgpu.RenderPassEncoderSetViewport(
+		pass,
+		viewport.x,
+		viewport.y,
+		viewport.width,
+		viewport.height,
+		0,
+		1,
+	)
+	wgpu.RenderPassEncoderSetScissorRect(
+		pass,
+		u32(viewport.x),
+		u32(viewport.y),
+		u32(viewport.width),
+		u32(viewport.height),
+	)
+	wgpu.RenderPassEncoderSetVertexBuffer(
+		pass,
+		0,
+		renderer.geometry_vertex_arena.buffer,
+		0,
+		wgpu.WHOLE_SIZE,
+	)
+	wgpu.RenderPassEncoderSetIndexBuffer(
+		pass,
+		renderer.geometry_index_arena.buffer,
+		.Uint32,
+		0,
+		wgpu.WHOLE_SIZE,
+	)
+	wgpu.RenderPassEncoderSetBindGroup(pass, 0, renderer.transparent_world_bind_group)
+	wgpu.RenderPassEncoderSetBindGroup(pass, 2, renderer.environment_bind_group)
+	wgpu.RenderPassEncoderSetBindGroup(pass, 3, renderer.custom_shader_bind_group)
+	for draw, draw_index in renderer.transparent_draws {
+		material, material_ok := resources.get_material(registry, draw.material)
+		if !material_ok { return "transparent draw references an unavailable material" }
+		geometry, geometry_err := wgpu_geometry_cache(renderer, registry, draw.geometry)
+		if geometry_err != "" { return geometry_err }
+		geometry_resource, geometry_ok := resources.get_geometry(registry, draw.geometry)
+		if !geometry_ok { return "transparent draw references unavailable geometry" }
+		custom, custom_err := wgpu_custom_shader_cache(renderer, registry, material.desc.shader)
+		if custom_err != "" { return custom_err }
+		material_cached, material_err := wgpu_material_cache(renderer, registry, draw.material)
+		if material_err != "" { return material_err }
+		wgpu.RenderPassEncoderSetPipeline(pass, custom.blend_pipeline)
+		wgpu.RenderPassEncoderSetBindGroup(pass, 1, material_cached.bind_group)
+		wgpu.RenderPassEncoderDrawIndexed(
+			pass,
+			u32(resources.geometry_fallback_index_count(geometry_resource)),
+			1,
+			u32(geometry.index_range.offset / u64(size_of(u32))),
+			i32(geometry.vertex_range.offset / u64(size_of(resources.Vertex))),
+			u32(draw_index),
+		)
+	}
+	wgpu.RenderPassEncoderEnd(pass)
+	return ""
+}

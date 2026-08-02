@@ -392,11 +392,21 @@ scrapbot_geometry_plane :: proc "c" (L: Lua_State) -> c.int {
 	   runtime.resource_registry == nil ||
 	   !ok { return luau_push_error(L, "geometry.plane expects a resource name") }
 	width, depth := f32(1), f32(1)
+	columns, rows := 1, 1
 	if lua_gettop(L) >=
 	   2 { is_number: c.int; width = f32(lua_tonumberx(L, 2, &is_number)); if is_number == 0 { return luau_push_error(L, "plane width must be a number") } }
 	if lua_gettop(L) >=
 	   3 { is_number: c.int; depth = f32(lua_tonumberx(L, 3, &is_number)); if is_number == 0 { return luau_push_error(L, "plane depth must be a number") } }
-	desc, err := resources.plane(width, depth); if err != "" { return luau_push_error(L, err) }
+	if lua_gettop(L) >=
+	   4 { is_number: c.int; columns = int(lua_tointegerx(L, 4, &is_number)); if is_number == 0 { return luau_push_error(L, "plane columns must be an integer") } }
+	if lua_gettop(L) >=
+	   5 { is_number: c.int; rows = int(lua_tointegerx(L, 5, &is_number)); if is_number == 0 { return luau_push_error(L, "plane rows must be an integer") } }
+	desc, err := resources.plane(
+		width,
+		depth,
+		columns,
+		rows,
+	); if err != "" { return luau_push_error(L, err) }
 	defer delete(desc.vertices); defer delete(desc.indices)
 	handle, register_err := resources.register_geometry(runtime.resource_registry, name, desc)
 	if register_err != "" { return luau_push_error(L, register_err) }

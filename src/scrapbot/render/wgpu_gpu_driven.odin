@@ -179,6 +179,7 @@ wgpu_batch_uses_meshlets :: proc "contextless" (
 ) -> bool {
 	return(
 		renderer != nil &&
+		!batch.custom_shader &&
 		renderer.gpu_meshlet_submission_active &&
 		(renderer.gpu_meshlet_force_enabled || batch.meshlet_submission) \
 	)
@@ -2442,6 +2443,9 @@ wgpu_release_submission_bind_groups :: proc(renderer: ^WGPU_Renderer) {
 	if renderer.gpu_meshlet_world_bind_group != nil {
 		wgpu.BindGroupRelease(renderer.gpu_meshlet_world_bind_group)
 	}
+	if renderer.transparent_world_bind_group != nil {
+		wgpu.BindGroupRelease(renderer.transparent_world_bind_group)
+	}
 	for bind_group in renderer.gpu_shadow_bind_groups {
 		if bind_group != nil {
 			wgpu.BindGroupRelease(bind_group)
@@ -2456,6 +2460,7 @@ wgpu_release_submission_bind_groups :: proc(renderer: ^WGPU_Renderer) {
 	renderer.gpu_shadow_bind_groups = {}
 	renderer.gpu_meshlet_world_bind_group = nil
 	renderer.gpu_meshlet_shadow_bind_groups = {}
+	renderer.transparent_world_bind_group = nil
 }
 
 wgpu_make_batch_bind_group :: proc(
@@ -2686,6 +2691,9 @@ wgpu_rebuild_submission_bind_groups :: proc(renderer: ^WGPU_Renderer) -> string 
 	renderer.gpu_shadow_bind_groups = shadow_bind_groups
 	renderer.gpu_meshlet_world_bind_group = meshlet_world_bind_group
 	renderer.gpu_meshlet_shadow_bind_groups = meshlet_shadow_bind_groups
+	if err := wgpu_rebuild_transparent_world_bind_group(renderer); err != "" {
+		return err
+	}
 	return ""
 }
 
@@ -2742,6 +2750,11 @@ wgpu_refresh_gpu_batch_layout :: proc(
 		if !ok {
 			return "GPU draw batch references unavailable geometry"
 		}
+		material, material_ok := resources.get_material(registry, batch.material)
+		if !material_ok {
+			return "GPU draw batch references unavailable material"
+		}
+		batch.custom_shader = material.desc.shader != (shared.Shader_Handle{})
 		batch.meshlet_draw_offset = meshlet_draw_offset
 		batch.virtual_geometry = wgpu_virtual_geometry_submission(renderer, geometry)
 		batch.compact_submission = wgpu_virtual_geometry_uses_compaction(renderer, geometry)

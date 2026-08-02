@@ -26,12 +26,13 @@ Scrapbot resources live outside ECS. Persistent project files use stable UUIDs; 
 | `Model` | `scrapbot.model` | Model bundle plus generated Geometry/Material entries | `scrapbot.model` root reconciles derived ECS children | Incrementally imported and inspectable; source remains text-authored |
 | `Environment` | `scrapbot.environment` | Environment | `scrapbot.world_environment` references lighting/background UUIDs | Incrementally imported and inspectable; source/settings remain text-authored |
 | `Icon_Set` | `scrapbot.icon_set` | Icon Set | `scrapbot.ui_icon` and icon-bearing controls reference set UUID plus symbol | Incrementally imported and inspectable; source directory remains text-authored |
+| `Shader` | `scrapbot.shader` | Shader | Material references the Shader UUID | Text-authored WGSL hooks; loaded and versioned with project resources |
 | `Material` | `scrapbot.material` | Material | `scrapbot.material` | Create, duplicate, rename/move, edit, delete, Undo/Redo, Save/Revert |
 | `Geometry_LOD` | `scrapbot.geometry_lod` | Geometry plus internal LOD Geometry entries | `scrapbot.geometry` | Loaded/hot-reloaded and referenceable; full inline authoring is not yet symmetric with materials |
 | `UI_Theme` | `scrapbot.ui_theme` | UI Theme | Scene/Luau/native/editor composition resolves UUID plus recipes into ordinary `scrapbot.ui_*` values | Text-authored; listed and inspected read-only |
 <!-- inventory:project-resource-kinds:end -->
 
-The recursive project loader rejects duplicate UUIDs. Scene validation resolves Material, Model, authored Geometry, World Environment, and UI icon-set UUID references; materials validate Texture UUIDs. Resource file paths are relative to `resources/`; Texture, Model, Environment, and Icon Set import sources are safe paths under `assets/`.
+The recursive project loader rejects duplicate UUIDs. Scene validation resolves Material, Model, authored Geometry, World Environment, and UI icon-set UUID references; materials validate Texture and Shader UUIDs. Resource file paths are relative to `resources/`; Shader sources are safe paths under `shaders/`, while Texture, Model, Environment, and Icon Set import sources are safe paths under `assets/`.
 
 ## Runtime registry families
 
@@ -44,6 +45,7 @@ The recursive project loader rejects duplicate UUIDs. Scene validation resolves 
 | `Icon_Set` | UUID/source directory when authored; reserved UUID for the embedded catalog | `Icon_Set_Handle`, generation, entry version, registry-wide icon-set revision | UI icon resolution, MTSDF atlas layers, standalone icons and icon-bearing controls |
 | `Model` | UUID/source when authored | `Model_Handle`, generation, entry version | Model-root reconciliation into derived node/primitive ECS entities |
 | `Material` | Optional UUID/source when authored; name for transient/built-in registration | `Material_Handle`, generation, entry version | Render-instance extraction, material/texture GPU cache, world shading and bloom |
+| `Shader` | UUID/source when authored | `Shader_Handle`, generation, entry version, registry-wide shader revision | WGPU custom-material pipeline cache |
 | `Font` | Project-config font name/source; generated atlas is derived | `Font_Handle`, generation, entry version | UI measurement, glyph lookup, MTSDF atlas upload and UI rendering |
 | `UI_Theme` | UUID/source when authored | `UI_Theme_Handle`, generation, entry version, registry-wide UI-theme revision | Scene parsing, Luau/native recipe resolution, editor resource inspection; never layout or paint |
 <!-- inventory:runtime-resource-families:end -->
@@ -76,6 +78,15 @@ The recursive project loader rejects duplicate UUIDs. Scene validation resolves 
 - Editor history stores deep `Project_Material_Snapshot` values. Save derives create/write/delete files from the disk baseline and dirty UUID candidates.
 - Base color, metallic/roughness factors, normal/occlusion strengths, HDR emissive value, or any material image change increments version; backend material/texture caches update only affected entries.
 - Source/tests: `resources/resources.odin`, `ui/editor_resource_authoring.odin`, `project_save.odin`; `resources/resources_test.odin`, `project_save_test.odin`.
+
+### Shader
+
+- A `scrapbot.shader` resource owns one safe project-relative `shaders/*.wgsl` source and a fixed cull-mode policy.
+- Project source supplies `scrapbot_vertex` and `scrapbot_fragment` hooks. WGPU composes them with engine-owned camera, instance, material, opaque-color, depth, timing, output, and blending contracts.
+- Materials reference Shader UUIDs and four `Vec4` parameter slots. A changed Shader version invalidates only its cached module and pipelines.
+- Blended custom materials render after opaque world shading, test existing depth without writing it, sample a retained opaque-color copy, and sort material batches back to front. Exact per-instance sorting remains tracked work.
+- Custom shaders currently require blended materials. Matching displaced opaque depth-prepass and shadow variants remain tracked work.
+- Source/tests: `resources/shaders.odin`, `render/wgpu_custom_shader.odin`, `project/parse.odin`; project/resource parser tests and WGPU framegrabs.
 
 ### Font
 
@@ -155,6 +166,6 @@ resources.Registry slot ── {index, generation} ──> ECS component
 - **Play** captures authored Material base color, emissive, metallic, and roughness values in the in-memory playback baseline alongside authored scene entities.
 - **Stop** restores those captured surface values by UUID and increments a material version only when restored content differs. It does not reread resource files or reload Luau/native code.
 - **Explicit Reimport** forces one UUID (or all imported resources), mutates live registry entries, retires stale generated model outputs, and reconciles Model roots without reloading the world, Luau, or native extensions.
-- **Hot reload** ensures imports and re-registers fonts, textures, environments, icon sets, models, materials, LOD geometry, and UI themes before replacing the world/runtime. Scene replacement and script re-execution explicitly recompose theme consumers. Failed project/world reload keeps or restores the last-good runtime path. Its current aggregate asset stamp remains intentionally coarser than explicit Reimport until platform file watching lands.
+- **Hot reload** ensures imports and re-registers fonts, textures, environments, icon sets, models, shaders, materials, LOD geometry, and UI themes before replacing the world/runtime. Scene replacement and script re-execution explicitly recompose theme consumers. Failed project/world reload keeps or restores the last-good runtime path. Its current aggregate asset stamp remains intentionally coarser than explicit Reimport until platform file watching lands.
 
 See [Lifecycle matrix](lifecycle.md), [State ownership](state-ownership.md), [FDR-009](../fdr/FDR-009-project-resources.md), and [ADR-030](../adr/ADR-030-identify-project-resources-by-uuid-outside-the-ecs.md).

@@ -85,15 +85,15 @@ id = "7b100000-0000-4000-8000-000000000004"
 name = "Coastal Water"
 
 [entities.transform]
-position = [0, -0.7, -50]
+position = [0, -0.2, -50]
 rotation = [0, 0, 0]
-scale = [42, 0.5, 150]
+scale = [84, 1, 300]
 
-[entities.geometry]
-resource = "cube"
+[entities.mesh]
+primitive = "plane"
 
 [entities.material]
-resource = "7b000000-0000-4000-8000-000000000007"
+resource = "7b000000-0000-4000-8000-000000000009"
 
 [[entities]]
 id = "7b100000-0000-4000-8000-000000000005"

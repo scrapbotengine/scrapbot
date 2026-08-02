@@ -56,6 +56,14 @@ Project resources are reusable, typed bags of authored data stored outside the E
 **Why:** Undo/Redo, Play/Stop, Revert, and Save need one coherent authoring model, while runtime systems must never create accidental file mutations.
 **Tradeoff:** Save must derive a filesystem delta from the disk baseline and the live registry, and deletion needs reference-aware validation.
 
+### 6. Store project shader source as a typed resource
+
+**Decision:** Give WGSL hook source its own UUID-backed `scrapbot.shader` resource and let Materials reference it plus four generic `Vec4` parameter slots.
+
+**Why:** Shader identity, safe source paths, hot reload, cache versioning, and cross-resource validation belong to the same project-resource pipeline as other reusable assets.
+
+**Tradeoff:** Parameters are intentionally fixed-size and unreflected in this slice. A future reflection/schema layer can add names and editor controls without changing material-to-shader identity.
+
 ## Related
 
 - **ADRs:** ADR-002, ADR-010, ADR-023, ADR-027, ADR-030, ADR-031, ADR-036, ADR-041, ADR-046

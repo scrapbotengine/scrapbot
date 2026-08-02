@@ -136,6 +136,39 @@ test_project_ui_theme_registry_updates_by_uuid_and_retires_missing_entries :: pr
 }
 
 @(test)
+test_project_shader_registry_versions_hook_source :: proc(t: ^testing.T) {
+	registry: Registry
+	defer destroy_registry(&registry)
+	id, _ := shared.resource_uuid_parse("a2000000-0000-4000-8000-000000000090")
+	declaration := shared.Project_Resource {
+		id = id,
+		kind = .Shader,
+		name = "Water",
+		source = "water.resource.toml",
+		shader = {source = "shaders/water.wgsl", cull_mode = .None},
+	}
+	source := "fn scrapbot_vertex(input: Scrapbot_Vertex) -> Scrapbot_Vertex { return input; }\nfn scrapbot_fragment(input: Scrapbot_Fragment) -> Scrapbot_Surface { return Scrapbot_Surface(); }"
+	handle, err := register_project_shader(&registry, declaration, source)
+	testing.expect(t, err == "")
+	shader, alive := get_shader(&registry, handle)
+	testing.expect(t, alive)
+	if alive {
+		testing.expect_value(t, shader.cull_mode, shared.Shader_Cull_Mode.None)
+		testing.expect_value(t, shader.version, u32(1))
+	}
+
+	changed_source := "fn scrapbot_vertex(input: Scrapbot_Vertex) -> Scrapbot_Vertex { return input; }\nfn scrapbot_fragment(input: Scrapbot_Fragment) -> Scrapbot_Surface { return Scrapbot_Surface(); }\n// changed"
+	updated, update_err := register_project_shader(&registry, declaration, changed_source)
+	testing.expect(t, update_err == "")
+	testing.expect(t, updated == handle)
+	shader, alive = get_shader(&registry, handle)
+	if alive { testing.expect_value(t, shader.version, u32(2)) }
+
+	_, invalid_err := register_project_shader(&registry, declaration, "@fragment fn main() {}")
+	testing.expect(t, invalid_err != "")
+}
+
+@(test)
 test_project_material_registration_preserves_authored_surface_factors :: proc(t: ^testing.T) {
 	registry: Registry
 	defer destroy_registry(&registry)
@@ -629,6 +662,21 @@ test_geometry_validation_rejects_invalid_indices :: proc(t: ^testing.T) {
 	defer delete(desc.vertices); defer delete(desc.indices)
 	desc.indices[0] = 99
 	testing.expect(t, validate_geometry(desc) == "geometry index is outside the vertex array")
+}
+
+@(test)
+test_plane_subdivisions_build_a_dense_displacement_grid :: proc(t: ^testing.T) {
+	desc, err := plane(8, 12, 4, 3)
+	defer delete(desc.vertices)
+	defer delete(desc.indices)
+	testing.expect(t, err == "")
+	testing.expect_value(t, len(desc.vertices), 20)
+	testing.expect_value(t, len(desc.indices), 72)
+	testing.expect(t, validate_geometry(desc) == "")
+	testing.expect_value(t, desc.vertices[0].position, Vec3{-4, 0, -6})
+	testing.expect_value(t, desc.vertices[len(desc.vertices) - 1].position, Vec3{4, 0, 6})
+	_, too_dense := plane(1, 1, 513, 1)
+	testing.expect(t, too_dense != "")
 }
 
 @(test)

@@ -63,7 +63,7 @@ export type Scrapbot = {
 	geometry: {
 		create: (name: string, descriptor: ScrapbotGeometryDescriptor) -> ScrapbotGeometryResource,
 		cube: (name: string, size: number?) -> ScrapbotGeometryResource,
-		plane: (name: string, width: number?, depth: number?) -> ScrapbotGeometryResource,
+		plane: (name: string, width: number?, depth: number?, columns: number?, rows: number?) -> ScrapbotGeometryResource,
 		icosphere: (name: string, radius: number?, subdivisions: number?) -> ScrapbotGeometryResource,
 		sphere: (name: string, radius: number?, segments: number?, rings: number?) -> ScrapbotGeometryResource,
 		pyramid: (name: string, width: number?, height: number?, depth: number?) -> ScrapbotGeometryResource,

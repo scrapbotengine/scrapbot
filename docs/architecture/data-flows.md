@@ -202,6 +202,8 @@ If legal despawn/reuse churn leaves an authoritative retained slot inactive, the
 
 Material revisions trigger one dependent-instance pass. WGPU replaces only that Material handle/version's factor uniform, bind group, and owned image textures. Stable materials and static instance fields remain resident.
 
+Shader revisions replace only that Shader handle/version's composed WGPU module and pipelines. Blended custom-material batches are collected from retained render instances, sorted against the active camera, and encoded after opaque world shading. The pass samples a retained opaque-color copy and read-only scene depth while preserving the opaque depth buffer.
+
 ### Camera-selected postprocessing
 
 The active camera owns the world-render ceiling/floor, GPU target, adaptive post-quality floor, fixed/automatic exposure, TAA, current-frame fast AA, AO, SSR, and bloom switches. The editor fly camera contributes pose and lens while inheriting this policy.

@@ -229,9 +229,9 @@ Luau systems can query and write the complete payload after declaring `scrapbot.
 
 | Scene field | Type | Meaning |
 | --- | --- | --- |
-| `primitive` | string | Non-empty primitive name. The current built-in path supports `cube`. |
+| `primitive` | string | Non-empty primitive name. The built-in path supports `cube` and a 64×64 `plane`. |
 
-This is the legacy convenience path used by generated projects. It currently resolves the built-in cube geometry and default material needed for a renderable and exposes membership-only query payloads.
+This is the legacy convenience path used by generated projects. It resolves built-in cube or plane geometry plus the default material when no authored material is present, and exposes membership-only query payloads. The plane's subdivision density supports vertex-displaced surfaces such as water.
 
 ### `scrapbot.geometry` and `scrapbot.material`
 

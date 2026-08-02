@@ -435,6 +435,31 @@ test_resource_render_list_updates_renderable_descendants_of_dirty_transforms :: 
 }
 
 @(test)
+test_mark_all_render_entities_dirty_rebuilds_the_queue :: proc(t: ^testing.T) {
+	scene := shared.Scene{}
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = shared.entity_uuid_generate(),
+			name = "Renderable",
+			has_transform = true,
+			has_mesh = true,
+			mesh = {primitive = "cube"},
+		},
+	)
+	world := build_world(&scene)
+	defer destroy_world(&world)
+	clear(&world.render_dirty_entities)
+	world.entities[0].render_dirty = true
+
+	mark_all_render_entities_dirty(&world)
+
+	testing.expect_value(t, len(world.render_dirty_entities), 1)
+	testing.expect_value(t, world.render_dirty_entities[0], 0)
+}
+
+@(test)
 test_render_batches_group_shared_geometry_and_material :: proc(t: ^testing.T) {
 	g := shared.Geometry_Handle {
 		1,

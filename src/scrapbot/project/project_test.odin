@@ -426,6 +426,49 @@ texture = "a1000000-0000-4000-8000-000000000000"
 }
 
 @(test)
+test_project_shader_and_blended_material_parser :: proc(t: ^testing.T) {
+	shader, shader_result := parse_project_resource(
+		`id = "a1000000-0000-4000-8000-000000000010"
+type = "scrapbot.shader"
+name = "Water"
+[shader]
+source = "shaders/water.wgsl"
+cull_mode = "none"
+`,
+	)
+	testing.expect(t, shader_result.err == .None)
+	testing.expect_value(t, shader.kind, shared.Project_Resource_Kind.Shader)
+	testing.expect_value(t, shader.shader.source, "shaders/water.wgsl")
+	testing.expect_value(t, shader.shader.cull_mode, shared.Shader_Cull_Mode.None)
+
+	material, material_result := parse_project_resource(
+		`id = "a1000000-0000-4000-8000-000000000011"
+type = "scrapbot.material"
+name = "Water Material"
+[material]
+shader = "a1000000-0000-4000-8000-000000000010"
+shader_parameters = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
+alpha_mode = "blend"
+double_sided = true
+`,
+	)
+	testing.expect(t, material_result.err == .None)
+	testing.expect_value(t, material.material.alpha_mode, shared.Material_Alpha_Mode.Blend)
+	testing.expect_value(t, material.material.shader_parameters[3], Vec4{13, 14, 15, 16})
+	testing.expect(t, material.material.double_sided)
+
+	_, unsafe_result := parse_project_resource(
+		`id = "a1000000-0000-4000-8000-000000000012"
+type = "scrapbot.shader"
+name = "Unsafe"
+[shader]
+source = "../water.wgsl"
+`,
+	)
+	testing.expect(t, unsafe_result.err == .Invalid_Path)
+}
+
+@(test)
 test_project_material_resource_parser_rejects_invalid_values :: proc(t: ^testing.T) {
 	_, missing_id := parse_project_resource(
 		`type = "scrapbot.material"
