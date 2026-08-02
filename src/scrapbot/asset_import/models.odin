@@ -13,8 +13,9 @@ import "core:path/filepath"
 import "core:strings"
 import cgltf "vendor:cgltf"
 
-MODEL_IMPORTER_SCHEMA :: "scrapbot.model.v13.runtime-catalog"
-MODEL_PRODUCT_MAGIC :: [8]u8{'S', 'B', 'M', 'O', 'D', 'L', '1', '3'}
+MODEL_IMPORTER_SCHEMA :: "scrapbot.model.v14.asset-product"
+MODEL_PRODUCT_MAGIC :: [8]u8{'S', 'B', 'M', 'O', 'D', 'L', '1', '4'}
+MODEL_READER_BUFFER_SIZE :: 64 * 1024
 
 Model_Vertex :: struct {
 	position, normal: shared.Vec3,
@@ -1433,6 +1434,10 @@ read_model_cache :: proc(
 
 encode_model_product :: proc(model: ^Model_Product) -> []u8 {
 	bytes: [dynamic]u8
+	begin_ok := asset_product_begin(&bytes, .Model, 1)
+	assert(begin_ok)
+	chunk_offset, chunk_ok := asset_product_begin_chunk(&bytes, 0, .Model_Runtime)
+	assert(chunk_ok)
 	magic := MODEL_PRODUCT_MAGIC
 	model_write_bytes(&bytes, magic[:])
 	model_write_u32(&bytes, u32(len(model.materials)))
@@ -1507,6 +1512,8 @@ encode_model_product :: proc(model: ^Model_Product) -> []u8 {
 		model_write_vec3(&bytes, node.transform.rotation)
 		model_write_vec3(&bytes, node.transform.scale)
 	}
+	finish_ok := asset_product_finish_chunk(&bytes, 0, chunk_offset)
+	assert(finish_ok)
 	return bytes[:]
 }
 
@@ -1593,8 +1600,18 @@ read_model_product :: proc(path: string) -> (model: Model_Product, err: string) 
 	}
 	reader := Model_Reader {
 		file = file,
-		size = int(info.size),
 	}
+	directory, directory_err := read_asset_product_directory(file, int(info.size), .Model)
+	if directory_err != "" {
+		return {}, directory_err
+	}
+	defer destroy_asset_product_directory(&directory)
+	chunk, chunk_found := asset_product_find_chunk(&directory, .Model_Runtime)
+	if !chunk_found || chunk.offset > u64(max(int)) || chunk.stored_size > u64(max(int)) {
+		return {}, "imported model runtime chunk is missing"
+	}
+	reader.offset = int(chunk.offset)
+	reader.size = int(chunk.offset + chunk.stored_size)
 	magic: [len(MODEL_PRODUCT_MAGIC)]u8
 	magic_ok := model_read_exact(&reader, magic[:])
 	expected_magic := MODEL_PRODUCT_MAGIC
@@ -1913,14 +1930,11 @@ model_read_page_payloads :: proc(
 	}
 	result := make([]geometry.Page_Payload_Record, int(page_count))
 	for &record, page_index in result {
-		record.vertex_count, ok = model_read_u32(reader)
-		if ok {
-			record.index_count, ok = model_read_u32(reader)
-		}
-		byte_count: u32
-		if ok {
-			byte_count, ok = model_read_u32(reader)
-		}
+		header: [12]u8
+		ok = model_read_exact_direct(reader, header[:])
+		record.vertex_count = endian.unchecked_get_u32le(header[0:])
+		record.index_count = endian.unchecked_get_u32le(header[4:])
+		byte_count := endian.unchecked_get_u32le(header[8:])
 		expected_size :=
 			u64(record.vertex_count) * u64(size_of(Model_Vertex)) +
 			u64(record.index_count) * u64(size_of(u32))
@@ -2186,6 +2200,10 @@ Model_Reader :: struct {
 	file: ^os.File,
 	size: int,
 	offset: int,
+	buffer: [MODEL_READER_BUFFER_SIZE]u8,
+	buffer_offset: int,
+	buffer_count: int,
+	read_operations: int,
 }
 
 model_write_u32 :: proc(bytes: ^[dynamic]u8, value: u32) {
@@ -2261,7 +2279,45 @@ model_read_exact :: proc(reader: ^Model_Reader, destination: []u8) -> bool {
 	if reader == nil || reader.file == nil || reader.offset + len(destination) > reader.size {
 		return false
 	}
+	if len(destination) > len(reader.buffer) {
+		return model_read_exact_direct(reader, destination)
+	}
+	written := 0
+	for written < len(destination) {
+		if reader.offset < reader.buffer_offset ||
+		   reader.offset >= reader.buffer_offset + reader.buffer_count {
+			reader.buffer_offset = reader.offset
+			reader.buffer_count = min(len(reader.buffer), reader.size - reader.offset)
+			read_count, read_err := os.read_at(
+				reader.file,
+				reader.buffer[:reader.buffer_count],
+				i64(reader.buffer_offset),
+			)
+			reader.read_operations += 1
+			if read_err != nil || read_count != reader.buffer_count {
+				reader.buffer_count = 0
+				return false
+			}
+		}
+		buffer_index := reader.offset - reader.buffer_offset
+		available := reader.buffer_count - buffer_index
+		copy_count := min(available, len(destination) - written)
+		copy(
+			destination[written:written + copy_count],
+			reader.buffer[buffer_index:buffer_index + copy_count],
+		)
+		reader.offset += copy_count
+		written += copy_count
+	}
+	return true
+}
+
+model_read_exact_direct :: proc(reader: ^Model_Reader, destination: []u8) -> bool {
+	if reader == nil || reader.file == nil || reader.offset + len(destination) > reader.size {
+		return false
+	}
 	read_count, read_err := os.read_at(reader.file, destination, i64(reader.offset))
+	reader.read_operations += 1
 	if read_err != nil || read_count != len(destination) {
 		return false
 	}
@@ -2282,11 +2338,9 @@ model_read_u32 :: proc(reader: ^Model_Reader) -> (u32, bool) {
 		return 0, false
 	}
 	bytes: [4]u8
-	read_count, read_err := os.read_at(reader.file, bytes[:], i64(reader.offset))
-	if read_err != nil || read_count != len(bytes) {
+	if !model_read_exact(reader, bytes[:]) {
 		return 0, false
 	}
-	reader.offset += len(bytes)
 	return endian.unchecked_get_u32le(bytes[:]), true
 }
 

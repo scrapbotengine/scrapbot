@@ -459,6 +459,45 @@ test_model_product_reader_rejects_corruption :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_model_reader_buffers_scalars_and_skips_payload_without_prefetch :: proc(t: ^testing.T) {
+	root, temp_err := os.make_directory_temp("", "scrapbot-model-reader-*", context.allocator)
+	testing.expect(t, temp_err == nil)
+	if temp_err != nil {
+		return
+	}
+	defer os.remove_all(root)
+	defer delete(root)
+	path, path_err := filepath.join({root, "buffered.bin"})
+	testing.expect(t, path_err == nil)
+	if path_err != nil {
+		return
+	}
+	defer delete(path)
+	bytes := make([]u8, MODEL_READER_BUFFER_SIZE * 4)
+	defer delete(bytes)
+	testing.expect(t, os.write_entire_file(path, bytes) == nil)
+	file, open_err := os.open(path)
+	testing.expect(t, open_err == nil)
+	if open_err != nil {
+		return
+	}
+	defer os.close(file)
+	reader := Model_Reader {
+		file = file,
+		size = len(bytes),
+	}
+	for _ in 0 ..< 1024 {
+		_, ok := model_read_u32(&reader)
+		testing.expect(t, ok)
+	}
+	testing.expect_value(t, reader.read_operations, 1)
+	testing.expect(t, model_skip_bytes(&reader, MODEL_READER_BUFFER_SIZE * 2))
+	header: [12]u8
+	testing.expect(t, model_read_exact_direct(&reader, header[:]))
+	testing.expect_value(t, reader.read_operations, 2)
+}
+
+@(test)
 test_gltf_import_rejects_external_buffers_outside_asset_directory :: proc(t: ^testing.T) {
 	root, temp_err := os.make_directory_temp("", "scrapbot-model-path-*", context.allocator)
 	testing.expect(t, temp_err == nil)

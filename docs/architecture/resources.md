@@ -1,6 +1,6 @@
 # Resources and Registries
 
-**Last verified:** 2026-08-01
+**Last verified:** 2026-08-02
 **Persistent declarations:** `shared.Project_Resource` and `project.load_project_resources`  
 **Runtime authority:** `resources.Registry`
 
@@ -11,7 +11,7 @@ Scrapbot resources live outside ECS. Persistent project files use stable UUIDs; 
 | Layer | Identity | Authority | Lifetime |
 | --- | --- | --- | --- |
 | Project declaration | `Resource_UUID` plus a relative `resources/**/*.resource.toml` source | Project files on disk; in-memory authoring is authoritative until Save/Revert | Survives runs and editor sessions |
-| Imported product | Parent resource UUID plus versioned artifact schema | Asset source/dependencies and importer settings under `.scrapbot/imported/` | Regenerated before runtime bootstrap; packaged with host builds |
+| Imported product | Parent resource UUID plus common product format and versioned importer schema | Asset source/dependencies and importer settings under `.scrapbot/imported/` | Regenerated before runtime bootstrap; packaged with host builds |
 | Runtime registry entry | `{index, generation}` handle plus per-entry `version` | `resources.Registry` | One engine runtime; slots may survive reload while generations invalidate dead handles |
 | ECS reference | Geometry or Material handle | Active ECS world | Entity/component lifetime; resolved again when a world is rebuilt |
 | Backend cache | Handle/generation/version keyed records | Renderer backend | Renderer lifetime; refreshed from exact resource versions/topology changes |
@@ -56,7 +56,7 @@ The recursive project loader rejects duplicate UUIDs. Scene validation resolves 
 - Authored `Geometry_LOD` declarations register by UUID and name. The base entry owns authored identity; additional LOD entries use internal names and handles.
 - Content replacement increments the entry version. LOD membership, addition, disappearance, or other batch-shape changes also increment `geometry_topology_revision`.
 - Registration builds deterministic meshoptimizer meshlets plus a crack-aware cluster-LOD hierarchy when no compiled hierarchy is supplied. Imported catalogs derive compatibility meshlets from the hierarchy's exact leaves without decoding canonical geometry. Both use at most 64 vertices and 124 triangles per cluster. Geometry owns local vertex/triangle streams, conservative spheres, normal cones, hierarchy groups, monotonic simplification errors, refined-group links, deterministic group-aligned page identities, maximum depth, and canonical source counts.
-- Every page has one self-contained canonical-vertex subset and page-local expanded index stream. Imported Geometry owns validated ranges in its immutable Model product plus a position-only query proxy; its v13 runtime catalog does not decode complete render vertices or source indices. Model registration releases each decoded material, primitive, mesh, and node after cloning it into registry ownership. Other producers own equivalent in-memory bytes and retain their canonical arrays because they have no persistent fallback product. Clone, replacement, generated-LOD registration, retirement, and destruction move or release the proxy and source contract with the Geometry entry.
+- Every page has one self-contained canonical-vertex subset and page-local expanded index stream. Imported Geometry owns validated ranges in its immutable Model product plus a position-only query proxy; its v14 runtime chunk does not decode complete render vertices or source indices. Model registration releases each decoded material, primitive, mesh, and node after cloning it into registry ownership. Other producers own equivalent in-memory bytes and retain their canonical arrays because they have no persistent fallback product. Clone, replacement, generated-LOD registration, retirement, and destruction move or release the proxy and source contract with the Geometry entry.
 - Exact CPU queries iterate leaf-cluster topology and resolve canonical IDs through either resident vertices or the position proxy. Leaves may terminate above maximum hierarchy depth. Backend fallback reconstructs an owned temporary canonical view from every leaf-containing page, while memory-backed Geometry returns a borrowed view. Consumers release owned views after use.
 - Page construction occurs only at import or explicit registration/replacement boundaries. Stable frames do no partitioning, simplification, payload construction, or cluster work.
 - Missing authored declarations mark prior entries dead, increment generation/version, and invalidate old handles without compacting registry indexes.
@@ -82,6 +82,7 @@ The recursive project loader rejects duplicate UUIDs. Scene validation resolves 
 ### Texture, Model, Environment, and Icon Set imports
 
 - `asset_import.ensure_project_imports` fingerprints source/dependency bytes plus an importer schema and writes products atomically under `.scrapbot/imported/`.
+- The common asset-product envelope owns format identity, product kind, and a bounded directory of typed, indexed, non-overlapping chunks. Importer schemas own chunk contents. Model is the first consumer; its buffered runtime-chunk reader leaves virtual-Geometry payload ranges file-backed.
 - Texture products contain validated RGBA8 mip chains.
 - Icon Set products contain a deterministic linear RGBA8 MTSDF atlas plus symbolic names and normalized UV rectangles. The importer fingerprints every recursively discovered SVG, normalizes supported monochrome geometry through the pinned compiler, and atomically retains the last valid atlas on failure.
 - Environment products contain:

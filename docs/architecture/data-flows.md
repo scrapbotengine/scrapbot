@@ -1,6 +1,6 @@
 # Major Data Flows
 
-**Last verified:** 2026-08-01
+**Last verified:** 2026-08-02
 
 ## Project load and world bootstrap
 
@@ -24,9 +24,10 @@ Native components register before Luau executes, so scripts can retrieve native 
 
 Before bootstrap, Model import simplifies eligible primitive index streams, compacts each retained
 level, builds its crack-aware hierarchy, and persists the LOD chain, position-only query data, and
-deterministic page table in the versioned product. Runtime loading reads this catalog directly from
-the file, skips page payload ranges, validates the compiled values, publishes semantic Geometry
-subresources one primitive at a time, and promptly releases the decoded entry.
+deterministic page table in a common versioned product envelope. Runtime loading validates the
+product kind and chunk directory, buffers catalog reads, skips page payload ranges, validates the
+compiled values, publishes semantic Geometry subresources one primitive at a time, and promptly
+releases the decoded entry.
 
 At bootstrap or reload, Model roots reconcile imported nodes and primitives into derived
 Transform/Geometry/Material entities. Later duplication, Undo/Redo, or resource replacement

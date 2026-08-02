@@ -203,6 +203,7 @@ trends; they are not portable performance thresholds.
   - [x] Asynchronous per-pass GPU timestamps and visibility/LOD counters
   - [x] Ambient, directional, and point-light rendering
 - Assets
+  - [x] Common versioned runtime-product envelopes with validated typed chunk directories
   - [x] Incremental static glTF 2.0/GLB model imports with embedded, data-URI, and external metallic-roughness PBR images
   - [x] glTF opaque/cutout alpha materials and double-sided rendering across color, depth, and shadows
   - [x] Selected-scene glTF closure imports with semantic reimport identity and authored texture samplers

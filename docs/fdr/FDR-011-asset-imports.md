@@ -1,7 +1,7 @@
 # FDR-011: Asset imports
 
 **Status:** In Progress
-**Last reviewed:** 2026-07-31
+**Last reviewed:** 2026-08-02
 
 ## Overview
 
@@ -19,6 +19,7 @@ Asset imports turn artist-authored texture, model, HDR environment, and SVG icon
 - Imported images become owned mipmapped texture payloads on the Model's generated Material resources. Each texture slot preserves its glTF minification, magnification, mip, and U/V wrap policy. The WGPU material path renders them with GGX direct lighting, authored tangent-space normal mapping with a derivative fallback, ambient diffuse/specular response, HDR emission, bloom, and tone mapping.
 - Project checking, building, and running automatically import products that are absent or stale. `scrapbot import` performs the same work explicitly and reports structured per-resource results.
 - Imported products and manifests are generated under ignored project state. They are never hand-authored or committed as source authority.
+- Model products use the common versioned asset-product envelope and a validated chunk directory. Cache-hit loading buffers catalog reads while preserving file-backed virtual-Geometry page ranges; it does not parse the source glTF or eagerly read skipped page payloads.
 - Import validity includes source and dependency contents, settings, and importer version. Unchanged resources reuse their prior products without decoding or rebuilding them.
 - A failed reimport reports an actionable error and preserves the last valid product. A project cannot silently start with a stale product when no valid product exists.
 - Explicit editor reimport targets one Texture, Model, Environment, or Icon Set UUID without restarting Luau/native code; **Reimport All** forces every declared imported product. Automatic hot reload still uses the project asset stamp and importer cache until the platform watcher replaces polling. Ordinary simulation and render frames never scan the asset tree.
@@ -121,9 +122,21 @@ changes. Procedural and script-created Geometry still builds the same hierarchy 
 
 **Tradeoff:** Products retain more geometry and rendered scenes retain more possible batch records. The simplifier may stop before a target ratio or omit a level when topology or the error bound prevents a useful reduction.
 
+### 14. Give runtime products one common envelope
+
+**Decision:** Wrap type-specific runtime payloads in an engine-owned, versioned header and bounded
+chunk directory. Keep importer schemas responsible for the bytes inside each typed chunk. See
+ADR-051.
+
+**Why:** Runtime discovery, range validation, future compression, and export packaging should not
+be reinvented for every importer. Development and exported games must consume the same products.
+
+**Tradeoff:** Model v14 initially uses one runtime chunk. Independently loadable catalog, image,
+and Geometry-page chunks require later schema revisions.
+
 ## Related
 
-- **ADRs:** ADR-002, ADR-010, ADR-024, ADR-030, ADR-031, ADR-032, ADR-036, ADR-037, ADR-038, ADR-041, ADR-046, ADR-047
+- **ADRs:** ADR-002, ADR-010, ADR-024, ADR-030, ADR-031, ADR-032, ADR-036, ADR-037, ADR-038, ADR-041, ADR-046, ADR-047, ADR-050, ADR-051
 - **FDRs:** FDR-002, FDR-003, FDR-008, FDR-009
 
 ## Open Questions

@@ -30,10 +30,10 @@ geometrically.
 
 Every registered Geometry also owns deterministic meshlets capped at 64 vertices and 124 triangles,
 including local index streams, conservative sphere bounds, and normal cones. Imported Model
-products persist a compact runtime catalog plus their page payloads; cache-hit loading reads the
-catalog directly from the file, skips payload byte ranges, and derives compatibility meshlets from
-exact hierarchy leaves. Other Geometry producers build the same data in memory only when the
-resource is created or replaced.
+products persist a compact runtime catalog plus their page payloads inside Scrapbot's common
+versioned product envelope. Cache-hit loading validates the chunk directory, buffers catalog reads,
+skips payload byte ranges, and derives compatibility meshlets from exact hierarchy leaves. Other
+Geometry producers build the same data in memory only when the resource is created or replaced.
 
 Imported Geometry does not decode its complete CPU render vertices and source indices during a
 cache-hit bootstrap. It retains canonical counts, exact leaf-cluster topology, and a position-only
