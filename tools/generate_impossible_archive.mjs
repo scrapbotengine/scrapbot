@@ -143,6 +143,23 @@ class Primitive {
     );
   }
 
+  barrelVault(zNear, zFar, radius, segments) {
+    for (let segment = 0; segment < segments; segment += 1) {
+      const a0 = segment / segments * Math.PI;
+      const a1 = (segment + 1) / segments * Math.PI;
+      const p0 = [Math.cos(a0) * radius, 8 + Math.sin(a0) * radius];
+      const p1 = [Math.cos(a1) * radius, 8 + Math.sin(a1) * radius];
+      const middle = (a0 + a1) * 0.5;
+      this.quad(
+        [p0[0], p0[1], zNear],
+        [p1[0], p1[1], zNear],
+        [p1[0], p1[1], zFar],
+        [p0[0], p0[1], zFar],
+        [-Math.cos(middle), -Math.sin(middle), 0],
+      );
+    }
+  }
+
   ringZ(center, innerRadius, outerRadius, depth, segments) {
     const [cx, cy, cz] = center;
     for (let segment = 0; segment < segments; segment += 1) {
@@ -261,6 +278,10 @@ function buildArchive(config) {
       addReliefPanel(stone, side, bay, z - bayLength * 0.5, bayLength, config.panelSegments);
     }
     stone.arch(z, 11.7, 0.55, 0.28, config.archSegments);
+    // The ribs need a real ceiling between them. Recess the vault slightly
+    // behind the arch intrados so the ribs remain legible without coplanar
+    // surfaces or cracks at bay boundaries.
+    stone.barrelVault(z, z - bayLength, 11.25, config.archSegments);
     metal.arch(z - 0.32, 10.85, 0.12, 0.08, config.archSegments);
 
     for (let tile = -6; tile <= 6; tile += 1) {
@@ -392,7 +413,7 @@ if (options.check) {
   if (glb.readUInt32LE(0) !== 0x46546c67 || glb.readUInt32LE(4) !== 2 || glb.readUInt32LE(8) !== glb.length) {
     throw new Error("generated GLB header is inconsistent");
   }
-  if (options.preset === "small" && (result.triangles !== 67_032 || result.vertices !== 55_608)) {
+  if (options.preset === "small" && (result.triangles !== 67_608 || result.vertices !== 56_760)) {
     throw new Error(`small preset contract drifted: ${result.vertices} vertices, ${result.triangles} triangles`);
   }
   if (options.preset === "small" && result.primitives.length !== 10) {

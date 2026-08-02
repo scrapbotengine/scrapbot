@@ -13,8 +13,9 @@ renderer independently culls their hierarchy work, then merges compatible region
 material submission spans.
 
 Columns are assembled as adjoining exterior sections rather than overlapping capped cylinders,
-and each arch closes its endpoint against the capital. This keeps close inspection and directional
-self-shadowing free from hidden coplanar or internal faces.
+each arch closes its endpoint against the capital, and recessed barrel-vault panels connect the
+ribs across every bay. This keeps close inspection and directional self-shadowing free from hidden
+coplanar faces while preserving a complete interior shell from oblique viewpoints.
 
 ## Generate the archive
 
