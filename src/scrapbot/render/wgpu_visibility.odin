@@ -294,7 +294,10 @@ wgpu_refresh_geometry_group_state :: proc(
 			}
 			page_resident :=
 				int(cluster.page) < len(geometry.cluster_pages) &&
-				geometry.cluster_pages[cluster.page].resident
+				geometry.cluster_pages[cluster.page].resident &&
+				cluster.group >= 0 &&
+				int(cluster.group) < len(geometry.cluster_groups) &&
+				geometry.cluster_groups[cluster.group].active
 			refined_resident, request_group, request_enabled := wgpu_cluster_group_residency(
 				geometry_resource,
 				geometry,
@@ -387,6 +390,39 @@ WGPU_VIRTUAL_PAGE_FEEDBACK_GRACE_FRAMES ::
 	WGPU_VIRTUAL_PAGE_TOUCH_CADENCE + u64(WGPU_GPU_TIMESTAMP_FRAMES * 2)
 WGPU_VIRTUAL_PAGE_PRIORITY_HYSTERESIS :: f32(1.2)
 WGPU_VIRTUAL_PAGE_MAX_HOLD_FRAMES :: WGPU_VIRTUAL_PAGE_FEEDBACK_GRACE_FRAMES * 3
+
+wgpu_update_virtual_geometry_error :: proc "contextless" (
+	renderer: ^WGPU_Renderer,
+	request_count, feedback_overflow: u32,
+	feedback_frame: u64,
+) -> bool {
+	if renderer == nil {
+		return false
+	}
+	if renderer.virtual_geometry_error_pixels < WGPU_VIRTUAL_GEOMETRY_MIN_ERROR_PIXELS {
+		renderer.virtual_geometry_error_pixels = WGPU_VIRTUAL_GEOMETRY_MIN_ERROR_PIXELS
+	}
+	at_capacity :=
+		renderer.virtual_geometry_budget_bytes > 0 &&
+		renderer.virtual_geometry_resident_bytes * 100 >=
+			renderer.virtual_geometry_budget_bytes * WGPU_VIRTUAL_GEOMETRY_PRESSURE_PERCENT
+	pressure :=
+		feedback_overflow > 0 ||
+		(at_capacity && request_count > WGPU_VIRTUAL_GEOMETRY_PRESSURE_REQUESTS)
+	if !pressure ||
+	   renderer.virtual_geometry_error_pixels >= WGPU_VIRTUAL_GEOMETRY_MAX_ERROR_PIXELS ||
+	   feedback_frame <
+		   renderer.virtual_geometry_error_last_adjustment_frame +
+			   WGPU_VIRTUAL_GEOMETRY_ERROR_ADJUSTMENT_FRAMES {
+		return false
+	}
+	renderer.virtual_geometry_error_pixels = min(
+		renderer.virtual_geometry_error_pixels * 2,
+		WGPU_VIRTUAL_GEOMETRY_MAX_ERROR_PIXELS,
+	)
+	renderer.virtual_geometry_error_last_adjustment_frame = feedback_frame
+	return true
+}
 
 wgpu_virtual_page_admission_frame :: proc "contextless" (
 	current_frame, feedback_frame: u64,
@@ -511,6 +547,68 @@ wgpu_virtual_group_page_range :: proc "contextless" (
 	return group.page_offset, group.page_count, true
 }
 
+wgpu_virtual_group_pages_resident :: proc "contextless" (
+	geometry: ^resources.Geometry,
+	cache: ^WGPU_Geometry_Cache,
+	group_index: u32,
+) -> bool {
+	page_offset, page_count, ok := wgpu_virtual_group_page_range(geometry, group_index)
+	if !ok || cache == nil || int(page_offset + page_count) > len(cache.cluster_pages) {
+		return false
+	}
+	for page_index in page_offset ..< page_offset + page_count {
+		if !cache.cluster_pages[page_index].resident {
+			return false
+		}
+	}
+	return true
+}
+
+wgpu_activate_stable_virtual_groups :: proc(
+	renderer: ^WGPU_Renderer,
+	changes: ^[dynamic]WGPU_Virtual_Group_Change,
+) {
+	if renderer == nil || changes == nil {
+		return
+	}
+	frame := renderer.profile_frame_index
+	write_index := 0
+	for activation in renderer.virtual_geometry_pending_activations {
+		cache_index := wgpu_geometry_cache_slot(renderer.geometry_cache[:], activation.handle)
+		if cache_index < 0 ||
+		   int(activation.group_index) >=
+			   len(renderer.geometry_cache[cache_index].cluster_groups) {
+			continue
+		}
+		cache := &renderer.geometry_cache[cache_index]
+		group := &cache.cluster_groups[activation.group_index]
+		if !group.resident || group.active || group.pinned {
+			continue
+		}
+		settled := frame >= group.resident_since_frame + WGPU_VIRTUAL_GROUP_ACTIVATION_GRACE_FRAMES
+		demand_quiet :=
+			frame >= group.last_demand_frame + WGPU_VIRTUAL_GROUP_ACTIVATION_GRACE_FRAMES
+		max_hold_elapsed :=
+			frame >= group.resident_since_frame + WGPU_VIRTUAL_GROUP_ACTIVATION_MAX_HOLD_FRAMES
+		if !settled || (!demand_quiet && !max_hold_elapsed) {
+			renderer.virtual_geometry_pending_activations[write_index] = activation
+			write_index += 1
+			continue
+		}
+		group.active = true
+		renderer.virtual_geometry_group_activation_count += 1
+		wgpu_adjust_virtual_fallback_protection(
+			cache.cluster_groups[:],
+			cache.refined_group_parent_offsets[:],
+			cache.refined_group_parents[:],
+			activation.group_index,
+			1,
+		)
+		wgpu_append_virtual_group_change(changes, cache.handle, activation.group_index)
+	}
+	resize(&renderer.virtual_geometry_pending_activations, write_index)
+}
+
 wgpu_touch_virtual_group :: proc "contextless" (
 	cache: ^WGPU_Geometry_Cache,
 	geometry: ^resources.Geometry,
@@ -565,13 +663,15 @@ wgpu_evict_virtual_group_at :: proc(
 	if !group.resident || group.pinned || group.resident_refinement_count > 0 {
 		return {}, false
 	}
-	wgpu_adjust_virtual_fallback_protection(
-		cache.cluster_groups[:],
-		cache.refined_group_parent_offsets[:],
-		cache.refined_group_parents[:],
-		group_index,
-		-1,
-	)
+	if group.active {
+		wgpu_adjust_virtual_fallback_protection(
+			cache.cluster_groups[:],
+			cache.refined_group_parent_offsets[:],
+			cache.refined_group_parents[:],
+			group_index,
+			-1,
+		)
+	}
 	oldest_prefetched := group.prefetched
 	for &page in cache.cluster_pages {
 		if page.group_index != group_index || !page.resident {
@@ -603,6 +703,7 @@ wgpu_evict_virtual_group_at :: proc(
 		renderer.virtual_geometry_prefetch_eviction_count += 1
 	}
 	group.resident = false
+	group.active = false
 	group.prefetched = false
 	group.priority = 0
 	renderer.virtual_geometry_group_eviction_count += 1
@@ -720,12 +821,29 @@ wgpu_process_virtual_page_feedback :: proc(
 	   remaining_upload_groups == nil {
 		return ""
 	}
-	feedback_count := min(
-		int(counters.virtual_page_feedback_count),
+	demand_feedback_count := min(
+		int(counters.virtual_page_demand_feedback_count),
 		WGPU_VIRTUAL_PAGE_FEEDBACK_CAPACITY,
 	)
+	touch_feedback_count := min(
+		int(counters.virtual_page_touch_feedback_count),
+		WGPU_VIRTUAL_PAGE_FEEDBACK_CAPACITY,
+	)
+	prefetch_feedback_count := min(
+		int(counters.virtual_page_prefetch_feedback_count),
+		WGPU_VIRTUAL_PAGE_FEEDBACK_CAPACITY,
+	)
+	feedback_count := demand_feedback_count + touch_feedback_count + prefetch_feedback_count
+	changed_groups: [dynamic]WGPU_Virtual_Group_Change
+	defer delete(changed_groups)
 	if feedback_count == 0 {
-		return ""
+		wgpu_activate_stable_virtual_groups(renderer, &changed_groups)
+		return wgpu_refresh_virtual_group_changes(renderer, registry, changed_groups[:])
+	}
+	if len(renderer.virtual_geometry_pending_activations) > 0 {
+		// Activation is change-driven by the compact staged-group queue, even
+		// when this readback carries only unrelated visibility feedback.
+		wgpu_activate_stable_virtual_groups(renderer, &changed_groups)
 	}
 	requests := make(
 		[dynamic]WGPU_Virtual_Group_Request,
@@ -733,51 +851,61 @@ wgpu_process_virtual_page_feedback :: proc(
 		min(int(counters.virtual_page_request_count), feedback_count),
 		context.temp_allocator,
 	)
-	changed_groups: [dynamic]WGPU_Virtual_Group_Change
-	defer delete(changed_groups)
-	for feedback in counters.virtual_page_feedback[:feedback_count] {
-		handle := shared.Geometry_Handle{feedback.geometry_index, feedback.geometry_generation}
-		geometry, geometry_ok := resources.get_geometry(registry, handle)
-		if !geometry_ok || int(feedback.group_index) >= len(geometry.cluster_groups) {
-			continue
-		}
-		cache_index := wgpu_geometry_cache_slot(renderer.geometry_cache[:], handle)
-		if cache_index < 0 {
-			continue
-		}
-		cache := &renderer.geometry_cache[cache_index]
-		if feedback.flags & WGPU_VIRTUAL_PAGE_FEEDBACK_TOUCH != 0 {
-			prefetch_hit, promoted_pages := wgpu_touch_virtual_group(
-				cache,
-				geometry,
-				feedback.group_index,
-				feedback_frame,
-				feedback.priority,
-			)
-			renderer.virtual_geometry_prefetched_page_count -= min(
-				renderer.virtual_geometry_prefetched_page_count,
-				int(promoted_pages),
-			)
-			if prefetch_hit {
-				renderer.virtual_geometry_prefetch_hit_count += 1
-				wgpu_append_virtual_group_change(&changed_groups, handle, feedback.group_index)
+	feedback_lanes := [?][]WGPU_GPU_Virtual_Page_Feedback {
+		counters.virtual_page_touch_feedback[:touch_feedback_count],
+		counters.virtual_page_demand_feedback[:demand_feedback_count],
+		counters.virtual_page_prefetch_feedback[:prefetch_feedback_count],
+	}
+	for feedback_lane in feedback_lanes {
+		for feedback in feedback_lane {
+			handle := shared.Geometry_Handle{feedback.geometry_index, feedback.geometry_generation}
+			geometry, geometry_ok := resources.get_geometry(registry, handle)
+			if !geometry_ok || int(feedback.group_index) >= len(geometry.cluster_groups) {
+				continue
 			}
-		}
-		request := feedback.flags & WGPU_VIRTUAL_PAGE_FEEDBACK_REQUEST != 0
-		prefetch := feedback.flags & WGPU_VIRTUAL_PAGE_FEEDBACK_PREFETCH != 0
-		if request || prefetch {
-			append(
-				&requests,
-				WGPU_Virtual_Group_Request {
-					handle = handle,
-					group_index = feedback.group_index,
-					priority = feedback.priority,
-					prefetch = !request,
-				},
-			)
+			cache_index := wgpu_geometry_cache_slot(renderer.geometry_cache[:], handle)
+			if cache_index < 0 {
+				continue
+			}
+			cache := &renderer.geometry_cache[cache_index]
+			if feedback.flags & WGPU_VIRTUAL_PAGE_FEEDBACK_REQUEST != 0 {
+				cache.cluster_groups[feedback.group_index].last_demand_frame =
+					renderer.profile_frame_index
+			}
+			if feedback.flags & WGPU_VIRTUAL_PAGE_FEEDBACK_TOUCH != 0 {
+				prefetch_hit, promoted_pages := wgpu_touch_virtual_group(
+					cache,
+					geometry,
+					feedback.group_index,
+					feedback_frame,
+					feedback.priority,
+				)
+				renderer.virtual_geometry_prefetched_page_count -= min(
+					renderer.virtual_geometry_prefetched_page_count,
+					int(promoted_pages),
+				)
+				if prefetch_hit {
+					renderer.virtual_geometry_prefetch_hit_count += 1
+					wgpu_append_virtual_group_change(&changed_groups, handle, feedback.group_index)
+				}
+			}
+			request := feedback.flags & WGPU_VIRTUAL_PAGE_FEEDBACK_REQUEST != 0
+			prefetch := feedback.flags & WGPU_VIRTUAL_PAGE_FEEDBACK_PREFETCH != 0
+			if request || prefetch {
+				append(
+					&requests,
+					WGPU_Virtual_Group_Request {
+						handle = handle,
+						group_index = feedback.group_index,
+						priority = feedback.priority,
+						prefetch = !request,
+					},
+				)
+			}
 		}
 	}
 	if len(requests) == 0 {
+		wgpu_activate_stable_virtual_groups(renderer, &changed_groups)
 		if refresh_err := wgpu_refresh_virtual_group_changes(
 			renderer,
 			registry,
@@ -817,11 +945,13 @@ wgpu_process_virtual_page_feedback :: proc(
 		append(&unique_requests, request)
 	}
 	slice.sort_by(unique_requests[:], proc(a, b: WGPU_Virtual_Group_Request) -> bool {
+		a_priority := a.priority * (f32(0.75) if a.prefetch else f32(1))
+		b_priority := b.priority * (f32(0.75) if b.prefetch else f32(1))
+		if a_priority != b_priority {
+			return a_priority > b_priority
+		}
 		if a.prefetch != b.prefetch {
 			return !a.prefetch
-		}
-		if a.priority != b.priority {
-			return a.priority > b.priority
 		}
 		if a.handle.index != b.handle.index {
 			return a.handle.index < b.handle.index
@@ -846,8 +976,7 @@ wgpu_process_virtual_page_feedback :: proc(
 			continue
 		}
 		cache := &renderer.geometry_cache[cache_index]
-		resident, _, _ := wgpu_cluster_group_residency(geometry, cache, i32(request.group_index))
-		if resident {
+		if wgpu_virtual_group_pages_resident(geometry, cache, request.group_index) {
 			prefetch_hit := false
 			promoted_pages: u32
 			if !request.prefetch {
@@ -940,9 +1069,6 @@ wgpu_process_virtual_page_feedback :: proc(
 		}
 		for renderer.virtual_geometry_resident_bytes + allocation_bytes >
 		    renderer.virtual_geometry_budget_bytes {
-			if request.prefetch {
-				break
-			}
 			evicted_handle, evicted_group, evicted := wgpu_evict_virtual_candidate(
 				renderer,
 				eviction_candidates[:],
@@ -1030,13 +1156,12 @@ wgpu_process_virtual_page_feedback :: proc(
 		group_state.resident_since_frame = renderer.profile_frame_index
 		group_state.priority = max(request.priority, 0)
 		group_state.resident = true
+		group_state.active = false
 		group_state.prefetched = request.prefetch
-		wgpu_adjust_virtual_fallback_protection(
-			cache.cluster_groups[:],
-			cache.refined_group_parent_offsets[:],
-			cache.refined_group_parents[:],
+		wgpu_append_virtual_group_change(
+			&renderer.virtual_geometry_pending_activations,
+			request.handle,
 			request.group_index,
-			1,
 		)
 		renderer.virtual_geometry_resident_bytes += vertex_allocation.size + index_allocation.size
 		renderer.virtual_geometry_resident_page_count += len(missing_pages)
@@ -1059,6 +1184,7 @@ wgpu_process_virtual_page_feedback :: proc(
 		}
 		wgpu_append_virtual_group_change(&changed_groups, request.handle, request.group_index)
 	}
+	wgpu_activate_stable_virtual_groups(renderer, &changed_groups)
 	if refresh_err := wgpu_refresh_virtual_group_changes(renderer, registry, changed_groups[:]);
 	   refresh_err != "" {
 		return refresh_err
@@ -1092,6 +1218,14 @@ wgpu_visibility_consume_readbacks :: proc(
 		)
 		if mapped != nil {
 			renderer.gpu_visibility_counters = mapped^
+			wgpu_update_virtual_geometry_error(
+				renderer,
+				mapped.virtual_page_request_count,
+				mapped.virtual_page_demand_feedback_overflow +
+				mapped.virtual_page_touch_feedback_overflow +
+				mapped.virtual_page_prefetch_feedback_overflow,
+				readback.frame_index,
+			)
 			if renderer.gpu_occlusion_debug_evidence_valid && mapped.meshlet_debug_records > 0 {
 				renderer.gpu_occlusion_debug_record_count = mapped.meshlet_debug_records
 			}
@@ -1195,6 +1329,10 @@ wgpu_publish_visibility :: proc(renderer: ^WGPU_Renderer, stats: ^Render_Stats) 
 	stats.virtual_rejected_clusters = renderer.gpu_visibility_counters.virtual_rejected_clusters
 	stats.virtual_geometry_page_budget_bytes = renderer.virtual_geometry_budget_bytes
 	stats.virtual_geometry_page_resident_bytes = renderer.virtual_geometry_resident_bytes
+	stats.virtual_geometry_error_pixels = max(
+		renderer.virtual_geometry_error_pixels,
+		WGPU_VIRTUAL_GEOMETRY_MIN_ERROR_PIXELS,
+	)
 	stats.virtual_geometry_pages = renderer.virtual_geometry_page_count
 	stats.virtual_geometry_resident_pages = renderer.virtual_geometry_resident_page_count
 	stats.virtual_geometry_pinned_pages = renderer.virtual_geometry_pinned_page_count
@@ -1208,18 +1346,30 @@ wgpu_publish_visibility :: proc(renderer: ^WGPU_Renderer, stats: ^Render_Stats) 
 		u32(WGPU_VIRTUAL_PAGE_FEEDBACK_CAPACITY),
 	)
 	stats.virtual_geometry_page_request_overflow =
-		renderer.gpu_visibility_counters.virtual_page_feedback_overflow
+		renderer.gpu_visibility_counters.virtual_page_demand_feedback_overflow +
+		renderer.gpu_visibility_counters.virtual_page_touch_feedback_overflow +
+		renderer.gpu_visibility_counters.virtual_page_prefetch_feedback_overflow
 	stats.virtual_geometry_page_uploads = renderer.virtual_geometry_page_upload_count
 	stats.virtual_geometry_page_upload_bytes = renderer.virtual_geometry_page_upload_bytes
 	stats.virtual_geometry_page_reads = renderer.virtual_geometry_page_read_count
 	stats.virtual_geometry_page_read_bytes = renderer.virtual_geometry_page_read_bytes
 	stats.virtual_geometry_page_read_failures = renderer.virtual_geometry_page_read_failure_count
 	stats.virtual_geometry_page_evictions = renderer.virtual_geometry_page_eviction_count
-	stats.virtual_geometry_page_feedback = min(
-		renderer.gpu_visibility_counters.virtual_page_feedback_count,
-		u32(WGPU_VIRTUAL_PAGE_FEEDBACK_CAPACITY),
-	)
+	stats.virtual_geometry_page_feedback =
+		min(
+			renderer.gpu_visibility_counters.virtual_page_demand_feedback_count,
+			u32(WGPU_VIRTUAL_PAGE_FEEDBACK_CAPACITY),
+		) +
+		min(
+			renderer.gpu_visibility_counters.virtual_page_touch_feedback_count,
+			u32(WGPU_VIRTUAL_PAGE_FEEDBACK_CAPACITY),
+		) +
+		min(
+			renderer.gpu_visibility_counters.virtual_page_prefetch_feedback_count,
+			u32(WGPU_VIRTUAL_PAGE_FEEDBACK_CAPACITY),
+		)
 	stats.virtual_geometry_group_uploads = renderer.virtual_geometry_group_upload_count
+	stats.virtual_geometry_group_activations = renderer.virtual_geometry_group_activation_count
 	stats.virtual_geometry_prefetch_group_uploads =
 		renderer.virtual_geometry_prefetch_group_upload_count
 	stats.virtual_geometry_prefetch_hits = renderer.virtual_geometry_prefetch_hit_count

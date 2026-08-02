@@ -162,6 +162,9 @@ extern "C" scrapbot_clod_result scrapbot_clod_build(
 	clodConfig config = clodDefaultConfig(124);
 	config.max_vertices = 64;
 	config.optimize_bounds = true;
+	config.simplify_permissive = false;
+	config.simplify_fallback_permissive = true;
+	config.simplify_fallback_sloppy = false;
 	clodBuild(config, mesh, &output, &scrapbot_clod_emit);
 
 	if (output.groups.empty() || output.clusters.empty())

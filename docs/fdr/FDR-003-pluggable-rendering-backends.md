@@ -31,7 +31,7 @@ Pluggable rendering backends allow Scrapbot to start with `wgpu-native` while ke
 - Shared geometry/material pairs use one instanced draw batch. Geometry versions occupy aligned ranges in shared WGPU vertex/index arenas, while material texture uploads remain cached by handle and version.
 - WGPU keeps a persistent slot-addressed GPU instance table, separates static source state from hot Transform state, sends Transform-only changes through one dense update upload, coalesces nearby static slot changes into bounded uploads, retains compact render/culling uniforms and instance-to-LOD batch mappings, computes camera and shadow frustum visibility into compacted batch slices, and obtains instance counts from indexed indirect draw arguments.
 - The retained draw database grows geometrically past the original 64-batch limit. It rebuilds only when render membership, geometry LOD topology, or required capacity changes.
-- Every Geometry version owns bounded meshlets and a crack-aware, deterministically paged cluster hierarchy. Complete page sets that fit the remaining budget are admitted immediately; coarse pages remain pinned for streamed resources. The GPU selects resident detail, requests missing finer pages, and draws the nearest resident fallback before camera sphere, normal-cone, and Hi-Z tests. Native multi-draw adapters retain one indirect command per hierarchy cluster. Other indirect-first-instance adapters append selected instance/cluster records into a bounded camera stream and vertex-pull compatible material spans through one indirect command. Adapters without indirect-first-instance and `--cpu-culling` retain whole-primitive imported LOD selection.
+- Every Geometry version owns bounded meshlets and a crack-aware, deterministically paged cluster hierarchy. Hierarchy simplification preserves normal and UV discontinuities and never falls back to attribute-blind reduction. Complete page sets that fit the remaining budget are admitted immediately; coarse pages remain pinned for streamed resources. The GPU selects resident detail, requests missing finer pages, and draws the nearest resident fallback before camera sphere, normal-cone, and Hi-Z tests. Native multi-draw adapters retain one indirect command per hierarchy cluster. Other indirect-first-instance adapters append selected instance/cluster records into a bounded camera stream and vertex-pull compatible material spans through one indirect command. Adapters without indirect-first-instance and `--cpu-culling` retain whole-primitive imported LOD selection.
 - The active camera selects a backend-neutral debug view: lit output, material inputs, mapped world normals, logarithmic depth, retained meshlet identity, exact GPU-selected LOD, selected virtual-geometry clusters and hierarchy depth, object/meshlet visibility classification, one retained Hi-Z mip, or exact screen-space Hi-Z query footprints. Non-lit views skip presentation effects so diagnostics remain direct and stable.
 - Hi-Z false color and texel boundaries expose the exact conservative max-depth hierarchy without readback or rebuilding it. Occlusion Queries records each tested rectangle, selected mip, bound depth, sampled farthest depth, identity, and visible/culled decision in a bounded GPU-native stream.
 - The camera can freeze the latest valid occlusion-query records while that view remains selected. Freeze preserves only diagnostic records and their indirect draw count; ordinary culling continues from current safe Hi-Z state.
@@ -299,15 +299,22 @@ with indirect-first-instance, project group error into pixels and submit the uni
 frontier surrounding a one-pixel threshold before ordinary cluster culling.
 
 When finer detail is wanted but missing, submit the resident coarse cluster and append its group
-identity plus projected-error priority to the visibility-feedback buffer. Visible instances append
-resident-group usage touches through the same bounded channel. Deterministic hashing spreads those
-touches across 16 frames; missing-group requests remain immediate.
+identity plus projected-error priority to a bounded demand lane. Separate bounded lanes carry
+future-camera prefetch and cadence-sampled visible-use touches, so speculative traffic cannot erase
+urgent demand. Deterministic hashing spreads touches across 16 frames; missing-group requests remain
+immediate. CPU processing deduplicates the three lanes by Geometry and group.
 
 With renderer prefetch enabled, smoothed camera motion projects a bounded future position and view
 direction into a widened future frustum. The GPU may request likely refinement groups without
 rendering, touching, or otherwise making them authoritative. Demand sorts first and may reclaim
 speculative residency immediately. Prefetch uses spare budget and never evicts demand-resident
 geometry. Visible use promotes a prefetched group and records a hit.
+
+Page residency does not immediately make a streamed refinement drawable. A newly complete group is
+staged while its coarse frontier remains active. It activates after a demand-free settling window,
+or after a bounded maximum hold so continuously visible detail still makes progress. This separates
+safe memory admission from visible topology changes and prevents late asynchronous completions from
+randomly replacing geometry during an ordinary camera move.
 
 Asynchronous CPU processing applies touches, deduplicates and prioritizes group requests. Imported
 misses read exact Model-product byte ranges on a dedicated worker. Versioned completions admit or
@@ -319,7 +326,9 @@ frontier remains drawable. A newly uploaded group begins its visible-use grace w
 admission frame, rather than spending that protection while its older GPU request is still crossing
 the asynchronous readback boundary.
 
-Per-frame byte and group limits bound streaming work. One admitted group or complete-resource
+At capacity, any continuing visible demand raises a renderer-owned projected-error threshold after
+a 32-frame cooldown, up to a bounded ceiling. The policy only coarsens during a run; it does not
+oscillate between quality levels. Per-frame byte and group limits bound streaming work. One admitted group or complete-resource
 preload becomes one combined arena transfer. Residency mutations use persistent group-to-cluster
 and refinement-to-parent indices to patch only changed clusters and their direct dependents.
 Adjacent changes coalesce into bounded GPU writes; stable frames do no page work.
@@ -341,8 +350,8 @@ per-cluster command generation, or geometry upload.
 The `virtual_geometry` camera view colors selected clusters by identity and hierarchy depth. Amber
 marks a branch whose finer group is not completely resident; cyan marks a selected page that
 arrived speculatively. Structured results report payload budget and residency, demand/prefetch
-feedback, asynchronous reads/failures, page/group uploads, prefetch hits/reclamation, evictions,
-deferred groups, selected clusters, and threshold rejections.
+feedback, asynchronous reads/failures, page/group uploads, drawable group activations, prefetch
+hits/reclamation, evictions, deferred groups, selected clusters, and threshold rejections.
 
 **Why:** Geometry detail must vary below object granularity without cracks, importer-specific draw
 paths, or CPU decisions per cluster.

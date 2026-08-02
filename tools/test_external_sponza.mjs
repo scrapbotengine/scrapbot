@@ -80,7 +80,7 @@ function main() {
     readFileSync(join(importedDirectory, metadataName), "utf8"),
   );
   if (
-    metadata.schema !== "scrapbot.model.v13.runtime-catalog" ||
+    metadata.schema !== "scrapbot.model.v16.attribute-hierarchy" ||
     metadata.node_count !== 1 ||
     metadata.mesh_count !== 1 ||
     metadata.primitive_count !== 103 ||
@@ -94,9 +94,9 @@ function main() {
     metadata.lod_vertex_count <= 0 ||
     metadata.lod_index_count <= 0 ||
     metadata.lod_index_count >= metadata.index_count ||
-    metadata.cluster_count !== 15607 ||
-    metadata.cluster_group_count !== 1965 ||
-    metadata.cluster_page_count !== 1965
+    metadata.cluster_count !== 15791 ||
+    metadata.cluster_group_count !== 1917 ||
+    metadata.cluster_page_count !== 1917
   ) {
     throw new Error(
       "Sponza metadata does not match the pinned real-world model shape",

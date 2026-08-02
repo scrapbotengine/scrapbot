@@ -136,7 +136,7 @@ mise profile-sweep -- examples/sponza \
 
 The default matrix is 960×540, 1280×720, and 1920×1080. Repeat `--resolution WIDTHxHEIGHT` to use an explicit bounded matrix. Read `sweep.json`, not the aligned human table, from automation.
 
-Use `examples/minimal` to prove the pipeline and artifact contract. Use `examples/ecs-showcase` for retained instances and ordinary engine features. Use `examples/sponza` only after `mise setup-assets` when the question requires a representative architectural workload.
+Use `examples/minimal` to prove the pipeline and artifact contract. Use `examples/ecs-showcase` for retained instances and ordinary engine features. Use `examples/sponza` only after `mise setup-assets` when the question requires a representative architectural workload. Use `examples/virtual-wilds` after asset setup when the question requires real photogrammetry, generated cluster hierarchies, bounded virtual-geometry residency, or streaming under camera motion.
 
 ## Temporal Render Verification
 
@@ -175,6 +175,23 @@ Then:
 When the issue is purely static and no renderer state can change after the tested frame, one
 framegrab remains sufficient.
 
+Use the reusable sequence gate when the scenario should remain in the suite:
+
+```sh
+node tools/test_render_sequence.mjs \
+  --project examples/virtual-wilds \
+  --warmup 120 \
+  --frames 120 \
+  --capture-range 104:111 \
+  --stable-frontier \
+  --out /tmp/scrapbot-virtual-wilds-sequence
+```
+
+`--stable-frontier` requires one settled projected-error policy, no feedback overflow or page-read
+failure, and no group upload or eviction inside the captured range. The runner preserves the
+profile, every PNG, and `sequence-manifest.json`. Pass `--golden-dir` and `--minimum-psnr` for a
+platform-qualified image baseline; do not use exact pixel equality across GPU vendors.
+
 ### Historical GPU benchmark bundles
 
 Use the benchmark orchestrator when a renderer change needs trend evidence across representative
@@ -211,6 +228,7 @@ for a controlled same-machine before/after reproduction.
 - Use `examples/minimal` for fast CLI, project loading, scheduling, Luau/Odin integration, null backend, and basic WGPU smoke tests.
 - Use `examples/ecs-showcase` for geometry, materials, render reconciliation, batching, lighting, lifecycle-heavy ECS behavior, and visual renderer changes.
 - Use `examples/sponza` for explicit heavyweight external-file glTF, generated-material, architectural-shadow, and clustered-lighting integration after `mise setup-assets`.
+- Use `examples/virtual-wilds` for explicit heavyweight photogrammetry import, generated LOD/cluster products, virtual-geometry page demand, and temporal streaming after `mise setup-assets`. Use `mise test-virtual-wilds-gpu` for its bounded consecutive-frame profile and stable-frontier assertion.
 - Use `examples/ui-showcase` for retained ECS UI hierarchy, box-model layout, horizontal/vertical stacks, smooth clipped scroll areas, SDF-rounded backgrounds, pointer-styled buttons, MTSDF text, and overlay/framegrab changes. Use `--ui-script` for deterministic headless hover, active, focus, typing, scrolling, and editor workflows; do not rely on OS pointer automation.
 
 Validate an example with:

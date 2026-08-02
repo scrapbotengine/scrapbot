@@ -55,12 +55,14 @@ Virtual Geometry that fits the remaining budget retains canonical vertex/index r
 expanded page indices. Larger resources allocate page-local vertex and index ranges only for
 resident pages, with the coarsest pages pinned.
 
-GPU feedback identifies visible demand, bounded future-camera prefetch, and visible-use touches.
+GPU feedback identifies visible demand, bounded future-camera prefetch, and visible-use touches in
+separate bounded lanes.
 Imported misses enqueue immutable product ranges on the I/O worker. Versioned completions admit and
 evict whole groups under bounded per-frame work and the combined payload budget. One priority-ordered
 plan serves every eviction in the feedback batch. Demand may reclaim speculative residency;
-prefetch uses spare capacity only. A resident child protects its direct parent fallback, and release
-orders child before parent eligibility. Persistent dependency indices patch only affected cluster
+prefetch uses spare capacity only. Completed groups stage residency separately from drawable
+activation; a demand-aware settling window keeps the coarse frontier stable across late I/O. An
+active child protects its direct parent fallback, and release orders child before parent eligibility. Persistent dependency indices patch only affected cluster
 ranges rather than regenerating a Geometry's complete GPU residency table.
 
 Capable adapters retain cluster metadata and arena-global indirect templates. They select the

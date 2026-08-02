@@ -147,6 +147,16 @@ description = "Import and render the pinned Khronos Sponza fixture"
 depends = ["build"]
 run = 'node tools/test_external_sponza.mjs --framegrab "${TMPDIR:-/tmp}/scrapbot-sponza.png"'
 
+[tasks.test-virtual-wilds]
+description = "Import and validate the pinned Poly Haven virtual-geometry fixture"
+depends = ["build"]
+run = "node tools/test_external_virtual_wilds.mjs"
+
+[tasks.test-virtual-wilds-gpu]
+description = "Import and verify a stable multi-frame Virtual Wilds stream"
+depends = ["build"]
+run = 'node tools/test_external_virtual_wilds.mjs --sequence-out "${TMPDIR:-/tmp}/scrapbot-virtual-wilds-sequence"'
+
 [tasks.build]
 description = "Build the Scrapbot CLI when its optimized binary is stale"
 depends = ["luau", "cgltf", "meshoptimizer", "wgpu", "icon-tools"]

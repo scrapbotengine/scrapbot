@@ -1180,9 +1180,15 @@ struct Visibility_Counters {
 	virtual_rejected_clusters: atomic<u32>,
 	virtual_page_request_count: atomic<u32>,
 	virtual_page_prefetch_count: atomic<u32>,
-	virtual_page_feedback_count: atomic<u32>,
-	virtual_page_feedback_overflow: atomic<u32>,
-	virtual_page_feedback: array<Virtual_Page_Feedback, 4096>,
+	virtual_page_demand_feedback_count: atomic<u32>,
+	virtual_page_touch_feedback_count: atomic<u32>,
+	virtual_page_prefetch_feedback_count: atomic<u32>,
+	virtual_page_demand_feedback_overflow: atomic<u32>,
+	virtual_page_touch_feedback_overflow: atomic<u32>,
+	virtual_page_prefetch_feedback_overflow: atomic<u32>,
+	virtual_page_demand_feedback: array<Virtual_Page_Feedback, 4096>,
+	virtual_page_touch_feedback: array<Virtual_Page_Feedback, 4096>,
+	virtual_page_prefetch_feedback: array<Virtual_Page_Feedback, 4096>,
 	visible_batch_words: array<atomic<u32>, 16384>,
 };
 
@@ -1283,17 +1289,46 @@ fn append_virtual_page_feedback(
 	priority: f32,
 	flags: u32,
 ) {
-	let feedback_index = atomicAdd(&counters.virtual_page_feedback_count, 1u);
-	if (feedback_index < 4096u) {
-		counters.virtual_page_feedback[feedback_index] = Virtual_Page_Feedback(
+	var feedback_index = 0u;
+	if ((flags & 1u) != 0u) {
+		feedback_index = atomicAdd(&counters.virtual_page_demand_feedback_count, 1u);
+		if (feedback_index < 4096u) {
+			counters.virtual_page_demand_feedback[feedback_index] = Virtual_Page_Feedback(
+				meshlet.request_geometry_index,
+				meshlet.request_geometry_generation,
+				group_index,
+				priority,
+				flags,
+			);
+		} else {
+			atomicAdd(&counters.virtual_page_demand_feedback_overflow, 1u);
+		}
+	} else if ((flags & 2u) != 0u) {
+		feedback_index = atomicAdd(&counters.virtual_page_touch_feedback_count, 1u);
+		if (feedback_index < 4096u) {
+			counters.virtual_page_touch_feedback[feedback_index] = Virtual_Page_Feedback(
+				meshlet.request_geometry_index,
+				meshlet.request_geometry_generation,
+				group_index,
+				priority,
+				flags,
+			);
+		} else {
+			atomicAdd(&counters.virtual_page_touch_feedback_overflow, 1u);
+		}
+	} else {
+		feedback_index = atomicAdd(&counters.virtual_page_prefetch_feedback_count, 1u);
+		if (feedback_index < 4096u) {
+			counters.virtual_page_prefetch_feedback[feedback_index] = Virtual_Page_Feedback(
 			meshlet.request_geometry_index,
 			meshlet.request_geometry_generation,
 			group_index,
 			priority,
 			flags,
 		);
-	} else {
-		atomicAdd(&counters.virtual_page_feedback_overflow, 1u);
+		} else {
+			atomicAdd(&counters.virtual_page_prefetch_feedback_overflow, 1u);
+		}
 	}
 }
 
@@ -1406,7 +1441,12 @@ fn prefetch_virtual_cluster(
 	);
 	if (
 		group_over_threshold &&
-		predicted_error > cull.virtual_error_pixels * 0.75 &&
+		// Start asynchronous page IO before the predicted frontier reaches the
+		// visible selection threshold. The readback, file read, upload, and GPU
+		// metadata refresh span several frames; waiting until 75% leaves too
+		// little runway for ordinary camera motion and exposes coarse-to-fine
+		// topology snaps in the current view.
+		predicted_error > cull.virtual_error_pixels * 0.5 &&
 		predictive_sphere_visible(world_virtual_bounds(instance, meshlet.refined_bounds))
 	) {
 		atomicAdd(&counters.virtual_page_prefetch_count, 1u);

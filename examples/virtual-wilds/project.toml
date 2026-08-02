@@ -1,0 +1,10 @@
+name = "Virtual Wilds"
+default_scene = "scenes/main.scene.toml"
+
+[window]
+width = 1600
+height = 900
+
+[render]
+virtual_geometry_budget_mb = 128
+virtual_geometry_prefetch = true

@@ -305,6 +305,33 @@ mise scrapbot -- run examples/impossible-archive --editor
 Choose **Virtual Geometry** in the Game debug-view selector to inspect the resident cluster
 frontier. Use `mise archive-profile` for a bounded 1600×900 profile of the showcase preset.
 
+Use `examples/virtual-wilds` when virtual geometry needs real photogrammetry rather than generated
+geometry. It imports three pinned CC0 Poly Haven scans containing about 2.3 million source
+triangles, generates their LOD and cluster hierarchies, and flies along a coastal route while
+5,970 pages compete for a 128 MiB residency budget:
+
+```sh
+mise setup-assets
+mise scrapbot -- run examples/virtual-wilds --editor
+```
+
+The example is an ordinary project. Its glTF resources, scene components, Luau camera system, and
+render settings use the same public paths available to games. `mise test-virtual-wilds` rebuilds
+and validates the pinned import products. `mise test-virtual-wilds-gpu` profiles a deterministic
+camera segment, preserves eight consecutive PNGs, and rejects feedback overflow, page-read failure,
+or a page upload, eviction, or projected-error change inside that settled capture window.
+
+Projects can use the same reusable sequence gate directly:
+
+```sh
+node tools/test_render_sequence.mjs --project examples/virtual-wilds \
+  --warmup 120 --frames 120 --capture-range 104:111 \
+  --stable-frontier --out /tmp/virtual-wilds-sequence
+```
+
+Add `--golden-dir <directory> --minimum-psnr <dB>` for platform-qualified golden images. Prefer a
+tolerant PSNR baseline per adapter family over byte equality across different GPU implementations.
+
 ```sh
 scrapbot run examples/ui-showcase --backend wgpu --headless --frames 2 --framegrab /tmp/scrapbot-ui.png
 ```
@@ -441,8 +468,8 @@ The `workload` object records the dispatch size, render extent, encoded draw-sub
 
 `counter_deltas` turns cumulative upload, rebuild, dispatch, resize, redraw, cache-hit, geometry-
 arena mutation, and virtual page/group totals into the work attributable to that frame. Stable
-measured rows should report zero geometry arena uploads, growths, page/group uploads, evictions,
-and deferred admissions.
+measured rows should report zero geometry arena uploads, growths, page/group uploads, drawable
+group activations, evictions, and deferred admissions.
 
 GPU timestamps arrive asynchronously. Scrapbot tags every readback with its originating frame and merges it into that exact row. Check `gpu_timing_valid` before using a row.
 

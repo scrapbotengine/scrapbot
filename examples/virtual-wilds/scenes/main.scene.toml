@@ -1,0 +1,208 @@
+[[entities]]
+id = "7b100000-0000-4000-8000-000000000001"
+name = "Wilds Camera"
+
+[entities.transform]
+position = [0, 4.2, 9]
+rotation = [-0.08, 0, 0]
+scale = [1, 1, 1]
+
+[entities.camera]
+fov = 62
+near = 0.08
+far = 360
+resolution_scale = 1
+dynamic_resolution = true
+dynamic_resolution_min_scale = 0.6
+dynamic_resolution_target_ms = 16.667
+adaptive_quality_minimum = 0.25
+exposure = 2
+automatic_exposure = false
+automatic_exposure_min = 0.8
+automatic_exposure_max = 2.5
+automatic_exposure_speed = 1.2
+temporal_antialiasing = true
+fast_antialiasing = false
+ambient_occlusion = true
+ambient_occlusion_quality = 0.5
+screen_space_reflections = false
+screen_space_reflections_quality = 0.5
+bloom = true
+
+[entities.components.wilds_camera]
+origin = [0, 4.2, 9]
+travel = 112
+duration = 24
+
+[[entities]]
+id = "7b100000-0000-4000-8000-000000000002"
+name = "Coastal Atmosphere"
+
+[entities.world_environment]
+lighting = ""
+lighting_intensity = 1
+reflection_intensity = 0
+lighting_rotation = 18
+exposure = 0.8
+background_visible = true
+background = ""
+background_intensity = 0.7
+background_rotation = 18
+background_exposure = 0.6
+background_blur = 0
+sky_tint = [0.46, 0.6, 0.72]
+ground_color = [0.06, 0.08, 0.07]
+turbidity = 2.8
+atmosphere_thickness = 0.8
+horizon_softness = 1
+sun_direction = [-0.42, 0.76, 0.5]
+sun_color = [1, 0.78, 0.52]
+sun_intensity = 2
+sun_size = 0.35
+sun_glow = 0.2
+
+[entities.components.scrapbot.volumetric_fog]
+color = [0.22, 0.32, 0.38]
+density = 0.008
+height = 0
+height_falloff = 0.055
+max_distance = 150
+anisotropy = 0.62
+ambient_intensity = 0.02
+light_intensity = 2.6
+point_light_intensity = 0
+
+[[entities]]
+id = "7b100000-0000-4000-8000-000000000003"
+name = "Soft Sky Fill"
+
+[entities.ambient_light]
+color = [0.4, 0.48, 0.5]
+intensity = 0.65
+
+[[entities]]
+id = "7b100000-0000-4000-8000-000000000004"
+name = "Coastal Water"
+
+[entities.transform]
+position = [0, -0.7, -50]
+rotation = [0, 0, 0]
+scale = [42, 0.5, 150]
+
+[entities.geometry]
+resource = "cube"
+
+[entities.material]
+resource = "7b000000-0000-4000-8000-000000000007"
+
+[[entities]]
+id = "7b100000-0000-4000-8000-000000000005"
+name = "Rocky Coast Foreground"
+
+[entities.transform]
+position = [0, -0.55, -1]
+rotation = [0, 3.14159, 0]
+scale = [0.72, 1, 0.72]
+
+[entities.model]
+resource = "7b000000-0000-4000-8000-000000000004"
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "7b100000-0000-4000-8000-000000000010"
+name = "Rocky Coast Middle"
+
+[entities.transform]
+position = [0, -0.5, -34]
+rotation = [0, 0, 0]
+scale = [1.15, 1, 1.3]
+
+[entities.model]
+resource = "7b000000-0000-4000-8000-000000000004"
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "7b100000-0000-4000-8000-000000000011"
+name = "Rocky Coast Far"
+
+[entities.transform]
+position = [1.5, -0.7, -83]
+rotation = [0, 3.14159, 0]
+scale = [1.25, 1, 1.25]
+
+[entities.model]
+resource = "7b000000-0000-4000-8000-000000000004"
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "7b100000-0000-4000-8000-000000000012"
+name = "Near Great Cliff"
+
+[entities.transform]
+position = [20, 0, -24]
+rotation = [0, -1.5708, 0]
+scale = [1, 1.3, 1]
+
+[entities.model]
+resource = "7b000000-0000-4000-8000-000000000003"
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "7b100000-0000-4000-8000-000000000014"
+name = "Far Great Cliff"
+
+[entities.transform]
+position = [19, -0.2, -89]
+rotation = [0, -1.5708, 0]
+scale = [1, 1.4, 1]
+
+[entities.model]
+resource = "7b000000-0000-4000-8000-000000000003"
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "7b100000-0000-4000-8000-000000000030"
+name = "Bleached Trunk"
+
+[entities.transform]
+position = [3.5, 0.65, -5]
+rotation = [0.08, 0.45, -0.12]
+scale = [2.8, 2.8, 2.8]
+
+[entities.model]
+resource = "7b000000-0000-4000-8000-000000000006"
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "7b100000-0000-4000-8000-000000000031"
+name = "Middle Trunk"
+
+[entities.transform]
+position = [-2.8, 0.5, -50]
+rotation = [-0.1, -0.8, 0.18]
+scale = [3.5, 3.5, 3.5]
+
+[entities.model]
+resource = "7b000000-0000-4000-8000-000000000006"
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "7b100000-0000-4000-8000-000000000032"
+name = "Far Trunk"
+
+[entities.transform]
+position = [4, 0.5, -86]
+rotation = [0.2, 1.25, -0.1]
+scale = [4, 4, 4]
+
+[entities.model]
+resource = "7b000000-0000-4000-8000-000000000006"
+
+[entities.shadow_receiver]

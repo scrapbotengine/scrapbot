@@ -1,0 +1,9 @@
+id = "7b000000-0000-4000-8000-000000000004"
+type = "scrapbot.model"
+name = "Coast Rocks 01"
+
+[model]
+source = "assets/coast_rocks_01/coast_rocks_01_1k.gltf"
+generate_lods = true
+lod_ratios = [0.5, 0.25, 0.125]
+lod_screen_radii = [0.18, 0.055, 0.018]

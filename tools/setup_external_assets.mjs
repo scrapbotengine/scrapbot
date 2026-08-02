@@ -130,13 +130,21 @@ function expandedAssets(manifest) {
       result.push(asset);
       continue;
     }
+    const hasBaseUrl =
+      typeof asset.base_url === "string" && asset.base_url !== "";
+    const filesHaveUrls =
+      Array.isArray(asset.files) &&
+      asset.files.every(
+        (file) => typeof file.url === "string" && file.url !== "",
+      );
     if (
       !Array.isArray(asset.files) ||
       asset.files.length === 0 ||
-      typeof asset.base_url !== "string" ||
-      asset.base_url === ""
+      (!hasBaseUrl && !filesHaveUrls)
     ) {
-      throw new Error(`${asset.id}: file bundles require base_url and files`);
+      throw new Error(
+        `${asset.id}: file bundles require files with explicit URLs or a base_url`,
+      );
     }
     const placementRoots = asset.placements ?? [];
     for (const file of asset.files) {
@@ -148,14 +156,32 @@ function expandedAssets(manifest) {
       ) {
         throw new Error(`${asset.id}: bundle file path must be safe and relative`);
       }
+      const placementPath = file.placement ?? file.path;
+      if (
+        typeof placementPath !== "string" ||
+        placementPath === "" ||
+        placementPath.includes("\\") ||
+        placementPath
+          .split("/")
+          .some((part) => part === "" || part === "." || part === "..")
+      ) {
+        throw new Error(`${asset.id}: bundle placement must be safe and relative`);
+      }
+      let url = file.url;
+      if (typeof url !== "string" || url === "") {
+        url = new URL(
+          file.path,
+          `${asset.base_url.replace(/\/+$/, "")}/`,
+        ).toString();
+      }
       result.push({
         ...file,
         id: `${asset.id}:${file.path}`,
         path: `${asset.path}/${file.path}`,
-        url: new URL(file.path, `${asset.base_url.replace(/\/+$/, "")}/`).toString(),
+        url,
         source: asset.source,
         license: asset.license,
-        placements: placementRoots.map((placement) => `${placement}/${file.path}`),
+        placements: placementRoots.map((placement) => `${placement}/${placementPath}`),
         quiet: true,
       });
     }

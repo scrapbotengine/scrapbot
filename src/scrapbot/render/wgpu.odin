@@ -44,6 +44,13 @@ WGPU_CLUSTER_INITIAL_LIGHT_CAPACITY :: 256
 WGPU_VIRTUAL_GEOMETRY_BUDGET_BYTES :: u64(64 * 1024 * 1024)
 WGPU_VIRTUAL_GEOMETRY_UPLOAD_BUDGET_BYTES :: u64(512 * 1024)
 WGPU_VIRTUAL_GEOMETRY_UPLOAD_GROUP_BUDGET :: 16
+WGPU_VIRTUAL_GEOMETRY_MIN_ERROR_PIXELS :: f32(1)
+WGPU_VIRTUAL_GEOMETRY_MAX_ERROR_PIXELS :: f32(16)
+WGPU_VIRTUAL_GEOMETRY_PRESSURE_REQUESTS :: u32(0)
+WGPU_VIRTUAL_GEOMETRY_PRESSURE_PERCENT :: u64(98)
+WGPU_VIRTUAL_GEOMETRY_ERROR_ADJUSTMENT_FRAMES :: u64(32)
+WGPU_VIRTUAL_GROUP_ACTIVATION_GRACE_FRAMES :: u64(8)
+WGPU_VIRTUAL_GROUP_ACTIVATION_MAX_HOLD_FRAMES :: u64(32)
 WGPU_HIZ_OCCLUSION_WORLD_BIAS :: f32(0.005)
 
 WGPU_GPU_Timestamp_Phase :: enum u32 {
@@ -114,9 +121,15 @@ WGPU_GPU_Visibility_Counters :: struct {
 	virtual_rejected_clusters: u32,
 	virtual_page_request_count: u32,
 	virtual_page_prefetch_count: u32,
-	virtual_page_feedback_count: u32,
-	virtual_page_feedback_overflow: u32,
-	virtual_page_feedback: [WGPU_VIRTUAL_PAGE_FEEDBACK_CAPACITY]WGPU_GPU_Virtual_Page_Feedback,
+	virtual_page_demand_feedback_count: u32,
+	virtual_page_touch_feedback_count: u32,
+	virtual_page_prefetch_feedback_count: u32,
+	virtual_page_demand_feedback_overflow: u32,
+	virtual_page_touch_feedback_overflow: u32,
+	virtual_page_prefetch_feedback_overflow: u32,
+	virtual_page_demand_feedback: [WGPU_VIRTUAL_PAGE_FEEDBACK_CAPACITY]WGPU_GPU_Virtual_Page_Feedback,
+	virtual_page_touch_feedback: [WGPU_VIRTUAL_PAGE_FEEDBACK_CAPACITY]WGPU_GPU_Virtual_Page_Feedback,
+	virtual_page_prefetch_feedback: [WGPU_VIRTUAL_PAGE_FEEDBACK_CAPACITY]WGPU_GPU_Virtual_Page_Feedback,
 }
 WGPU_VIRTUAL_PAGE_FEEDBACK_CAPACITY :: 4_096
 WGPU_GPU_Virtual_Page_Feedback :: struct {
@@ -486,8 +499,10 @@ WGPU_Geometry_Cache :: struct {
 WGPU_Cluster_Group_Cache :: struct {
 	last_used_frame: u64,
 	resident_since_frame: u64,
+	last_demand_frame: u64,
 	priority: f32,
 	resident: bool,
+	active: bool,
 	pinned: bool,
 	prefetched: bool,
 	resident_refinement_count: u32,
@@ -1003,13 +1018,17 @@ WGPU_Renderer :: struct {
 	virtual_geometry_page_read_failure_count: u64,
 	virtual_geometry_page_eviction_count: u64,
 	virtual_geometry_group_upload_count: u64,
+	virtual_geometry_group_activation_count: u64,
 	virtual_geometry_prefetch_group_upload_count: u64,
 	virtual_geometry_prefetch_hit_count: u64,
 	virtual_geometry_prefetch_eviction_count: u64,
 	virtual_geometry_group_eviction_count: u64,
 	virtual_geometry_deferred_group_count: u64,
 	virtual_geometry_page_io: WGPU_Virtual_Page_IO,
+	virtual_geometry_pending_activations: [dynamic]WGPU_Virtual_Group_Change,
 	virtual_geometry_prefetch_enabled: bool,
+	virtual_geometry_error_pixels: f32,
+	virtual_geometry_error_last_adjustment_frame: u64,
 	virtual_geometry_camera_position: Vec3,
 	virtual_geometry_camera_forward: Vec3,
 	virtual_geometry_camera_velocity: Vec3,
@@ -2702,6 +2721,7 @@ wgpu_geometry_cache :: proc(
 					group.resident = group.resident && cluster_pages[page_index].resident
 				}
 				group.resident_since_frame = renderer.profile_frame_index if group.resident else 0
+				group.active = group.resident
 			}
 			for group, group_index in cluster_groups {
 				if group.resident {

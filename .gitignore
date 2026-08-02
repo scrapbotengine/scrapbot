@@ -6,4 +6,5 @@ examples/*/build/
 /examples/gltf-showcase/assets/
 /examples/sponza/assets/
 /examples/impossible-archive/assets/
+/examples/virtual-wilds/assets/
 .vscode/settings.json

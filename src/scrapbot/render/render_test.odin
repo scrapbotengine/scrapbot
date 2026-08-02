@@ -1891,7 +1891,9 @@ test_wgpu_meshlet_visibility_capacity_is_exact_and_bounded :: proc(t: ^testing.T
 test_wgpu_culling_shader_stays_within_portable_storage_binding_floor :: proc(t: ^testing.T) {
 	testing.expect_value(t, strings.count(WGPU_GPU_CULL_SHADER, "var<storage"), 8)
 	testing.expect(t, !strings.contains(WGPU_GPU_CULL_SHADER, "@binding(10)"))
-	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "virtual_page_feedback"))
+	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "virtual_page_demand_feedback"))
+	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "virtual_page_touch_feedback"))
+	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "virtual_page_prefetch_feedback"))
 	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "append_virtual_page_feedback"))
 	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "prefetch_virtual_cluster"))
 	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "predictive_camera_planes"))
@@ -1917,8 +1919,11 @@ test_wgpu_virtual_group_residency_requires_every_page :: proc(t: ^testing.T) {
 	}
 	cache := WGPU_Geometry_Cache {
 		cluster_pages = make([dynamic]WGPU_Cluster_Page_Cache, 2),
+		cluster_groups = make([dynamic]WGPU_Cluster_Group_Cache, 1),
 	}
 	defer delete(cache.cluster_pages)
+	defer delete(cache.cluster_groups)
+	cache.cluster_groups[0].active = true
 	resident, missing, has_missing := wgpu_cluster_group_residency(&geometry, &cache, 0)
 	testing.expect(t, !resident)
 	testing.expect(t, has_missing)
@@ -2134,6 +2139,100 @@ test_wgpu_virtual_geometry_prefetch_preserves_recent_residency :: proc(t: ^testi
 test_wgpu_virtual_geometry_admission_starts_its_grace_window_at_upload :: proc(t: ^testing.T) {
 	testing.expect_value(t, wgpu_virtual_page_admission_frame(40, 36), u64(40))
 	testing.expect_value(t, wgpu_virtual_page_admission_frame(40, 40), u64(40))
+}
+
+@(test)
+test_wgpu_virtual_geometry_activates_only_after_a_stable_window :: proc(t: ^testing.T) {
+	renderer := WGPU_Renderer {
+		geometry_cache = make([dynamic]WGPU_Geometry_Cache, 1),
+	}
+	defer delete(renderer.geometry_cache)
+	defer delete(renderer.virtual_geometry_pending_activations)
+	cache := &renderer.geometry_cache[0]
+	cache.handle = {
+		index = 7,
+		generation = 2,
+	}
+	resize(&cache.cluster_groups, 2)
+	defer delete(cache.cluster_groups)
+	cache.cluster_groups[0] = {
+		resident_since_frame = 10,
+		last_demand_frame = 15,
+		resident = true,
+	}
+	cache.cluster_groups[1] = {
+		resident_since_frame = 10,
+		last_demand_frame = 15,
+		resident = true,
+	}
+	changes: [dynamic]WGPU_Virtual_Group_Change
+	defer delete(changes)
+	wgpu_append_virtual_group_change(
+		&renderer.virtual_geometry_pending_activations,
+		cache.handle,
+		0,
+	)
+	wgpu_append_virtual_group_change(
+		&renderer.virtual_geometry_pending_activations,
+		cache.handle,
+		1,
+	)
+
+	renderer.profile_frame_index = 22
+	wgpu_activate_stable_virtual_groups(&renderer, &changes)
+	testing.expect(t, !cache.cluster_groups[0].active)
+	testing.expect_value(t, len(changes), 0)
+
+	renderer.profile_frame_index = 23
+	wgpu_activate_stable_virtual_groups(&renderer, &changes)
+	testing.expect(t, cache.cluster_groups[0].active)
+	testing.expect(t, cache.cluster_groups[1].active)
+	testing.expect_value(t, len(changes), 2)
+
+	cache.cluster_groups[0].active = false
+	cache.cluster_groups[0].last_demand_frame = 41
+	clear(&changes)
+	wgpu_append_virtual_group_change(
+		&renderer.virtual_geometry_pending_activations,
+		cache.handle,
+		0,
+	)
+	renderer.profile_frame_index = 41
+	wgpu_activate_stable_virtual_groups(&renderer, &changes)
+	testing.expect(t, !cache.cluster_groups[0].active)
+	renderer.profile_frame_index = 42
+	wgpu_activate_stable_virtual_groups(&renderer, &changes)
+	testing.expect(t, cache.cluster_groups[0].active)
+	// The maximum hold bounds how long continuously demanded resident data can
+	// remain staged; it does not make admission depend on camera idleness.
+	testing.expect_value(t, len(changes), 1)
+}
+
+@(test)
+test_wgpu_virtual_geometry_pressure_selects_a_stable_fitting_error :: proc(t: ^testing.T) {
+	renderer := WGPU_Renderer {
+		virtual_geometry_budget_bytes = 100,
+		virtual_geometry_resident_bytes = 98,
+	}
+	testing.expect(t, !wgpu_update_virtual_geometry_error(&renderer, 1_000, 0, 31))
+	testing.expect_value(
+		t,
+		renderer.virtual_geometry_error_pixels,
+		WGPU_VIRTUAL_GEOMETRY_MIN_ERROR_PIXELS,
+	)
+	testing.expect(t, wgpu_update_virtual_geometry_error(&renderer, 1_000, 0, 32))
+	testing.expect_value(t, renderer.virtual_geometry_error_pixels, f32(2))
+	testing.expect(t, !wgpu_update_virtual_geometry_error(&renderer, 1_000, 0, 63))
+	testing.expect(t, wgpu_update_virtual_geometry_error(&renderer, 1_000, 0, 64))
+	testing.expect_value(t, renderer.virtual_geometry_error_pixels, f32(4))
+
+	renderer.virtual_geometry_resident_bytes = 97
+	testing.expect(t, !wgpu_update_virtual_geometry_error(&renderer, 1_000, 0, 96))
+	testing.expect_value(t, renderer.virtual_geometry_error_pixels, f32(4))
+	renderer.virtual_geometry_resident_bytes = 98
+	testing.expect(t, !wgpu_update_virtual_geometry_error(&renderer, 0, 0, 96))
+	testing.expect(t, wgpu_update_virtual_geometry_error(&renderer, 0, 1, 96))
+	testing.expect_value(t, renderer.virtual_geometry_error_pixels, f32(8))
 }
 
 @(test)
@@ -2429,6 +2528,7 @@ test_profile_reports_per_frame_counter_deltas_after_warmup :: proc(t: ^testing.T
 		virtual_geometry_page_read_failures = 1,
 		virtual_geometry_page_evictions = 1,
 		virtual_geometry_group_uploads = 3,
+		virtual_geometry_group_activations = 2,
 		virtual_geometry_prefetch_group_uploads = 2,
 		virtual_geometry_prefetch_hits = 4,
 		virtual_geometry_prefetch_evictions = 1,
@@ -2452,6 +2552,7 @@ test_profile_reports_per_frame_counter_deltas_after_warmup :: proc(t: ^testing.T
 	stats.virtual_geometry_page_read_failures += 2
 	stats.virtual_geometry_page_evictions += 1
 	stats.virtual_geometry_group_uploads += 1
+	stats.virtual_geometry_group_activations += 1
 	stats.virtual_geometry_prefetch_group_uploads += 1
 	stats.virtual_geometry_prefetch_hits += 2
 	stats.virtual_geometry_prefetch_evictions += 1
@@ -2475,6 +2576,7 @@ test_profile_reports_per_frame_counter_deltas_after_warmup :: proc(t: ^testing.T
 	testing.expect_value(t, first.virtual_geometry_page_read_failures, u64(2))
 	testing.expect_value(t, first.virtual_geometry_page_evictions, u64(1))
 	testing.expect_value(t, first.virtual_geometry_group_uploads, u64(1))
+	testing.expect_value(t, first.virtual_geometry_group_activations, u64(1))
 	testing.expect_value(t, first.virtual_geometry_prefetch_group_uploads, u64(1))
 	testing.expect_value(t, first.virtual_geometry_prefetch_hits, u64(2))
 	testing.expect_value(t, first.virtual_geometry_prefetch_evictions, u64(1))

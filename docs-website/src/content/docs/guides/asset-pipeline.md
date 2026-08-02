@@ -85,7 +85,7 @@ stdout.
 
 ## Compression boundary
 
-The chunk directory can describe encoded data, but Model v15 stores its chunks uncompressed.
+The chunk directory can describe encoded data, but Model v16 stores its chunks uncompressed.
 Compression must preserve the runtime access pattern:
 
 - catalogs and images may use whole-chunk codecs when measurement justifies eager decoding;

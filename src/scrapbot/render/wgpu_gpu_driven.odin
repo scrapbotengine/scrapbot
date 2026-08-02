@@ -137,6 +137,9 @@ wgpu_cluster_group_residency :: proc "contextless" (
 			return false, u32(group_index), true
 		}
 	}
+	if int(group_index) >= len(cache.cluster_groups) || !cache.cluster_groups[group_index].active {
+		return false, u32(group_index), true
+	}
 	return true, 0, false
 }
 
@@ -2847,7 +2850,10 @@ wgpu_refresh_gpu_batch_layout :: proc(
 				}
 				page_resident :=
 					int(cluster.page) < len(geometry.cluster_pages) &&
-					geometry.cluster_pages[cluster.page].resident
+					geometry.cluster_pages[cluster.page].resident &&
+					cluster.group >= 0 &&
+					int(cluster.group) < len(geometry.cluster_groups) &&
+					geometry.cluster_groups[cluster.group].active
 				refined_resident, request_group, request_enabled := wgpu_cluster_group_residency(
 					geometry_resource,
 					geometry,
@@ -4249,7 +4255,10 @@ wgpu_prepare_gpu_draw_batches :: proc(
 		),
 		debug_view = u32(camera.debug_view),
 		meshlet_force_enabled = 1 if renderer.gpu_meshlet_force_enabled else 0,
-		virtual_error_pixels = 1.0,
+		virtual_error_pixels = max(
+			renderer.virtual_geometry_error_pixels,
+			WGPU_VIRTUAL_GEOMETRY_MIN_ERROR_PIXELS,
+		),
 		projection_y = projection[5],
 		virtual_feedback_epoch = u32(renderer.profile_frame_index),
 		compact_shadow_pages = 1 if wgpu_compact_shadow_pages_active(renderer) else 0,
