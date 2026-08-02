@@ -11,6 +11,7 @@ import schedule "./schedule"
 import script "./script"
 import shared "./shared"
 import ui "./ui"
+import base_runtime "base:runtime"
 import "core:fmt"
 import "core:mem"
 import "core:os"
@@ -42,6 +43,11 @@ World_Storage_Stats :: ecs.World_Storage_Stats
 parse_framegrab_region :: render.parse_framegrab_region
 Project_Load_Result :: project.Project_Load_Result
 Asset_Import_Report :: asset_import.Report
+Asset_Import_Product :: asset_import.Product
+Asset_Import_Progress_Event :: asset_import.Progress_Event
+Asset_Import_Progress_Event_Kind :: asset_import.Progress_Event_Kind
+Asset_Import_Progress_Proc :: asset_import.Progress_Proc
+Asset_Import_Progress_Options :: asset_import.Progress_Options
 Runtime_Result :: struct {
 	frame: shared.Render_Frame,
 	err: string,
@@ -224,14 +230,152 @@ load_project :: project.load_project
 destroy_project_load_result :: project.destroy_project_load_result
 destroy_asset_import_report :: asset_import.destroy_report
 
-import_project_assets :: proc(root: string) -> Asset_Import_Report {
+asset_import_kind_name :: proc "contextless" (kind: shared.Project_Resource_Kind) -> string {
+	#partial switch kind {
+		case .Texture:
+			return "texture"
+		case .Model:
+			return "model"
+		case .Environment:
+			return "environment"
+		case .Icon_Set:
+			return "icon set"
+		case:
+			return "asset"
+	}
+}
+
+asset_import_duration :: proc(nanoseconds: i64) -> string {
+	seconds := f64(max(nanoseconds, 0)) / 1_000_000_000.0
+	if seconds < 1 {
+		return fmt.tprintf("%.0f ms", seconds * 1000)
+	}
+	if seconds < 60 {
+		return fmt.tprintf("%.1f s", seconds)
+	}
+	minutes := int(seconds / 60)
+	return fmt.tprintf("%d min %.1f s", minutes, seconds - f64(minutes * 60))
+}
+
+asset_import_byte_count :: proc(bytes: int) -> string {
+	if bytes < 1024 {
+		return fmt.tprintf("%d B", bytes)
+	}
+	if bytes < 1024 * 1024 {
+		return fmt.tprintf("%.1f KiB", f64(bytes) / 1024.0)
+	}
+	return fmt.tprintf("%.1f MiB", f64(bytes) / (1024.0 * 1024.0))
+}
+
+asset_import_product_summary :: proc(product: ^Asset_Import_Product) -> string {
+	if product == nil {
+		return ""
+	}
+	#partial switch product.kind {
+		case .Texture:
+			return fmt.tprintf(
+				"%dx%d, %d mip(s), %s",
+				product.width,
+				product.height,
+				product.mip_count,
+				asset_import_byte_count(product.byte_count),
+			)
+		case .Model:
+			return fmt.tprintf(
+				"%d primitive(s), %d vertices, %d LOD(s), %d cluster page(s), %s",
+				product.primitive_count,
+				product.vertex_count,
+				product.lod_count,
+				product.cluster_page_count,
+				asset_import_byte_count(product.byte_count),
+			)
+		case .Environment:
+			return fmt.tprintf(
+				"%dx%d, %d specular mip(s), %s",
+				product.width,
+				product.height,
+				product.mip_count,
+				asset_import_byte_count(product.byte_count),
+			)
+		case .Icon_Set:
+			return fmt.tprintf(
+				"%d symbol(s), %dx%d atlas, %s",
+				product.symbol_count,
+				product.width,
+				product.height,
+				asset_import_byte_count(product.byte_count),
+			)
+	}
+	return asset_import_byte_count(product.byte_count)
+}
+
+log_asset_import_progress :: proc "contextless" (_: rawptr, event: Asset_Import_Progress_Event) {
+	context = base_runtime.default_context()
+	#partial switch event.kind {
+		case .Started:
+			fmt.eprintf("[assets] checking %d source asset(s)\n", event.total)
+		case .Asset_Started:
+			fmt.eprintf(
+				"[assets] [%d/%d] processing %s %q (%s)\n",
+				event.index,
+				event.total,
+				asset_import_kind_name(event.resource_kind),
+				event.name,
+				event.source,
+			)
+		case .Asset_Completed:
+			result := "cached"
+			if event.imported {
+				result = "imported"
+			}
+			fmt.eprintf(
+				"[assets] [%d/%d] %s %s in %s — %s\n",
+				event.index,
+				event.total,
+				result,
+				event.source,
+				asset_import_duration(event.duration_nanoseconds),
+				asset_import_product_summary(event.product),
+			)
+		case .Asset_Failed:
+			fmt.eprintf(
+				"[assets] [%d/%d] failed %s after %s: %s\n",
+				event.index,
+				event.total,
+				event.source,
+				asset_import_duration(event.duration_nanoseconds),
+				event.err,
+			)
+		case .Completed:
+			fmt.eprintf(
+				"[assets] ready: %d imported, %d cached in %s\n",
+				event.imported_count,
+				event.cached_count,
+				asset_import_duration(event.duration_nanoseconds),
+			)
+	}
+}
+
+asset_import_progress_options :: proc "contextless" (
+	enabled: bool,
+) -> Asset_Import_Progress_Options {
+	if !enabled {
+		return {}
+	}
+	return {callback = log_asset_import_progress}
+}
+
+import_project_assets :: proc(
+	root: string,
+	progress: Asset_Import_Progress_Options = {},
+) -> Asset_Import_Report {
 	loaded := project.load_project(root)
 	defer project.destroy_project_load_result(&loaded)
 	if loaded.err != "" {
 		cloned, _ := strings.clone(loaded.err)
 		return Asset_Import_Report{err = cloned}
 	}
-	return asset_import.ensure_project_imports(root, loaded.resources[:])
+	return asset_import.ensure_project_imports(root, loaded.resources[:], progress = progress)
 }
 
 parse_renderer_backend :: render.parse_renderer_backend
@@ -248,13 +392,13 @@ build_project :: proc(root: string) -> string {
 	return build_native_extensions(root, &loaded.config, .Release)
 }
 
-check_project :: proc(root: string) -> string {
+check_project :: proc(root: string, progress: Asset_Import_Progress_Options = {}) -> string {
 	loaded := project.load_project(root)
 	defer project.destroy_project_load_result(&loaded)
 	if loaded.err != "" {
 		return loaded.err
 	}
-	imports := asset_import.ensure_project_imports(root, loaded.resources[:])
+	imports := asset_import.ensure_project_imports(root, loaded.resources[:], progress = progress)
 	defer asset_import.destroy_report(&imports)
 	if imports.err != "" {
 		return imports.err
@@ -529,7 +673,11 @@ run_project_internal_untracked :: proc(
 		result.err = loaded.err
 		return result
 	}
-	imports := asset_import.ensure_project_imports(root, loaded.resources[:])
+	imports := asset_import.ensure_project_imports(
+		root,
+		loaded.resources[:],
+		progress = asset_import_progress_options(run_config.log_enabled),
+	)
 	defer asset_import.destroy_report(&imports)
 	if imports.err != "" {
 		result.err, _ = strings.clone(imports.err)

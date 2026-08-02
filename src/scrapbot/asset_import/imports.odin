@@ -8,6 +8,7 @@ import "core:hash"
 import "core:os"
 import "core:path/filepath"
 import "core:strings"
+import "core:time"
 import stb "vendor:stb/image"
 
 TEXTURE_IMPORTER_SCHEMA :: "scrapbot.texture.v1.rgba8-mips"
@@ -42,6 +43,59 @@ Report :: struct {
 	imported_count: int,
 	cached_count: int,
 	err: string,
+}
+
+Progress_Event_Kind :: enum {
+	Started,
+	Asset_Started,
+	Asset_Completed,
+	Asset_Failed,
+	Completed,
+}
+
+Progress_Event :: struct {
+	kind: Progress_Event_Kind,
+	index, total: int,
+	resource_kind: shared.Project_Resource_Kind,
+	name: string,
+	source: string,
+	product: ^Product,
+	err: string,
+	imported: bool,
+	imported_count, cached_count: int,
+	duration_nanoseconds: i64,
+}
+
+Progress_Proc :: #type proc "contextless" (data: rawptr, event: Progress_Event)
+
+Progress_Options :: struct {
+	callback: Progress_Proc,
+	data: rawptr,
+}
+
+emit_progress :: proc "contextless" (progress: Progress_Options, event: Progress_Event) {
+	if progress.callback != nil {
+		progress.callback(progress.data, event)
+	}
+}
+
+is_importable_resource :: proc "contextless" (kind: shared.Project_Resource_Kind) -> bool {
+	return kind == .Texture || kind == .Model || kind == .Environment || kind == .Icon_Set
+}
+
+import_source :: proc "contextless" (declaration: shared.Project_Resource) -> string {
+	#partial switch declaration.kind {
+		case .Texture:
+			return declaration.texture.source
+		case .Model:
+			return declaration.model.source
+		case .Environment:
+			return declaration.environment.source
+		case .Icon_Set:
+			return declaration.icon_set.source
+		case:
+			return ""
+	}
 }
 
 Texture_Metadata :: struct {
@@ -82,24 +136,23 @@ ensure_project_imports :: proc(
 	declarations: []shared.Project_Resource,
 	force: bool = false,
 	only: shared.Resource_UUID = {},
+	progress: Progress_Options = {},
 ) -> Report {
 	report: Report
-	has_imports := false
+	import_count := 0
 	for declaration in declarations {
 		if only != (shared.Resource_UUID{}) && declaration.id != only {
 			continue
 		}
-		if declaration.kind == .Texture ||
-		   declaration.kind == .Model ||
-		   declaration.kind == .Environment ||
-		   declaration.kind == .Icon_Set {
-			has_imports = true
-			break
+		if is_importable_resource(declaration.kind) {
+			import_count += 1
 		}
 	}
-	if !has_imports {
+	if import_count == 0 {
 		return report
 	}
+	started := time.tick_now()
+	emit_progress(progress, {kind = .Started, total = import_count})
 	build_dir, join_err := filepath.join({root, shared.PROJECT_IMPORTED_ASSETS_DIR})
 	if join_err != nil {
 		report.err = clone_error("failed to allocate imported asset directory path")
@@ -112,13 +165,30 @@ ensure_project_imports :: proc(
 			return report
 		}
 	}
+	import_index := 0
 	for declaration in declarations {
 		if only != (shared.Resource_UUID{}) && declaration.id != only {
+			continue
+		}
+		if !is_importable_resource(declaration.kind) {
 			continue
 		}
 		product: Product
 		imported: bool
 		import_err: string
+		import_index += 1
+		asset_started := time.tick_now()
+		emit_progress(
+			progress,
+			{
+				kind = .Asset_Started,
+				index = import_index,
+				total = import_count,
+				resource_kind = declaration.kind,
+				name = declaration.name,
+				source = import_source(declaration),
+			},
+		)
 		#partial switch declaration.kind {
 			case .Texture:
 				product, imported, import_err = ensure_texture_import(
@@ -152,6 +222,21 @@ ensure_project_imports :: proc(
 				continue
 		}
 		if import_err != "" {
+			emit_progress(
+				progress,
+				{
+					kind = .Asset_Failed,
+					index = import_index,
+					total = import_count,
+					resource_kind = declaration.kind,
+					name = declaration.name,
+					source = import_source(declaration),
+					err = import_err,
+					duration_nanoseconds = time.duration_nanoseconds(
+						time.tick_diff(asset_started, time.tick_now()),
+					),
+				},
+			)
 			report.err = clone_error(import_err)
 			return report
 		}
@@ -161,7 +246,37 @@ ensure_project_imports :: proc(
 		} else {
 			report.cached_count += 1
 		}
+		emit_progress(
+			progress,
+			{
+				kind = .Asset_Completed,
+				index = import_index,
+				total = import_count,
+				resource_kind = declaration.kind,
+				name = declaration.name,
+				source = product.source,
+				product = &report.products[len(report.products) - 1],
+				imported = imported,
+				imported_count = report.imported_count,
+				cached_count = report.cached_count,
+				duration_nanoseconds = time.duration_nanoseconds(
+					time.tick_diff(asset_started, time.tick_now()),
+				),
+			},
+		)
 	}
+	emit_progress(
+		progress,
+		{
+			kind = .Completed,
+			total = import_count,
+			imported_count = report.imported_count,
+			cached_count = report.cached_count,
+			duration_nanoseconds = time.duration_nanoseconds(
+				time.tick_diff(started, time.tick_now()),
+			),
+		},
+	)
 	return report
 }
 

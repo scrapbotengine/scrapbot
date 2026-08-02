@@ -28,6 +28,8 @@ All commands run against a project directory. When omitted, the project path def
 
 Diagnostic codes are stable automation identifiers. Messages remain human-readable context. Successful command envelopes have an empty diagnostics array and command-specific result fields.
 
+Human-mode `import`, `check`, `build`, and source-project `run` commands report asset processing progress to stderr. JSON mode suppresses these progress lines so stdout remains exactly one JSON document.
+
 ## `scrapbot init`
 
 ```sh
@@ -73,7 +75,17 @@ Successful JSON results include `target`, `output_directory`, and `executable` f
 scrapbot import [path] [--json]
 ```
 
-Compiles declared Texture, Model, Environment, and Icon Set sources into versioned products under `.scrapbot/imported/`. Model products include configured offline mesh LODs. Unchanged source/dependency/settings fingerprints reuse cached products. Human output reports imported and cached counts; JSON results contain `imported`, `cached`, and `products`. Import failures report `SCRAPBOT_IMPORT_FAILED` and leave a prior valid product untouched.
+Compiles declared Texture, Model, Environment, and Icon Set sources into versioned products under `.scrapbot/imported/`. Model products include configured offline mesh LODs. Unchanged source/dependency/settings fingerprints reuse cached products.
+
+Human output identifies the active asset before processing begins. Its completion line reports the elapsed time, cache result, and a compact product summary:
+
+- Texture and Environment summaries include dimensions and mip counts.
+- Model summaries include primitive, vertex, LOD, cluster-page, and byte counts.
+- Icon Set summaries include symbol and atlas dimensions.
+
+A failed asset names its source, elapsed time, and error immediately. JSON results contain `imported`, `cached`, and `products` without emitting progress lines.
+
+Import failures report `SCRAPBOT_IMPORT_FAILED` and leave a prior valid product untouched.
 
 ## `scrapbot check`
 

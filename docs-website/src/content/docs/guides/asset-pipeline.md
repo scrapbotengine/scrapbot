@@ -72,6 +72,17 @@ Product and metadata writes use temporary paths. Failed conversion leaves the la
 product available, while a successful import replaces the product consumed by the next registry
 update.
 
+## Import progress
+
+The importer exposes typed lifecycle events for the complete batch and each individual asset.
+Engine tools and game projects can attach their own observer without coupling import work to a
+terminal, editor, or particular UI system.
+
+Scrapbot's human CLI adapter writes these events to stderr. It announces an asset before expensive
+processing begins and reports its cache status, elapsed time, and product shape when complete.
+`--json` disables the human adapter so automation still receives exactly one JSON document on
+stdout.
+
 ## Compression boundary
 
 The chunk directory can describe encoded data, but Model v15 stores its chunks uncompressed.

@@ -12,6 +12,7 @@ PACKAGE_MARKER :: ".scrapbot-package"
 
 Package_Config :: struct {
 	target: string,
+	asset_import_progress: Asset_Import_Progress_Options,
 }
 
 Package_Result :: struct {
@@ -67,7 +68,11 @@ package_project :: proc(root: string, config: Package_Config) -> Package_Result 
 		result.err = clone_package_string(err)
 		return result
 	}
-	imports := asset_import.ensure_project_imports(root, loaded.resources[:])
+	imports := asset_import.ensure_project_imports(
+		root,
+		loaded.resources[:],
+		progress = config.asset_import_progress,
+	)
 	defer asset_import.destroy_report(&imports)
 	if imports.err != "" {
 		result.err = clone_package_string(imports.err)

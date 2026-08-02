@@ -436,7 +436,10 @@ run_import :: proc(args: []string) -> int {
 	if !should_run {
 		return code
 	}
-	report := scrapbot.import_project_assets(opt.path)
+	report := scrapbot.import_project_assets(
+		opt.path,
+		scrapbot.asset_import_progress_options(!opt.json),
+	)
 	defer scrapbot.destroy_asset_import_report(&report)
 	if report.err != "" {
 		if opt.json {
@@ -491,7 +494,8 @@ run_check :: proc(args: []string) -> int {
 		return code
 	}
 
-	if err := scrapbot.check_project(opt.path); err != "" {
+	if err := scrapbot.check_project(opt.path, scrapbot.asset_import_progress_options(!opt.json));
+	   err != "" {
 		if opt.json { emit_json_error("check", "SCRAPBOT_CHECK_FAILED", err, opt.path); return 1 }
 		fmt.eprintln(err)
 		return 1
@@ -510,7 +514,13 @@ run_build :: proc(args: []string) -> int {
 		return code
 	}
 
-	result := scrapbot.package_project(opt.path, scrapbot.Package_Config{target = opt.target})
+	result := scrapbot.package_project(
+		opt.path,
+		scrapbot.Package_Config {
+			target = opt.target,
+			asset_import_progress = scrapbot.asset_import_progress_options(!opt.json),
+		},
+	)
 	defer scrapbot.destroy_package_result(&result)
 	if result.err != "" {
 		code := "SCRAPBOT_BUILD_FAILED"
