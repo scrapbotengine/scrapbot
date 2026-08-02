@@ -185,6 +185,13 @@ export function validateProfile(options, profile, framesDirectory) {
     if (!transitionCounts.some((count) => count > 0)) {
       throw new Error("captured range does not contain a virtual-geometry transition");
     }
+    if (
+      !capturedRows.some(
+        (frame) => (frame.render?.visible_virtual_blend_clusters ?? 0) > 0,
+      )
+    ) {
+      throw new Error("captured transition does not exercise visible blended clusters");
+    }
     if (transitionCounts.at(-1) !== 0) {
       throw new Error("captured virtual-geometry transition does not reach a settled endpoint");
     }

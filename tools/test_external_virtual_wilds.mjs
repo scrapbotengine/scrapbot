@@ -183,7 +183,7 @@ function main() {
         "--frames",
         "120",
         "--capture-range",
-        "108:115",
+        "56:63",
         "--resolution",
         "1280x720",
         "--stable-frontier",

@@ -78,10 +78,11 @@ largest legal record capacity. A live topology that fits therefore remains eligi
 geometric spare capacity would not; a topology whose live records do not fit retains the existing
 whole-primitive fallback.
 
-The compute culler projects monotonic hierarchy-group errors into pixels and accepts a cluster when
-its group exceeds one pixel while its refined group is absent or is at or below one pixel. This
-selects one complete camera frontier. Shadow selection uses the same hierarchy with cascade-scaled
-error thresholds, preserving near detail while bounding distant-cascade work.
+The compute culler projects monotonic hierarchy-group errors into pixels. It selects one complete
+camera frontier outside a narrow 90%-to-110% threshold overlap and adjacent levels inside it.
+Complementary fragment coverage prevents double shading within the overlap. Shadow selection uses
+the same hierarchy with cascade-scaled error thresholds, preserving near detail while bounding
+distant-cascade work.
 
 Stable frames copy separate active camera and shadow templates, run object-first compute culling,
 and submit matching command ranges. Portable compact submission first appends bounded batch-local
@@ -130,11 +131,15 @@ completions are discarded when stale. Demand-first, group-atomic admission uses 
 plan per feedback batch, protects stronger recent demand, and never lets speculative prefetch evict
 demand residency. Geometry cache groups distinguish memory residency from drawable activation.
 Newly complete groups pass a bounded demand-aware settling window and wait for direct-parent
-transitions to settle, then enter an eight-frame complementary screen-door handoff. The GPU derives
-progress from a renderer epoch and applies the
-same child/parent partition in world, depth, and cascade-specific shadow passes. Completion is the
-point at which the child becomes the logical refinement. Active refinements retain their direct
-coarse parents until release.
+transitions to settle, then enter a 16-frame admission handoff. The GPU combines that temporal
+progress with its steady projected-error overlap and applies the same complementary child/parent
+coverage in world, depth, and cascade-specific shadow passes. TAA camera passes rotate and integrate
+the mask through a low-discrepancy sequence. The internal HDR alpha channel carries a transition
+reactive marker, and temporal history encodes that marker alongside the existing bloom-enable bit.
+The temporal resolver owns its depth-tolerance adjustment and one-frame silhouette recovery.
+Non-temporal views and shadows keep the mask
+spatially stable. Completion is the point at which the child becomes the logical refinement. Active
+refinements retain their direct coarse parents until release.
 
 WGPU owns a compact active-transition queue. It advances only those groups and patches their
 persistent group-to-cluster and refinement-to-parent dependents at transition boundaries. Stable

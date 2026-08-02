@@ -67,6 +67,7 @@ Render_Stats :: struct {
 	virtual_geometry_compacted: bool,
 	virtual_cluster_draws: int,
 	visible_virtual_clusters: u32,
+	visible_virtual_blend_clusters: u32,
 	virtual_rejected_clusters: u32,
 	virtual_geometry_page_budget_bytes: u64,
 	virtual_geometry_page_resident_bytes: u64,

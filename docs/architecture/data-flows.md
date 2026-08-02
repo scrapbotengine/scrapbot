@@ -62,9 +62,11 @@ evict whole groups under bounded per-frame work and the combined payload budget.
 plan serves every eviction in the feedback batch. Demand may reclaim speculative residency;
 prefetch uses spare capacity only. Completed groups stage residency separately from drawable
 activation through a bounded demand-aware settling window. After direct-parent transitions settle,
-a child and its complete parent remain
-drawable through one eight-frame complementary screen-door handoff shared by world, depth, and
-shadow passes. Nested handoffs serialize. An active child protects its direct parent fallback, and
+a child and its complete parent remain drawable through one 16-frame admission handoff. Independently,
+the GPU submits adjacent resident levels inside a narrow projected-error overlap band. World, depth,
+and shadow passes assign exact complementary coverage to both transitions. TAA rotates and resolves
+camera coverage over time; non-temporal views and shadows keep a stable spatial partition. Nested
+admission handoffs serialize. An active child protects its direct parent fallback, and
 release orders child before parent eligibility. Persistent dependency indices patch only affected
 cluster ranges rather than regenerating a Geometry's complete GPU residency table.
 

@@ -295,8 +295,9 @@ they enter registry ownership. Reconstruct a temporary canonical view from leaf-
 only for backend cache creation. Retain
 canonical GPU vertex/index streams plus expanded page indices when the complete Geometry fits the
 remaining combined payload budget; otherwise pin its coarsest page frontier. On WGPU adapters
-with indirect-first-instance, project group error into pixels and submit the unique cluster
-frontier surrounding a one-pixel threshold before ordinary cluster culling.
+with indirect-first-instance, project group error into pixels. Submit adjacent hierarchy levels
+inside a narrow 90%-to-110% overlap around the one-pixel threshold and the unique cluster frontier
+outside it, before ordinary cluster culling.
 
 When finer detail is wanted but missing, submit the resident coarse cluster and append its group
 identity plus projected-error priority to a bounded demand lane. Separate bounded lanes carry
@@ -313,13 +314,16 @@ geometry. Visible use promotes a prefetched group and records a hit.
 Page residency does not immediately replace the streamed refinement's parent. A newly complete
 group remains staged through the existing demand-aware settling window, with a bounded maximum hold
 for continuous demand, and waits for its direct parent transition to settle. The child and complete
-parent then remain drawable together for an eight-render-frame handoff.
+parent then remain drawable together for a 16-render-frame admission handoff.
 
-The world, depth, and shadow fragment paths apply the same stable screen-space hash. Child pixels
-below the advancing threshold survive; the exact complementary parent pixels survive above it.
-This preserves one opaque surface sample per pixel without transparency, sorting, or double-depth
-coverage. Camera passes derive both masks from the camera error threshold. Each shadow cascade
-derives both from that cascade's scaled threshold, so silhouettes and receivers change together.
+The world, depth, and shadow fragment paths apply complementary coverage intervals to both the
+steady projected-error overlap and streamed admission. This preserves one opaque surface sample per
+pixel without transparency, sorting, or double-depth coverage. TAA camera passes rotate the coverage
+hash through a low-discrepancy sequence and mark transition fragments in the internal HDR target.
+The temporal resolver keeps compatible parent/child history across bounded depth changes and
+recovers a previous transition sample for one frame where changing silhouettes expose background.
+Non-temporal camera views and shadow cascades use a stable spatial hash. Each shadow cascade derives
+coverage from its scaled error threshold, so silhouettes and receivers change together.
 
 Only completion makes the child logically replace its parent. Nested hierarchy transitions are
 serialized, and a transitioning child keeps its direct parent protected. This makes refinement
@@ -361,8 +365,8 @@ The `virtual_geometry` camera view colors selected clusters by identity and hier
 marks a branch whose finer group is not completely resident; cyan marks a selected page that
 arrived speculatively. Structured results report payload budget and residency, demand/prefetch
 feedback, asynchronous reads/failures, page/group uploads, drawable group activations, active
-transitions, prefetch hits/reclamation, evictions, deferred groups, selected clusters, and
-threshold rejections.
+admission transitions, prefetch hits/reclamation, evictions, deferred groups, selected clusters,
+clusters currently inside either blend interval, and threshold rejections.
 
 **Why:** Geometry detail must vary below object granularity without cracks, importer-specific draw
 paths, or CPU decisions per cluster.

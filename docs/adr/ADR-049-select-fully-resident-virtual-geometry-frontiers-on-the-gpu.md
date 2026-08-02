@@ -2,6 +2,8 @@
 
 **Date:** 2026-07-31
 
+**Updated:** 2026-08-02
+
 ## Context
 
 Scrapbot's imported LODs select one independently simplified Geometry at object granularity. Its
@@ -48,17 +50,25 @@ repeated hierarchy traversals and fixed-maximum vertex pulling for depth-only sh
 Both submission modes are GPU-produced. Ordinary frames neither read selected clusters back nor
 expand their command topology on the CPU.
 
-The compute culler projects each group's monotonic geometric error into pixels. It submits a
-cluster exactly when:
+The compute culler projects each group's monotonic geometric error into pixels. A narrow overlap
+band spans 90% through 110% of the active error threshold. Within that band, it submits adjacent
+hierarchy levels together and assigns them exact complementary coverage. Outside the band, it
+submits a cluster exactly when:
 
 1. its owning group exceeds the one-pixel error threshold; and
 2. its refined group is absent or is at or below that threshold.
 
-That rule selects one complete frontier for camera rendering. Native multi-draw adapters also use
-that frontier for shadows before applying cascade sphere and normal-cone tests. The portable path
-uses the camera-selected object LOD for conservative cascade visibility. A hierarchy-bearing batch
-uses cluster camera submission even with one instance because geometric-detail selection does not
-require instance-count amortization.
+That rule selects one complete frontier for camera rendering. The overlap temporarily broadens
+that frontier without introducing translucent double coverage: the render passes retain a fragment
+only when its stable coverage hash lies inside that level's complementary interval. TAA rotates and
+integrates the camera mask over time. A transition-only reactive marker lets the temporal resolver
+retain compatible history across bounded parent/child depth and silhouette changes. Non-temporal
+camera views and shadow cascades keep a stable spatial mask.
+
+Native multi-draw adapters also use the hierarchy for shadows before applying cascade sphere and
+normal-cone tests. The portable path uses the camera-selected object LOD for conservative cascade
+visibility. A hierarchy-bearing batch uses cluster camera submission even with one instance because
+geometric-detail selection does not require instance-count amortization.
 
 Adapters without indirect-first-instance, capacity-limited layouts, and `--cpu-culling` retain
 classic indexed drawing and the existing object-level imported LOD contract. The backend exposes

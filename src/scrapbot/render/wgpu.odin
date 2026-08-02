@@ -51,7 +51,9 @@ WGPU_VIRTUAL_GEOMETRY_PRESSURE_PERCENT :: u64(98)
 WGPU_VIRTUAL_GEOMETRY_ERROR_ADJUSTMENT_FRAMES :: u64(32)
 WGPU_VIRTUAL_GROUP_ACTIVATION_GRACE_FRAMES :: u64(8)
 WGPU_VIRTUAL_GROUP_ACTIVATION_MAX_HOLD_FRAMES :: u64(32)
-WGPU_VIRTUAL_GROUP_TRANSITION_FRAMES :: u64(8)
+WGPU_VIRTUAL_GROUP_TRANSITION_FRAMES :: u64(16)
+WGPU_VIRTUAL_GEOMETRY_BLEND_LOW_SCALE :: f32(0.9)
+WGPU_VIRTUAL_GEOMETRY_BLEND_HIGH_SCALE :: f32(1.1)
 WGPU_HIZ_OCCLUSION_WORLD_BIAS :: f32(0.005)
 
 WGPU_GPU_Timestamp_Phase :: enum u32 {
@@ -119,6 +121,7 @@ WGPU_GPU_Visibility_Counters :: struct {
 	visible_batches: u32,
 	visible_meshlet_draws: u32,
 	visible_virtual_clusters: u32,
+	visible_virtual_blend_clusters: u32,
 	virtual_rejected_clusters: u32,
 	virtual_page_request_count: u32,
 	virtual_page_prefetch_count: u32,
@@ -388,7 +391,8 @@ WGPU_GPU_Cull_Uniform :: struct {
 	meshlet_count: u32,
 	occlusion_depth_scale: f32,
 	occlusion_world_bias: f32,
-	_padding: [2]u32,
+	virtual_blend_low_scale: f32,
+	virtual_blend_high_scale: f32,
 	virtual_shadow_error_pixels: [4]f32,
 }
 #assert(size_of(WGPU_GPU_Cull_Uniform) == 848)
@@ -461,7 +465,8 @@ WGPU_GPU_Meshlet_Info :: struct {
 	batch_index: u32,
 	transition_start: u32,
 	refined_transition_start: u32,
-	_padding: [2]u32,
+	has_coarse_parent: u32,
+	_padding: u32,
 }
 // WGSL storage-array elements round this vec4-bearing structure to a 16-byte stride.
 #assert(size_of(WGPU_GPU_Meshlet_Info) == 160)

@@ -2909,6 +2909,10 @@ wgpu_refresh_gpu_batch_layout :: proc(
 						)
 					}
 				}
+				has_coarse_parent :=
+					int(cluster.group + 1) < len(geometry.refined_group_parent_offsets) &&
+					geometry.refined_group_parent_offsets[cluster.group] <
+						geometry.refined_group_parent_offsets[cluster.group + 1]
 				cluster_first_index: u32
 				cluster_base_vertex: u32
 				if page_resident {
@@ -2945,6 +2949,7 @@ wgpu_refresh_gpu_batch_layout :: proc(
 					batch_index = u32(batch_index),
 					transition_start = transition_start,
 					refined_transition_start = refined_transition_start,
+					has_coarse_parent = 1 if has_coarse_parent else 0,
 				}
 				level_byte := group.depth * 255 / max(geometry_resource.cluster_max_depth, 1)
 				identity := (level_byte << 24) | (u32(meshlet_index + 1) & 0x003f_ffff)
@@ -4040,13 +4045,13 @@ wgpu_prepare_gpu_draw_batches :: proc(
 	uniform.virtual_geometry = {
 		max(renderer.virtual_geometry_error_pixels, WGPU_VIRTUAL_GEOMETRY_MIN_ERROR_PIXELS),
 		f32(max(viewport.height, 1)),
-		0,
-		0,
+		WGPU_VIRTUAL_GEOMETRY_BLEND_LOW_SCALE,
+		WGPU_VIRTUAL_GEOMETRY_BLEND_HIGH_SCALE,
 	}
 	uniform.virtual_geometry_epoch = {
 		u32(renderer.profile_frame_index),
 		u32(WGPU_VIRTUAL_GROUP_TRANSITION_FRAMES),
-		0,
+		1 if camera.temporal_antialiasing && camera.debug_view == .Lit else 0,
 		0,
 	}
 	uniform.ambient = {render_list.ambient.x, render_list.ambient.y, render_list.ambient.z, 1}
@@ -4330,6 +4335,8 @@ wgpu_prepare_gpu_draw_batches :: proc(
 		meshlet_count = u32(renderer.gpu_meshlet_draw_count),
 		occlusion_depth_scale = math.abs(projection[14]),
 		occlusion_world_bias = WGPU_HIZ_OCCLUSION_WORLD_BIAS,
+		virtual_blend_low_scale = WGPU_VIRTUAL_GEOMETRY_BLEND_LOW_SCALE,
+		virtual_blend_high_scale = WGPU_VIRTUAL_GEOMETRY_BLEND_HIGH_SCALE,
 	}
 	for cascade_index in 0 ..< WGPU_SHADOW_CASCADE_COUNT {
 		cull_uniform.virtual_shadow_error_pixels[cascade_index] = wgpu_virtual_shadow_error_pixels(

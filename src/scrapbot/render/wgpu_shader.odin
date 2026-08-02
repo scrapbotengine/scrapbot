@@ -912,6 +912,14 @@ fn current_color_at(pixel: vec2<i32>) -> vec3<f32> {
 		reflection_color;
 }
 
+const VIRTUAL_TRANSITION_MARKER: f32 = 0.25;
+const VIRTUAL_TRANSITION_MARKER_WITH_BLOOM: f32 = 0.75;
+
+fn virtual_transition_reactive(value: f32) -> bool {
+	return abs(value - VIRTUAL_TRANSITION_MARKER) < 0.0625 ||
+		abs(value - VIRTUAL_TRANSITION_MARKER_WITH_BLOOM) < 0.0625;
+}
+
 fn fog_shadow_cascade(world_position: vec3<f32>, cascade_index: u32) -> f32 {
 	let shadow_position =
 		render.shadow_view_projections[cascade_index] * vec4<f32>(world_position, 1.0);
@@ -1365,7 +1373,17 @@ fn temporal_aa_cs(
 				inside_viewport(previous_pixel_i)
 			) {
 				let expected_linear_depth = previous_clip.w;
-				let depth_tolerance = max(0.01, expected_linear_depth * 0.01);
+				let history_sample = textureSampleLevel(
+					history_color,
+					linear_sampler,
+					previous_full_uv,
+					0.0,
+				);
+				let transition_reactive =
+					virtual_transition_reactive(textureLoad(current_color, pixel, 0).a) ||
+					virtual_transition_reactive(history_sample.a);
+				let depth_tolerance_scale = select(0.01, 0.12, transition_reactive);
+				let depth_tolerance = max(0.01, expected_linear_depth * depth_tolerance_scale);
 				var stored_depth = textureLoad(history_depth, previous_pixel_i, 0).r;
 				var stored_linear_depth =
 					temporal.previous_projection.w /
@@ -1411,12 +1429,7 @@ fn temporal_aa_cs(
 					let fog_offset_ycocg = rgb_to_ycocg(fogged_color) -
 						rgb_to_ycocg(color);
 					let history_ycocg = clamp(
-						rgb_to_ycocg(textureSampleLevel(
-							history_color,
-							linear_sampler,
-							previous_full_uv,
-							0.0,
-						).rgb),
+						rgb_to_ycocg(history_sample.rgb),
 						source_bounds[0] + fog_offset_ycocg,
 						source_bounds[1] + fog_offset_ycocg,
 					);
@@ -1425,17 +1438,43 @@ fn temporal_aa_cs(
 						previous_pixel -
 							(vec2<f32>(pixel) + vec2<f32>(0.5)),
 					);
-					let history_weight = mix(
+					var history_weight = mix(
 						temporal.parameters.w,
 						0.72,
 						clamp(motion_pixels / 8.0, 0.0, 1.0),
 					);
+					if (transition_reactive) {
+						history_weight = max(history_weight, 0.9);
+					}
 					result = mix(fogged_color, history, history_weight);
 				}
 			}
 		}
 	}
-	textureStore(resolved_color, pixel, vec4<f32>(result, temporal.features.w));
+	if (
+		inside_viewport(pixel) &&
+		depth >= 0.999999 &&
+		temporal.features.x > 0.5 &&
+		temporal.parameters.z > 0.5
+	) {
+		let history_sample = textureLoad(history_color, pixel, 0);
+		let stored_depth = textureLoad(history_depth, pixel, 0).r;
+		if (virtual_transition_reactive(history_sample.a) && stored_depth < 0.999999) {
+			result = mix(fogged_color, history_sample.rgb, 0.9);
+		}
+	}
+	textureStore(
+		resolved_color,
+		pixel,
+		vec4<f32>(
+			result,
+			select(
+				temporal.features.w,
+				VIRTUAL_TRANSITION_MARKER + temporal.features.w * 0.5,
+				virtual_transition_reactive(textureLoad(current_color, pixel, 0).a),
+			),
+		),
+	);
 	textureStore(resolved_depth, pixel, vec4<f32>(depth, 0.0, 0.0, 0.0));
 }
 `
@@ -1857,7 +1896,7 @@ fn composite_fs(input: Fullscreen_Output) -> @location(0) vec4<f32> {
 	}
 	let hdr =
 		resolved.rgb * automatic_exposure.values.x +
-		bloom * (0.8 * resolved.a);
+		bloom * (0.8 * step(0.5, resolved.a));
 	return vec4<f32>(presentation_dither(aces(hdr), input.position.xy), 1.0);
 }
 `

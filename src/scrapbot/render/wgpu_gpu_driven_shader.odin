@@ -214,7 +214,8 @@ struct Meshlet_Info {
 	batch_index: u32,
 	transition_start: u32,
 	refined_transition_start: u32,
-	padding: vec2<u32>,
+	has_coarse_parent: u32,
+	padding: u32,
 };
 
 @group(0) @binding(0) var<uniform> render: Render_Uniform;
@@ -361,36 +362,61 @@ fn render_virtual_projected_error(
 		0.5 * render.virtual_geometry.y;
 }
 
-fn virtual_transition_for_error(
+fn virtual_lod_progress(
+	instance: GPU_Instance,
+	bounds: vec4<f32>,
+	error: f32,
+	error_pixels: f32,
+) -> f32 {
+	if (error <= 0.0) {
+		return 0.0;
+	}
+	let projected = render_virtual_projected_error(instance, bounds, error);
+	let low = error_pixels * render.virtual_geometry.z;
+	let high = max(error_pixels * render.virtual_geometry.w, low + 0.0001);
+	return smoothstep(low, high, projected);
+}
+
+fn virtual_coverage_for_error(
 	instance: GPU_Instance,
 	meshlet: Meshlet_Info,
 	error_pixels: f32,
 ) -> vec2<f32> {
 	if (meshlet.virtual_geometry == 0u) {
-		return vec2<f32>(1.0, 0.0);
+		return vec2<f32>(0.0, 1.0);
 	}
-	if (meshlet.transition_start != 0u) {
-		return vec2<f32>(virtual_transition_progress(meshlet.transition_start), 1.0);
+	var fade_in = 1.0;
+	if (meshlet.has_coarse_parent != 0u) {
+		fade_in = virtual_lod_progress(
+			instance,
+			meshlet.group_bounds,
+			meshlet.group_error,
+			error_pixels,
+		);
 	}
-	if (
-		meshlet.refined_transition_start != 0u &&
-		meshlet.refined_error > 0.0 &&
-		render_virtual_projected_error(
+	var fade_out = 0.0;
+	if (meshlet.refined_resident != 0u || meshlet.refined_transition_start != 0u) {
+		fade_out = virtual_lod_progress(
 			instance,
 			meshlet.refined_bounds,
 			meshlet.refined_error,
-		) > error_pixels
-	) {
-		return vec2<f32>(
-			virtual_transition_progress(meshlet.refined_transition_start),
-			2.0,
+			error_pixels,
 		);
 	}
-	return vec2<f32>(1.0, 0.0);
+	if (meshlet.transition_start != 0u) {
+		fade_in = min(fade_in, virtual_transition_progress(meshlet.transition_start));
+	}
+	if (meshlet.refined_transition_start != 0u) {
+		fade_out = min(
+			fade_out,
+			virtual_transition_progress(meshlet.refined_transition_start),
+		);
+	}
+	return vec2<f32>(fade_out, fade_in);
 }
 
-fn virtual_transition_for(instance: GPU_Instance, meshlet: Meshlet_Info) -> vec2<f32> {
-	return virtual_transition_for_error(instance, meshlet, render.virtual_geometry.x);
+fn virtual_coverage_for(instance: GPU_Instance, meshlet: Meshlet_Info) -> vec2<f32> {
+	return virtual_coverage_for_error(instance, meshlet, render.virtual_geometry.x);
 }
 
 fn render_virtual_shadow_error(cascade_index: u32) -> f32 {
@@ -433,10 +459,10 @@ fn vs_main(input: Vertex_Input, @builtin(instance_index) visible_index: u32) -> 
 	if ((render.debug.x == 6u || render.debug.x == 8u || render.debug.x == 11u) && render.debug.y != 0u) {
 		identity = packed_identity;
 	}
-	var transition = vec2<f32>(1.0, 0.0);
+	var transition = vec2<f32>(0.0, 1.0);
 	let meshlet_token = packed_identity & 0x003fffffu;
 	if (meshlet_token != 0u) {
-		transition = virtual_transition_for(instance, meshlets[meshlet_token - 1u]);
+		transition = virtual_coverage_for(instance, meshlets[meshlet_token - 1u]);
 	}
 	return transform_vertex(input, instance, identity, transition);
 }
@@ -449,7 +475,7 @@ fn compact_vs(record: Compact_Input, @builtin(vertex_index) vertex_index: u32) -
 		load_compact_vertex(record, vertex_index),
 		instance,
 		meshlet.identity,
-		virtual_transition_for(instance, meshlet),
+		virtual_coverage_for(instance, meshlet),
 	);
 }
 
@@ -847,22 +873,29 @@ fn meshlet_debug_color(identity: u32) -> vec3<f32> {
 	);
 }
 
-fn apply_virtual_transition(position: vec4<f32>, transition: vec2<f32>) {
-	if (transition.y < 0.5) {
+const VIRTUAL_TRANSITION_MARKER: f32 = 0.25;
+
+fn apply_virtual_transition(position: vec4<f32>, transition: vec2<f32>, epoch: u32) {
+	if (transition.x <= 0.0 && transition.y >= 1.0) {
 		return;
 	}
 	let pixel = vec2<u32>(floor(position.xy));
 	var value = pixel.x * 1664525u ^ pixel.y * 1013904223u;
 	value = (value ^ (value >> 16u)) * 2246822519u;
 	value = (value ^ (value >> 13u)) * 3266489917u;
-	let threshold = (f32((value ^ (value >> 16u)) & 255u) + 0.5) / 256.0;
-	if (transition.y < 1.5) {
-		if (threshold >= transition.x) {
-			discard;
-		}
-	} else if (threshold < transition.x) {
+	let spatial = (f32((value ^ (value >> 16u)) & 255u) + 0.5) / 256.0;
+	let threshold = fract(spatial + f32(epoch & 255u) * 0.61803398875);
+	if (threshold < transition.x || threshold >= transition.y) {
 		discard;
 	}
+}
+
+fn virtual_transition_marker(transition: vec2<f32>) -> f32 {
+	return select(
+		1.0,
+		VIRTUAL_TRANSITION_MARKER,
+		transition.x > 0.0 || transition.y < 1.0,
+	);
 }
 
 @fragment
@@ -870,7 +903,12 @@ fn fs_main(
 	input: Vertex_Output,
 	@builtin(front_facing) front_facing: bool,
 ) -> Fragment_Output {
-	apply_virtual_transition(input.position, input.virtual_transition);
+	let transition_epoch = select(
+		0u,
+		render.virtual_geometry_epoch.x,
+		render.virtual_geometry_epoch.z != 0u,
+	);
+	apply_virtual_transition(input.position, input.virtual_transition, transition_epoch);
 	let base_color_sample = textureSample(base_color_texture, base_color_sampler, input.uv);
 	if (material.flags.z > 0.5 && base_color_sample.a * input.color.a < material.alpha.x) {
 		discard;
@@ -987,7 +1025,7 @@ fn fs_main(
 			default: {}
 		}
 		var output: Fragment_Output;
-		output.color = vec4<f32>(debug_color, 1.0);
+		output.color = vec4<f32>(debug_color, virtual_transition_marker(input.virtual_transition));
 		output.indirect_diffuse = vec4<f32>(0.0, 0.0, 0.0, 1.0);
 		let view_normal = normalize((render.view * vec4<f32>(normal, 0.0)).xyz);
 		output.surface = vec4<f32>(
@@ -1090,7 +1128,7 @@ fn fs_main(
 	var output: Fragment_Output;
 	output.color = vec4<f32>(
 		(color + indirect_diffuse + emissive) * environment.exposure,
-		1.0,
+		virtual_transition_marker(input.virtual_transition),
 	);
 	output.indirect_diffuse = vec4<f32>(
 		indirect_diffuse * environment.exposure,
@@ -1110,14 +1148,15 @@ struct Mask_Output {
 	@location(0) uv: vec2<f32>,
 	@location(1) alpha: f32,
 	@location(2) @interpolate(flat) virtual_transition: vec2<f32>,
+	@location(3) @interpolate(flat) virtual_transition_epoch: u32,
 };
 
 fn visible_virtual_transition(instance: GPU_Instance, visible_index: u32) -> vec2<f32> {
 	let meshlet_token = meshlet_identities[visible_index] & 0x003fffffu;
 	if (meshlet_token == 0u) {
-		return vec2<f32>(1.0, 0.0);
+		return vec2<f32>(0.0, 1.0);
 	}
-	return virtual_transition_for(instance, meshlets[meshlet_token - 1u]);
+	return virtual_coverage_for(instance, meshlets[meshlet_token - 1u]);
 }
 
 fn visible_virtual_shadow_transition(
@@ -1127,9 +1166,9 @@ fn visible_virtual_shadow_transition(
 ) -> vec2<f32> {
 	let meshlet_token = meshlet_identities[visible_index] & 0x003fffffu;
 	if (meshlet_token == 0u) {
-		return vec2<f32>(1.0, 0.0);
+		return vec2<f32>(0.0, 1.0);
 	}
-	return virtual_transition_for_error(
+	return virtual_coverage_for_error(
 		instance,
 		meshlets[meshlet_token - 1u],
 		render_virtual_shadow_error(cascade_index),
@@ -1148,6 +1187,7 @@ fn shadow_vs(input: Vertex_Input, @builtin(instance_index) visible_index: u32) -
 		visible_index,
 		shadow_cascade.index,
 	);
+	output.virtual_transition_epoch = 0u;
 	return output;
 }
 
@@ -1162,11 +1202,12 @@ fn compact_shadow_vs(
 	output.position = render.shadow_view_projections[shadow_cascade.index] * instance.model * vec4<f32>(input.position, 1.0);
 	output.uv = input.uv;
 	output.alpha = instance.color.a;
-	output.virtual_transition = virtual_transition_for_error(
+	output.virtual_transition = virtual_coverage_for_error(
 		instance,
 		meshlets[record.meshlet_index],
 		render_virtual_shadow_error(shadow_cascade.index),
 	);
+	output.virtual_transition_epoch = 0u;
 	return output;
 }
 
@@ -1178,6 +1219,11 @@ fn depth_vs(input: Vertex_Input, @builtin(instance_index) visible_index: u32) ->
 	output.uv = input.uv;
 	output.alpha = instance.color.a;
 	output.virtual_transition = visible_virtual_transition(instance, visible_index);
+	output.virtual_transition_epoch = select(
+		0u,
+		render.virtual_geometry_epoch.x,
+		render.virtual_geometry_epoch.z != 0u,
+	);
 	return output;
 }
 
@@ -1192,13 +1238,22 @@ fn compact_depth_vs(
 	output.position = render.view_projection * instance.model * vec4<f32>(input.position, 1.0);
 	output.uv = input.uv;
 	output.alpha = instance.color.a;
-	output.virtual_transition = virtual_transition_for(instance, meshlets[record.meshlet_index]);
+	output.virtual_transition = virtual_coverage_for(instance, meshlets[record.meshlet_index]);
+	output.virtual_transition_epoch = select(
+		0u,
+		render.virtual_geometry_epoch.x,
+		render.virtual_geometry_epoch.z != 0u,
+	);
 	return output;
 }
 
 @fragment
 fn mask_fs(input: Mask_Output) {
-	apply_virtual_transition(input.position, input.virtual_transition);
+	apply_virtual_transition(
+		input.position,
+		input.virtual_transition,
+		input.virtual_transition_epoch,
+	);
 	let alpha = textureSample(base_color_texture, base_color_sampler, input.uv).a * input.alpha;
 	if (alpha < material.alpha.x) {
 		discard;
@@ -1260,7 +1315,8 @@ struct Meshlet_Info {
 	batch_index: u32,
 	transition_start: u32,
 	refined_transition_start: u32,
-	padding: vec2<u32>,
+	has_coarse_parent: u32,
+	padding: u32,
 };
 
 struct Draw_Indexed_Indirect {
@@ -1298,7 +1354,8 @@ struct Cull_Uniform {
 	meshlet_count: u32,
 	occlusion_depth_scale: f32,
 	occlusion_world_bias: f32,
-	_padding: vec2<u32>,
+	virtual_blend_low_scale: f32,
+	virtual_blend_high_scale: f32,
 	virtual_shadow_error_pixels: vec4<f32>,
 };
 
@@ -1326,6 +1383,7 @@ struct Visibility_Counters {
 	visible_batches: atomic<u32>,
 	visible_meshlet_draws: atomic<u32>,
 	visible_virtual_clusters: atomic<u32>,
+	visible_virtual_blend_clusters: atomic<u32>,
 	virtual_rejected_clusters: atomic<u32>,
 	virtual_page_request_count: atomic<u32>,
 	virtual_page_prefetch_count: atomic<u32>,
@@ -1490,6 +1548,23 @@ fn virtual_page_touch_sample(meshlet: Meshlet_Info, instance_slot: u32) -> bool 
 	return ((identity_hash + cull.virtual_feedback_epoch) & 15u) == 0u;
 }
 
+fn virtual_frontier_progress(
+	instance: GPU_Instance,
+	bounds: vec4<f32>,
+	error: f32,
+	error_pixels: f32,
+) -> f32 {
+	if (error <= 0.0) {
+		return 0.0;
+	}
+	let projected = virtual_projected_error(instance, bounds, error);
+	return smoothstep(
+		error_pixels * cull.virtual_blend_low_scale,
+		error_pixels * cull.virtual_blend_high_scale,
+		projected,
+	);
+}
+
 fn virtual_cluster_selected(
 	instance: GPU_Instance,
 	meshlet: Meshlet_Info,
@@ -1501,13 +1576,19 @@ fn virtual_cluster_selected(
 	if (meshlet.page_resident == 0u) {
 		return false;
 	}
-	let group_over_threshold =
-		virtual_projected_error(instance, meshlet.group_bounds, meshlet.group_error) >
-		cull.virtual_error_pixels;
-	let wants_refinement = meshlet.refined_error > 0.0 &&
-		virtual_projected_error(instance, meshlet.refined_bounds, meshlet.refined_error) >
-		cull.virtual_error_pixels;
-	if (group_over_threshold && wants_refinement && meshlet.refined_resident == 0u) {
+	let group_progress = virtual_frontier_progress(
+		instance,
+		meshlet.group_bounds,
+		meshlet.group_error,
+		cull.virtual_error_pixels,
+	);
+	let refined_progress = virtual_frontier_progress(
+		instance,
+		meshlet.refined_bounds,
+		meshlet.refined_error,
+		cull.virtual_error_pixels,
+	);
+	if (group_progress > 0.0 && refined_progress > 0.0 && meshlet.refined_resident == 0u) {
 		if (emit_feedback && meshlet.request_enabled != 0u) {
 			atomicAdd(&counters.virtual_page_request_count, 1u);
 			append_virtual_page_feedback(
@@ -1523,8 +1604,7 @@ fn virtual_cluster_selected(
 		}
 		return true;
 	}
-	let refined_under_threshold = !wants_refinement;
-	return group_over_threshold && refined_under_threshold;
+	return group_progress > 0.0 && refined_progress < 1.0;
 }
 
 fn virtual_shadow_error_pixels(cascade_index: u32) -> f32 {
@@ -1543,16 +1623,45 @@ fn virtual_shadow_cluster_selected(
 		return false;
 	}
 	let error_pixels = virtual_shadow_error_pixels(cascade_index);
-	let group_over_threshold =
-		virtual_projected_error(instance, meshlet.group_bounds, meshlet.group_error) >
-		error_pixels;
-	let wants_refinement = meshlet.refined_error > 0.0 &&
-		virtual_projected_error(instance, meshlet.refined_bounds, meshlet.refined_error) >
-		error_pixels;
-	if (group_over_threshold && wants_refinement && meshlet.refined_resident == 0u) {
+	let group_progress = virtual_frontier_progress(
+		instance,
+		meshlet.group_bounds,
+		meshlet.group_error,
+		error_pixels,
+	);
+	let refined_progress = virtual_frontier_progress(
+		instance,
+		meshlet.refined_bounds,
+		meshlet.refined_error,
+		error_pixels,
+	);
+	if (group_progress > 0.0 && refined_progress > 0.0 && meshlet.refined_resident == 0u) {
 		return true;
 	}
-	return group_over_threshold && !wants_refinement;
+	return group_progress > 0.0 && refined_progress < 1.0;
+}
+
+fn virtual_cluster_blended(instance: GPU_Instance, meshlet: Meshlet_Info) -> bool {
+	if (meshlet.virtual_geometry == 0u) {
+		return false;
+	}
+	if (meshlet.transition_start != 0u || meshlet.refined_transition_start != 0u) {
+		return true;
+	}
+	let group_progress = virtual_frontier_progress(
+		instance,
+		meshlet.group_bounds,
+		meshlet.group_error,
+		cull.virtual_error_pixels,
+	);
+	let refined_progress = virtual_frontier_progress(
+		instance,
+		meshlet.refined_bounds,
+		meshlet.refined_error,
+		cull.virtual_error_pixels,
+	);
+	return (meshlet.has_coarse_parent != 0u && group_progress > 0.0 && group_progress < 1.0) ||
+		(meshlet.refined_resident != 0u && refined_progress > 0.0 && refined_progress < 1.0);
 }
 
 fn prefetch_virtual_cluster(
@@ -1971,6 +2080,9 @@ fn cull_compact_camera_meshlet(
 	}
 	if (meshlet.virtual_geometry != 0u) {
 		atomicAdd(&counters.visible_virtual_clusters, 1u);
+		if (virtual_cluster_blended(instance, meshlet)) {
+			atomicAdd(&counters.visible_virtual_blend_clusters, 1u);
+		}
 	}
 	let record_offset = batch.compact_visible_offset + local_index;
 	if (local_index < batch.compact_visible_capacity) {
@@ -2227,10 +2339,16 @@ fn cull_instances(invocation: vec3<u32>, submission_mode: u32) {
 					atomicAdd(&counters.visible_meshlet_draws, 1u);
 					if (submission_mode != 2u && meshlet.virtual_geometry != 0u) {
 						atomicAdd(&counters.visible_virtual_clusters, 1u);
+						if (virtual_cluster_blended(instance, meshlet)) {
+							atomicAdd(&counters.visible_virtual_blend_clusters, 1u);
+						}
 					}
 				}
 				if (submission_mode == 2u && meshlet.virtual_geometry != 0u) {
 					atomicAdd(&counters.visible_virtual_clusters, 1u);
+					if (virtual_cluster_blended(instance, meshlet)) {
+						atomicAdd(&counters.visible_virtual_blend_clusters, 1u);
+					}
 				}
 				if (submission_mode == 2u) {
 					let record_offset = batch.compact_visible_offset + local_index;

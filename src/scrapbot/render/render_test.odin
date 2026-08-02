@@ -312,6 +312,21 @@ test_temporal_resolve_reuses_one_workgroup_tile_for_exact_neighborhood_clamping 
 			"let color = rgb_to_ycocg(current_color_at(sample_pixel))",
 		),
 	)
+	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "virtual_transition_reactive"))
+	testing.expect(
+		t,
+		strings.contains(WGPU_TEMPORAL_AA_SHADER, "VIRTUAL_TRANSITION_MARKER_WITH_BLOOM"),
+	)
+	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "depth_tolerance_scale"))
+	testing.expect(
+		t,
+		strings.contains(WGPU_TEMPORAL_AA_SHADER, "history_weight = max(history_weight, 0.9)"),
+	)
+	testing.expect(
+		t,
+		strings.contains(WGPU_TEMPORAL_AA_SHADER, "depth >= 0.999999") &&
+		strings.contains(WGPU_TEMPORAL_AA_SHADER, "virtual_transition_reactive(history_sample.a)"),
+	)
 }
 
 @(test)
@@ -1274,6 +1289,7 @@ test_directional_shadow_shader_blends_adjacent_cascades :: proc(t: ^testing.T) {
 			"return mix(visibility, next_visibility, transition)",
 		),
 	)
+	testing.expect(t, strings.contains(WGPU_COMPOSITE_SHADER, "step(0.5, resolved.a)"))
 }
 
 @(test)
@@ -1923,8 +1939,20 @@ test_wgpu_culling_shader_stays_within_portable_storage_binding_floor :: proc(t: 
 		),
 	)
 	testing.expect(t, strings.contains(WGPU_GPU_DRIVEN_SHADER, "apply_virtual_transition"))
-	testing.expect(t, strings.contains(WGPU_GPU_DRIVEN_SHADER, "threshold >= transition.x"))
 	testing.expect(t, strings.contains(WGPU_GPU_DRIVEN_SHADER, "threshold < transition.x"))
+	testing.expect(t, strings.contains(WGPU_GPU_DRIVEN_SHADER, "threshold >= transition.y"))
+	testing.expect(t, strings.contains(WGPU_GPU_DRIVEN_SHADER, "virtual_lod_progress"))
+	testing.expect(t, strings.contains(WGPU_GPU_DRIVEN_SHADER, "virtual_transition_marker"))
+	testing.expect(t, strings.contains(WGPU_GPU_DRIVEN_SHADER, "0.61803398875"))
+	testing.expect(
+		t,
+		strings.contains(
+			WGPU_GPU_DRIVEN_SHADER,
+			"meshlet.refined_resident != 0u || meshlet.refined_transition_start != 0u",
+		),
+	)
+	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "virtual_frontier_progress"))
+	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "refined_progress < 1.0"))
 	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "cull_compact_candidate"))
 	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "cull_compact_camera_clusters"))
 	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "cull_compact_shadow_clusters"))
@@ -2217,11 +2245,11 @@ test_wgpu_virtual_geometry_activates_only_after_a_stable_window :: proc(t: ^test
 	testing.expect_value(t, len(changes), 2)
 
 	clear(&changes)
-	renderer.profile_frame_index = 30
+	renderer.profile_frame_index = 38
 	wgpu_finish_virtual_group_transitions(&renderer, &changes)
 	testing.expect_value(t, len(changes), 0)
 	testing.expect_value(t, len(renderer.virtual_geometry_transitions), 2)
-	renderer.profile_frame_index = 31
+	renderer.profile_frame_index = 39
 	wgpu_finish_virtual_group_transitions(&renderer, &changes)
 	testing.expect(t, cache.cluster_groups[0].transition_complete)
 	testing.expect(t, cache.cluster_groups[1].transition_complete)

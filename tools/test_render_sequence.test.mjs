@@ -46,12 +46,13 @@ test("render sequence arguments describe a transition capture", () => {
     "--project",
     "tests/fixtures/gpu-virtual-geometry-pressure",
     "--capture-range",
-    "31:44",
+    "31:56",
     "--require-transition",
   ]);
 
   assert.equal(options.requireTransition, true);
   assert.equal(options.stableFrontier, false);
+  assert.equal(options.captureEnd, 56);
 });
 
 test("render sequence arguments keep settled and transitioning gates distinct", () => {

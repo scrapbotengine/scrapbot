@@ -182,18 +182,19 @@ node tools/test_render_sequence.mjs \
   --project examples/virtual-wilds \
   --warmup 120 \
   --frames 120 \
-  --capture-range 108:115 \
+  --capture-range 56:63 \
   --stable-frontier \
   --out /tmp/scrapbot-virtual-wilds-sequence
 ```
 
 `--stable-frontier` requires one settled projected-error policy, no feedback overflow or page-read
-failure, no active virtual-geometry transition, and no group upload or eviction inside the captured
-range. The runner preserves the profile, every PNG, and `sequence-manifest.json`.
+failure, no active virtual-geometry admission transition, and no group upload or eviction inside the
+captured range. The runner preserves the profile, every PNG, and `sequence-manifest.json`.
 
 Use `--require-transition` for a transition-focused sequence. It requires at least one active
-virtual-geometry handoff inside the range and a settled zero-transition endpoint. Do not combine it
-with `--stable-frontier`. Pass `--golden-dir` and `--minimum-psnr` for a platform-qualified image
+virtual-geometry admission handoff, a visible blended cluster inside the range, and a settled
+zero-transition endpoint. Do not combine it with `--stable-frontier`. Pass `--golden-dir` and
+`--minimum-psnr` for a platform-qualified image
 baseline; do not use exact pixel equality across GPU vendors.
 
 ### Historical GPU benchmark bundles

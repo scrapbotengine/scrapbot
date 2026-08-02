@@ -62,11 +62,17 @@ stronger recent working set, prefetch never displaces demand residency, and each
 keeps its direct parent fallback available until the child is released. Residency changes patch
 only affected cluster ranges. The budget counts both vertex and index residency.
 
-A newly resident child does not replace its parent in one frame. It first passes a bounded
+A resident hierarchy does not switch levels at one exact projected-error boundary. Adjacent levels
+overlap from 90% through 110% of the active threshold, and world, depth, and cascade shadow passes
+retain complementary parent and child coverage. TAA integrates a low-discrepancy camera mask into a
+soft fade, with transition-aware history for bounded depth and silhouette changes. Non-temporal
+views and shadows retain a stable spatial partition.
+
+A newly streamed child also does not replace its parent in one frame. It first passes a bounded
 demand-aware settling window. After any direct-parent handoff settles, both levels are submitted for
-eight render frames. World, depth, and cascade shadow passes use one stable screen-space hash to
-keep complementary parent and child pixels. The child becomes the logical refinement only when
-that handoff completes; nested transitions therefore proceed one hierarchy level at a time.
+a 16-render-frame admission transition. That temporal progress limits the same complementary
+coverage contract. The child becomes the logical refinement only when the handoff completes; nested
+admission transitions therefore proceed one hierarchy level at a time.
 
 Native multi-draw adapters retain one indexed-indirect command and exact per-cluster
 visible-instance slice, and use that frontier for shadows too. These shared-buffer slices reserve
@@ -328,13 +334,13 @@ camera segment, preserves eight consecutive PNGs, and rejects feedback overflow,
 or a page upload, eviction, or projected-error change inside that settled capture window.
 
 The GPU virtual-geometry pressure test also captures an active refinement. Its sequence gate
-requires at least one transitioning group and a settled endpoint, preserving the complete handoff
-for inspection:
+requires at least one transitioning group, visible clusters using blended coverage, and a settled
+endpoint, preserving the complete handoff for inspection:
 
 ```sh
 node tools/test_render_sequence.mjs \
   --project tests/fixtures/gpu-virtual-geometry-pressure \
-  --warmup 0 --frames 80 --capture-range 31:44 \
+  --warmup 0 --frames 80 --capture-range 31:56 \
   --resolution 960x540 --require-transition \
   --out /tmp/scrapbot-virtual-geometry-transition
 ```
@@ -343,13 +349,14 @@ Projects can use the same reusable sequence gate directly:
 
 ```sh
 node tools/test_render_sequence.mjs --project examples/virtual-wilds \
-  --warmup 120 --frames 120 --capture-range 108:115 \
+  --warmup 120 --frames 120 --capture-range 56:63 \
   --stable-frontier --out /tmp/virtual-wilds-sequence
 ```
 
-`--stable-frontier` rejects active transitions as well as uploads, evictions, policy changes,
+`--stable-frontier` rejects active admission transitions as well as uploads, evictions, policy changes,
 feedback overflow, and page-read failures. Use `--require-transition` on a transition-focused
-capture; it requires an active handoff somewhere in the range and a zero-transition final frame.
+capture; it requires an active handoff, a visible blended cluster somewhere in the range, and a
+zero-transition final frame.
 
 Add `--golden-dir <directory> --minimum-psnr <dB>` for platform-qualified golden images. Prefer a
 tolerant PSNR baseline per adapter family over byte equality across different GPU implementations.
