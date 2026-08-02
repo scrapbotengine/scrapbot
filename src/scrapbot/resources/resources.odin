@@ -193,6 +193,7 @@ Shader :: struct {
 	asset_source: string,
 	wgsl: string,
 	cull_mode: shared.Shader_Cull_Mode,
+	spectral_surface: shared.Shader_Spectral_Surface,
 	generation: u32,
 	version: u32,
 	alive: bool,

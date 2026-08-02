@@ -5,3 +5,11 @@ name = "Coastal Water Shader"
 [shader]
 source = "shaders/coastal-water.wgsl"
 cull_mode = "none"
+
+[shader.spectral_surface]
+enabled = true
+patch_size = 192
+wind_speed = 11
+wind_direction = [0.94, 0.34]
+amplitude = 0.7
+small_wave_damping = 0.35

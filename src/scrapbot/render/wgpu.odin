@@ -561,7 +561,20 @@ WGPU_Custom_Shader_Cache :: struct {
 	version: u32,
 	module: wgpu.ShaderModule,
 	blend_pipeline: wgpu.RenderPipeline,
+	spectral_intermediate_buffer: wgpu.Buffer,
+	spectral_field_buffer: wgpu.Buffer,
+	spectral_uniform_buffer: wgpu.Buffer,
+	spectral_compute_bind_group: wgpu.BindGroup,
+	render_bind_group: wgpu.BindGroup,
+	render_target_generation: u64,
+	spectral_last_frame: u64,
+	spectral_surface: shared.Shader_Spectral_Surface,
 	valid: bool,
+}
+
+WGPU_Spectral_Surface_Uniform :: struct {
+	parameters: [4]f32,
+	wind_time: [4]f32,
 }
 
 WGPU_Transparent_Draw :: struct {
@@ -1083,10 +1096,20 @@ WGPU_Renderer :: struct {
 	custom_shader_sampler: wgpu.Sampler,
 	custom_shader_scene_texture: wgpu.Texture,
 	custom_shader_scene_view: wgpu.TextureView,
-	custom_shader_bind_group: wgpu.BindGroup,
+	custom_shader_depth_view: wgpu.TextureView,
+	custom_shader_target_generation: u64,
 	custom_shader_scene_width: u32,
 	custom_shader_scene_height: u32,
 	custom_shader_elapsed_seconds: f32,
+	spectral_surface_shader: wgpu.ShaderModule,
+	spectral_surface_bind_group_layout: wgpu.BindGroupLayout,
+	spectral_surface_pipeline_layout: wgpu.PipelineLayout,
+	spectral_surface_horizontal_pipeline: wgpu.ComputePipeline,
+	spectral_surface_vertical_pipeline: wgpu.ComputePipeline,
+	spectral_surface_dummy_field_buffer: wgpu.Buffer,
+	spectral_surface_dummy_uniform_buffer: wgpu.Buffer,
+	spectral_surface_dispatch_count: u64,
+	spectral_surface_active_count: u32,
 	transparent_visible_buffer: wgpu.Buffer,
 	transparent_world_bind_group: wgpu.BindGroup,
 	transparent_draws: [dynamic]WGPU_Transparent_Draw,
@@ -1500,6 +1523,13 @@ wgpu_profile_workload :: proc(
 		instance_expansion = instance_expansion,
 		cull = cull,
 		clustered_lighting = clustered,
+		spectral_surface = wgpu_profile_compute_workload(
+			renderer.spectral_surface_active_count > 0,
+			WGPU_SPECTRAL_SURFACE_SIZE,
+			WGPU_SPECTRAL_SURFACE_SIZE,
+			renderer.spectral_surface_active_count * 2,
+			1,
+		),
 		shadow = shadow,
 		depth = {
 			enabled = geometry_draws > 0,
@@ -4095,6 +4125,8 @@ wgpu_draw_frame :: proc(
 	if config.stats != nil {
 		wgpu_publish_gpu_timing(renderer, config.stats)
 		wgpu_publish_visibility(renderer, config.stats)
+		config.stats.spectral_surface_dispatches = renderer.spectral_surface_dispatch_count
+		config.stats.spectral_surface_active_fields = renderer.spectral_surface_active_count
 		config.stats.ui_vertex_rebuilds = renderer.ui_vertex_rebuild_count
 		config.stats.ui_project_vertex_rebuilds = renderer.ui_project_vertex_rebuild_count
 		config.stats.ui_editor_vertex_rebuilds = renderer.ui_editor_vertex_rebuild_count
@@ -4377,6 +4409,8 @@ wgpu_render_offscreen_frame :: proc(
 	if config.stats != nil {
 		wgpu_publish_gpu_timing(renderer, config.stats)
 		wgpu_publish_visibility(renderer, config.stats)
+		config.stats.spectral_surface_dispatches = renderer.spectral_surface_dispatch_count
+		config.stats.spectral_surface_active_fields = renderer.spectral_surface_active_count
 		config.stats.ui_vertex_rebuilds = renderer.ui_vertex_rebuild_count
 		config.stats.ui_project_vertex_rebuilds = renderer.ui_project_vertex_rebuild_count
 		config.stats.ui_editor_vertex_rebuilds = renderer.ui_editor_vertex_rebuild_count

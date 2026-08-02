@@ -1183,11 +1183,10 @@ fn shadow_vs(input: Vertex_Input, @builtin(instance_index) visible_index: u32) -
 	output.position = render.shadow_view_projections[shadow_cascade.index] * instance.model * vec4<f32>(input.position, 1.0);
 	output.uv = input.uv;
 	output.alpha = instance.color.a;
-	output.virtual_transition = visible_virtual_shadow_transition(
-		instance,
-		visible_index,
-		shadow_cascade.index,
-	);
+	// Shadow overlap is depth-only, so retaining both hierarchy levels is
+	// conservative and avoids stochastic light leaks where simplified
+	// silhouettes do not cover exactly the same texels.
+	output.virtual_transition = vec2<f32>(0.0, 1.0);
 	output.virtual_transition_epoch = 0u;
 	return output;
 }
@@ -1203,11 +1202,7 @@ fn compact_shadow_vs(
 	output.position = render.shadow_view_projections[shadow_cascade.index] * instance.model * vec4<f32>(input.position, 1.0);
 	output.uv = input.uv;
 	output.alpha = instance.color.a;
-	output.virtual_transition = virtual_coverage_for_error(
-		instance,
-		meshlets[record.meshlet_index],
-		render_virtual_shadow_error(shadow_cascade.index),
-	);
+	output.virtual_transition = vec2<f32>(0.0, 1.0);
 	output.virtual_transition_epoch = 0u;
 	return output;
 }

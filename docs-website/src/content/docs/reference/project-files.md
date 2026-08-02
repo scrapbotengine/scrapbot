@@ -146,6 +146,14 @@ name = "Coastal Water"
 [shader]
 source = "shaders/coastal-water.wgsl"
 cull_mode = "none"
+
+[shader.spectral_surface]
+enabled = true
+patch_size = 192
+wind_speed = 11
+wind_direction = [0.94, 0.34]
+amplitude = 0.7
+small_wave_damping = 0.35
 ```
 
 The source defines `fn scrapbot_vertex(input: Scrapbot_Vertex) -> Scrapbot_Vertex` and `fn scrapbot_fragment(input: Scrapbot_Fragment) -> Scrapbot_Surface`. Scrapbot owns entry points, camera and instance transport, render targets, and blending. Vertex input includes the object model and normal matrices so displacement can be authored in world scale without hard-coding an entity's transform.
@@ -155,8 +163,14 @@ Fragment input exposes viewport-local `screen_uv` for procedural effects and ful
 - `scrapbot_parameter`, `scrapbot_time_seconds`, `scrapbot_delta_seconds`, and `scrapbot_frame_index` for authored data and animation;
 - `scrapbot_pixel_size` for viewport-local derivatives and `scrapbot_scene_pixel_size` for target texture offsets;
 - `scrapbot_scene_color`, `scrapbot_scene_depth`, and `scrapbot_scene_view_depth` for opaque-scene sampling;
+- `scrapbot_scene_stable_uv` for a conservative nearest-depth cross sample when refraction must not magnify subpixel opaque-coverage gaps;
 - `scrapbot_scene_uv` and `scrapbot_scene_uv_valid` to convert and guard displaced samples inside the active viewport; and
+- `scrapbot_spectral_surface(world_xz)` for an enabled Shader's world-space spectral height and X/Z derivatives;
 - `scrapbot_environment_reflection` for the active roughness-filtered reflection environment.
+
+`[shader.spectral_surface]` is optional. When enabled, Scrapbot evolves a deterministic Phillips wind spectrum and performs a 64×64 inverse FFT on the GPU. `patch_size` is the repeating world-space width in metres, `wind_speed` is metres per second, `wind_direction` must be non-zero, `amplitude` scales spectral energy, and `small_wave_damping` suppresses the shortest waves.
+
+The returned `Vec3` contains `{height, dheight_dx, dheight_dz}`. A vertex hook can add height to a horizontal surface and construct its normal as `normalize(vec3(-dheight_dx, 1, -dheight_dz))`. Multiple materials that use the same Shader share one field and one simulation dispatch per frame; Shaders without the block pay no FFT work.
 
 Scene sampling functions accept full-target UVs. Use `input.scene_uv` as the undisplaced sample; passing `input.screen_uv` directly is incorrect when rendering inside an offset editor or game viewport.
 

@@ -102,6 +102,8 @@ Render_Stats :: struct {
 	cluster_max_lights: int,
 	clustered_point_lights: int,
 	cluster_dispatches: u64,
+	spectral_surface_dispatches: u64,
+	spectral_surface_active_fields: u32,
 	gpu_timestamps_supported: bool,
 	gpu_timestamps_valid: bool,
 	gpu_frame_ms: f64,

@@ -22,9 +22,14 @@ detail set, so the camera tour exercises visible page demand, predictive prefetc
 while coarse geometry remains available.
 
 The route also demonstrates project-authored vertex and fragment hooks. A subdivided procedural
-plane becomes animated coastal water with geometric swells and derivative-driven surface detail.
-The shader composes guarded screen-space refraction, Beer–Lambert absorption and scattering,
-environment Fresnel reflection, and narrow depth-intersection and crest foam.
+plane consumes Scrapbot's reusable GPU spectral-surface field: a deterministic Phillips wind
+spectrum evolves through deep-water dispersion and a two-pass 64×64 inverse FFT. The public helper
+returns world-space height and slopes, while the example decides how those values deform water.
+
+The fragment hook composes guarded screen-space refraction, Beer–Lambert absorption and scattering,
+environment Fresnel reflection, and narrow depth-intersection and crest foam. psrdnoise supplies
+only the smaller derivative-driven ripples and breakup, so the broad ocean motion no longer comes
+from a short repeating list of authored sine waves.
 
 The material uses Scrapbot's sorted transparent pass and public scene-sampling ABI. Virtual Wilds
 is therefore a normal consumer of the same shader-resource and material API available to every

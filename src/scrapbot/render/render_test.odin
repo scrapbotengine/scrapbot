@@ -76,6 +76,7 @@ test_project_shader_scene_sampling_uses_target_coordinates_and_linear_depth :: p
 		t,
 		strings.contains(WGPU_CUSTOM_SHADER_PRELUDE, "fn scrapbot_scene_view_depth("),
 	)
+	testing.expect(t, strings.contains(WGPU_CUSTOM_SHADER_PRELUDE, "fn scrapbot_scene_stable_uv("))
 	testing.expect(t, strings.contains(WGPU_CUSTOM_SHADER_PRELUDE, "near_plane * far_plane"))
 	testing.expect(
 		t,
@@ -103,6 +104,21 @@ test_project_shaders_receive_object_transforms_and_environment_reflections :: pr
 		t,
 		strings.contains(WGPU_CUSTOM_SHADER_FOOTER, "instance.model, instance.normal_model"),
 	)
+}
+
+@(test)
+test_project_shaders_can_sample_engine_spectral_surfaces :: proc(t: ^testing.T) {
+	testing.expect(
+		t,
+		strings.contains(WGPU_CUSTOM_SHADER_PRELUDE, "fn scrapbot_spectral_surface("),
+	)
+	testing.expect(t, strings.contains(WGPU_CUSTOM_SHADER_PRELUDE, "scrapbot_spectral_field"))
+	testing.expect(t, strings.contains(WGPU_SPECTRAL_SURFACE_SHADER, "fn initial_spectrum("))
+	testing.expect(t, strings.contains(WGPU_SPECTRAL_SURFACE_SHADER, "fn evolved_spectrum("))
+	testing.expect_value(t, strings.count(WGPU_SPECTRAL_SURFACE_SHADER, "@compute"), 2)
+	testing.expect(t, strings.contains(WGPU_SPECTRAL_SURFACE_SHADER, "fn horizontal("))
+	testing.expect(t, strings.contains(WGPU_SPECTRAL_SURFACE_SHADER, "fn vertical("))
+	testing.expect(t, strings.contains(WGPU_SPECTRAL_SURFACE_SHADER, "workgroupBarrier()"))
 }
 
 @(test)
@@ -2711,6 +2727,7 @@ test_profile_reports_per_frame_counter_deltas_after_warmup :: proc(t: ^testing.T
 	profile_record_frame(&collector, 0, 0, 0, 100, 100, 1, {}, &stats)
 
 	stats.cluster_dispatches += 1
+	stats.spectral_surface_dispatches += 2
 	stats.instance_uploads += 2
 	stats.instance_upload_bytes += 96
 	stats.geometry_arena_uploads += 3
@@ -2735,6 +2752,7 @@ test_profile_reports_per_frame_counter_deltas_after_warmup :: proc(t: ^testing.T
 	first := collector.frames[0].counter_deltas
 	testing.expect_value(t, first.draw_database_rebuilds, u64(0))
 	testing.expect_value(t, first.cluster_dispatches, u64(1))
+	testing.expect_value(t, first.spectral_surface_dispatches, u64(2))
 	testing.expect_value(t, first.instance_uploads, u64(2))
 	testing.expect_value(t, first.instance_upload_bytes, u64(96))
 	testing.expect_value(t, first.geometry_arena_uploads, u64(3))

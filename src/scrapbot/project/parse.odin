@@ -31,6 +31,11 @@ parse_project_resource :: proc(
 	resource.model.lod_ratios = {0.5, 0.25, 0.125}
 	resource.model.lod_screen_radii = {0.18, 0.07, 0.025}
 	resource.model.lod_count = shared.MAX_GEOMETRY_LODS - 1
+	resource.shader.spectral_surface.patch_size = 192
+	resource.shader.spectral_surface.wind_speed = 11
+	resource.shader.spectral_surface.wind_direction = {0.94, 0.34}
+	resource.shader.spectral_surface.amplitude = 0.55
+	resource.shader.spectral_surface.small_wave_damping = 0.35
 	resource.material.base_color = {1, 1, 1, 1}
 	resource.material.roughness = 0.8
 	resource.material.alpha_cutoff = 0.5
@@ -70,6 +75,10 @@ parse_project_resource :: proc(
 		}
 		if line == "[shader]" {
 			section = "shader"
+			continue
+		}
+		if line == "[shader.spectral_surface]" {
+			section = "shader.spectral_surface"
 			continue
 		}
 		if line == "[geometry_lod]" {
@@ -248,6 +257,34 @@ parse_project_resource :: proc(
 			}
 			if !found {
 				return resource, fail(.Invalid_Field, fmt.tprintf("invalid shader.%s", key))
+			}
+			continue
+		}
+		if section == "shader.spectral_surface" {
+			switch key {
+				case "enabled":
+					resource.shader.spectral_surface.enabled, found = parse_bool(value)
+				case "patch_size":
+					resource.shader.spectral_surface.patch_size, found = parse_f32(value)
+				case "wind_speed":
+					resource.shader.spectral_surface.wind_speed, found = parse_f32(value)
+				case "wind_direction":
+					resource.shader.spectral_surface.wind_direction, found = parse_vec2(value)
+				case "amplitude":
+					resource.shader.spectral_surface.amplitude, found = parse_f32(value)
+				case "small_wave_damping":
+					resource.shader.spectral_surface.small_wave_damping, found = parse_f32(value)
+				case:
+					return resource, fail(
+						.Invalid_Field,
+						fmt.tprintf("unknown shader.spectral_surface field '%s'", key),
+					)
+			}
+			if !found {
+				return resource, fail(
+					.Invalid_Field,
+					fmt.tprintf("invalid shader.spectral_surface.%s", key),
+				)
 			}
 			continue
 		}
@@ -599,6 +636,54 @@ parse_project_resource :: proc(
 	} else if resource.kind == .Shader {
 		if resource.shader.source == "" {
 			return resource, fail(.Missing_Field, "shader.source is required")
+		}
+		if resource.shader.spectral_surface.enabled {
+			spectral := resource.shader.spectral_surface
+			wind_length_squared :=
+				spectral.wind_direction.x * spectral.wind_direction.x +
+				spectral.wind_direction.y * spectral.wind_direction.y
+			if math.is_nan(spectral.patch_size) ||
+			   math.is_inf(spectral.patch_size) ||
+			   spectral.patch_size < 16 ||
+			   spectral.patch_size > 4096 {
+				return resource, fail(
+					.Invalid_Field,
+					"shader.spectral_surface.patch_size must be between 16 and 4096",
+				)
+			}
+			if math.is_nan(spectral.wind_speed) ||
+			   math.is_inf(spectral.wind_speed) ||
+			   spectral.wind_speed <= 0 ||
+			   spectral.wind_speed > 100 {
+				return resource, fail(
+					.Invalid_Field,
+					"shader.spectral_surface.wind_speed must be greater than zero and at most 100",
+				)
+			}
+			if !finite_vec2(spectral.wind_direction) || wind_length_squared < 0.0001 {
+				return resource, fail(
+					.Invalid_Field,
+					"shader.spectral_surface.wind_direction must be finite and non-zero",
+				)
+			}
+			if math.is_nan(spectral.amplitude) ||
+			   math.is_inf(spectral.amplitude) ||
+			   spectral.amplitude <= 0 ||
+			   spectral.amplitude > 10 {
+				return resource, fail(
+					.Invalid_Field,
+					"shader.spectral_surface.amplitude must be greater than zero and at most 10",
+				)
+			}
+			if math.is_nan(spectral.small_wave_damping) ||
+			   math.is_inf(spectral.small_wave_damping) ||
+			   spectral.small_wave_damping < 0 ||
+			   spectral.small_wave_damping > 10 {
+				return resource, fail(
+					.Invalid_Field,
+					"shader.spectral_surface.small_wave_damping must be between zero and 10",
+				)
+			}
 		}
 	} else if resource.kind == .Material {
 		if !finite_vec4(resource.material.base_color) {
@@ -3280,6 +3365,15 @@ finite_render_config :: proc(value: shared.Project_Render_Config) -> bool {
 
 valid_world_environment :: proc(value: shared.World_Environment_Component) -> bool {
 	return shared.world_environment_is_valid(value)
+}
+
+finite_vec2 :: proc(value: shared.Vec2) -> bool {
+	return(
+		!math.is_nan(value.x) &&
+		!math.is_inf(value.x) &&
+		!math.is_nan(value.y) &&
+		!math.is_inf(value.y) \
+	)
 }
 
 finite_vec3 :: proc(value: Vec3) -> bool {

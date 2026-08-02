@@ -145,7 +145,18 @@ test_project_shader_registry_versions_hook_source :: proc(t: ^testing.T) {
 		kind = .Shader,
 		name = "Water",
 		source = "water.resource.toml",
-		shader = {source = "shaders/water.wgsl", cull_mode = .None},
+		shader = {
+			source = "shaders/water.wgsl",
+			cull_mode = .None,
+			spectral_surface = {
+				enabled = true,
+				patch_size = 192,
+				wind_speed = 11,
+				wind_direction = {0.94, 0.34},
+				amplitude = 0.7,
+				small_wave_damping = 0.35,
+			},
+		},
 	}
 	source := "fn scrapbot_vertex(input: Scrapbot_Vertex) -> Scrapbot_Vertex { return input; }\nfn scrapbot_fragment(input: Scrapbot_Fragment) -> Scrapbot_Surface { return Scrapbot_Surface(); }"
 	handle, err := register_project_shader(&registry, declaration, source)
@@ -154,6 +165,9 @@ test_project_shader_registry_versions_hook_source :: proc(t: ^testing.T) {
 	testing.expect(t, alive)
 	if alive {
 		testing.expect_value(t, shader.cull_mode, shared.Shader_Cull_Mode.None)
+		testing.expect(t, shader.spectral_surface.enabled)
+		testing.expect_value(t, shader.spectral_surface.patch_size, f32(192))
+		testing.expect_value(t, shader.spectral_surface.amplitude, f32(0.7))
 		testing.expect_value(t, shader.version, u32(1))
 	}
 

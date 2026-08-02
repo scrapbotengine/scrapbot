@@ -32,6 +32,7 @@ Profile_Workload :: struct {
 	instance_expansion: Profile_Pass_Workload,
 	cull: Profile_Pass_Workload,
 	clustered_lighting: Profile_Pass_Workload,
+	spectral_surface: Profile_Pass_Workload,
 	shadow: Profile_Pass_Workload,
 	depth: Profile_Pass_Workload,
 	world: Profile_Pass_Workload,
@@ -65,6 +66,7 @@ Profile_Counter_Deltas :: struct {
 	virtual_geometry_group_evictions: u64,
 	virtual_geometry_deferred_groups: u64,
 	cluster_dispatches: u64,
+	spectral_surface_dispatches: u64,
 	instance_uploads: u64,
 	instance_upload_bytes: u64,
 	instance_transform_uploads: u64,
@@ -378,6 +380,10 @@ profile_counter_deltas :: proc(current, previous: Render_Stats) -> Profile_Count
 		cluster_dispatches = profile_counter_delta(
 			current.cluster_dispatches,
 			previous.cluster_dispatches,
+		),
+		spectral_surface_dispatches = profile_counter_delta(
+			current.spectral_surface_dispatches,
+			previous.spectral_surface_dispatches,
 		),
 		instance_uploads = profile_counter_delta(
 			current.instance_uploads,

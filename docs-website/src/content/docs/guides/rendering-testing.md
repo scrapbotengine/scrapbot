@@ -493,7 +493,13 @@ The output directory contains:
 
 Each row includes active CPU time, exact per-pass GPU time, their summed GPU frame duration, logical and physical dimensions, pixel density, viewport, shaded pixels, and a raw renderer snapshot. The snapshot includes effective `render_scale`, `shadow_resolution`, `adaptive_post_quality`, whether adaptation is active, and its filtered scalable-GPU signal.
 
-The `workload` object records the dispatch size, render extent, encoded draw-submission spans, instances, or sample count behind each pass. Shadow workload dimensions report the active raster resolution rather than retained capacity. This makes a timing actionable: for example, it distinguishes an expensive shader at a modest resolution from expected cost at a HiDPI physical resolution.
+The `workload` object records the dispatch size, render extent, encoded draw-submission spans,
+instances, or sample count behind each pass. Shadow workload dimensions report the active raster
+resolution rather than retained capacity. Spectral-surface workload reports its fixed field
+dimensions and both inverse-FFT passes for every active Shader resource.
+
+This makes a timing actionable. It distinguishes an expensive shader at a modest resolution from
+expected cost at a HiDPI physical resolution.
 
 `counter_deltas` turns cumulative upload, rebuild, dispatch, resize, redraw, cache-hit, geometry-
 arena mutation, and virtual page/group totals into the work attributable to that frame. Stable

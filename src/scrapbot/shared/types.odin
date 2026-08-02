@@ -158,6 +158,16 @@ Project_Icon_Set_Resource :: struct {
 Project_Shader_Resource :: struct {
 	source: string,
 	cull_mode: Shader_Cull_Mode,
+	spectral_surface: Shader_Spectral_Surface,
+}
+
+Shader_Spectral_Surface :: struct {
+	enabled: bool,
+	patch_size: f32,
+	wind_speed: f32,
+	wind_direction: Vec2,
+	amplitude: f32,
+	small_wave_damping: f32,
 }
 
 Project_Material_Resource :: struct {

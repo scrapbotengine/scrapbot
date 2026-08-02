@@ -434,12 +434,24 @@ name = "Water"
 [shader]
 source = "shaders/water.wgsl"
 cull_mode = "none"
+
+[shader.spectral_surface]
+enabled = true
+patch_size = 256
+wind_speed = 14
+wind_direction = [0.8, 0.6]
+amplitude = 0.75
+small_wave_damping = 0.4
 `,
 	)
 	testing.expect(t, shader_result.err == .None)
 	testing.expect_value(t, shader.kind, shared.Project_Resource_Kind.Shader)
 	testing.expect_value(t, shader.shader.source, "shaders/water.wgsl")
 	testing.expect_value(t, shader.shader.cull_mode, shared.Shader_Cull_Mode.None)
+	testing.expect(t, shader.shader.spectral_surface.enabled)
+	testing.expect_value(t, shader.shader.spectral_surface.patch_size, f32(256))
+	testing.expect_value(t, shader.shader.spectral_surface.wind_direction, Vec2{0.8, 0.6})
+	testing.expect_value(t, shader.shader.spectral_surface.amplitude, f32(0.75))
 
 	material, material_result := parse_project_resource(
 		`id = "a1000000-0000-4000-8000-000000000011"
@@ -466,6 +478,19 @@ source = "../water.wgsl"
 `,
 	)
 	testing.expect(t, unsafe_result.err == .Invalid_Path)
+
+	_, invalid_spectrum := parse_project_resource(
+		`id = "a1000000-0000-4000-8000-000000000013"
+type = "scrapbot.shader"
+name = "Still Water"
+[shader]
+source = "shaders/water.wgsl"
+[shader.spectral_surface]
+enabled = true
+wind_direction = [0, 0]
+`,
+	)
+	testing.expect(t, invalid_spectrum.err == .Invalid_Field)
 }
 
 @(test)

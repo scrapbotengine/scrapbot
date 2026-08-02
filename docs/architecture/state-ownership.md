@@ -172,6 +172,14 @@ Meshlet Visibility writes rejected bounds there during the frame-valued cull. Oc
 
 While query freeze is active, the renderer leaves the latest valid tail and indirect count untouched. Current visibility, depth, and Hi-Z ownership remain frame-valued; freeze does not authorize stale depth reuse for culling. Leaving the view clears the diagnostic-valid flag and retained published count.
 
+### Project spectral surfaces
+
+The Shader resource owns spectral parameters and versioning. Its WGPU cache owns the frequency-domain intermediate buffer, spatial height field, uniform, bind groups, and pipeline association.
+
+Simulation time is frame-valued. Each active spectral Shader updates its uniform and encodes one horizontal plus one vertical inverse FFT at most once per frame, even when several transparent draws share it. Inactive and non-spectral Shaders encode no spectral work and bind the renderer's shared zero field.
+
+Changing the Shader version releases only that Shader's spectral state and render pipeline. Resizing the scene target rebuilds only per-Shader scene/depth bind groups; the spectral field survives.
+
 The active camera's effective render scale sizes the world, depth, Hi-Z, surface, temporal, AO, reflection, fog, bloom, and exposure inputs. At scale `1`, WGPU borrows the native output depth target. Lower scales lazily own one matching depth target. Final composition stretches the complete scaled grid into the native output target, preserving editor-viewport coordinates. Project UI, editor-world overlays clipped to the Game viewport, and editor chrome are then painted at native resolution in that order.
 
 Global fog is integrated into the temporal resolve with 16 low-discrepancy sub-step samples rotated across the eight-frame temporal sequence. It reconstructs each ray from depth, evaluates exponential world-height density, and samples the first directional light's cascaded shadows with a 2×2 UV-space filter and adjacent-cascade cross-fades.

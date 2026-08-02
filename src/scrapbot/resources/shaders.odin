@@ -126,6 +126,7 @@ register_project_shader :: proc(
 		shader.asset_source = asset_source
 		shader.wgsl = owned_wgsl
 		shader.cull_mode = declaration.shader.cull_mode
+		shader.spectral_surface = declaration.shader.spectral_surface
 		shader.alive = true
 		shader.version += 1
 		registry.shader_revision += 1
@@ -154,6 +155,7 @@ register_project_shader :: proc(
 			asset_source = asset_source,
 			wgsl = owned_wgsl,
 			cull_mode = declaration.shader.cull_mode,
+			spectral_surface = declaration.shader.spectral_surface,
 			generation = 1,
 			version = 1,
 			alive = true,

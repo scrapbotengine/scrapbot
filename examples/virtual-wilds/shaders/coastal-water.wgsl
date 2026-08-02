@@ -91,26 +91,10 @@ fn coastal_psrdnoise(position: vec2<f32>, period: vec2<f32>, rotation: f32) -> C
 	return Coastal_Noise_Gradient(value, derivative);
 }
 
-fn coastal_wave(position: vec2<f32>, direction: vec2<f32>, frequency: f32, phase: f32, amplitude: f32) -> vec3<f32> {
-	let argument = dot(position, direction) * frequency + phase;
-	let derivative = cos(argument) * amplitude * frequency * direction;
-	return vec3<f32>(sin(argument) * amplitude, derivative.x, derivative.y);
-}
-
-fn coastal_waves(position: vec2<f32>, time: f32) -> vec3<f32> {
-	let settings = scrapbot_parameter(3u);
-	let scale = settings.x;
-	let speed = settings.y;
-	return
-		coastal_wave(position, normalize(vec2<f32>(0.82, 0.57)), scale * 0.58, time * speed, 0.12) +
-		coastal_wave(position, normalize(vec2<f32>(-0.34, 0.94)), scale * 1.13, -time * speed * 1.31, 0.045) +
-		coastal_wave(position, normalize(vec2<f32>(0.17, 0.98)), scale * 0.27, time * speed * 0.42, 0.18);
-}
-
 fn scrapbot_vertex(input: Scrapbot_Vertex) -> Scrapbot_Vertex {
 	var output = input;
 	let world_position = (input.model * vec4<f32>(input.position, 1.0)).xz;
-	let wave = coastal_waves(world_position, scrapbot_time_seconds());
+	let wave = scrapbot_spectral_surface(world_position);
 	output.position.y += wave.x;
 	output.normal = normalize(vec3<f32>(-wave.y, 1.0, -wave.z));
 	return output;
@@ -140,16 +124,18 @@ fn scrapbot_fragment(input: Scrapbot_Fragment) -> Scrapbot_Surface {
 	let settings = scrapbot_parameter(3u);
 	let geometric_normal = normalize(input.world_normal);
 	let normal = coastal_detail_normal(input, geometric_normal);
-	let scene_view_depth = scrapbot_scene_view_depth(input.scene_uv);
+	let stable_scene_uv = scrapbot_scene_stable_uv(input.scene_uv);
+	let scene_view_depth = scrapbot_scene_view_depth(stable_scene_uv);
 	let water_thickness = max(scene_view_depth - input.view_depth, 0.0);
 	let optical_depth = min(water_thickness, max(scattering.w, 0.01));
 
 	let refraction_pixels = max(absorption.w, 0.0);
 	let refraction_amount = (1.0 - exp(-optical_depth * 0.45)) / max(input.view_depth * 0.08, 1.0);
-	let candidate_uv = input.scene_uv + normal.xz * scrapbot_scene_pixel_size() * refraction_pixels * refraction_amount;
-	let candidate_depth = scrapbot_scene_view_depth(candidate_uv);
+	let candidate_uv = stable_scene_uv + normal.xz * scrapbot_scene_pixel_size() * refraction_pixels * refraction_amount;
+	let stable_candidate_uv = scrapbot_scene_stable_uv(candidate_uv);
+	let candidate_depth = scrapbot_scene_view_depth(stable_candidate_uv);
 	let refraction_valid = scrapbot_scene_uv_valid(candidate_uv) && candidate_depth > input.view_depth + 0.025;
-	let refraction_uv = select(input.scene_uv, candidate_uv, refraction_valid);
+	let refraction_uv = select(stable_scene_uv, stable_candidate_uv, refraction_valid);
 	let behind = scrapbot_scene_color(refraction_uv);
 
 	let transmittance = exp(-max(absorption.rgb, vec3<f32>(0.0001)) * optical_depth);
@@ -167,9 +153,9 @@ fn scrapbot_fragment(input: Scrapbot_Fragment) -> Scrapbot_Surface {
 	).value * 0.5 + 0.5;
 	let shoreline = 1.0 - smoothstep(max(fwidth(water_thickness) * 1.5, 0.025), foam_width, water_thickness);
 	let broken_shore = shoreline * smoothstep(0.16, 0.68, foam_noise + shoreline * 0.24);
-	let wave = coastal_waves(input.world_position.xz, scrapbot_time_seconds());
+	let wave = scrapbot_spectral_surface(input.world_position.xz);
 	let steepness = length(wave.yz);
-	let crest = smoothstep(0.105, 0.22, wave.x + steepness * 0.34) * smoothstep(0.48, 0.78, foam_noise);
+	let crest = smoothstep(0.18, 0.72, wave.x + steepness * 0.42) * smoothstep(0.48, 0.78, foam_noise);
 	let foam_mask = clamp((broken_shore + crest * 0.32) * settings.w, 0.0, 0.88);
 	color = mix(color, foam.rgb, foam_mask);
 

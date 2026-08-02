@@ -63,7 +63,11 @@ that frontier without introducing translucent double coverage: the render passes
 only when its stable coverage hash lies inside that level's complementary interval. TAA rotates and
 integrates the camera mask over time. A transition-only reactive marker lets the temporal resolver
 retain compatible history across bounded parent/child depth and silhouette changes. Non-temporal
-camera views and shadow cascades keep a stable spatial mask.
+camera views keep a stable spatial mask.
+
+Shadow overlap submits both hierarchy levels without fragment coverage discard. The depth-only
+result conservatively retains the nearest caster and cannot leak stochastic light through small
+parent/child silhouette differences.
 
 A newly resident child does not immediately make its coarse parent ineligible. GPU camera and
 shadow selection keep the parent submitted throughout the bounded admission transition, even when
