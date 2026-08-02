@@ -22,10 +22,18 @@ detail set, so the camera tour exercises visible page demand, predictive prefetc
 while coarse geometry remains available.
 
 The route also demonstrates project-authored vertex and fragment hooks. A subdivided procedural
-plane becomes animated coastal water; its shader combines multi-frequency displacement,
-screen-space refraction, depth-tinted shallows, Fresnel response, and depth-intersection foam along
-the scanned beach. The material uses Scrapbot's sorted transparent pass, so the example is a normal
-consumer of the same shader-resource and material API available to every project.
+plane becomes animated coastal water with geometric swells and derivative-driven surface detail.
+The shader composes guarded screen-space refraction, Beer–Lambert absorption and scattering,
+environment Fresnel reflection, and narrow depth-intersection and crest foam.
+
+The material uses Scrapbot's sorted transparent pass and public scene-sampling ABI. Virtual Wilds
+is therefore a normal consumer of the same shader-resource and material API available to every
+project, not a renderer-only water path.
+
+The water shader adapts Stefan Gustavson and Ian McEwan's
+[`psrdnoise2.wgsl`](https://github.com/stegu/psrdnoise) at commit
+`419175a270862ce7ae692038fafafb42ec0427e9`. psrdnoise is distributed under the MIT License; the
+required copyright and permission notice is retained in `shaders/coastal-water.wgsl`.
 
 All scanned assets are from [Poly Haven](https://polyhaven.com/) and licensed CC0. See
 [`tests/fixtures/external/README.md`](../../tests/fixtures/external/README.md) for pinned sources,

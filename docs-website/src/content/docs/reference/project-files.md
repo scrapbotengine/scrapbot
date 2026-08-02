@@ -148,11 +148,21 @@ source = "shaders/coastal-water.wgsl"
 cull_mode = "none"
 ```
 
-The source defines `fn scrapbot_vertex(input: Scrapbot_Vertex) -> Scrapbot_Vertex` and `fn scrapbot_fragment(input: Scrapbot_Fragment) -> Scrapbot_Surface`. Scrapbot owns entry points, camera and instance transport, render targets, and blending.
+The source defines `fn scrapbot_vertex(input: Scrapbot_Vertex) -> Scrapbot_Vertex` and `fn scrapbot_fragment(input: Scrapbot_Fragment) -> Scrapbot_Surface`. Scrapbot owns entry points, camera and instance transport, render targets, and blending. Vertex input includes the object model and normal matrices so displacement can be authored in world scale without hard-coding an entity's transform.
 
-Hooks can read the four parameters, time, pixel size, opaque scene color, and opaque depth through `scrapbot_parameter`, `scrapbot_time_seconds`, `scrapbot_delta_seconds`, `scrapbot_frame_index`, `scrapbot_pixel_size`, `scrapbot_scene_color`, and `scrapbot_scene_depth`.
+Fragment input exposes viewport-local `screen_uv` for procedural effects and full-target `scene_uv` for scene texture reads. Hooks can use:
+
+- `scrapbot_parameter`, `scrapbot_time_seconds`, `scrapbot_delta_seconds`, and `scrapbot_frame_index` for authored data and animation;
+- `scrapbot_pixel_size` for viewport-local derivatives and `scrapbot_scene_pixel_size` for target texture offsets;
+- `scrapbot_scene_color`, `scrapbot_scene_depth`, and `scrapbot_scene_view_depth` for opaque-scene sampling;
+- `scrapbot_scene_uv` and `scrapbot_scene_uv_valid` to convert and guard displaced samples inside the active viewport; and
+- `scrapbot_environment_reflection` for the active roughness-filtered reflection environment.
+
+Scene sampling functions accept full-target UVs. Use `input.scene_uv` as the undisplaced sample; passing `input.screen_uv` directly is incorrect when rendering inside an offset editor or game viewport.
 
 Custom shaders currently require `alpha_mode = "blend"`. Opaque custom materials need matching displaced depth-prepass and shadow contracts before they can be enabled safely. Blended draws are sorted back-to-front per instance on the CPU; a bounded GPU sort for very large transparent sets remains tracked work.
+
+A shader that computes ordinary translucent coverage returns that coverage in `Scrapbot_Surface.color.a`. A single-layer transmission shader may instead sample the opaque scene, compose transmission and reflection itself, and return alpha one so the pass does not blend the background into the result twice.
 
 UI-theme resources customize the shared semantic recipe vocabulary:
 

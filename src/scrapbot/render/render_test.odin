@@ -62,6 +62,50 @@ test_world_shaders_light_procedural_skies_through_the_pbr_environment_path :: pr
 }
 
 @(test)
+test_project_shader_scene_sampling_uses_target_coordinates_and_linear_depth :: proc(
+	t: ^testing.T,
+) {
+	testing.expect(t, strings.contains(WGPU_CUSTOM_SHADER_PRELUDE, "scene_uv: vec2<f32>"))
+	testing.expect(t, strings.contains(WGPU_CUSTOM_SHADER_PRELUDE, "fn scrapbot_scene_uv("))
+	testing.expect(
+		t,
+		strings.contains(WGPU_CUSTOM_SHADER_PRELUDE, "scrapbot_custom.viewport.xy + local_uv"),
+	)
+	testing.expect(t, strings.contains(WGPU_CUSTOM_SHADER_PRELUDE, "fn scrapbot_scene_uv_valid("))
+	testing.expect(
+		t,
+		strings.contains(WGPU_CUSTOM_SHADER_PRELUDE, "fn scrapbot_scene_view_depth("),
+	)
+	testing.expect(t, strings.contains(WGPU_CUSTOM_SHADER_PRELUDE, "near_plane * far_plane"))
+	testing.expect(
+		t,
+		strings.contains(WGPU_CUSTOM_SHADER_FOOTER, "scrapbot_scene_depth(scene_uv)"),
+	)
+	testing.expect(
+		t,
+		!strings.contains(WGPU_CUSTOM_SHADER_FOOTER, "scrapbot_scene_depth(screen_uv)"),
+	)
+}
+
+@(test)
+test_project_shaders_receive_object_transforms_and_environment_reflections :: proc(t: ^testing.T) {
+	testing.expect(t, strings.contains(WGPU_CUSTOM_SHADER_PRELUDE, "model: mat4x4<f32>"))
+	testing.expect(t, strings.contains(WGPU_CUSTOM_SHADER_PRELUDE, "normal_model: mat4x4<f32>"))
+	testing.expect(
+		t,
+		strings.contains(WGPU_CUSTOM_SHADER_PRELUDE, "fn scrapbot_environment_reflection("),
+	)
+	testing.expect(
+		t,
+		strings.contains(WGPU_CUSTOM_SHADER_PRELUDE, "scrapbot_environment.max_specular_lod"),
+	)
+	testing.expect(
+		t,
+		strings.contains(WGPU_CUSTOM_SHADER_FOOTER, "instance.model, instance.normal_model"),
+	)
+}
+
+@(test)
 test_composite_dithers_tone_mapped_output_in_fixed_display_space :: proc(t: ^testing.T) {
 	testing.expect(t, strings.contains(WGPU_COMPOSITE_SHADER, "fn presentation_dither"))
 	testing.expect(t, strings.contains(WGPU_COMPOSITE_SHADER, "fn linear_to_srgb"))

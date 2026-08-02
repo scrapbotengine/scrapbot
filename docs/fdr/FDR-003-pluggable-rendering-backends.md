@@ -384,11 +384,15 @@ imported-LOD fallback.
 
 ### 24. Compose project shader hooks into an engine-owned render contract
 
-**Decision:** Let projects provide `scrapbot_vertex` and `scrapbot_fragment` WGSL hooks while the backend owns entry points, resources, instance transport, render targets, and pass ordering. Blended hooks receive the opaque scene color/depth and render in a depth-tested, no-depth-write pass.
+**Decision:** Let projects provide `scrapbot_vertex` and `scrapbot_fragment` WGSL hooks while the backend owns entry points, resources, instance transport, render targets, and pass ordering.
+
+Vertex hooks receive the object's model and normal matrices. Fragment hooks receive both viewport-local `screen_uv` and full-target `scene_uv`, plus helpers for guarded viewport sampling, device-to-view depth conversion, and roughness-filtered environment reflection.
+
+Blended hooks receive the opaque scene color/depth and render in a depth-tested, no-depth-write pass. This supports both conventional alpha blending and single-layer transmission shaders that return an already-composited result with alpha one.
 
 **Why:** Projects need expressive surface and displacement effects without copying Scrapbot's backend ABI or turning the editor/example into a private renderer.
 
-**Tradeoff:** The first portable path sorts transparent instances back-to-front on the CPU. A bounded GPU sort for large transparent sets, imported glTF blending, structured compiler diagnostics, and displaced depth/shadow variants remain explicit follow-up work.
+**Tradeoff:** The first portable path sorts transparent instances back-to-front on the CPU. Scene color is the opaque pre-water result, so intersecting transparent layers do not recursively refract one another. A bounded GPU sort for large transparent sets, imported glTF blending, structured compiler diagnostics, and displaced depth/shadow variants remain explicit follow-up work.
 
 ## Related
 

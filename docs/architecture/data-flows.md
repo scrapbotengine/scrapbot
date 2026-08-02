@@ -159,6 +159,10 @@ typed ECS/resource mutation
                                       │
                  shadow + depth/sky/world + camera-selected debug/postprocessing
                                       │
+                opaque scene copy + depth + environment → project shader hooks
+                                      │
+                     sorted depth-tested transparent composition
+                                      │
                          retained UI streams
                            ┌──────────┴──────────┐
                  SDL/WGPU surface          offscreen texture

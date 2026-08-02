@@ -55,6 +55,26 @@ struct Custom_Uniform {
 	viewport: vec4<f32>,
 	time: vec4<f32>,
 };
+struct Environment_Uniform {
+	intensity: f32,
+	rotation: f32,
+	exposure: f32,
+	enabled: f32,
+	max_specular_lod: f32,
+	background_intensity: f32,
+	background_rotation: f32,
+	background_exposure: f32,
+	background_blur: f32,
+	background_enabled: f32,
+	background_max_specular_lod: f32,
+	reflection_intensity: f32,
+	sun_direction_intensity: vec4<f32>,
+	sun_color: vec4<f32>,
+	atmosphere_sky_tint: vec4<f32>,
+	atmosphere_ground_color: vec4<f32>,
+	atmosphere_parameters: vec4<f32>,
+	atmosphere_sun: vec4<f32>,
+};
 @group(0) @binding(0) var<uniform> render: Render_Uniform;
 @group(0) @binding(3) var<storage, read> instances: array<GPU_Instance>;
 @group(0) @binding(4) var<storage, read> visible_instances: array<u32>;
@@ -62,6 +82,9 @@ struct Custom_Uniform {
 @group(1) @binding(0) var base_color_texture: texture_2d<f32>;
 @group(1) @binding(1) var base_color_sampler: sampler;
 @group(1) @binding(6) var<uniform> material: Material_Uniform;
+@group(2) @binding(1) var scrapbot_specular_environment: texture_cube<f32>;
+@group(2) @binding(2) var scrapbot_environment_sampler: sampler;
+@group(2) @binding(3) var<uniform> scrapbot_environment: Environment_Uniform;
 @group(3) @binding(0) var scrapbot_opaque_color: texture_2d<f32>;
 @group(3) @binding(1) var scrapbot_linear_sampler: sampler;
 @group(3) @binding(2) var scrapbot_opaque_depth: texture_depth_2d;
@@ -78,12 +101,15 @@ struct Scrapbot_Vertex {
 	normal: vec3<f32>,
 	uv: vec2<f32>,
 	tangent: vec4<f32>,
+	model: mat4x4<f32>,
+	normal_model: mat4x4<f32>,
 };
 struct Scrapbot_Fragment {
 	world_position: vec3<f32>,
 	world_normal: vec3<f32>,
 	uv: vec2<f32>,
 	screen_uv: vec2<f32>,
+	scene_uv: vec2<f32>,
 	view_direction: vec3<f32>,
 	base_color: vec4<f32>,
 	view_depth: f32,
@@ -105,6 +131,18 @@ fn scrapbot_time_seconds() -> f32 { return scrapbot_custom.time.x; }
 fn scrapbot_delta_seconds() -> f32 { return scrapbot_custom.time.y; }
 fn scrapbot_frame_index() -> f32 { return scrapbot_custom.time.z; }
 fn scrapbot_pixel_size() -> vec2<f32> { return vec2<f32>(1.0) / max(scrapbot_custom.viewport.zw, vec2<f32>(1.0)); }
+fn scrapbot_scene_pixel_size() -> vec2<f32> {
+	return vec2<f32>(1.0) / max(vec2<f32>(textureDimensions(scrapbot_opaque_depth)), vec2<f32>(1.0));
+}
+fn scrapbot_scene_uv(local_uv: vec2<f32>) -> vec2<f32> {
+	return (scrapbot_custom.viewport.xy + local_uv * scrapbot_custom.viewport.zw) * scrapbot_scene_pixel_size();
+}
+fn scrapbot_scene_uv_valid(uv: vec2<f32>) -> bool {
+	let pixel = scrapbot_scene_pixel_size();
+	let minimum = scrapbot_custom.viewport.xy * pixel + pixel * 0.5;
+	let maximum = (scrapbot_custom.viewport.xy + scrapbot_custom.viewport.zw) * pixel - pixel * 0.5;
+	return all(uv >= minimum) && all(uv <= maximum);
+}
 fn scrapbot_scene_color(uv: vec2<f32>) -> vec3<f32> {
 	return textureSampleLevel(scrapbot_opaque_color, scrapbot_linear_sampler, clamp(uv, vec2<f32>(0.0), vec2<f32>(1.0)), 0.0).rgb;
 }
@@ -112,6 +150,31 @@ fn scrapbot_scene_depth(uv: vec2<f32>) -> f32 {
 	let dimensions = vec2<i32>(textureDimensions(scrapbot_opaque_depth));
 	let pixel = clamp(vec2<i32>(uv * vec2<f32>(dimensions)), vec2<i32>(0), dimensions - vec2<i32>(1));
 	return textureLoad(scrapbot_opaque_depth, pixel, 0);
+}
+fn scrapbot_view_depth(device_depth: f32) -> f32 {
+	let near_plane = max(render.camera_clip.x, 0.0001);
+	let far_plane = max(render.camera_clip.y, near_plane + 0.0001);
+	return near_plane * far_plane / max(far_plane - device_depth * (far_plane - near_plane), 0.0001);
+}
+fn scrapbot_scene_view_depth(uv: vec2<f32>) -> f32 {
+	return scrapbot_view_depth(scrapbot_scene_depth(uv));
+}
+fn scrapbot_rotate_environment(direction: vec3<f32>) -> vec3<f32> {
+	let c = cos(scrapbot_environment.rotation);
+	let s = sin(scrapbot_environment.rotation);
+	return vec3<f32>(c * direction.x - s * direction.z, direction.y, s * direction.x + c * direction.z);
+}
+fn scrapbot_environment_reflection(direction: vec3<f32>, roughness: f32) -> vec3<f32> {
+	if (scrapbot_environment.enabled > 0.5) {
+		return textureSampleLevel(
+			scrapbot_specular_environment,
+			scrapbot_environment_sampler,
+			scrapbot_rotate_environment(normalize(direction)),
+			clamp(roughness, 0.0, 1.0) * scrapbot_environment.max_specular_lod,
+		).rgb * scrapbot_environment.intensity * scrapbot_environment.reflection_intensity;
+	}
+	let horizon = pow(clamp(normalize(direction).y * 0.5 + 0.5, 0.0, 1.0), 0.35);
+	return mix(scrapbot_environment.atmosphere_ground_color.rgb, scrapbot_environment.atmosphere_sky_tint.rgb, horizon) * render.ambient.w;
 }
 `
 
@@ -129,15 +192,15 @@ struct Custom_Fragment_Output {
 	@location(1) surface: vec4<f32>,
 	@location(2) indirect_diffuse: vec4<f32>,
 };
-fn custom_vertex(input: Vertex_Input) -> Scrapbot_Vertex {
-	return scrapbot_vertex(Scrapbot_Vertex(input.position, input.normal, input.uv, input.tangent));
+fn custom_vertex(input: Vertex_Input, instance: GPU_Instance) -> Scrapbot_Vertex {
+	return scrapbot_vertex(Scrapbot_Vertex(input.position, input.normal, input.uv, input.tangent, instance.model, instance.normal_model));
 }
 fn custom_position(input: Vertex_Input, instance: GPU_Instance) -> vec4<f32> {
-	let vertex = custom_vertex(input);
+	let vertex = custom_vertex(input, instance);
 	return instance.model * vec4<f32>(vertex.position, 1.0);
 }
 fn custom_vertex_output(input: Vertex_Input, instance: GPU_Instance) -> Custom_Vertex_Output {
-	let vertex = custom_vertex(input);
+	let vertex = custom_vertex(input, instance);
 	let world = instance.model * vec4<f32>(vertex.position, 1.0);
 	var output: Custom_Vertex_Output;
 	output.position = render.view_projection * world;
@@ -159,17 +222,19 @@ fn octahedral_encode(direction: vec3<f32>) -> vec2<f32> {
 }
 @fragment fn fs_main(input: Custom_Vertex_Output) -> Custom_Fragment_Output {
 	let screen_uv = (input.position.xy - scrapbot_custom.viewport.xy) / scrapbot_custom.viewport.zw;
+	let scene_uv = scrapbot_scene_uv(screen_uv);
 	let texture_color = textureSample(base_color_texture, base_color_sampler, input.uv) * input.color;
 	let fragment = Scrapbot_Fragment(
 		input.world_position,
 		normalize(input.world_normal),
 		input.uv,
 		screen_uv,
+		scene_uv,
 		normalize(render.camera_position.xyz - input.world_position),
 		texture_color,
 		input.view_depth,
 		input.position.z,
-		scrapbot_scene_depth(screen_uv),
+		scrapbot_scene_depth(scene_uv),
 	);
 	let result = scrapbot_fragment(fragment);
 	var output: Custom_Fragment_Output;

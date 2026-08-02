@@ -1,56 +1,186 @@
-fn wave_height(position: vec2<f32>, time: f32) -> f32 {
+// The psrdnoise implementation below is adapted from psrdnoise2.wgsl.
+//
+// Copyright (c) 2021-2022 Stefan Gustavson and Ian McEwan.
+//
+// Permission is hereby granted, free of charge, to any person obtaining a
+// copy of this software and associated documentation files (the "Software"),
+// to deal in the Software without restriction, including without limitation
+// the rights to use, copy, modify, merge, publish, distribute, sublicense,
+// and/or sell copies of the Software, and to permit persons to whom the
+// Software is furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included
+// in all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+// THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+// FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+// DEALINGS IN THE SOFTWARE.
+//
+// Source: https://github.com/stegu/psrdnoise/blob/419175a270862ce7ae692038fafafb42ec0427e9/src/psrdnoise2.wgsl
+
+struct Coastal_Noise_Gradient {
+	value: f32,
+	gradient: vec2<f32>,
+};
+
+fn coastal_mod289(value: vec3<f32>) -> vec3<f32> {
+	return value - floor(value / 289.0) * 289.0;
+}
+
+fn coastal_psrdnoise(position: vec2<f32>, period: vec2<f32>, rotation: f32) -> Coastal_Noise_Gradient {
+	let skewed = vec2<f32>(position.x + position.y * 0.5, position.y);
+	let cell_0 = floor(skewed);
+	let local = skewed - cell_0;
+	let corner = select(vec2<f32>(0.0, 1.0), vec2<f32>(1.0, 0.0), local.x > local.y);
+	let cell_1 = cell_0 + corner;
+	let cell_2 = cell_0 + vec2<f32>(1.0);
+	let vertex_0 = vec2<f32>(cell_0.x - cell_0.y * 0.5, cell_0.y);
+	let vertex_1 = vec2<f32>(vertex_0.x + corner.x - corner.y * 0.5, vertex_0.y + corner.y);
+	let vertex_2 = vec2<f32>(vertex_0.x + 0.5, vertex_0.y + 1.0);
+	let offset_0 = position - vertex_0;
+	let offset_1 = position - vertex_1;
+	let offset_2 = position - vertex_2;
+
+	var hash_x: vec3<f32>;
+	var hash_y: vec3<f32>;
+	if (any(period > vec2<f32>(0.0))) {
+		var wrapped_x = vec3<f32>(vertex_0.x, vertex_1.x, vertex_2.x);
+		var wrapped_y = vec3<f32>(vertex_0.y, vertex_1.y, vertex_2.y);
+		if (period.x > 0.0) {
+			wrapped_x -= floor(wrapped_x / period.x) * period.x;
+		}
+		if (period.y > 0.0) {
+			wrapped_y -= floor(wrapped_y / period.y) * period.y;
+		}
+		hash_x = floor(wrapped_x + 0.5 * wrapped_y + 0.5);
+		hash_y = floor(wrapped_y + 0.5);
+	} else {
+		hash_x = vec3<f32>(cell_0.x, cell_1.x, cell_2.x);
+		hash_y = vec3<f32>(cell_0.y, cell_1.y, cell_2.y);
+	}
+
+	var hash = coastal_mod289(hash_x);
+	hash = coastal_mod289((hash * 51.0 + 2.0) * hash + hash_y);
+	hash = coastal_mod289((hash * 34.0 + 10.0) * hash);
+	let angle = hash * 0.07482 + rotation;
+	let gradient_0 = vec2<f32>(cos(angle.x), sin(angle.x));
+	let gradient_1 = vec2<f32>(cos(angle.y), sin(angle.y));
+	let gradient_2 = vec2<f32>(cos(angle.z), sin(angle.z));
+	let weights = max(
+		vec3<f32>(0.8) - vec3<f32>(dot(offset_0, offset_0), dot(offset_1, offset_1), dot(offset_2, offset_2)),
+		vec3<f32>(0.0),
+	);
+	let weights_2 = weights * weights;
+	let weights_4 = weights_2 * weights_2;
+	let gradient_dot_offset = vec3<f32>(
+		dot(gradient_0, offset_0),
+		dot(gradient_1, offset_1),
+		dot(gradient_2, offset_2),
+	);
+	let value = 10.9 * dot(weights_4, gradient_dot_offset);
+	let derivative_weight = -8.0 * weights_2 * weights * gradient_dot_offset;
+	let derivative = 10.9 * (
+		weights_4.x * gradient_0 + derivative_weight.x * offset_0 +
+		weights_4.y * gradient_1 + derivative_weight.y * offset_1 +
+		weights_4.z * gradient_2 + derivative_weight.z * offset_2
+	);
+	return Coastal_Noise_Gradient(value, derivative);
+}
+
+fn coastal_wave(position: vec2<f32>, direction: vec2<f32>, frequency: f32, phase: f32, amplitude: f32) -> vec3<f32> {
+	let argument = dot(position, direction) * frequency + phase;
+	let derivative = cos(argument) * amplitude * frequency * direction;
+	return vec3<f32>(sin(argument) * amplitude, derivative.x, derivative.y);
+}
+
+fn coastal_waves(position: vec2<f32>, time: f32) -> vec3<f32> {
 	let settings = scrapbot_parameter(3u);
 	let scale = settings.x;
 	let speed = settings.y;
-	let first = sin(dot(position, vec2<f32>(0.82, 0.57)) * scale * 5.2 + time * speed);
-	let second = sin(dot(position, vec2<f32>(-0.34, 0.94)) * scale * 8.7 - time * speed * 1.31);
-	let swell = sin(dot(position, vec2<f32>(0.17, 0.98)) * scale * 2.4 + time * speed * 0.42);
-	return first * 0.075 + second * 0.035 + swell * 0.11;
+	return
+		coastal_wave(position, normalize(vec2<f32>(0.82, 0.57)), scale * 0.58, time * speed, 0.12) +
+		coastal_wave(position, normalize(vec2<f32>(-0.34, 0.94)), scale * 1.13, -time * speed * 1.31, 0.045) +
+		coastal_wave(position, normalize(vec2<f32>(0.17, 0.98)), scale * 0.27, time * speed * 0.42, 0.18);
 }
 
 fn scrapbot_vertex(input: Scrapbot_Vertex) -> Scrapbot_Vertex {
 	var output = input;
-	let time = scrapbot_time_seconds();
-	let position = input.position.xz * vec2<f32>(84.0, 300.0);
-	let epsilon = 0.08;
-	let center = wave_height(position, time);
-	let dx = wave_height(position + vec2<f32>(epsilon, 0.0), time) - center;
-	let dz = wave_height(position + vec2<f32>(0.0, epsilon), time) - center;
-	output.position.y += center;
-	output.normal = normalize(vec3<f32>(-dx / epsilon, 1.0, -dz / epsilon));
+	let world_position = (input.model * vec4<f32>(input.position, 1.0)).xz;
+	let wave = coastal_waves(world_position, scrapbot_time_seconds());
+	output.position.y += wave.x;
+	output.normal = normalize(vec3<f32>(-wave.y, 1.0, -wave.z));
 	return output;
 }
 
+fn coastal_detail_normal(input: Scrapbot_Fragment, geometric_normal: vec3<f32>) -> vec3<f32> {
+	let time = scrapbot_time_seconds();
+	let position = input.world_position.xz;
+	let agitation = coastal_psrdnoise(position * 0.42 + vec2<f32>(time * 0.12, -time * 0.08), vec2<f32>(0.0), time * 0.08);
+	let ripples = coastal_psrdnoise(position * 1.65 + vec2<f32>(-time * 0.31, time * 0.24), vec2<f32>(0.0), -time * 0.17);
+	let footprint = max(length(fwidth(position)), 0.001);
+	let ripple_visibility = 1.0 - smoothstep(0.12, 0.55, footprint);
+	let slope = agitation.gradient * 0.075 + ripples.gradient * (0.018 * ripple_visibility);
+	return normalize(geometric_normal + vec3<f32>(-slope.x, 0.0, -slope.y));
+}
+
+fn coastal_fresnel(normal: vec3<f32>, view: vec3<f32>) -> f32 {
+	let water_f0 = 0.02037;
+	let facing = clamp(dot(normal, view), 0.0, 1.0);
+	return water_f0 + (1.0 - water_f0) * pow(1.0 - facing, 5.0);
+}
+
 fn scrapbot_fragment(input: Scrapbot_Fragment) -> Scrapbot_Surface {
-	let shallow = scrapbot_parameter(0u);
-	let deep = scrapbot_parameter(1u);
+	let scattering = scrapbot_parameter(0u);
+	let absorption = scrapbot_parameter(1u);
 	let foam = scrapbot_parameter(2u);
 	let settings = scrapbot_parameter(3u);
-	let pixel = scrapbot_pixel_size();
-	let neighbor_depth = min(
-		min(scrapbot_scene_depth(input.screen_uv + vec2<f32>(pixel.x * 2.0, 0.0)), scrapbot_scene_depth(input.screen_uv - vec2<f32>(pixel.x * 2.0, 0.0))),
-		min(scrapbot_scene_depth(input.screen_uv + vec2<f32>(0.0, pixel.y * 2.0)), scrapbot_scene_depth(input.screen_uv - vec2<f32>(0.0, pixel.y * 2.0)))
-	);
-	let depth_gap = max(min(input.scene_depth, neighbor_depth) - input.fragment_depth, 0.0);
-	let water_depth = smoothstep(0.0008, 0.035, depth_gap);
-	let foam_width = max(foam.w, 0.0002);
-	let shore_foam = smoothstep(0.00003, foam_width * 0.35, depth_gap) * (1.0 - smoothstep(foam_width * 0.35, foam_width, depth_gap));
-	let ripple = sin(dot(input.world_position.xz, vec2<f32>(0.61, -0.43)) * 2.7 + scrapbot_time_seconds() * 1.8);
-	let crest = smoothstep(0.82, 1.0, ripple) * 0.04;
-	let foam_mask = clamp((shore_foam + crest) * (0.82 + ripple * 0.18) * settings.w, 0.0, 1.0);
-	let view_fresnel = pow(1.0 - clamp(dot(input.world_normal, input.view_direction), 0.0, 1.0), 4.0);
-	let refract_uv = input.screen_uv + input.world_normal.xz * deep.w * (0.25 + water_depth * 0.75);
-	let behind = scrapbot_scene_color(refract_uv);
-	let body = mix(shallow.rgb, deep.rgb, water_depth);
-	let transmitted = mix(behind, body, 0.82 + water_depth * 0.13);
-	let reflected = mix(transmitted, vec3<f32>(0.28, 0.48, 0.58), view_fresnel * settings.z);
-	let color = mix(reflected, foam.rgb, foam_mask);
-	let alpha = clamp(shallow.a + water_depth * 0.16 + view_fresnel * 0.1 + foam_mask * 0.2, 0.0, 0.98);
+	let geometric_normal = normalize(input.world_normal);
+	let normal = coastal_detail_normal(input, geometric_normal);
+	let scene_view_depth = scrapbot_scene_view_depth(input.scene_uv);
+	let water_thickness = max(scene_view_depth - input.view_depth, 0.0);
+	let optical_depth = min(water_thickness, max(scattering.w, 0.01));
+
+	let refraction_pixels = max(absorption.w, 0.0);
+	let refraction_amount = (1.0 - exp(-optical_depth * 0.45)) / max(input.view_depth * 0.08, 1.0);
+	let candidate_uv = input.scene_uv + normal.xz * scrapbot_scene_pixel_size() * refraction_pixels * refraction_amount;
+	let candidate_depth = scrapbot_scene_view_depth(candidate_uv);
+	let refraction_valid = scrapbot_scene_uv_valid(candidate_uv) && candidate_depth > input.view_depth + 0.025;
+	let refraction_uv = select(input.scene_uv, candidate_uv, refraction_valid);
+	let behind = scrapbot_scene_color(refraction_uv);
+
+	let transmittance = exp(-max(absorption.rgb, vec3<f32>(0.0001)) * optical_depth);
+	let body = behind * transmittance + scattering.rgb * (vec3<f32>(1.0) - transmittance);
+	let fresnel = coastal_fresnel(normal, input.view_direction);
+	let reflection_direction = reflect(-input.view_direction, normal);
+	let reflection = scrapbot_environment_reflection(reflection_direction, 0.08);
+	var color = mix(body, reflection, clamp(fresnel * settings.z, 0.0, 1.0));
+
+	let foam_width = max(foam.w, 0.05);
+	let foam_noise = coastal_psrdnoise(
+		input.world_position.xz * 0.38 + vec2<f32>(scrapbot_time_seconds() * 0.08, -scrapbot_time_seconds() * 0.045),
+		vec2<f32>(0.0),
+		scrapbot_time_seconds() * 0.04,
+	).value * 0.5 + 0.5;
+	let shoreline = 1.0 - smoothstep(max(fwidth(water_thickness) * 1.5, 0.025), foam_width, water_thickness);
+	let broken_shore = shoreline * smoothstep(0.16, 0.68, foam_noise + shoreline * 0.24);
+	let wave = coastal_waves(input.world_position.xz, scrapbot_time_seconds());
+	let steepness = length(wave.yz);
+	let crest = smoothstep(0.105, 0.22, wave.x + steepness * 0.34) * smoothstep(0.48, 0.78, foam_noise);
+	let foam_mask = clamp((broken_shore + crest * 0.32) * settings.w, 0.0, 0.88);
+	color = mix(color, foam.rgb, foam_mask);
+
+	// This hook has already composited transmission, scattering, reflection, and
+	// foam over the opaque scene. Alpha one prevents the transparent pass from
+	// blending the opaque scene into that result a second time.
 	return Scrapbot_Surface(
-		vec4<f32>(color, alpha),
-		input.world_normal,
-		mix(0.2, 0.05, foam_mask),
-		color * 0.08,
-		foam_mask * 0.08,
+		vec4<f32>(color, 1.0),
+		normal,
+		mix(0.08, 0.32, foam_mask),
+		vec3<f32>(0.0),
+		foam_mask * 0.035,
 	);
 }
