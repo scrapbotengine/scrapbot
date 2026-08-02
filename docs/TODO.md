@@ -5,7 +5,6 @@ This file tracks current actionable engineering work. The broad product roadmap 
 ## Rendering
 
 - [ ] Maintain a repeatable 60 Hz adaptive-quality baseline matrix across representative integrated/discrete GPUs; record settled world, shadow, and post tiers. See [ADR-052](adr/ADR-052-coordinate-adaptive-render-quality-from-one-frame-budget.md).
-- [ ] Replace bounded, demand-aware virtual-geometry frontier staging with a smooth one-way coarse-to-fine visual transition; `mise test-virtual-wilds-gpu` already preserves and validates a consecutive-frame streaming sequence.
 - [ ] Compress Model v16 catalogs, material images, and virtual-Geometry pages with independently decodable page records; measure import time, product size, startup, and streaming cost on `impossible-archive` unhinged.
 - [ ] Strip source assets from exported games and package the same validated runtime products used by development runs.
 - [ ] Re-evaluate Metal multi-draw and benchmark virtual geometry after wgpu's native ICB paths land ([issue #61](https://github.com/scrapbotengine/scrapbot/issues/61)).

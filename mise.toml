@@ -798,6 +798,11 @@ if (result.schema_version !== 1 || result.command !== "run" || result.ok !== tru
 }
 ' "$RESULT"
 node tools/assert_png_variance.mjs "$FRAME"
+node tools/test_render_sequence.mjs \
+  --project tests/fixtures/gpu-virtual-geometry-pressure \
+  --warmup 0 --frames 80 --capture-range 31:44 \
+  --resolution 960x540 --require-transition \
+  --out "${TMPDIR:-/tmp}/scrapbot-virtual-geometry-transition"
 '''
 
 [tasks.test-sanitize]

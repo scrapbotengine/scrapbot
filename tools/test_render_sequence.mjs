@@ -17,6 +17,7 @@ export function parseArguments(arguments_) {
     resolution: "1280x720",
     out: path.join(os.tmpdir(), "scrapbot-render-sequence"),
     stableFrontier: false,
+    requireTransition: false,
     goldenDirectory: undefined,
     minimumPsnr: 32,
   };
@@ -24,6 +25,10 @@ export function parseArguments(arguments_) {
     const argument = arguments_[index];
     if (argument === "--stable-frontier") {
       options.stableFrontier = true;
+      continue;
+    }
+    if (argument === "--require-transition") {
+      options.requireTransition = true;
       continue;
     }
     const names = new Map([
@@ -56,6 +61,9 @@ export function parseArguments(arguments_) {
   }
   options.captureStart = Number(match[1]);
   options.captureEnd = Number(match[2]);
+  if (options.stableFrontier && options.requireTransition) {
+    throw new Error("--stable-frontier and --require-transition are mutually exclusive");
+  }
   return options;
 }
 
@@ -160,13 +168,34 @@ export function validateProfile(options, profile, framesDirectory) {
         frame.render?.virtual_geometry_page_read_failures !== 0 ||
         frame.counter_deltas?.virtual_geometry_group_uploads !== 0 ||
         frame.counter_deltas?.virtual_geometry_group_activations !== 0 ||
-        frame.counter_deltas?.virtual_geometry_group_evictions !== 0
+        frame.counter_deltas?.virtual_geometry_group_evictions !== 0 ||
+        frame.render?.virtual_geometry_transitioning_groups !== 0
       ) {
         throw new Error(`virtual-geometry frontier mutated during captured frame ${frame.index}`);
       }
     }
     if (errors.size !== 1) {
       throw new Error("virtual-geometry projected-error policy changed during capture");
+    }
+  }
+  if (options.requireTransition) {
+    const transitionCounts = capturedRows.map(
+      (frame) => frame.render?.virtual_geometry_transitioning_groups ?? 0,
+    );
+    if (!transitionCounts.some((count) => count > 0)) {
+      throw new Error("captured range does not contain a virtual-geometry transition");
+    }
+    if (transitionCounts.at(-1) !== 0) {
+      throw new Error("captured virtual-geometry transition does not reach a settled endpoint");
+    }
+    for (const frame of capturedRows) {
+      if (
+        frame.render?.virtual_geometry !== true ||
+        frame.render?.virtual_geometry_page_request_overflow !== 0 ||
+        frame.render?.virtual_geometry_page_read_failures !== 0
+      ) {
+        throw new Error(`virtual-geometry transition became unhealthy at frame ${frame.index}`);
+      }
     }
   }
   return captures;
@@ -207,6 +236,7 @@ function main() {
     recorded_frames: options.frames,
     capture_range: options.captureRange,
     stable_frontier: options.stableFrontier,
+    required_transition: options.requireTransition,
     golden_directory: options.goldenDirectory ?? null,
     captures,
   };

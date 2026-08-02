@@ -310,11 +310,20 @@ rendering, touching, or otherwise making them authoritative. Demand sorts first 
 speculative residency immediately. Prefetch uses spare budget and never evicts demand-resident
 geometry. Visible use promotes a prefetched group and records a hit.
 
-Page residency does not immediately make a streamed refinement drawable. A newly complete group is
-staged while its coarse frontier remains active. It activates after a demand-free settling window,
-or after a bounded maximum hold so continuously visible detail still makes progress. This separates
-safe memory admission from visible topology changes and prevents late asynchronous completions from
-randomly replacing geometry during an ordinary camera move.
+Page residency does not immediately replace the streamed refinement's parent. A newly complete
+group remains staged through the existing demand-aware settling window, with a bounded maximum hold
+for continuous demand, and waits for its direct parent transition to settle. The child and complete
+parent then remain drawable together for an eight-render-frame handoff.
+
+The world, depth, and shadow fragment paths apply the same stable screen-space hash. Child pixels
+below the advancing threshold survive; the exact complementary parent pixels survive above it.
+This preserves one opaque surface sample per pixel without transparency, sorting, or double-depth
+coverage. Camera passes derive both masks from the camera error threshold. Each shadow cascade
+derives both from that cascade's scaled threshold, so silhouettes and receivers change together.
+
+Only completion makes the child logically replace its parent. Nested hierarchy transitions are
+serialized, and a transitioning child keeps its direct parent protected. This makes refinement
+monotonic and prevents simultaneous hierarchy-level handoffs from exposing a missing surface.
 
 Asynchronous CPU processing applies touches, deduplicates and prioritizes group requests. Imported
 misses read exact Model-product byte ranges on a dedicated worker. Versioned completions admit or
@@ -322,7 +331,8 @@ evict complete non-pinned groups under the project vertex-and-index payload budg
 batch builds one priority-ordered eviction plan. Lower-priority detail cannot displace a stronger
 recent working set, and an admitted refinement protects every direct parent group that can replace
 it. Eviction releases the child before its parents become eligible, so the exact resident coarse
-frontier remains drawable. A newly uploaded group begins its visible-use grace window in the
+frontier remains drawable. An active transition also blocks logical refinement completion until
+its fixed handoff ends. A newly uploaded group begins its visible-use grace window in the
 admission frame, rather than spending that protection while its older GPU request is still crossing
 the asynchronous readback boundary.
 
@@ -350,8 +360,9 @@ per-cluster command generation, or geometry upload.
 The `virtual_geometry` camera view colors selected clusters by identity and hierarchy depth. Amber
 marks a branch whose finer group is not completely resident; cyan marks a selected page that
 arrived speculatively. Structured results report payload budget and residency, demand/prefetch
-feedback, asynchronous reads/failures, page/group uploads, drawable group activations, prefetch
-hits/reclamation, evictions, deferred groups, selected clusters, and threshold rejections.
+feedback, asynchronous reads/failures, page/group uploads, drawable group activations, active
+transitions, prefetch hits/reclamation, evictions, deferred groups, selected clusters, and
+threshold rejections.
 
 **Why:** Geometry detail must vary below object granularity without cracks, importer-specific draw
 paths, or CPU decisions per cluster.

@@ -61,9 +61,12 @@ Imported misses enqueue immutable product ranges on the I/O worker. Versioned co
 evict whole groups under bounded per-frame work and the combined payload budget. One priority-ordered
 plan serves every eviction in the feedback batch. Demand may reclaim speculative residency;
 prefetch uses spare capacity only. Completed groups stage residency separately from drawable
-activation; a demand-aware settling window keeps the coarse frontier stable across late I/O. An
-active child protects its direct parent fallback, and release orders child before parent eligibility. Persistent dependency indices patch only affected cluster
-ranges rather than regenerating a Geometry's complete GPU residency table.
+activation through a bounded demand-aware settling window. After direct-parent transitions settle,
+a child and its complete parent remain
+drawable through one eight-frame complementary screen-door handoff shared by world, depth, and
+shadow passes. Nested handoffs serialize. An active child protects its direct parent fallback, and
+release orders child before parent eligibility. Persistent dependency indices patch only affected
+cluster ranges rather than regenerating a Geometry's complete GPU residency table.
 
 Capable adapters retain cluster metadata and arena-global indirect templates. They select the
 desired resident frontier and draw a coarse fallback while refinement is missing. Native

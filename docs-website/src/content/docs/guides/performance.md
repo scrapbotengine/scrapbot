@@ -139,9 +139,13 @@ Scrapbot's portable SIMD layer currently uses four `f32` lanes for matrix multip
   prefetch requests, and overflow describe the latest completed asynchronous feedback. Prefetch
   group uploads, hits, and reclamations explain whether prediction arrived usefully or yielded to
   demand. Upload, drawable-group activation, byte, hit, reclamation, and eviction counts are
-  cumulative; profile `counter_deltas` make cumulative counters frame-local. A resident group can
-  remain inactive briefly while its requested frontier settles, preventing partially refined
-  geometry from replacing a complete parent in the same frame that its pages arrive.
+  cumulative; profile `counter_deltas` make cumulative counters frame-local.
+
+  `virtual_geometry_transitioning_groups` counts refinements currently replacing their complete
+  parents. A resident child passes a bounded demand-aware settling window and waits for its direct
+  parent to settle. Both then remain drawable for an eight-render-frame complementary screen-door
+  transition. World, depth, and shadows use the same partition, so refinement does not introduce
+  translucent overlap or a one-frame topology hole.
 
   `meshlet_debug_records` counts the active Meshlet Visibility records or the live/frozen Occlusion Queries evidence; it is zero when neither diagnostic owns records. `instance_transform_uploads` and `instance_transform_upload_bytes` isolate the dense Transform-update stream from total instance traffic; ordinary Transform-only frames use one upload regardless of persistent-slot fragmentation. `instance_expand_dispatches` and `instance_expanded_slots` report the corresponding GPU expansion work. `ui_project_vertex_rebuilds`, `ui_editor_vertex_rebuilds`, and `ui_overlay_vertex_rebuilds` identify which retained domain invalidated.
 - When `gpu_timestamps_supported` and `gpu_timestamps_valid` are true, `gpu_frame_ms` spans the earliest through latest executed timed pass boundaries, including UI when present. `gpu_scene_ms` shares that beginning and ends after composition, before UI. Cull, shadow, depth, world, Hi-Z, bloom, composite, and UI milliseconds come from separate pass timestamps for attribution; do not add them to reconstruct frame duration. Four-frame readback rings publish completed samples without synchronously waiting on the GPU. Use external GPU tooling for shader costs, bandwidth, occupancy, presentation, and deeper captures.

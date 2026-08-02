@@ -40,3 +40,29 @@ test("render sequence arguments reject reversed capture ranges", () => {
     /inclusive START:END/,
   );
 });
+
+test("render sequence arguments describe a transition capture", () => {
+  const options = parseArguments([
+    "--project",
+    "tests/fixtures/gpu-virtual-geometry-pressure",
+    "--capture-range",
+    "31:44",
+    "--require-transition",
+  ]);
+
+  assert.equal(options.requireTransition, true);
+  assert.equal(options.stableFrontier, false);
+});
+
+test("render sequence arguments keep settled and transitioning gates distinct", () => {
+  assert.throws(
+    () =>
+      parseArguments([
+        "--project",
+        "examples/minimal",
+        "--stable-frontier",
+        "--require-transition",
+      ]),
+    /mutually exclusive/,
+  );
+});

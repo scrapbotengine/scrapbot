@@ -275,6 +275,7 @@ wgpu_init_renderer :: proc(
 wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
 	wgpu_virtual_page_io_destroy(&renderer.virtual_geometry_page_io)
 	delete(renderer.virtual_geometry_pending_activations)
+	delete(renderer.virtual_geometry_transitions)
 	if renderer.device != nil {
 		wgpu.DevicePoll(renderer.device, true)
 	}
@@ -545,6 +546,7 @@ wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
 		renderer.gpu_meshlet_info_buffer,
 		renderer.gpu_meshlet_visible_buffer,
 		renderer.gpu_meshlet_identity_buffer,
+		renderer.gpu_zero_identity_buffer,
 		renderer.gpu_meshlet_debug_indirect_buffer,
 		renderer.gpu_meshlet_shadow_visible_buffer,
 		renderer.gpu_compact_visible_buffer,

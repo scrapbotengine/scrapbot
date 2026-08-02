@@ -122,6 +122,8 @@ struct Render_Uniform {
 	shadow_map_parameters: vec4<f32>,
 	debug: vec4<u32>,
 	camera_clip: vec4<f32>,
+	virtual_geometry: vec4<f32>,
+	virtual_geometry_epoch: vec4<u32>,
 };
 
 struct Point_Light {
@@ -210,6 +212,9 @@ struct Meshlet_Info {
 	request_group_index: u32,
 	request_enabled: u32,
 	batch_index: u32,
+	transition_start: u32,
+	refined_transition_start: u32,
+	padding: vec2<u32>,
 };
 
 @group(0) @binding(0) var<uniform> render: Render_Uniform;
@@ -266,6 +271,7 @@ struct Vertex_Output {
 	@location(7) world_tangent: vec4<f32>,
 	@location(8) @interpolate(flat) meshlet_identity: u32,
 	@location(9) @interpolate(flat) lod_level: u32,
+	@location(10) @interpolate(flat) virtual_transition: vec2<f32>,
 };
 
 fn selected_lod(instance: GPU_Instance) -> u32 {
@@ -323,10 +329,81 @@ fn load_compact_vertex(record: Compact_Input, vertex_index: u32) -> Vertex_Input
 	return load_geometry_vertex(meshlet.base_vertex + source_index);
 }
 
+fn virtual_transition_progress(start_token: u32) -> f32 {
+	if (start_token == 0u) {
+		return 1.0;
+	}
+	let start = start_token - 1u;
+	let current = render.virtual_geometry_epoch.x;
+	let duration = f32(max(render.virtual_geometry_epoch.y, 1u));
+	return clamp(f32(current - start) / duration, 0.0, 1.0);
+}
+
+fn render_virtual_projected_error(
+	instance: GPU_Instance,
+	bounds: vec4<f32>,
+	error: f32,
+) -> f32 {
+	if (error > 1.0e30) {
+		return error;
+	}
+	let center = instance.model * vec4<f32>(bounds.xyz, 1.0);
+	let scale = max(
+		max(length(instance.model[0].xyz), length(instance.model[1].xyz)),
+		length(instance.model[2].xyz),
+	);
+	let world_radius = bounds.w * scale;
+	let distance = max(
+		length(center.xyz - render.camera_position.xyz) - world_radius,
+		0.0001,
+	);
+	return error * scale / distance * abs(render.view_projection[1][1]) *
+		0.5 * render.virtual_geometry.y;
+}
+
+fn virtual_transition_for_error(
+	instance: GPU_Instance,
+	meshlet: Meshlet_Info,
+	error_pixels: f32,
+) -> vec2<f32> {
+	if (meshlet.virtual_geometry == 0u) {
+		return vec2<f32>(1.0, 0.0);
+	}
+	if (meshlet.transition_start != 0u) {
+		return vec2<f32>(virtual_transition_progress(meshlet.transition_start), 1.0);
+	}
+	if (
+		meshlet.refined_transition_start != 0u &&
+		meshlet.refined_error > 0.0 &&
+		render_virtual_projected_error(
+			instance,
+			meshlet.refined_bounds,
+			meshlet.refined_error,
+		) > error_pixels
+	) {
+		return vec2<f32>(
+			virtual_transition_progress(meshlet.refined_transition_start),
+			2.0,
+		);
+	}
+	return vec2<f32>(1.0, 0.0);
+}
+
+fn virtual_transition_for(instance: GPU_Instance, meshlet: Meshlet_Info) -> vec2<f32> {
+	return virtual_transition_for_error(instance, meshlet, render.virtual_geometry.x);
+}
+
+fn render_virtual_shadow_error(cascade_index: u32) -> f32 {
+	let multipliers = array<f32, 4>(8.0, 32.0, 128.0, 512.0);
+	return render.virtual_geometry.x * multipliers[min(cascade_index, 3u)] /
+		max(render.shadow_map_parameters.x, 0.01);
+}
+
 fn transform_vertex(
 	input: Vertex_Input,
 	instance: GPU_Instance,
 	meshlet_identity: u32,
+	virtual_transition: vec2<f32>,
 ) -> Vertex_Output {
 	var output: Vertex_Output;
 	let local_position = vec4<f32>(input.position, 1.0);
@@ -344,24 +421,36 @@ fn transform_vertex(
 	output.uv = input.uv;
 	output.meshlet_identity = meshlet_identity;
 	output.lod_level = select(0u, selected_lod(instance), render.debug.x == 7u);
+	output.virtual_transition = virtual_transition;
 	return output;
 }
 
 @vertex
 fn vs_main(input: Vertex_Input, @builtin(instance_index) visible_index: u32) -> Vertex_Output {
 	let instance = instances[visible_instances[visible_index]];
+	let packed_identity = meshlet_identities[visible_index];
 	var identity = 0u;
 	if ((render.debug.x == 6u || render.debug.x == 8u || render.debug.x == 11u) && render.debug.y != 0u) {
-		identity = meshlet_identities[visible_index];
+		identity = packed_identity;
 	}
-	return transform_vertex(input, instance, identity);
+	var transition = vec2<f32>(1.0, 0.0);
+	let meshlet_token = packed_identity & 0x003fffffu;
+	if (meshlet_token != 0u) {
+		transition = virtual_transition_for(instance, meshlets[meshlet_token - 1u]);
+	}
+	return transform_vertex(input, instance, identity, transition);
 }
 
 @vertex
 fn compact_vs(record: Compact_Input, @builtin(vertex_index) vertex_index: u32) -> Vertex_Output {
 	let instance = instances[record.instance_slot];
 	let meshlet = meshlets[record.meshlet_index];
-	return transform_vertex(load_compact_vertex(record, vertex_index), instance, meshlet.identity);
+	return transform_vertex(
+		load_compact_vertex(record, vertex_index),
+		instance,
+		meshlet.identity,
+		virtual_transition_for(instance, meshlet),
+	);
 }
 
 const PI: f32 = 3.14159265359;
@@ -758,11 +847,30 @@ fn meshlet_debug_color(identity: u32) -> vec3<f32> {
 	);
 }
 
+fn apply_virtual_transition(position: vec4<f32>, transition: vec2<f32>) {
+	if (transition.y < 0.5) {
+		return;
+	}
+	let pixel = vec2<u32>(floor(position.xy));
+	var value = pixel.x * 1664525u ^ pixel.y * 1013904223u;
+	value = (value ^ (value >> 16u)) * 2246822519u;
+	value = (value ^ (value >> 13u)) * 3266489917u;
+	let threshold = (f32((value ^ (value >> 16u)) & 255u) + 0.5) / 256.0;
+	if (transition.y < 1.5) {
+		if (threshold >= transition.x) {
+			discard;
+		}
+	} else if (threshold < transition.x) {
+		discard;
+	}
+}
+
 @fragment
 fn fs_main(
 	input: Vertex_Output,
 	@builtin(front_facing) front_facing: bool,
 ) -> Fragment_Output {
+	apply_virtual_transition(input.position, input.virtual_transition);
 	let base_color_sample = textureSample(base_color_texture, base_color_sampler, input.uv);
 	if (material.flags.z > 0.5 && base_color_sample.a * input.color.a < material.alpha.x) {
 		discard;
@@ -1001,7 +1109,32 @@ struct Mask_Output {
 	@builtin(position) position: vec4<f32>,
 	@location(0) uv: vec2<f32>,
 	@location(1) alpha: f32,
+	@location(2) @interpolate(flat) virtual_transition: vec2<f32>,
 };
+
+fn visible_virtual_transition(instance: GPU_Instance, visible_index: u32) -> vec2<f32> {
+	let meshlet_token = meshlet_identities[visible_index] & 0x003fffffu;
+	if (meshlet_token == 0u) {
+		return vec2<f32>(1.0, 0.0);
+	}
+	return virtual_transition_for(instance, meshlets[meshlet_token - 1u]);
+}
+
+fn visible_virtual_shadow_transition(
+	instance: GPU_Instance,
+	visible_index: u32,
+	cascade_index: u32,
+) -> vec2<f32> {
+	let meshlet_token = meshlet_identities[visible_index] & 0x003fffffu;
+	if (meshlet_token == 0u) {
+		return vec2<f32>(1.0, 0.0);
+	}
+	return virtual_transition_for_error(
+		instance,
+		meshlets[meshlet_token - 1u],
+		render_virtual_shadow_error(cascade_index),
+	);
+}
 
 @vertex
 fn shadow_vs(input: Vertex_Input, @builtin(instance_index) visible_index: u32) -> Mask_Output {
@@ -1010,6 +1143,11 @@ fn shadow_vs(input: Vertex_Input, @builtin(instance_index) visible_index: u32) -
 	output.position = render.shadow_view_projections[shadow_cascade.index] * instance.model * vec4<f32>(input.position, 1.0);
 	output.uv = input.uv;
 	output.alpha = instance.color.a;
+	output.virtual_transition = visible_virtual_shadow_transition(
+		instance,
+		visible_index,
+		shadow_cascade.index,
+	);
 	return output;
 }
 
@@ -1024,6 +1162,11 @@ fn compact_shadow_vs(
 	output.position = render.shadow_view_projections[shadow_cascade.index] * instance.model * vec4<f32>(input.position, 1.0);
 	output.uv = input.uv;
 	output.alpha = instance.color.a;
+	output.virtual_transition = virtual_transition_for_error(
+		instance,
+		meshlets[record.meshlet_index],
+		render_virtual_shadow_error(shadow_cascade.index),
+	);
 	return output;
 }
 
@@ -1034,6 +1177,7 @@ fn depth_vs(input: Vertex_Input, @builtin(instance_index) visible_index: u32) ->
 	output.position = render.view_projection * instance.model * vec4<f32>(input.position, 1.0);
 	output.uv = input.uv;
 	output.alpha = instance.color.a;
+	output.virtual_transition = visible_virtual_transition(instance, visible_index);
 	return output;
 }
 
@@ -1048,11 +1192,13 @@ fn compact_depth_vs(
 	output.position = render.view_projection * instance.model * vec4<f32>(input.position, 1.0);
 	output.uv = input.uv;
 	output.alpha = instance.color.a;
+	output.virtual_transition = virtual_transition_for(instance, meshlets[record.meshlet_index]);
 	return output;
 }
 
 @fragment
 fn mask_fs(input: Mask_Output) {
+	apply_virtual_transition(input.position, input.virtual_transition);
 	let alpha = textureSample(base_color_texture, base_color_sampler, input.uv).a * input.alpha;
 	if (alpha < material.alpha.x) {
 		discard;
@@ -1112,6 +1258,9 @@ struct Meshlet_Info {
 	request_group_index: u32,
 	request_enabled: u32,
 	batch_index: u32,
+	transition_start: u32,
+	refined_transition_start: u32,
+	padding: vec2<u32>,
 };
 
 struct Draw_Indexed_Indirect {

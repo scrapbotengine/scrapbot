@@ -319,6 +319,23 @@ wgpu_refresh_geometry_group_state :: proc(
 			info.group_index = u32(cluster.group)
 			info.request_group_index = request_group
 			info.request_enabled = 1 if request_enabled else 0
+			group_state := geometry.cluster_groups[cluster.group]
+			info.transition_start = 0
+			if group_state.active && !group_state.transition_complete {
+				info.transition_start = wgpu_virtual_transition_token(
+					group_state.transition_start_frame,
+				)
+			}
+			info.refined_transition_start = 0
+			if cluster.refined_group >= 0 &&
+			   int(cluster.refined_group) < len(geometry.cluster_groups) {
+				refined_state := geometry.cluster_groups[cluster.refined_group]
+				if refined_state.active && !refined_state.transition_complete {
+					info.refined_transition_start = wgpu_virtual_transition_token(
+						refined_state.transition_start_frame,
+					)
+				}
+			}
 			info.identity &= 0xff3f_ffff
 			if page_resident && geometry.cluster_pages[cluster.page].prefetched {
 				info.identity |= 0x0040_0000
@@ -564,6 +581,66 @@ wgpu_virtual_group_pages_resident :: proc "contextless" (
 	return true
 }
 
+wgpu_virtual_transition_token :: proc "contextless" (frame: u64) -> u32 {
+	token := u32(frame) + 1
+	if token == 0 {
+		return ~u32(0)
+	}
+	return token
+}
+
+wgpu_virtual_group_parents_settled :: proc "contextless" (
+	cache: ^WGPU_Geometry_Cache,
+	group_index: u32,
+) -> bool {
+	if cache == nil || int(group_index + 1) >= len(cache.refined_group_parent_offsets) {
+		return true
+	}
+	for parent_index in cache.refined_group_parent_offsets[group_index] ..< cache.refined_group_parent_offsets[group_index + 1] {
+		parent_group := cache.refined_group_parents[parent_index]
+		if int(parent_group) >= len(cache.cluster_groups) {
+			continue
+		}
+		parent := cache.cluster_groups[parent_group]
+		if parent.active && !parent.transition_complete {
+			return false
+		}
+	}
+	return true
+}
+
+wgpu_finish_virtual_group_transitions :: proc(
+	renderer: ^WGPU_Renderer,
+	changes: ^[dynamic]WGPU_Virtual_Group_Change,
+) {
+	if renderer == nil || changes == nil {
+		return
+	}
+	frame := renderer.profile_frame_index
+	write_index := 0
+	for transition in renderer.virtual_geometry_transitions {
+		cache_index := wgpu_geometry_cache_slot(renderer.geometry_cache[:], transition.handle)
+		if cache_index < 0 ||
+		   int(transition.group_index) >=
+			   len(renderer.geometry_cache[cache_index].cluster_groups) {
+			continue
+		}
+		group := &renderer.geometry_cache[cache_index].cluster_groups[transition.group_index]
+		if !group.resident || !group.active || group.transition_complete {
+			continue
+		}
+		if frame < group.transition_start_frame + WGPU_VIRTUAL_GROUP_TRANSITION_FRAMES {
+			renderer.virtual_geometry_transitions[write_index] = transition
+			write_index += 1
+			continue
+		}
+		group.transition_complete = true
+		group.transition_start_frame = 0
+		wgpu_append_virtual_group_change(changes, transition.handle, transition.group_index)
+	}
+	resize(&renderer.virtual_geometry_transitions, write_index)
+}
+
 wgpu_activate_stable_virtual_groups :: proc(
 	renderer: ^WGPU_Renderer,
 	changes: ^[dynamic]WGPU_Virtual_Group_Change,
@@ -590,13 +667,21 @@ wgpu_activate_stable_virtual_groups :: proc(
 			frame >= group.last_demand_frame + WGPU_VIRTUAL_GROUP_ACTIVATION_GRACE_FRAMES
 		max_hold_elapsed :=
 			frame >= group.resident_since_frame + WGPU_VIRTUAL_GROUP_ACTIVATION_MAX_HOLD_FRAMES
-		if !settled || (!demand_quiet && !max_hold_elapsed) {
+		parents_settled := wgpu_virtual_group_parents_settled(cache, activation.group_index)
+		if !parents_settled || !settled || (!demand_quiet && !max_hold_elapsed) {
 			renderer.virtual_geometry_pending_activations[write_index] = activation
 			write_index += 1
 			continue
 		}
 		group.active = true
+		group.transition_complete = false
+		group.transition_start_frame = frame
 		renderer.virtual_geometry_group_activation_count += 1
+		wgpu_append_virtual_group_change(
+			&renderer.virtual_geometry_transitions,
+			activation.handle,
+			activation.group_index,
+		)
 		wgpu_adjust_virtual_fallback_protection(
 			cache.cluster_groups[:],
 			cache.refined_group_parent_offsets[:],
@@ -704,6 +789,8 @@ wgpu_evict_virtual_group_at :: proc(
 	}
 	group.resident = false
 	group.active = false
+	group.transition_complete = false
+	group.transition_start_frame = 0
 	group.prefetched = false
 	group.priority = 0
 	renderer.virtual_geometry_group_eviction_count += 1
@@ -1157,6 +1244,8 @@ wgpu_process_virtual_page_feedback :: proc(
 		group_state.priority = max(request.priority, 0)
 		group_state.resident = true
 		group_state.active = false
+		group_state.transition_complete = false
+		group_state.transition_start_frame = 0
 		group_state.prefetched = request.prefetch
 		wgpu_append_virtual_group_change(
 			&renderer.virtual_geometry_pending_activations,
@@ -1198,6 +1287,16 @@ wgpu_visibility_consume_readbacks :: proc(
 ) -> string {
 	if renderer == nil {
 		return ""
+	}
+	transition_changes: [dynamic]WGPU_Virtual_Group_Change
+	defer delete(transition_changes)
+	wgpu_finish_virtual_group_transitions(renderer, &transition_changes)
+	if transition_err := wgpu_refresh_virtual_group_changes(
+		renderer,
+		registry,
+		transition_changes[:],
+	); transition_err != "" {
+		return transition_err
 	}
 	wgpu_consume_virtual_page_io(renderer, registry)
 	wgpu.DevicePoll(renderer.device, false)
@@ -1370,6 +1469,7 @@ wgpu_publish_visibility :: proc(renderer: ^WGPU_Renderer, stats: ^Render_Stats) 
 		)
 	stats.virtual_geometry_group_uploads = renderer.virtual_geometry_group_upload_count
 	stats.virtual_geometry_group_activations = renderer.virtual_geometry_group_activation_count
+	stats.virtual_geometry_transitioning_groups = u32(len(renderer.virtual_geometry_transitions))
 	stats.virtual_geometry_prefetch_group_uploads =
 		renderer.virtual_geometry_prefetch_group_upload_count
 	stats.virtual_geometry_prefetch_hits = renderer.virtual_geometry_prefetch_hit_count

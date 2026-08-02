@@ -129,11 +129,17 @@ file-backed refinement on one renderer-owned I/O worker; handle/generation/versi
 completions are discarded when stale. Demand-first, group-atomic admission uses one ordered eviction
 plan per feedback batch, protects stronger recent demand, and never lets speculative prefetch evict
 demand residency. Geometry cache groups distinguish memory residency from drawable activation.
-Newly complete groups retain their coarse frontier through a demand-aware settling window, while a
-bounded hold guarantees eventual progress. Active refinements retain their direct coarse parents
-until the refinement is released. Geometry caches own persistent group-to-cluster and
-refinement-to-parent indices, so only changed cluster ranges and their direct dependents upload.
-Stable frames do no page scan, file read, upload, or residency mutation.
+Newly complete groups pass a bounded demand-aware settling window and wait for direct-parent
+transitions to settle, then enter an eight-frame complementary screen-door handoff. The GPU derives
+progress from a renderer epoch and applies the
+same child/parent partition in world, depth, and cascade-specific shadow passes. Completion is the
+point at which the child becomes the logical refinement. Active refinements retain their direct
+coarse parents until release.
+
+WGPU owns a compact active-transition queue. It advances only those groups and patches their
+persistent group-to-cluster and refinement-to-parent dependents at transition boundaries. Stable
+frames do no page scan, file read, geometry upload, complete transition scan, or residency-table
+rebuild.
 
 Batch bind groups are released before cache storage is cleared. Exact lighting/background handle or content-version changes rebuild only the shared environment binding. The sky camera/projection uniform uploads only after an exact value change.
 

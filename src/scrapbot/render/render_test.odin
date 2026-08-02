@@ -196,10 +196,20 @@ test_cluster_index_budget_starts_at_256_and_grows_geometrically :: proc(t: ^test
 
 @(test)
 test_storage_binding_growth_uses_legal_capacity_below_device_limit :: proc(t: ^testing.T) {
-	capacity, ok := wgpu_grow_storage_binding_capacity(256, 860_292, 144, 128 * 1024 * 1024)
+	capacity, ok := wgpu_grow_storage_binding_capacity(
+		256,
+		800_000,
+		size_of(WGPU_GPU_Meshlet_Info),
+		128 * 1024 * 1024,
+	)
 	testing.expect(t, ok)
-	testing.expect_value(t, capacity, 932_067)
-	capacity, ok = wgpu_grow_storage_binding_capacity(256, 932_068, 144, 128 * 1024 * 1024)
+	testing.expect_value(t, capacity, 838_860)
+	capacity, ok = wgpu_grow_storage_binding_capacity(
+		256,
+		838_861,
+		size_of(WGPU_GPU_Meshlet_Info),
+		128 * 1024 * 1024,
+	)
 	testing.expect(t, !ok)
 	testing.expect_value(t, capacity, 0)
 }
@@ -1900,12 +1910,21 @@ test_wgpu_culling_shader_stays_within_portable_storage_binding_floor :: proc(t: 
 	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "meshlet.refined_resident == 0u"))
 	testing.expect(
 		t,
-		strings.contains(WGPU_GPU_DRIVEN_SHADER, "request_enabled: u32,\n\tbatch_index: u32"),
+		strings.contains(
+			WGPU_GPU_DRIVEN_SHADER,
+			"batch_index: u32,\n\ttransition_start: u32,\n\trefined_transition_start: u32",
+		),
 	)
 	testing.expect(
 		t,
-		strings.contains(WGPU_GPU_CULL_SHADER, "request_enabled: u32,\n\tbatch_index: u32"),
+		strings.contains(
+			WGPU_GPU_CULL_SHADER,
+			"batch_index: u32,\n\ttransition_start: u32,\n\trefined_transition_start: u32",
+		),
 	)
+	testing.expect(t, strings.contains(WGPU_GPU_DRIVEN_SHADER, "apply_virtual_transition"))
+	testing.expect(t, strings.contains(WGPU_GPU_DRIVEN_SHADER, "threshold >= transition.x"))
+	testing.expect(t, strings.contains(WGPU_GPU_DRIVEN_SHADER, "threshold < transition.x"))
 	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "cull_compact_candidate"))
 	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "cull_compact_camera_clusters"))
 	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "cull_compact_shadow_clusters"))
@@ -1934,6 +1953,10 @@ test_wgpu_virtual_group_residency_requires_every_page :: proc(t: ^testing.T) {
 	testing.expect(t, has_missing)
 	testing.expect_value(t, missing, u32(0))
 	cache.cluster_pages[1].resident = true
+	resident, _, has_missing = wgpu_cluster_group_residency(&geometry, &cache, 0)
+	testing.expect(t, !resident)
+	testing.expect(t, has_missing)
+	cache.cluster_groups[0].transition_complete = true
 	resident, _, has_missing = wgpu_cluster_group_residency(&geometry, &cache, 0)
 	testing.expect(t, resident)
 	testing.expect(t, !has_missing)
@@ -2148,6 +2171,7 @@ test_wgpu_virtual_geometry_activates_only_after_a_stable_window :: proc(t: ^test
 	}
 	defer delete(renderer.geometry_cache)
 	defer delete(renderer.virtual_geometry_pending_activations)
+	defer delete(renderer.virtual_geometry_transitions)
 	cache := &renderer.geometry_cache[0]
 	cache.handle = {
 		index = 7,
@@ -2187,9 +2211,25 @@ test_wgpu_virtual_geometry_activates_only_after_a_stable_window :: proc(t: ^test
 	wgpu_activate_stable_virtual_groups(&renderer, &changes)
 	testing.expect(t, cache.cluster_groups[0].active)
 	testing.expect(t, cache.cluster_groups[1].active)
+	testing.expect(t, !cache.cluster_groups[0].transition_complete)
+	testing.expect(t, !cache.cluster_groups[1].transition_complete)
+	testing.expect_value(t, len(renderer.virtual_geometry_transitions), 2)
 	testing.expect_value(t, len(changes), 2)
 
+	clear(&changes)
+	renderer.profile_frame_index = 30
+	wgpu_finish_virtual_group_transitions(&renderer, &changes)
+	testing.expect_value(t, len(changes), 0)
+	testing.expect_value(t, len(renderer.virtual_geometry_transitions), 2)
+	renderer.profile_frame_index = 31
+	wgpu_finish_virtual_group_transitions(&renderer, &changes)
+	testing.expect(t, cache.cluster_groups[0].transition_complete)
+	testing.expect(t, cache.cluster_groups[1].transition_complete)
+	testing.expect_value(t, len(changes), 2)
+	testing.expect_value(t, len(renderer.virtual_geometry_transitions), 0)
+
 	cache.cluster_groups[0].active = false
+	cache.cluster_groups[0].transition_complete = false
 	cache.cluster_groups[0].last_demand_frame = 41
 	clear(&changes)
 	wgpu_append_virtual_group_change(
@@ -2203,9 +2243,60 @@ test_wgpu_virtual_geometry_activates_only_after_a_stable_window :: proc(t: ^test
 	renderer.profile_frame_index = 42
 	wgpu_activate_stable_virtual_groups(&renderer, &changes)
 	testing.expect(t, cache.cluster_groups[0].active)
+	testing.expect(t, !cache.cluster_groups[0].transition_complete)
 	// The maximum hold bounds how long continuously demanded resident data can
 	// remain staged; it does not make admission depend on camera idleness.
 	testing.expect_value(t, len(changes), 1)
+}
+
+@(test)
+test_wgpu_virtual_geometry_serializes_nested_transitions :: proc(t: ^testing.T) {
+	renderer := WGPU_Renderer {
+		geometry_cache = make([dynamic]WGPU_Geometry_Cache, 1),
+		profile_frame_index = 40,
+	}
+	defer delete(renderer.geometry_cache)
+	defer delete(renderer.virtual_geometry_pending_activations)
+	defer delete(renderer.virtual_geometry_transitions)
+	cache := &renderer.geometry_cache[0]
+	cache.handle = {
+		index = 9,
+		generation = 3,
+	}
+	cache.cluster_groups = make([dynamic]WGPU_Cluster_Group_Cache, 2)
+	defer delete(cache.cluster_groups)
+	cache.refined_group_parent_offsets = make([dynamic]u32, 3)
+	defer delete(cache.refined_group_parent_offsets)
+	cache.refined_group_parents = make([dynamic]u32, 1)
+	defer delete(cache.refined_group_parents)
+	cache.refined_group_parent_offsets[0] = 0
+	cache.refined_group_parent_offsets[1] = 0
+	cache.refined_group_parent_offsets[2] = 1
+	cache.refined_group_parents[0] = 0
+	cache.cluster_groups[0] = {
+		resident = true,
+		active = true,
+		transition_start_frame = 36,
+	}
+	cache.cluster_groups[1] = {
+		resident = true,
+		resident_since_frame = 20,
+		last_demand_frame = 20,
+	}
+	wgpu_append_virtual_group_change(
+		&renderer.virtual_geometry_pending_activations,
+		cache.handle,
+		1,
+	)
+	changes: [dynamic]WGPU_Virtual_Group_Change
+	defer delete(changes)
+	wgpu_activate_stable_virtual_groups(&renderer, &changes)
+	testing.expect(t, !cache.cluster_groups[1].active)
+
+	cache.cluster_groups[0].transition_complete = true
+	wgpu_activate_stable_virtual_groups(&renderer, &changes)
+	testing.expect(t, cache.cluster_groups[1].active)
+	testing.expect(t, !cache.cluster_groups[1].transition_complete)
 }
 
 @(test)

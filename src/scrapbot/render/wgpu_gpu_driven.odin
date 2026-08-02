@@ -137,7 +137,9 @@ wgpu_cluster_group_residency :: proc "contextless" (
 			return false, u32(group_index), true
 		}
 	}
-	if int(group_index) >= len(cache.cluster_groups) || !cache.cluster_groups[group_index].active {
+	if int(group_index) >= len(cache.cluster_groups) ||
+	   !cache.cluster_groups[group_index].active ||
+	   !cache.cluster_groups[group_index].transition_complete {
 		return false, u32(group_index), true
 	}
 	return true, 0, false
@@ -1140,6 +1142,11 @@ wgpu_create_gpu_driven_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 			visibility = {.Vertex},
 			buffer = {type = .Uniform, minBindingSize = u64(size_of(WGPU_Shadow_Cascade_Uniform))},
 		},
+		{
+			binding = 10,
+			visibility = {.Vertex},
+			buffer = {type = .ReadOnlyStorage, minBindingSize = 4},
+		},
 		{binding = 11, visibility = {.Vertex}, buffer = {type = .ReadOnlyStorage}},
 		{binding = 12, visibility = {.Vertex}, buffer = {type = .ReadOnlyStorage}},
 		{binding = 13, visibility = {.Vertex}, buffer = {type = .ReadOnlyStorage}},
@@ -1678,6 +1685,12 @@ wgpu_create_gpu_driven_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 		{.Storage, .CopyDst},
 		meshlet_visible_bytes,
 	)
+	renderer.gpu_zero_identity_buffer = wgpu_create_gpu_buffer(
+		renderer,
+		"Scrapbot GPU Zero Identities",
+		{.Storage},
+		visible_bytes,
+	)
 	renderer.gpu_meshlet_debug_indirect_buffer = wgpu_create_gpu_buffer(
 		renderer,
 		"Scrapbot GPU Meshlet Debug Indirect Draw",
@@ -1779,6 +1792,7 @@ wgpu_create_gpu_driven_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 	   renderer.gpu_meshlet_info_buffer == nil ||
 	   renderer.gpu_meshlet_visible_buffer == nil ||
 	   renderer.gpu_meshlet_identity_buffer == nil ||
+	   renderer.gpu_zero_identity_buffer == nil ||
 	   renderer.gpu_meshlet_debug_indirect_buffer == nil ||
 	   renderer.gpu_meshlet_shadow_visible_buffer == nil ||
 	   renderer.gpu_compact_visible_buffer == nil ||
@@ -2086,6 +2100,12 @@ wgpu_ensure_gpu_draw_buffers :: proc(
 		{.Storage, .CopyDst},
 		visible_bytes,
 	)
+	zero_identity_buffer := wgpu_create_gpu_buffer(
+		renderer,
+		"Scrapbot GPU Zero Identities",
+		{.Storage},
+		visible_bytes,
+	)
 	shadow_visible_buffer := wgpu_create_gpu_buffer(
 		renderer,
 		"Scrapbot GPU Shadow Visible Instances",
@@ -2119,6 +2139,7 @@ wgpu_ensure_gpu_draw_buffers :: proc(
 	new_buffers := [?]wgpu.Buffer {
 		batch_buffer,
 		visible_buffer,
+		zero_identity_buffer,
 		shadow_visible_buffer,
 		indirect_template_buffer,
 		shadow_indirect_template_buffer,
@@ -2200,6 +2221,7 @@ wgpu_ensure_gpu_draw_buffers :: proc(
 	old_buffers := [?]wgpu.Buffer {
 		renderer.gpu_batch_info_buffer,
 		renderer.gpu_visible_buffer,
+		renderer.gpu_zero_identity_buffer,
 		renderer.gpu_shadow_visible_buffer,
 		renderer.gpu_indirect_template_buffer,
 		renderer.gpu_shadow_indirect_template_buffer,
@@ -2213,6 +2235,7 @@ wgpu_ensure_gpu_draw_buffers :: proc(
 	}
 	renderer.gpu_batch_info_buffer = batch_buffer
 	renderer.gpu_visible_buffer = visible_buffer
+	renderer.gpu_zero_identity_buffer = zero_identity_buffer
 	renderer.gpu_shadow_visible_buffer = shadow_visible_buffer
 	renderer.gpu_indirect_template_buffer = indirect_template_buffer
 	renderer.gpu_shadow_indirect_template_buffer = shadow_indirect_template_buffer
@@ -2445,6 +2468,14 @@ wgpu_make_batch_bind_group :: proc(
 	shadow_visible_stride: int = 0,
 	meshlet_identity: bool = false,
 ) -> wgpu.BindGroup {
+	identity_buffer := renderer.gpu_zero_identity_buffer
+	identity_offset: u64
+	identity_size := u64(max(visible_capacity, 1)) * u64(size_of(u32))
+	if meshlet_identity {
+		identity_buffer = renderer.gpu_meshlet_identity_buffer
+		identity_offset = u64(visible_offset) * u64(size_of(u32))
+		identity_size = u64(visible_capacity) * u64(size_of(u32))
+	}
 	if shadow {
 		visible_stride := shadow_visible_stride
 		if visible_stride <= 0 {
@@ -2472,6 +2503,12 @@ wgpu_make_batch_bind_group :: proc(
 				binding = 9,
 				buffer = renderer.gpu_shadow_cascade_uniform_buffers[shadow_cascade_index],
 				size = u64(size_of(WGPU_Shadow_Cascade_Uniform)),
+			},
+			{
+				binding = 10,
+				buffer = identity_buffer,
+				offset = identity_offset,
+				size = identity_size,
 			},
 			{
 				binding = 11,
@@ -2540,12 +2577,7 @@ wgpu_make_batch_bind_group :: proc(
 			buffer = renderer.gpu_cluster_uniform_buffer,
 			size = u64(size_of(WGPU_Cluster_Uniform)),
 		},
-		{
-			binding = 10,
-			buffer = renderer.gpu_meshlet_identity_buffer,
-			offset = u64(visible_offset if meshlet_identity else 0) * u64(size_of(u32)),
-			size = u64(visible_capacity if meshlet_identity else 1) * u64(size_of(u32)),
-		},
+		{binding = 10, buffer = identity_buffer, offset = identity_offset, size = identity_size},
 		{
 			binding = 11,
 			buffer = renderer.geometry_vertex_arena.buffer,
@@ -2620,6 +2652,7 @@ wgpu_rebuild_submission_bind_groups :: proc(renderer: ^WGPU_Renderer) -> string 
 			true,
 			cascade_index,
 			renderer.gpu_meshlet_visible_buffer_capacity,
+			true,
 		)
 	}
 	valid := world_bind_group != nil && meshlet_world_bind_group != nil
@@ -2859,6 +2892,23 @@ wgpu_refresh_gpu_batch_layout :: proc(
 					geometry,
 					cluster.refined_group,
 				)
+				transition_start: u32
+				group_state := geometry.cluster_groups[cluster.group]
+				if group_state.active && !group_state.transition_complete {
+					transition_start = wgpu_virtual_transition_token(
+						group_state.transition_start_frame,
+					)
+				}
+				refined_transition_start: u32
+				if cluster.refined_group >= 0 &&
+				   int(cluster.refined_group) < len(geometry.cluster_groups) {
+					refined_state := geometry.cluster_groups[cluster.refined_group]
+					if refined_state.active && !refined_state.transition_complete {
+						refined_transition_start = wgpu_virtual_transition_token(
+							refined_state.transition_start_frame,
+						)
+					}
+				}
 				cluster_first_index: u32
 				cluster_base_vertex: u32
 				if page_resident {
@@ -2893,6 +2943,8 @@ wgpu_refresh_gpu_batch_layout :: proc(
 					request_group_index = request_group,
 					request_enabled = 1 if request_enabled else 0,
 					batch_index = u32(batch_index),
+					transition_start = transition_start,
+					refined_transition_start = refined_transition_start,
 				}
 				level_byte := group.depth * 255 / max(geometry_resource.cluster_max_depth, 1)
 				identity := (level_byte << 24) | (u32(meshlet_index + 1) & 0x003f_ffff)
@@ -3985,6 +4037,18 @@ wgpu_prepare_gpu_draw_batches :: proc(
 		1 if camera.debug_occlusion_freeze else 0,
 	}
 	uniform.camera_clip = {camera.near, camera.far, 0, 0}
+	uniform.virtual_geometry = {
+		max(renderer.virtual_geometry_error_pixels, WGPU_VIRTUAL_GEOMETRY_MIN_ERROR_PIXELS),
+		f32(max(viewport.height, 1)),
+		0,
+		0,
+	}
+	uniform.virtual_geometry_epoch = {
+		u32(renderer.profile_frame_index),
+		u32(WGPU_VIRTUAL_GROUP_TRANSITION_FRAMES),
+		0,
+		0,
+	}
 	uniform.ambient = {render_list.ambient.x, render_list.ambient.y, render_list.ambient.z, 1}
 	uniform.light_counts = {
 		u32(render_list.directional_light_count),

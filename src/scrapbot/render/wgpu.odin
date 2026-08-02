@@ -51,6 +51,7 @@ WGPU_VIRTUAL_GEOMETRY_PRESSURE_PERCENT :: u64(98)
 WGPU_VIRTUAL_GEOMETRY_ERROR_ADJUSTMENT_FRAMES :: u64(32)
 WGPU_VIRTUAL_GROUP_ACTIVATION_GRACE_FRAMES :: u64(8)
 WGPU_VIRTUAL_GROUP_ACTIVATION_MAX_HOLD_FRAMES :: u64(32)
+WGPU_VIRTUAL_GROUP_TRANSITION_FRAMES :: u64(8)
 WGPU_HIZ_OCCLUSION_WORLD_BIAS :: f32(0.005)
 
 WGPU_GPU_Timestamp_Phase :: enum u32 {
@@ -184,8 +185,10 @@ WGPU_GPU_Render_Uniform :: struct {
 	shadow_map_parameters: [4]f32,
 	debug: [4]u32,
 	camera_clip: [4]f32,
+	virtual_geometry: [4]f32,
+	virtual_geometry_epoch: [4]u32,
 }
-#assert(size_of(WGPU_GPU_Render_Uniform) == 640)
+#assert(size_of(WGPU_GPU_Render_Uniform) == 672)
 
 WGPU_GPU_Point_Light :: struct {
 	position_range: [4]f32,
@@ -456,9 +459,12 @@ WGPU_GPU_Meshlet_Info :: struct {
 	request_group_index: u32,
 	request_enabled: u32,
 	batch_index: u32,
+	transition_start: u32,
+	refined_transition_start: u32,
+	_padding: [2]u32,
 }
 // WGSL storage-array elements round this vec4-bearing structure to a 16-byte stride.
-#assert(size_of(WGPU_GPU_Meshlet_Info) == 144)
+#assert(size_of(WGPU_GPU_Meshlet_Info) == 160)
 
 WGPU_GPU_Compact_Record :: struct {
 	instance_slot: u32,
@@ -500,9 +506,11 @@ WGPU_Cluster_Group_Cache :: struct {
 	last_used_frame: u64,
 	resident_since_frame: u64,
 	last_demand_frame: u64,
+	transition_start_frame: u64,
 	priority: f32,
 	resident: bool,
 	active: bool,
+	transition_complete: bool,
 	pinned: bool,
 	prefetched: bool,
 	resident_refinement_count: u32,
@@ -807,6 +815,7 @@ WGPU_Renderer :: struct {
 	gpu_meshlet_info_buffer: wgpu.Buffer,
 	gpu_meshlet_visible_buffer: wgpu.Buffer,
 	gpu_meshlet_identity_buffer: wgpu.Buffer,
+	gpu_zero_identity_buffer: wgpu.Buffer,
 	gpu_meshlet_debug_indirect_buffer: wgpu.Buffer,
 	gpu_occlusion_debug_evidence_valid: bool,
 	gpu_occlusion_debug_record_count: u32,
@@ -1026,6 +1035,7 @@ WGPU_Renderer :: struct {
 	virtual_geometry_deferred_group_count: u64,
 	virtual_geometry_page_io: WGPU_Virtual_Page_IO,
 	virtual_geometry_pending_activations: [dynamic]WGPU_Virtual_Group_Change,
+	virtual_geometry_transitions: [dynamic]WGPU_Virtual_Group_Change,
 	virtual_geometry_prefetch_enabled: bool,
 	virtual_geometry_error_pixels: f32,
 	virtual_geometry_error_last_adjustment_frame: u64,
@@ -2722,6 +2732,7 @@ wgpu_geometry_cache :: proc(
 				}
 				group.resident_since_frame = renderer.profile_frame_index if group.resident else 0
 				group.active = group.resident
+				group.transition_complete = group.resident
 			}
 			for group, group_index in cluster_groups {
 				if group.resident {
@@ -3371,24 +3382,25 @@ wgpu_encode_depth_prepass :: proc(
 			return "render material handle is stale during depth prepass"
 		}
 		masked := material.desc.alpha_mode == .Mask
+		uses_mask_fragment := masked || batch.virtual_geometry
 		pipeline := renderer.gpu_driven_depth_pipeline
-		if masked {
+		if uses_mask_fragment {
 			pipeline = renderer.gpu_driven_depth_mask_pipeline
 		}
 		if material.desc.double_sided {
 			pipeline = renderer.gpu_driven_depth_double_sided_pipeline
-			if masked {
+			if uses_mask_fragment {
 				pipeline = renderer.gpu_driven_depth_mask_double_sided_pipeline
 			}
 		}
 		if span.mode == .Compact {
 			pipeline = renderer.gpu_compact_depth_pipeline
-			if masked {
+			if uses_mask_fragment {
 				pipeline = renderer.gpu_compact_depth_mask_pipeline
 			}
 			if material.desc.double_sided {
 				pipeline = renderer.gpu_compact_depth_double_sided_pipeline
-				if masked {
+				if uses_mask_fragment {
 					pipeline = renderer.gpu_compact_depth_mask_double_sided_pipeline
 				}
 			}
@@ -3401,7 +3413,7 @@ wgpu_encode_depth_prepass :: proc(
 			world_bind_group = renderer.gpu_meshlet_world_bind_group
 		}
 		wgpu.RenderPassEncoderSetBindGroup(pass, 0, world_bind_group)
-		if masked {
+		if uses_mask_fragment {
 			material_cached, material_err := wgpu_material_cache(
 				renderer,
 				registry,
@@ -3626,24 +3638,25 @@ wgpu_encode_shadow_cascade_pass :: proc(
 				return "render material handle is stale during shadow pass"
 			}
 			masked := material.desc.alpha_mode == .Mask
+			uses_mask_fragment := masked || batch.virtual_geometry
 			pipeline := renderer.gpu_driven_shadow_pipeline
-			if masked {
+			if uses_mask_fragment {
 				pipeline = renderer.gpu_driven_shadow_mask_pipeline
 			}
 			if material.desc.double_sided {
 				pipeline = renderer.gpu_driven_shadow_double_sided_pipeline
-				if masked {
+				if uses_mask_fragment {
 					pipeline = renderer.gpu_driven_shadow_mask_double_sided_pipeline
 				}
 			}
 			if span.mode == .Compact {
 				pipeline = renderer.gpu_compact_shadow_pipeline
-				if masked {
+				if uses_mask_fragment {
 					pipeline = renderer.gpu_compact_shadow_mask_pipeline
 				}
 				if material.desc.double_sided {
 					pipeline = renderer.gpu_compact_shadow_double_sided_pipeline
-					if masked {
+					if uses_mask_fragment {
 						pipeline = renderer.gpu_compact_shadow_mask_double_sided_pipeline
 					}
 				}
@@ -3656,7 +3669,7 @@ wgpu_encode_shadow_cascade_pass :: proc(
 				shadow_bind_group = renderer.gpu_meshlet_shadow_bind_groups[cascade_index]
 			}
 			wgpu.RenderPassEncoderSetBindGroup(pass, 0, shadow_bind_group)
-			if masked {
+			if uses_mask_fragment {
 				material_cached, material_err := wgpu_material_cache(
 					renderer,
 					registry,

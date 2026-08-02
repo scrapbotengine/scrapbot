@@ -87,6 +87,7 @@ Render_Stats :: struct {
 	virtual_geometry_page_feedback: u32,
 	virtual_geometry_group_uploads: u64,
 	virtual_geometry_group_activations: u64,
+	virtual_geometry_transitioning_groups: u32,
 	virtual_geometry_prefetch_group_uploads: u64,
 	virtual_geometry_prefetch_hits: u64,
 	virtual_geometry_prefetch_evictions: u64,
