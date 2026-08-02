@@ -222,6 +222,10 @@ run = "node tools/benchmark_native_queries.mjs \"$@\""
 description = "Summarize or compare Scrapbot render profile reports"
 run = "node tools/analyze_render_profile.mjs \"$@\""
 
+[tasks.frame-sequence-sheet]
+description = "Build contact and difference sheets from a profile capture-range directory"
+run = 'node tools/make_frame_sequence_sheet.mjs "$@"'
+
 [tasks.profile-sweep]
 description = "Profile one project across a bounded resolution matrix"
 run = "node tools/profile_resolution_sweep.mjs \"$@\""
@@ -356,6 +360,7 @@ node examples/clustered-lights/generate-scene.mjs --check
 node tools/generate_workspace_luau_types.mjs --check
 node --test tools/test_gpu_offscreen.test.mjs
 node --test tools/gpu_benchmarks.test.mjs
+node --test tools/png_rgba.test.mjs
 bin/scrapbot run examples/minimal --backend null --headless --no-hot-reload --frames 1
 bin/scrapbot run examples/ui-showcase --backend null --headless --no-hot-reload --frames 1
 bin/scrapbot run examples/ui-showcase --backend null --editor --headless --no-hot-reload --frames 180 --ui-script tests/fixtures/ui/enum-inspector.json --json

@@ -138,6 +138,43 @@ The default matrix is 960×540, 1280×720, and 1920×1080. Repeat `--resolution 
 
 Use `examples/minimal` to prove the pipeline and artifact contract. Use `examples/ecs-showcase` for retained instances and ordinary engine features. Use `examples/sponza` only after `mise setup-assets` when the question requires a representative architectural workload.
 
+## Temporal Render Verification
+
+A terminal frame can hide errors that appear only while state changes. Treat consecutive capture
+as required—not optional—for geometry streaming, residency changes, LOD transitions, temporal
+history, animation, hot reload, camera cuts, and any reported flicker, z-fighting, or transient
+topology corruption.
+
+Capture at least five consecutive relevant frames from one deterministic replay:
+
+```sh
+bin/scrapbot profile <project> \
+  --warmup 60 \
+  --frames 120 \
+  --capture-range 60:67 \
+  --out /tmp/scrapbot-temporal-check \
+  --json
+```
+
+Then:
+
+1. Inspect every captured PNG in order, not only `overview.png` or the last frame.
+2. Read the same frame rows in `profile.json`, including render state and `counter_deltas`, so a
+   visible discontinuity can be tied to an upload, eviction, rebuild, camera cut, or history reset.
+3. Capture the real moving workload first. If the cause remains ambiguous, repeat with a fixed
+   camera and the most discriminating view: depth for topology/z-fighting, world normals for vertex
+   or winding errors, LOD for object-level selection, or Virtual Geometry for the resident cluster
+   frontier.
+4. For a static camera, treat unexplained pixel changes as a failure. Expected refinement must
+   remain crack-free and respect its projected-error bound; page admission is not permission for
+   popping triangles, invalid indices, or depth-scale changes.
+5. Preserve the smallest failing consecutive range and report its artifact directory. Do not call
+   temporal rendering correct from process success, nonblank pixels, or one visually plausible
+   endpoint.
+
+When the issue is purely static and no renderer state can change after the tested frame, one
+framegrab remains sufficient.
+
 ### Historical GPU benchmark bundles
 
 Use the benchmark orchestrator when a renderer change needs trend evidence across representative

@@ -1,10 +1,65 @@
 import fs from "node:fs";
 import zlib from "node:zlib";
 
+const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+
+function crc32(data) {
+  let crc = 0xffffffff;
+  for (const byte of data) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function pngChunk(type, data) {
+  const typeBytes = Buffer.from(type, "ascii");
+  const chunk = Buffer.allocUnsafe(12 + data.length);
+  chunk.writeUInt32BE(data.length, 0);
+  typeBytes.copy(chunk, 4);
+  data.copy(chunk, 8);
+  chunk.writeUInt32BE(crc32(Buffer.concat([typeBytes, data])), 8 + data.length);
+  return chunk;
+}
+
+export function encodePngRgba8(path, width, height, pixels) {
+  if (!Number.isInteger(width) || width <= 0 || !Number.isInteger(height) || height <= 0) {
+    throw new Error(`${path}: expected positive integer PNG dimensions`);
+  }
+  if (pixels.length !== width * height * 4) {
+    throw new Error(`${path}: expected ${width * height * 4} RGBA bytes, got ${pixels.length}`);
+  }
+  const stride = width * 4;
+  const packed = Buffer.allocUnsafe((stride + 1) * height);
+  for (let row = 0; row < height; row += 1) {
+    const target = row * (stride + 1);
+    packed[target] = 0;
+    pixels.copy(packed, target + 1, row * stride, (row + 1) * stride);
+  }
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
+  header[8] = 8;
+  header[9] = 6;
+  header[10] = 0;
+  header[11] = 0;
+  header[12] = 0;
+  fs.writeFileSync(
+    path,
+    Buffer.concat([
+      PNG_SIGNATURE,
+      pngChunk("IHDR", header),
+      pngChunk("IDAT", zlib.deflateSync(packed)),
+      pngChunk("IEND", Buffer.alloc(0)),
+    ]),
+  );
+}
+
 export function decodePngRgba8(path) {
   const png = fs.readFileSync(path);
-  const signature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
-  if (!png.subarray(0, 8).equals(signature)) {
+  if (!png.subarray(0, 8).equals(PNG_SIGNATURE)) {
     throw new Error(`${path}: not a PNG`);
   }
 

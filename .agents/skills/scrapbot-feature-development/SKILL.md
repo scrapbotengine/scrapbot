@@ -52,6 +52,9 @@ Never hand-edit generated example declarations without changing their generator.
 
 - Add focused unit and integration tests at the changed ownership boundaries.
 - Use the `scrapbot-testing` skill for full-suite, example, WGPU, framegrab, and visual checks.
+- Renderer work whose output can change across frames is incomplete until a consecutive capture
+  range has been inspected. A successful final frame does not verify streaming, LOD, temporal
+  history, animation, hot reload, or other transitional behavior.
 - Update behavioral FDRs when a feature's supported behavior or design changes.
 - Add or amend an ADR only for a durable architectural decision.
 - Keep `README.md`, `docs/TODO.md`, examples, and the documentation website synchronized with shipped behavior.

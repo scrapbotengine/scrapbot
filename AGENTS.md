@@ -67,6 +67,13 @@ mise profile-sweep -- <path> --binary bin/scrapbot --out /tmp/scrapbot-sweep
 - Expect exactly one JSON document on stdout. Use `schema_version` before assuming an envelope shape.
 - Keep automated runs bounded with `--frames`.
 - Use a headless WGPU framegrab when correctness depends on rendered output; structured diagnostics do not replace visual verification.
+- A single terminal frame is not sufficient when output can change across frames. For streaming,
+  residency, LOD transitions, temporal history, animation, hot reload, or camera-motion work, use
+  `scrapbot profile --capture-range START:END` to preserve at least five consecutive relevant
+  frames from one replay. Inspect the sequence itself, not only `overview.png`, and correlate visible
+  transitions with the matching profile rows and `counter_deltas`. When geometry topology or depth
+  stability is in question, also capture a fixed-camera sequence in the relevant debug view. Do not
+  approve temporal rendering work from structured success, a nonblank assertion, or one final PNG.
 - For interactive UI/editor bugs, prefer a semantic `--ui-script` over manual clicks or guessed coordinates. Target controls by stable UUID, internal name, or visible text; pair it with `--ui-dump` and a target `capture` action so failures preserve both the reconciled tree and the smallest useful 1:1 PNG.
 - For renderer performance work, capture a bounded `scrapbot profile` bundle before and after the change on the same machine, resolution, project state, and options. Compare raw rows and median/p95/worst summaries in `profile.json`; do not infer GPU regressions from the editor's rolling live snapshot alone.
 - Use each profile row's `counter_deltas` for frame-local upload, rebuild, dispatch, viewport, and UI churn. The nested `render` object is the complete raw renderer snapshot and includes cumulative counters where applicable.
