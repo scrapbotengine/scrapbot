@@ -1605,7 +1605,12 @@ fn virtual_cluster_selected(
 		}
 		return true;
 	}
-	return group_progress > 0.0 && refined_progress < 1.0;
+	// Residency starts a bounded admission handoff; it does not immediately
+	// make the coarse side expendable. Keep that parent drawable until the
+	// child transition completes so the fragment shader's complementary
+	// coverage intervals always have both halves available.
+	return group_progress > 0.0 &&
+		(refined_progress < 1.0 || meshlet.refined_transition_start != 0u);
 }
 
 fn virtual_shadow_error_pixels(cascade_index: u32) -> f32 {
@@ -1639,7 +1644,8 @@ fn virtual_shadow_cluster_selected(
 	if (group_progress > 0.0 && refined_progress > 0.0 && meshlet.refined_resident == 0u) {
 		return true;
 	}
-	return group_progress > 0.0 && refined_progress < 1.0;
+	return group_progress > 0.0 &&
+		(refined_progress < 1.0 || meshlet.refined_transition_start != 0u);
 }
 
 fn virtual_cluster_blended(instance: GPU_Instance, meshlet: Meshlet_Info) -> bool {

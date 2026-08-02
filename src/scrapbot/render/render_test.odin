@@ -1997,6 +1997,14 @@ test_wgpu_culling_shader_stays_within_portable_storage_binding_floor :: proc(t: 
 	)
 	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "virtual_frontier_progress"))
 	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "refined_progress < 1.0"))
+	testing.expect(
+		t,
+		strings.count(
+			WGPU_GPU_CULL_SHADER,
+			"refined_progress < 1.0 || meshlet.refined_transition_start != 0u",
+		) ==
+		2,
+	)
 	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "cull_compact_candidate"))
 	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "cull_compact_camera_clusters"))
 	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "cull_compact_shadow_clusters"))

@@ -65,6 +65,12 @@ integrates the camera mask over time. A transition-only reactive marker lets the
 retain compatible history across bounded parent/child depth and silhouette changes. Non-temporal
 camera views and shadow cascades keep a stable spatial mask.
 
+A newly resident child does not immediately make its coarse parent ineligible. GPU camera and
+shadow selection keep the parent submitted throughout the bounded admission transition, even when
+the child's projected error would otherwise select the child alone. Both halves of the fragment
+coverage pair are therefore drawable until the handoff completes; residency cannot expose
+cluster-shaped gaps by removing the parent early.
+
 Native multi-draw adapters also use the hierarchy for shadows before applying cascade sphere and
 normal-cone tests. The portable path uses the camera-selected object LOD for conservative cascade
 visibility. A hierarchy-bearing batch uses cluster camera submission even with one instance because

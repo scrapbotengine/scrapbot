@@ -325,6 +325,11 @@ recovers a previous transition sample for one frame where changing silhouettes e
 Non-temporal camera views and shadow cascades use a stable spatial hash. Each shadow cascade derives
 coverage from its scaled error threshold, so silhouettes and receivers change together.
 
+Camera and shadow culling keep a coarse parent submitted for the complete streamed-admission
+interval, even when its newly resident child already satisfies the projected-error frontier. This
+ensures both halves of complementary coverage remain drawable until the handoff finishes instead of
+revealing the background through child-shaped discard pixels.
+
 Only completion makes the child logically replace its parent. Nested hierarchy transitions are
 serialized, and a transitioning child keeps its direct parent protected. This makes refinement
 monotonic and prevents simultaneous hierarchy-level handoffs from exposing a missing surface.
