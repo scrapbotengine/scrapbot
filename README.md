@@ -77,6 +77,7 @@ Example projects live in [`examples/`](examples/):
 - `gltf-showcase` — the pinned Khronos Damaged Helmet through the real glTF importer, lit by a pinned CC0 HDR environment.
 - `pbr-materials` — deterministic authored metallic/roughness reference grid for isolating material and lighting changes.
 - `sponza` — the Khronos Sponza atrium as 103 ECS renderables with 25 PBR materials, directional shadows, and clustered point lights.
+- `impossible-archive` — a deterministically generated carved megastructure for virtual-geometry residency, predictive streaming, and cluster-frontier debug views.
 
 ### Testing
 

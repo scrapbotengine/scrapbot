@@ -631,13 +631,21 @@ wgpu_align_visible_capacity :: proc(count: u32) -> u32 {
 	)
 }
 
+wgpu_meshlet_visible_instance_capacity :: proc "contextless" (count: u32) -> u32 {
+	return max(count, 1)
+}
+
 wgpu_meshlet_batch_visible_capacity :: proc(
 	meshlet_count, instance_count: u32,
 ) -> (
 	capacity: u32,
 	ok: bool,
 ) {
-	value := u64(meshlet_count) * u64(wgpu_align_visible_capacity(instance_count))
+	// Whole-batch slices become dynamic storage bindings and retain 256-byte
+	// alignment. Meshlet slices are addressed only by element index through one
+	// shared binding, so exact instance cardinality is both valid and materially
+	// smaller for large single-instance hierarchies.
+	value := u64(meshlet_count) * u64(wgpu_meshlet_visible_instance_capacity(instance_count))
 	if value > u64(WGPU_MAX_MESHLET_VISIBLE_ENTRIES) {
 		return 0, false
 	}
@@ -2603,7 +2611,7 @@ wgpu_refresh_gpu_batch_layout :: proc(
 		}
 		first_index := u32(geometry.meshlet_index_range.offset / u64(size_of(u32)))
 		base_vertex := i32(geometry.vertex_range.offset / u64(size_of(resources.Vertex)))
-		per_meshlet_capacity := wgpu_align_visible_capacity(batch.instance_count)
+		per_meshlet_capacity := wgpu_meshlet_visible_instance_capacity(batch.instance_count)
 		if batch.virtual_geometry {
 			for cluster, local_meshlet_index in geometry_resource.clusters {
 				meshlet_index := int(batch.meshlet_draw_offset) + local_meshlet_index

@@ -1,6 +1,6 @@
 # State Ownership and Invalidation
 
-**Last verified:** 2026-08-01
+**Last verified:** 2026-08-02
 
 Scrapbot separates authoritative project/runtime state from derived indexes, caches, render data, and editor views. A derived owner must update from explicit lifecycle or revision signals where feasible; stable frames must not rediscover unchanged state.
 
@@ -54,7 +54,10 @@ If lifecycle churn exposes a retained render slot whose GPU slot is inactive, on
 Static instance fields remain separately retained. Batch topology, geometry capacity, and exact structural changes drive their updates.
 
 Adapters with indirect-first-instance additionally retain meshlet metadata, expanded index ranges,
-aligned camera/shadow visibility slices, a parallel debug-identity stream, and indirect templates.
+camera/shadow visibility slices, a parallel debug-identity stream, and indirect templates.
+Classic per-batch slices retain 256-byte dynamic-storage alignment. Meshlet and hierarchy-cluster
+slices share one storage binding and allocate exact `cluster count × max(instance count, 1)`
+cardinality, without multiplying every cluster by the classic alignment.
 Native multi-draw adapters address those templates directly. Other capable adapters retain a
 bounded camera stream of compact `{instance slot, cluster index}` records plus one non-indexed
 indirect command per compatible material span. Their vertex shaders pull cluster indices and

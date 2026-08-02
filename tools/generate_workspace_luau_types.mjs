@@ -25,6 +25,7 @@ const workspaceProjectNames = new Set([
   "asteroids",
   "ecs-showcase",
   "ecs-stress",
+  "impossible-archive",
   "minimal",
   "ui-showcase",
 ]);

@@ -1,0 +1,165 @@
+[[entities]]
+id = "a7c10000-0000-4000-8000-000000000001"
+name = "Archive Camera"
+
+[entities.transform]
+position = [0, 4.6, 14]
+rotation = [-0.035, 0, 0]
+scale = [1, 1, 1]
+
+[entities.camera]
+fov = 61
+near = 0.08
+far = 420
+resolution_scale = 1
+dynamic_resolution = true
+dynamic_resolution_min_scale = 0.6
+dynamic_resolution_target_ms = 16.667
+exposure = 0.7
+automatic_exposure = true
+automatic_exposure_min = 0.35
+automatic_exposure_max = 2.5
+automatic_exposure_speed = 1.4
+temporal_antialiasing = true
+fast_antialiasing = false
+ambient_occlusion = true
+ambient_occlusion_quality = 0.5
+screen_space_reflections = true
+screen_space_reflections_quality = 0.5
+bloom = true
+
+[entities.components.archive_camera]
+origin = [0, 4.6, 14]
+travel = 66
+duration = 30
+
+[[entities]]
+id = "a7c10000-0000-4000-8000-000000000002"
+name = "Archive Atmosphere"
+
+[entities.world_environment]
+lighting = ""
+lighting_intensity = 1
+lighting_rotation = 0
+exposure = 0.75
+background_visible = true
+background = ""
+background_intensity = 1
+background_rotation = 0
+background_exposure = 0.35
+background_blur = 0
+sky_tint = [0.035, 0.055, 0.09]
+ground_color = [0.008, 0.012, 0.02]
+turbidity = 5
+atmosphere_thickness = 0.45
+horizon_softness = 1
+sun_direction = [-0.35, 0.8, 0.49]
+sun_color = [1, 0.56, 0.24]
+sun_intensity = 2.1
+sun_size = 0.3
+sun_glow = 0.15
+
+[entities.components.scrapbot.volumetric_fog]
+color = [0.07, 0.12, 0.18]
+density = 0.018
+height = 1
+height_falloff = 0.06
+max_distance = 110
+anisotropy = 0.58
+ambient_intensity = 0.025
+light_intensity = 2.4
+point_light_intensity = 0.7
+
+[[entities]]
+id = "a7c10000-0000-4000-8000-000000000003"
+name = "Deep Ambient"
+
+[entities.ambient_light]
+color = [0.14, 0.2, 0.3]
+intensity = 0.28
+
+[[entities]]
+id = "a7c10000-0000-4000-8000-000000000004"
+name = "Impossible Archive"
+
+[entities.transform]
+position = [0, 0, 0]
+rotation = [0, 0, 0]
+scale = [1, 1, 1]
+
+[entities.model]
+resource = "a7c00000-0000-4000-8000-000000000001"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "a7c10000-0000-4000-8000-000000000010"
+name = "Threshold Light"
+
+[entities.transform]
+position = [0, 7.5, 5]
+rotation = [0, 0, 0]
+scale = [1, 1, 1]
+
+[entities.point_light]
+color = [1, 0.32, 0.055]
+intensity = 125
+range = 20
+
+[[entities]]
+id = "a7c10000-0000-4000-8000-000000000011"
+name = "First Brass Light"
+
+[entities.transform]
+position = [-8, 5.5, -13]
+rotation = [0, 0, 0]
+scale = [1, 1, 1]
+
+[entities.point_light]
+color = [1, 0.26, 0.055]
+intensity = 72
+range = 15
+
+[[entities]]
+id = "a7c10000-0000-4000-8000-000000000012"
+name = "First Memory Light"
+
+[entities.transform]
+position = [8, 6, -27]
+rotation = [0, 0, 0]
+scale = [1, 1, 1]
+
+[entities.point_light]
+color = [0.05, 0.5, 1]
+intensity = 82
+range = 16
+
+[[entities]]
+id = "a7c10000-0000-4000-8000-000000000013"
+name = "Second Brass Light"
+
+[entities.transform]
+position = [-8, 5.3, -41]
+rotation = [0, 0, 0]
+scale = [1, 1, 1]
+
+[entities.point_light]
+color = [1, 0.18, 0.035]
+intensity = 78
+range = 15
+
+[[entities]]
+id = "a7c10000-0000-4000-8000-000000000014"
+name = "Second Memory Light"
+
+[entities.transform]
+position = [8, 6.2, -55]
+rotation = [0, 0, 0]
+scale = [1, 1, 1]
+
+[entities.point_light]
+color = [0.08, 0.72, 1]
+intensity = 88
+range = 17

@@ -1524,6 +1524,20 @@ export type ReadonlyStressSettings = {
 
 export type StressSettingsComponent = ScrapbotComponent<StressSettings, ReadonlyStressSettings>
 
+export type ArchiveCamera = {
+	duration: number,
+	travel: number,
+	origin: Vec3,
+}
+
+export type ReadonlyArchiveCamera = {
+	read duration: number,
+	read travel: number,
+	read origin: ReadonlyVec3,
+}
+
+export type ArchiveCameraComponent = ScrapbotComponent<ArchiveCamera, ReadonlyArchiveCamera>
+
 export type ScrappyphysicsSpin = {
 	angular_velocity: Vec3,
 }

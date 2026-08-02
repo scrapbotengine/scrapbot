@@ -33,6 +33,12 @@ Use `examples/ecs-stress --editor` to watch the retained native-query path drive
 
 Use `examples/clustered-lights --editor` to inspect the GPU clustered-lighting path under a deliberately excessive but spatially distributed load: 320 animated point lights, a moving camera, shared emissive markers, and a dark receiving environment. The Performance panel exposes the retained cluster count, growable per-cluster capacity, and active point-light count alongside draw and GPU timing diagnostics.
 
+Use `mise archive-profile` for a bounded 1600×900 capture of the generated Impossible Archive.
+The task creates the showcase GLB, warms the renderer, records 240 measured frames, and prints the
+profile directory. Its dense imported reliefs and 8 MiB virtual-geometry budget are useful for
+examining page requests, uploads, deferred groups, prefetches, evictions, visible clusters, and
+portable compact-submission cost in one reproducible workload.
+
 Open the editor to compare individual engine, project-Odin, and Luau systems. The Systems panel publishes a rolling 50-frame average every five frames. Engine phases and project systems measure their CPU callback boundaries. Renderer work is split across `scrapbot.render.cull`, `.shadow`, `.world`, `.post`, `.ui`, `.finish`, `.submit`, and `.present`; these are CPU encoding and API timings. FIFO/vsync waiting belongs to the core window loop and is excluded from engine-system and active-frame timings. Native project systems with non-conflicting access may execute in parallel, so their individual callback durations are attribution rather than strictly additive wall time. Structured WGPU `render_stats` separately expose asynchronous GPU execution samples.
 
 The collapsible Performance panel gives a compact frame-health view beside the Systems panel. It publishes every five frames and shows observed FPS from wall-clock presentation intervals and `CPU FRAME` from active CPU work, each over a rolling 50-frame window.

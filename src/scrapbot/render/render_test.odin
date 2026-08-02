@@ -1840,10 +1840,15 @@ test_wgpu_expands_selected_cluster_pages_into_one_upload :: proc(t: ^testing.T) 
 }
 
 @(test)
-test_wgpu_meshlet_visibility_capacity_is_aligned_and_bounded :: proc(t: ^testing.T) {
+test_wgpu_meshlet_visibility_capacity_is_exact_and_bounded :: proc(t: ^testing.T) {
+	testing.expect_value(t, wgpu_meshlet_visible_instance_capacity(0), u32(1))
+	testing.expect_value(t, wgpu_meshlet_visible_instance_capacity(65), u32(65))
 	capacity, ok := wgpu_meshlet_batch_visible_capacity(3, 65)
 	testing.expect(t, ok)
-	testing.expect_value(t, capacity, u32(384))
+	testing.expect_value(t, capacity, u32(195))
+	zero_instance_capacity, zero_instance_ok := wgpu_meshlet_batch_visible_capacity(3, 0)
+	testing.expect(t, zero_instance_ok)
+	testing.expect_value(t, zero_instance_capacity, u32(3))
 	testing.expect_value(
 		t,
 		wgpu_meshlet_visible_buffer_bytes(int(capacity)),

@@ -99,6 +99,30 @@ run = "python tools/generate_builtin_icons.py"
 description = "Download and verify pinned external development fixtures"
 run = "node tools/setup_external_assets.mjs"
 
+[tasks.archive-assets]
+description = "Generate the Impossible Archive GLB (pass --preset small, showcase, or unhinged)"
+run = 'node tools/generate_impossible_archive.mjs "$@"'
+
+[tasks.archive-profile]
+description = "Generate and profile the Impossible Archive showcase"
+depends = ["build"]
+run = '''
+node tools/generate_impossible_archive.mjs --preset showcase
+ARCHIVE_PROFILE="${TMPDIR:-/tmp}/scrapbot-impossible-archive-profile"
+bin/scrapbot profile examples/impossible-archive --warmup 60 --frames 240 --resolution 1600x900 --out "$ARCHIVE_PROFILE" --json
+echo "Impossible Archive profile: $ARCHIVE_PROFILE"
+'''
+
+[tasks.test-impossible-archive]
+description = "Generate, import, and run the Impossible Archive development preset"
+depends = ["build"]
+run = '''
+node tools/generate_impossible_archive.mjs --preset small --check
+node tools/generate_impossible_archive.mjs --preset small
+bin/scrapbot check examples/impossible-archive --json
+bin/scrapbot run examples/impossible-archive --backend null --headless --no-hot-reload --frames 3 --json
+'''
+
 [tasks.check-assets]
 description = "Verify that pinned external development fixtures are installed"
 run = "node tools/setup_external_assets.mjs --check"
@@ -288,7 +312,8 @@ run = "bin/scrapbot \"$@\""
 description = "Refresh repository-wide Luau declarations from every example project"
 depends = ["build"]
 run = '''
-for project in assets asteroids ecs-showcase ecs-stress minimal ui-showcase; do
+node tools/generate_impossible_archive.mjs --preset small
+for project in assets asteroids ecs-showcase ecs-stress impossible-archive minimal ui-showcase; do
   bin/scrapbot check "examples/$project"
 done
 node tools/generate_workspace_luau_types.mjs
@@ -300,6 +325,8 @@ depends = ["build"]
 run = '''
 python tools/test_icon_compiler.py
 python tools/generate_builtin_icons.py --check
+node tools/generate_impossible_archive.mjs --preset small --check
+node tools/generate_impossible_archive.mjs --preset small
 LUAU_LIBS="third_party/luau/build/release"
 case "$(uname -s)" in
   Darwin)
@@ -324,6 +351,7 @@ bin/scrapbot check examples/ui-showcase
 bin/scrapbot check examples/ecs-stress
 bin/scrapbot check examples/asteroids
 bin/scrapbot check examples/clustered-lights
+bin/scrapbot check examples/impossible-archive
 node examples/clustered-lights/generate-scene.mjs --check
 node tools/generate_workspace_luau_types.mjs --check
 node --test tools/test_gpu_offscreen.test.mjs

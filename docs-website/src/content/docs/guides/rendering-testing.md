@@ -60,7 +60,13 @@ fallback. Completed payloads are admitted and complete groups evicted under
 `render.virtual_geometry_budget_mb`, with fixed per-frame byte and group limits. The budget counts
 both vertex and index residency.
 
-Native multi-draw adapters retain one indexed-indirect command and aligned visible-instance slice per hierarchy cluster, and use that frontier for shadows too. Other capable adapters append selected `{instance slot, cluster index}` records into a bounded camera stream. Compatible same-material batches share one record span and indirect command; the vertex shader pulls cluster indices and attributes directly from the shared geometry arenas.
+Native multi-draw adapters retain one indexed-indirect command and exact per-cluster
+visible-instance slice, and use that frontier for shadows too. These shared-buffer slices reserve
+one element per possible instance; they do not inherit classic batches' 256-byte dynamic-binding
+alignment. Other capable adapters append selected `{instance slot, cluster index}` records into a
+bounded camera stream. Compatible same-material batches share one record span and indirect
+command; the vertex shader pulls cluster indices and attributes directly from the shared geometry
+arenas.
 
 Portable shadows use classic indexed submission while the complete resource is resident. Under
 actual page pressure, they switch to the same page-local compact representation as the camera, so
@@ -85,9 +91,13 @@ Set `scrapbot.camera.debug_view` to `base_color`, `world_normals`, `roughness`, 
 `virtual_geometry` colors the GPU-selected resident cluster frontier by cluster identity and
 hierarchy depth. Amber marks a branch whose finer group is not completely resident. Cyan marks a
 selected page that arrived through future-camera prefetch and has not yet been promoted by sampled
-visible use. Sponza uses the
-normal renderer budget so it remains a representative quality showcase; dedicated pressure
-fixtures should exercise persistent fallback and eviction. `debug_hiz_mip` selects the retained
+visible use.
+
+Sponza uses the normal renderer budget so it remains a representative quality showcase. The
+generated Impossible Archive deliberately limits fine geometry to 8 MiB while a cinematic camera
+moves across dense, unique relief geometry and periodically jumps back to its starting point.
+Dedicated pressure fixtures exercise stricter persistent fallback and eviction contracts.
+`debug_hiz_mip` selects the retained
 pyramid level for `hiz`; `debug_occlusion_freeze` preserves the latest valid query records for
 `occlusion_queries`.
 
@@ -258,6 +268,19 @@ Use `examples/sponza` for the heavyweight real-world importer and architectural-
 mise setup-assets
 mise scrapbot -- run examples/sponza --editor
 ```
+
+Use `examples/impossible-archive` to inspect virtual geometry under an intentionally constrained
+residency budget. Its deterministic generator writes an ordinary GLB; the project then exercises
+the public model importer, ECS scene components, Luau camera mutation, and standard renderer
+configuration without an example-specific backend path:
+
+```sh
+mise archive-assets --preset showcase
+mise scrapbot -- run examples/impossible-archive --editor
+```
+
+Choose **Virtual Geometry** in the Game debug-view selector to inspect the resident cluster
+frontier. Use `mise archive-profile` for a bounded 1600×900 profile of the showcase preset.
 
 ```sh
 scrapbot run examples/ui-showcase --backend wgpu --headless --frames 2 --framegrab /tmp/scrapbot-ui.png

@@ -158,7 +158,7 @@ wgpu_refresh_geometry_page_state :: proc(
 			raw_data(renderer.gpu_meshlet_indirect_templates[int(batch.meshlet_draw_offset):]),
 			uint(len(geometry_resource.clusters) * size_of(WGPU_Draw_Indexed_Indirect)),
 		)
-		per_meshlet_capacity := wgpu_align_visible_capacity(batch.instance_count)
+		per_meshlet_capacity := wgpu_meshlet_visible_instance_capacity(batch.instance_count)
 		identity_count := int(batch.meshlet_draw_count * per_meshlet_capacity)
 		identities := make([]u32, identity_count, context.temp_allocator)
 		for local_index in 0 ..< int(batch.meshlet_draw_count) {

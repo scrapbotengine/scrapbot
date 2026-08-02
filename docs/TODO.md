@@ -4,6 +4,7 @@ This file tracks current actionable engineering work. The broad product roadmap 
 
 ## Rendering
 
+- [ ] Parallelize detailed cluster traversal within a single large render batch instead of looping its complete hierarchy inside one visible-instance invocation.
 - [ ] Re-evaluate Metal multi-draw and benchmark virtual geometry after wgpu's native ICB paths land ([issue #61](https://github.com/scrapbotengine/scrapbot/issues/61)).
 - [ ] Design baked/captured local reflection-probe resources, ECS volume components, probe selection/blending, and an editor bake workflow on top of global imported IBL.
 - [ ] Add GPU-native compressed texture products for imported images.

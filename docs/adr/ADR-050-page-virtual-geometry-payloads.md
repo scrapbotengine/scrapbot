@@ -1,7 +1,7 @@
 # ADR-050: Page virtual Geometry payloads
 
 **Date:** 2026-07-31
-**Updated:** 2026-08-01
+**Updated:** 2026-08-02
 
 ## Context
 
@@ -59,6 +59,12 @@ When one Geometry's complete canonical vertex/index streams and expanded page in
 remaining budget, WGPU admits that representation as a fast path. It avoids page-local vertex
 duplication and retains classic indexed shadow submission. Under actual streaming pressure,
 portable compact submission uses page-local vertices and indices for both camera and shadow work.
+
+Meshlet and hierarchy-cluster visibility ranges use exact instance cardinality. They are addressed
+as indices inside one shared storage binding and do not inherit the 256-byte dynamic-binding
+alignment required by classic per-batch slices. The bounded layout guard therefore measures the
+records that culling can actually emit instead of reserving 64 records for every cluster of a
+single-instance model.
 
 Pinned bootstrap pages and complete resources that fit the remaining budget are loaded while the
 Geometry cache is established. Refinement reads for larger imported resources run on a dedicated
