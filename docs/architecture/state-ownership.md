@@ -71,6 +71,12 @@ amortization threshold. Membership crossing that threshold invalidates only the 
 layout. Meshlet-oriented debug views transiently force remaining eligible batches through the
 detailed path without rewriting topology.
 
+WGPU queries the device's storage-buffer binding limit during initialization. Retained cluster
+metadata grows geometrically until another power of two would cross that limit, then uses the
+largest legal record capacity. A live topology that fits therefore remains eligible even when its
+geometric spare capacity would not; a topology whose live records do not fit retains the existing
+whole-primitive fallback.
+
 The compute culler projects monotonic hierarchy-group errors into pixels and accepts a cluster when
 its group exceeds one pixel while its refined group is absent or is at or below one pixel. This
 selects one complete camera frontier. Native multi-draw cascade visibility applies its ordinary

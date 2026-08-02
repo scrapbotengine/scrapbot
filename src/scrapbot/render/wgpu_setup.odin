@@ -213,6 +213,11 @@ wgpu_init_renderer :: proc(
 		return renderer, fmt.tprintf("failed to request wgpu device: %s", message)
 	}
 	renderer.device = device_state.device
+	device_limits, limits_status := wgpu.DeviceGetLimits(renderer.device)
+	if limits_status != .Success || device_limits.maxStorageBufferBindingSize == 0 {
+		return renderer, "failed to query wgpu device limits"
+	}
+	renderer.max_storage_buffer_binding_size = device_limits.maxStorageBufferBindingSize
 	renderer.gpu_meshlet_supported = indirect_first_instance_supported
 	renderer.gpu_meshlet_native_multi_draw = multi_draw_indirect_count_supported
 

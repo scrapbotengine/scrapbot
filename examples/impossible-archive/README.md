@@ -36,8 +36,10 @@ Three presets trade generation/import time for source detail:
   stays inside the current portable compact-layout capacity and the checked-in 64 MiB
   fine-geometry residency budget.
 - `unhinged` creates roughly 19 million source triangles for deliberate import and residency
-  stress. Expect a large GLB, substantial import time, high temporary memory use, and the safe
-  whole-primitive fallback on capacity-limited portable layouts.
+  stress. Expect a roughly 460 MiB GLB, a multi-gigabyte imported product, substantial first-import
+  time, and high temporary memory use. Its roughly 860,000-cluster table fits a 128 MiB storage
+  binding, as verified on Apple Metal; devices whose limits cannot represent the live table retain
+  the safe whole-primitive fallback.
 
 Pass `--json` to make the generator report its exact output path, bytes, vertices, triangles, and
 per-primitive triangle counts as one machine-readable document.

@@ -195,6 +195,16 @@ test_cluster_index_budget_starts_at_256_and_grows_geometrically :: proc(t: ^test
 }
 
 @(test)
+test_storage_binding_growth_uses_legal_capacity_below_device_limit :: proc(t: ^testing.T) {
+	capacity, ok := wgpu_grow_storage_binding_capacity(256, 860_292, 144, 128 * 1024 * 1024)
+	testing.expect(t, ok)
+	testing.expect_value(t, capacity, 932_067)
+	capacity, ok = wgpu_grow_storage_binding_capacity(256, 932_068, 144, 128 * 1024 * 1024)
+	testing.expect(t, !ok)
+	testing.expect_value(t, capacity, 0)
+}
+
+@(test)
 test_cluster_viewport_tracks_editor_origin_and_available_world_extent :: proc(t: ^testing.T) {
 	viewport := ui.Rect{320, 96, 1280, 720}
 	testing.expect_value(t, wgpu_cluster_viewport_uniform(viewport), [4]f32{320, 96, 1280, 720})

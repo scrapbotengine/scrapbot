@@ -1764,12 +1764,33 @@ wgpu_create_gpu_driven_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 	return ""
 }
 
-wgpu_grow_capacity :: proc(current, required: int) -> int {
+wgpu_grow_capacity :: proc "contextless" (current, required: int) -> int {
 	capacity := max(current, 1)
 	for capacity < required {
 		capacity *= 2
 	}
 	return capacity
+}
+
+wgpu_grow_storage_binding_capacity :: proc "contextless" (
+	current, required: int,
+	element_size, max_binding_bytes: u64,
+) -> (
+	capacity: int,
+	ok: bool,
+) {
+	if current < 0 || required < 0 || element_size == 0 || max_binding_bytes < element_size {
+		return 0, false
+	}
+	max_capacity := max_binding_bytes / element_size
+	if u64(required) > max_capacity {
+		return 0, false
+	}
+	capacity = wgpu_grow_capacity(current, required)
+	if u64(capacity) > max_capacity {
+		capacity = int(max_capacity)
+	}
+	return capacity, true
 }
 
 wgpu_rebuild_cull_bind_group :: proc(renderer: ^WGPU_Renderer) -> string {
@@ -2026,7 +2047,16 @@ wgpu_ensure_gpu_meshlet_buffers :: proc(
 	   required_visible <= renderer.gpu_meshlet_visible_buffer_capacity {
 		return ""
 	}
-	draw_capacity := wgpu_grow_capacity(renderer.gpu_meshlet_draw_capacity, required_draws)
+	draw_capacity, draw_capacity_ok := wgpu_grow_storage_binding_capacity(
+		renderer.gpu_meshlet_draw_capacity,
+		required_draws,
+		u64(size_of(WGPU_GPU_Meshlet_Info)),
+		renderer.max_storage_buffer_binding_size,
+	)
+	if !draw_capacity_ok {
+		renderer.gpu_meshlet_layout_valid = false
+		return ""
+	}
 	visible_capacity := wgpu_grow_capacity(
 		renderer.gpu_meshlet_visible_buffer_capacity,
 		required_visible,

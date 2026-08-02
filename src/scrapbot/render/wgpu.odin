@@ -584,6 +584,7 @@ WGPU_Renderer :: struct {
 	adapter: wgpu.Adapter,
 	device: wgpu.Device,
 	queue: wgpu.Queue,
+	max_storage_buffer_binding_size: u64,
 	pipeline_layout: wgpu.PipelineLayout,
 	bind_group_layout: wgpu.BindGroupLayout,
 	bind_group: wgpu.BindGroup,

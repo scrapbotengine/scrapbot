@@ -190,7 +190,9 @@ materials skip normal-cone rejection. The deterministic CPU reference remains wh
 culling rather than duplicating the GPU cluster implementation. WGPU requests native multi-draw-
 count when present; without it, wgpu-native may emulate the fixed multi-draw call as individual
 indirect draws. The current two-instance threshold is conservative and backend-wide rather than
-adapter-calibrated.
+adapter-calibrated. Cluster metadata capacity grows geometrically within the device's reported
+storage-buffer binding limit. When the next power of two would exceed that limit, WGPU retains the
+largest legal capacity so spare allocation does not disqualify topology whose live records fit.
 
 A mixed frame uses one compute pass with separate classic and meshlet dispatches. Each dispatch
 binds only its canonical visibility and indirect resources, stays within the portable storage-
