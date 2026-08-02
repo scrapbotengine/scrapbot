@@ -765,6 +765,11 @@ far = 100
 		shared.camera_dynamic_resolution_target_ms(default_exposure.entities[0].camera),
 		f32(16.667),
 	)
+	testing.expect_value(
+		t,
+		shared.camera_adaptive_quality_minimum(default_exposure.entities[0].camera),
+		f32(0.25),
+	)
 	testing.expect(t, !default_exposure.entities[0].camera.automatic_exposure)
 	testing.expect_value(
 		t,
@@ -810,6 +815,7 @@ resolution_scale = 0.75
 dynamic_resolution = true
 dynamic_resolution_min_scale = 0.6
 dynamic_resolution_target_ms = 10
+adaptive_quality_minimum = 0.5
 automatic_exposure = true
 automatic_exposure_min = 0.25
 automatic_exposure_max = 6
@@ -832,6 +838,7 @@ bloom = false
 	testing.expect(t, configured.entities[0].camera.dynamic_resolution)
 	testing.expect_value(t, configured.entities[0].camera.dynamic_resolution_min_scale, f32(0.6))
 	testing.expect_value(t, configured.entities[0].camera.dynamic_resolution_target_ms, f32(10))
+	testing.expect_value(t, configured.entities[0].camera.adaptive_quality_minimum, f32(0.5))
 	testing.expect(t, configured.entities[0].camera.automatic_exposure)
 	testing.expect_value(t, configured.entities[0].camera.automatic_exposure_min, f32(0.25))
 	testing.expect_value(t, configured.entities[0].camera.automatic_exposure_max, f32(6))
@@ -945,6 +952,18 @@ dynamic_resolution_target_ms = 0.5
 	)
 	defer destroy_scene(&invalid_dynamic_target)
 	testing.expect(t, invalid_dynamic_target_result.err == .Invalid_Field)
+
+	invalid_adaptive_quality, invalid_adaptive_quality_result := parse_scene(
+		`[[entities]]
+id = "a6000000-0000-4000-8000-000000000101"
+name = "Camera"
+
+[entities.camera]
+adaptive_quality_minimum = 0.1
+`,
+	)
+	defer destroy_scene(&invalid_adaptive_quality)
+	testing.expect(t, invalid_adaptive_quality_result.err == .Invalid_Field)
 
 	invalid_dynamic_zero, invalid_dynamic_zero_result := parse_scene(
 		`[[entities]]

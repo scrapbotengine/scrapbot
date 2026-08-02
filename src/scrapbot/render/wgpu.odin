@@ -44,6 +44,7 @@ WGPU_CLUSTER_INITIAL_LIGHT_CAPACITY :: 256
 WGPU_VIRTUAL_GEOMETRY_BUDGET_BYTES :: u64(64 * 1024 * 1024)
 WGPU_VIRTUAL_GEOMETRY_UPLOAD_BUDGET_BYTES :: u64(512 * 1024)
 WGPU_VIRTUAL_GEOMETRY_UPLOAD_GROUP_BUDGET :: 16
+WGPU_HIZ_OCCLUSION_WORLD_BIAS :: f32(0.005)
 
 WGPU_GPU_Timestamp_Phase :: enum u32 {
 	Instance_Expansion,
@@ -369,9 +370,12 @@ WGPU_GPU_Cull_Uniform :: struct {
 	compact_shadow_pages: u32,
 	virtual_prefetch_enabled: u32,
 	meshlet_count: u32,
+	occlusion_depth_scale: f32,
+	occlusion_world_bias: f32,
+	_padding: [2]u32,
 	virtual_shadow_error_pixels: [4]f32,
 }
-#assert(size_of(WGPU_GPU_Cull_Uniform) == 832)
+#assert(size_of(WGPU_GPU_Cull_Uniform) == 848)
 
 WGPU_Draw_Indexed_Indirect :: struct {
 	index_count: u32,
@@ -892,8 +896,7 @@ WGPU_Renderer :: struct {
 	gpu_timestamp_phase_ms: [WGPU_GPU_TIMESTAMP_PHASE_COUNT]f64,
 	gpu_timestamp_frame_ms: f64,
 	gpu_timestamp_scene_ms: f64,
-	dynamic_resolution: Dynamic_Resolution_State,
-	adaptive_shadow_resolution: Adaptive_Shadow_Resolution_State,
+	dynamic_resolution: Frame_Budget_State,
 	shadow_map_resolution: u32,
 	profile: ^Profile_Collector,
 	profile_frame_index: u64,
@@ -1121,12 +1124,7 @@ wgpu_dynamic_resolution_scale :: proc(
 		}
 	}
 	renderer.gpu_timestamp_resolution_sample_count = 0
-	renderer.shadow_map_resolution = adaptive_shadow_resolution(
-		&renderer.adaptive_shadow_resolution,
-		&renderer.dynamic_resolution,
-		WGPU_SHADOW_MAP_SIZE,
-		WGPU_SHADOW_MAP_MIN_SIZE,
-	)
+	renderer.shadow_map_resolution = renderer.dynamic_resolution.effective_shadow_resolution
 	if wgpu_gpu_timing_active(renderer) {
 		readback := &renderer.gpu_timestamp_readbacks[renderer.gpu_timestamp_active_slot]
 		readback.dynamic_resolution_generation = renderer.dynamic_resolution.generation
@@ -1286,6 +1284,11 @@ wgpu_profile_workload :: proc(
 		camera = renderer.render_list.camera.camera
 	}
 	camera = apply_render_feature_overrides(camera, render_feature_overrides)
+	adaptive_post_quality := f32(1)
+	if renderer.dynamic_resolution.enabled {
+		adaptive_post_quality = clamp(renderer.dynamic_resolution.effective_post_quality, 0.25, 1)
+	}
+	camera = camera_apply_adaptive_post_quality(camera, adaptive_post_quality)
 	viewport_width := u32(max(viewport.width, 0))
 	viewport_height := u32(max(viewport.height, 0))
 	geometry_draws := u64(0)
@@ -1462,7 +1465,7 @@ wgpu_profile_workload :: proc(
 			fog_width,
 			fog_height,
 			1,
-			16,
+			u32(max(f32(4), f32(16) * adaptive_post_quality)),
 		),
 		temporal_aa = wgpu_profile_compute_workload(
 			true,
@@ -3850,6 +3853,7 @@ wgpu_draw_frame :: proc(
 		config.stats.dynamic_resolution = renderer.dynamic_resolution.enabled
 		config.stats.dynamic_resolution_filtered_gpu_ms =
 			renderer.dynamic_resolution.filtered_gpu_ms
+		config.stats.adaptive_post_quality = renderer.dynamic_resolution.effective_post_quality
 		config.stats.compute_culling = !config.cpu_culling
 		config.stats.meshlet_culling = renderer.gpu_meshlet_submission_active
 		config.stats.meshlet_supported = renderer.gpu_meshlet_supported
@@ -4113,6 +4117,7 @@ wgpu_render_offscreen_frame :: proc(
 		config.stats.dynamic_resolution = renderer.dynamic_resolution.enabled
 		config.stats.dynamic_resolution_filtered_gpu_ms =
 			renderer.dynamic_resolution.filtered_gpu_ms
+		config.stats.adaptive_post_quality = renderer.dynamic_resolution.effective_post_quality
 		config.stats.compute_culling = !config.cpu_culling
 		config.stats.meshlet_culling = renderer.gpu_meshlet_submission_active
 		config.stats.meshlet_supported = renderer.gpu_meshlet_supported

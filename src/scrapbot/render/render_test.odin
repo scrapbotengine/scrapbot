@@ -2860,7 +2860,7 @@ test_dynamic_resolution_requires_sustained_unique_gpu_samples :: proc(t: ^testin
 	camera.dynamic_resolution = true
 	camera.dynamic_resolution_min_scale = 0.5
 	camera.dynamic_resolution_target_ms = 10
-	state: Dynamic_Resolution_State
+	state: Frame_Budget_State
 	scale := dynamic_resolution_scale(&state, camera, true, 1, 20)
 	testing.expect_value(t, scale, f32(1))
 	scale = dynamic_resolution_scale(&state, camera, true, 1, 20)
@@ -2879,7 +2879,7 @@ test_dynamic_resolution_consumes_scene_span_and_respects_manual_bounds :: proc(t
 	camera.dynamic_resolution = true
 	camera.dynamic_resolution_min_scale = 0.7
 	camera.dynamic_resolution_target_ms = 10
-	state: Dynamic_Resolution_State
+	state: Frame_Budget_State
 	for serial in 1 ..= u64(DYNAMIC_RESOLUTION_OVER_BUDGET_SAMPLES) {
 		scale := dynamic_resolution_scale(&state, camera, true, serial, 8)
 		testing.expect_value(t, scale, f32(0.8))
@@ -2899,7 +2899,7 @@ test_dynamic_resolution_falls_back_to_manual_scale_without_timestamps :: proc(t:
 	camera := shared.camera_defaults()
 	camera.resolution_scale = 0.75
 	camera.dynamic_resolution = true
-	state: Dynamic_Resolution_State
+	state: Frame_Budget_State
 	scale := dynamic_resolution_scale(&state, camera, false, 0, 0)
 	testing.expect_value(t, scale, f32(0.75))
 	testing.expect(t, !state.enabled)
@@ -2965,7 +2965,7 @@ test_dynamic_resolution_processes_completed_samples_in_frame_order :: proc(t: ^t
 	wgpu_dynamic_resolution_accumulate_sample(&renderer, generation, 3, 5)
 	_ = wgpu_dynamic_resolution_scale(&renderer, camera, {})
 
-	expected: Dynamic_Resolution_State
+	expected: Frame_Budget_State
 	expected_samples := [4]f64{5, 5, 5, 20}
 	for sample, serial in expected_samples {
 		_ = dynamic_resolution_scale(&expected, camera, true, u64(serial + 1), sample)
@@ -2998,7 +2998,7 @@ test_dynamic_resolution_resets_when_policy_owner_camera_changes :: proc(t: ^test
 	)
 	testing.expect(t, first_owner_ok)
 	testing.expect(t, second_owner_ok)
-	state: Dynamic_Resolution_State
+	state: Frame_Budget_State
 	for serial in 1 ..= u64(DYNAMIC_RESOLUTION_OVER_BUDGET_SAMPLES) {
 		_ = dynamic_resolution_scale(&state, camera, true, serial, 20, first_owner)
 	}
@@ -3017,68 +3017,82 @@ test_dynamic_resolution_resets_when_policy_owner_camera_changes :: proc(t: ^test
 }
 
 @(test)
-test_adaptive_shadow_resolution_uses_quantized_budget_steps :: proc(t: ^testing.T) {
-	dynamic_state := Dynamic_Resolution_State {
-		initialized = true,
-		enabled = true,
+test_frame_budget_degrades_one_ordered_quality_axis_at_a_time :: proc(t: ^testing.T) {
+	state := Frame_Budget_State {
 		maximum_scale = 1,
 		minimum_scale = 0.6,
-		target_ms = 16.667,
-		effective_scale = 0.8,
-		has_filtered_sample = true,
-		filtered_gpu_ms = 24,
+		minimum_quality = 0.25,
+		effective_scale = 1,
+		effective_shadow_resolution = FRAME_BUDGET_SHADOW_MAXIMUM,
+		effective_post_quality = 1,
 	}
-	state: Adaptive_Shadow_Resolution_State
-	resolution := adaptive_shadow_resolution(&state, &dynamic_state, 2048, 512)
-	testing.expect_value(t, resolution, u32(2048))
-	for serial in 1 ..= ADAPTIVE_SHADOW_OVER_BUDGET_SAMPLES {
-		dynamic_state.last_sample_serial = u64(serial)
-		dynamic_state.has_filtered_sample = true
-		dynamic_state.filtered_gpu_ms = 24
-		resolution = adaptive_shadow_resolution(&state, &dynamic_state, 2048, 512)
+	for _ in 0 ..< 4 {
+		testing.expect(t, frame_budget_change(&state, true))
 	}
-	testing.expect_value(t, resolution, u32(1024))
-	testing.expect(t, !dynamic_state.has_filtered_sample)
-
-	state.cooldown_samples = 0
-	dynamic_state.effective_scale = dynamic_state.minimum_scale
-	for serial in 100 ..< 100 + ADAPTIVE_SHADOW_OVER_BUDGET_SAMPLES {
-		dynamic_state.last_sample_serial = u64(serial)
-		dynamic_state.has_filtered_sample = true
-		dynamic_state.filtered_gpu_ms = 24
-		resolution = adaptive_shadow_resolution(&state, &dynamic_state, 2048, 512)
+	testing.expect_value(t, state.effective_scale, f32(0.8))
+	testing.expect(t, frame_budget_change(&state, true))
+	testing.expect_value(t, state.effective_shadow_resolution, u32(1024))
+	for _ in 0 ..< 4 {
+		testing.expect(t, frame_budget_change(&state, true))
 	}
-	testing.expect_value(t, resolution, u32(512))
+	testing.expect_value(t, state.effective_scale, f32(0.6))
+	testing.expect(t, frame_budget_change(&state, true))
+	testing.expect_value(t, state.effective_post_quality, f32(0.75))
+	testing.expect(t, frame_budget_change(&state, true))
+	testing.expect_value(t, state.effective_shadow_resolution, u32(512))
+	testing.expect(t, frame_budget_change(&state, true))
+	testing.expect_value(t, state.effective_post_quality, f32(0.5))
 }
 
 @(test)
-test_adaptive_shadow_resolution_restores_quality_only_with_large_headroom :: proc(t: ^testing.T) {
-	dynamic_state := Dynamic_Resolution_State {
-		initialized = true,
-		enabled = true,
+test_frame_budget_respects_authored_quality_floor_and_restores_in_reverse :: proc(t: ^testing.T) {
+	state := Frame_Budget_State {
 		maximum_scale = 1,
 		minimum_scale = 0.6,
-		target_ms = 16.667,
-		effective_scale = 1,
-		has_filtered_sample = true,
-		filtered_gpu_ms = 8,
+		minimum_quality = 0.5,
+		effective_scale = 0.6,
+		effective_shadow_resolution = 1024,
+		effective_post_quality = 0.5,
 	}
-	state := Adaptive_Shadow_Resolution_State {
-		initialized = true,
-		enabled = true,
-		effective_resolution = 512,
+	testing.expect(t, frame_budget_change(&state, false))
+	testing.expect_value(t, state.effective_post_quality, f32(0.75))
+	testing.expect(t, frame_budget_change(&state, false))
+	testing.expect_value(t, state.effective_post_quality, f32(1))
+	for _ in 0 ..< 4 {
+		testing.expect(t, frame_budget_change(&state, false))
 	}
-	resolution := u32(512)
-	for serial in 1 ..= ADAPTIVE_SHADOW_UNDER_BUDGET_SAMPLES {
-		dynamic_state.last_sample_serial = u64(serial)
-		dynamic_state.has_filtered_sample = true
-		dynamic_state.filtered_gpu_ms = 8
-		resolution = adaptive_shadow_resolution(&state, &dynamic_state, 2048, 512)
-	}
-	testing.expect_value(t, resolution, u32(1024))
-	testing.expect(t, !dynamic_state.has_filtered_sample)
+	testing.expect_value(t, state.effective_scale, f32(0.8))
+	testing.expect(t, frame_budget_change(&state, false))
+	testing.expect_value(t, state.effective_shadow_resolution, u32(2048))
 
-	dynamic_state.enabled = false
-	resolution = adaptive_shadow_resolution(&state, &dynamic_state, 2048, 512)
-	testing.expect_value(t, resolution, u32(2048))
+	state.effective_scale = state.minimum_scale
+	state.effective_shadow_resolution = 1024
+	state.effective_post_quality = 0.5
+	for frame_budget_change(&state, true) {  }
+	testing.expect_value(t, state.effective_shadow_resolution, u32(1024))
+	testing.expect_value(t, state.effective_post_quality, f32(0.5))
+}
+
+@(test)
+test_adaptive_post_quality_scales_authored_ceilings_without_disabling_features :: proc(
+	t: ^testing.T,
+) {
+	camera := shared.camera_defaults()
+	camera.ambient_occlusion_quality = 1
+	camera.screen_space_reflections = true
+	camera.screen_space_reflections_quality = 0.75
+	resolved := camera_apply_adaptive_post_quality(camera, 0.5)
+	testing.expect(t, resolved.ambient_occlusion)
+	testing.expect(t, resolved.screen_space_reflections)
+	testing.expect_value(t, resolved.ambient_occlusion_quality, f32(0.5))
+	testing.expect_value(t, resolved.screen_space_reflections_quality, f32(0.375))
+	testing.expect_value(t, camera.ambient_occlusion_quality, f32(1))
+}
+
+@(test)
+test_adaptive_quality_floor_bounds_shadow_tiers :: proc(t: ^testing.T) {
+	testing.expect_value(t, frame_budget_minimum_shadow_resolution(0.25), u32(512))
+	testing.expect_value(t, frame_budget_minimum_shadow_resolution(0.5), u32(1024))
+	testing.expect_value(t, frame_budget_minimum_shadow_resolution(0.75), u32(2048))
+	testing.expect_value(t, frame_budget_minimum_shadow_resolution(1), u32(2048))
 }

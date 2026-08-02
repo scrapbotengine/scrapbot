@@ -1544,6 +1544,11 @@ wgpu_encode_bloom_and_composite :: proc(
 		resolved_camera = shared.camera_defaults()
 	}
 	resolved_camera = apply_render_feature_overrides(resolved_camera, render_feature_overrides)
+	adaptive_post_quality := f32(1)
+	if renderer.dynamic_resolution.enabled {
+		adaptive_post_quality = clamp(renderer.dynamic_resolution.effective_post_quality, 0.25, 1)
+	}
+	resolved_camera = camera_apply_adaptive_post_quality(resolved_camera, adaptive_post_quality)
 	debug_view := resolved_camera.debug_view != .Lit
 	if debug_view {
 		resolved_camera.automatic_exposure = false
@@ -1715,7 +1720,7 @@ wgpu_encode_bloom_and_composite :: proc(
 		fog.ambient_intensity,
 		fog.light_intensity,
 		fog.point_light_intensity,
-		0,
+		max(f32(4), f32(16) * adaptive_post_quality),
 	}
 	wgpu.QueueWriteBuffer(
 		renderer.queue,

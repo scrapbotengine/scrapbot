@@ -105,9 +105,10 @@ Parent UUIDs must resolve to another entity with a Transform and may not form a 
 | `debug_hiz_mip` | number | Hi-Z pyramid mip shown by the `"hiz"` debug view, from `0` through `15`. WGPU clamps it to the retained pyramid's highest available mip. Defaults to `0`. |
 | `debug_occlusion_freeze` | boolean | Preserves the latest GPU query records while the `"occlusion_queries"` view remains active. Culling continues normally. Defaults to `false`. |
 | `resolution_scale` | number | World/depth/post render-grid scale from `0.5` to `1`. Defaults to native resolution (`1`). When dynamic resolution is enabled, this is its maximum scale. |
-| `dynamic_resolution` | boolean | Lets WGPU lower and recover world resolution against a GPU-time budget. Defaults to `false`. |
+| `dynamic_resolution` | boolean | Enables WGPU's coordinated frame-budget controller for world resolution, shadows, and scalable post effects. Defaults to `false`. |
 | `dynamic_resolution_min_scale` | number | Dynamic-resolution floor from `0.5` through `resolution_scale`. Defaults to `0.5`. |
 | `dynamic_resolution_target_ms` | number | Scalable-world GPU-time target from `1` to `100` milliseconds. Defaults to `16.667`. |
+| `adaptive_quality_minimum` | number | Lowest normalized post quality from `0.25` to `1`. It also bounds shadow adaptation: `0.25` permits 512², `0.5` permits 1024², and `0.75` or higher keeps 2048² shadows. Defaults to `0.25`. |
 | `exposure` | number | Positive linear exposure multiplier. Defaults to `1`; it is fixed exposure when automatic exposure is off and compensation when it is on. |
 | `automatic_exposure` | boolean | Enables GPU-resident, viewport-scoped luminance metering and adaptation. Defaults to `false`. |
 | `automatic_exposure_min` | number | Positive minimum automatic exposure. Defaults to `0.125`. |
@@ -121,7 +122,7 @@ Parent UUIDs must resolve to another entity with a Transform and may not form a 
 | `screen_space_reflections_quality` | number | Selects a bounded SSR ray-march tier from `0.25` to `1`. Defaults to the balanced `0.5` tier (32 steps per eligible pixel); `0.25`, `0.75`, and `1` use 16, 48, and 64 steps. |
 | `bloom` | boolean | Enables the five-level HDR bloom pyramid. Defaults to `true`. |
 
-The camera reads position and orientation from a Transform on the same entity. The active camera's resolution, exposure, and render-feature policy controls that rendered view, including while an editor fly camera supplies the editor viewport's pose.
+The camera reads position and orientation from a Transform on the same entity. The active camera's resolution, exposure, and render-feature policy controls that rendered view, including while an editor fly camera supplies the editor viewport's pose. Adaptive values are derived renderer state: they do not mutate or persist over the authored camera.
 
 Reducing `resolution_scale` lowers the world, depth, Hi-Z, and post-processing pixel workload. The renderer composites that result into the native output target before drawing project UI, gizmos, and editor chrome at native resolution.
 

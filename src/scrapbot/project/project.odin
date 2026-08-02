@@ -94,6 +94,7 @@ resolution_scale = 1
 dynamic_resolution = false
 dynamic_resolution_min_scale = 0.5
 dynamic_resolution_target_ms = 16.667
+adaptive_quality_minimum = 0.25
 exposure = 1
 automatic_exposure = false
 automatic_exposure_min = 0.125

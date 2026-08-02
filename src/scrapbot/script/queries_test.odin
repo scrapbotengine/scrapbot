@@ -459,6 +459,7 @@ scrapbot.system(Cameras, {
 	camera.dynamic_resolution = true
 	camera.dynamic_resolution_min_scale = 0.6
 	camera.dynamic_resolution_target_ms = 10
+	camera.adaptive_quality_minimum = 0.5
 	camera.exposure = 1.25
 	camera.automatic_exposure = true
 	camera.automatic_exposure_min = 0.5
@@ -486,6 +487,7 @@ end)
 	testing.expect(t, world.cameras[0].dynamic_resolution)
 	testing.expect_value(t, world.cameras[0].dynamic_resolution_min_scale, f32(0.6))
 	testing.expect_value(t, world.cameras[0].dynamic_resolution_target_ms, f32(10))
+	testing.expect_value(t, world.cameras[0].adaptive_quality_minimum, f32(0.5))
 	testing.expect_value(t, world.cameras[0].exposure, f32(1.25))
 	testing.expect(t, world.cameras[0].automatic_exposure)
 	testing.expect_value(t, world.cameras[0].automatic_exposure_min, f32(0.5))

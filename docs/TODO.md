@@ -4,7 +4,7 @@ This file tracks current actionable engineering work. The broad product roadmap 
 
 ## Rendering
 
-- [ ] Extend the frame-budget controller with quantized post-effect tiers and authored quality bounds, then maintain a repeatable 60 Hz baseline matrix across representative integrated/discrete GPUs.
+- [ ] Maintain a repeatable 60 Hz adaptive-quality baseline matrix across representative integrated/discrete GPUs; record settled world, shadow, and post tiers. See [ADR-052](adr/ADR-052-coordinate-adaptive-render-quality-from-one-frame-budget.md).
 - [ ] Smooth one-way coarse-to-fine virtual-geometry admission transitions and add a consecutive-frame GPU regression; dependency-protected eviction already prevents random fine-to-coarse loss.
 - [ ] Compress Model v15 catalogs, material images, and virtual-Geometry pages with independently decodable page records; measure import time, product size, startup, and streaming cost on `impossible-archive` unhinged.
 - [ ] Strip source assets from exported games and package the same validated runtime products used by development runs.

@@ -20,9 +20,9 @@ bloom = false
 
 [entities.components.virtual_geometry_pressure_camera]
 start_x = -154
-step_x = 44
-position_count = 8
-dwell_frames = 12
+step_x = 1
+position_count = 320
+dwell_frames = 1
 
 [[entities]]
 id = "94000000-0000-4000-8000-000000000002"

@@ -1257,6 +1257,10 @@ editor_reflected_component_valid :: proc(
 			if dynamic_resolution_target_ms == 0 {
 				dynamic_resolution_target_ms = 16.667
 			}
+			adaptive_quality_minimum := entity.camera.adaptive_quality_minimum
+			if adaptive_quality_minimum == 0 {
+				adaptive_quality_minimum = 0.25
+			}
 			exposure := shared.camera_exposure(entity.camera)
 			automatic_exposure_min := shared.camera_automatic_exposure_min(entity.camera)
 			automatic_exposure_max := shared.camera_automatic_exposure_max(entity.camera)
@@ -1278,6 +1282,10 @@ editor_reflected_component_valid :: proc(
 				!math.is_inf(dynamic_resolution_target_ms) &&
 				dynamic_resolution_target_ms >= 1 &&
 				dynamic_resolution_target_ms <= 100 &&
+				!math.is_nan(adaptive_quality_minimum) &&
+				!math.is_inf(adaptive_quality_minimum) &&
+				adaptive_quality_minimum >= 0.25 &&
+				adaptive_quality_minimum <= 1 &&
 				!math.is_nan(exposure) &&
 				!math.is_inf(exposure) &&
 				exposure > 0 &&

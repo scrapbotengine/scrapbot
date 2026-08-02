@@ -1219,6 +1219,8 @@ parse_scene :: proc(
 						current.camera.dynamic_resolution_min_scale, found = parse_f32(value)
 					case "dynamic_resolution_target_ms":
 						current.camera.dynamic_resolution_target_ms, found = parse_f32(value)
+					case "adaptive_quality_minimum":
+						current.camera.adaptive_quality_minimum, found = parse_f32(value)
 					case "exposure":
 						current.camera.exposure, found = parse_f32(value)
 					case "automatic_exposure":
@@ -2242,6 +2244,7 @@ parse_scene :: proc(
 			}
 			dynamic_resolution_min_scale := entity.camera.dynamic_resolution_min_scale
 			dynamic_resolution_target_ms := entity.camera.dynamic_resolution_target_ms
+			adaptive_quality_minimum := entity.camera.adaptive_quality_minimum
 			automatic_exposure_min := shared.camera_automatic_exposure_min(entity.camera)
 			automatic_exposure_max := shared.camera_automatic_exposure_max(entity.camera)
 			automatic_exposure_speed := shared.camera_automatic_exposure_speed(entity.camera)
@@ -2262,6 +2265,10 @@ parse_scene :: proc(
 			   math.is_inf(dynamic_resolution_target_ms) ||
 			   dynamic_resolution_target_ms < 1 ||
 			   dynamic_resolution_target_ms > 100 ||
+			   math.is_nan(adaptive_quality_minimum) ||
+			   math.is_inf(adaptive_quality_minimum) ||
+			   adaptive_quality_minimum < 0.25 ||
+			   adaptive_quality_minimum > 1 ||
 			   math.is_nan(entity.camera.debug_hiz_mip) ||
 			   math.is_inf(entity.camera.debug_hiz_mip) ||
 			   entity.camera.debug_hiz_mip < 0 ||

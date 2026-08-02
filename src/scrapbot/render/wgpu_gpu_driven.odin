@@ -4255,6 +4255,8 @@ wgpu_prepare_gpu_draw_batches :: proc(
 		compact_shadow_pages = 1 if wgpu_compact_shadow_pages_active(renderer) else 0,
 		virtual_prefetch_enabled = 1 if prediction.enabled else 0,
 		meshlet_count = u32(renderer.gpu_meshlet_draw_count),
+		occlusion_depth_scale = math.abs(projection[14]),
+		occlusion_world_bias = WGPU_HIZ_OCCLUSION_WORLD_BIAS,
 	}
 	for cascade_index in 0 ..< WGPU_SHADOW_CASCADE_COUNT {
 		cull_uniform.virtual_shadow_error_pixels[cascade_index] = wgpu_virtual_shadow_error_pixels(

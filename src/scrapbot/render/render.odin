@@ -105,6 +105,7 @@ Render_Stats :: struct {
 	render_scale: f32,
 	dynamic_resolution: bool,
 	dynamic_resolution_filtered_gpu_ms: f64,
+	adaptive_post_quality: f32,
 	gpu_instance_expansion_ms: f64,
 	gpu_clustered_lighting_ms: f64,
 	gpu_cull_ms: f64,
@@ -171,7 +172,7 @@ Render_Stats :: struct {
 	ui_viewport_cache_hits: u64,
 }
 
-Dynamic_Resolution_State :: struct {
+Frame_Budget_State :: struct {
 	initialized: bool,
 	enabled: bool,
 	generation: u64,
@@ -179,20 +180,12 @@ Dynamic_Resolution_State :: struct {
 	maximum_scale: f32,
 	minimum_scale: f32,
 	target_ms: f32,
+	minimum_quality: f32,
 	effective_scale: f32,
+	effective_shadow_resolution: u32,
+	effective_post_quality: f32,
 	filtered_gpu_ms: f64,
 	has_filtered_sample: bool,
-	last_sample_serial: u64,
-	over_budget_samples: int,
-	under_budget_samples: int,
-	cooldown_samples: int,
-}
-
-Adaptive_Shadow_Resolution_State :: struct {
-	initialized: bool,
-	enabled: bool,
-	policy_owner: shared.Entity_UUID,
-	effective_resolution: u32,
 	last_sample_serial: u64,
 	over_budget_samples: int,
 	under_budget_samples: int,
@@ -207,19 +200,150 @@ DYNAMIC_RESOLUTION_UNDER_BUDGET_SAMPLES :: 30
 DYNAMIC_RESOLUTION_CHANGE_COOLDOWN_SAMPLES :: 8
 DYNAMIC_RESOLUTION_FILTER_ALPHA :: f64(0.2)
 
-ADAPTIVE_SHADOW_OVER_BUDGET_SAMPLES :: 8
-ADAPTIVE_SHADOW_UNDER_BUDGET_SAMPLES :: 180
-ADAPTIVE_SHADOW_CHANGE_COOLDOWN_SAMPLES :: 60
-ADAPTIVE_SHADOW_FIRST_STEP_SCALE_RATIO :: f32(0.8)
-ADAPTIVE_SHADOW_UNDER_BUDGET_RATIO :: f64(0.6)
+FRAME_BUDGET_SHADOW_MAXIMUM :: u32(2048)
+FRAME_BUDGET_SHADOW_MIDDLE :: u32(1024)
+FRAME_BUDGET_SHADOW_MINIMUM :: u32(512)
+FRAME_BUDGET_FIRST_SCALE_RATIO :: f32(0.8)
+FRAME_BUDGET_QUALITY_STEP :: f32(0.25)
 
 dynamic_resolution_quantize :: proc "contextless" (scale, minimum, maximum: f32) -> f32 {
 	steps := math.round(scale / DYNAMIC_RESOLUTION_SCALE_STEP)
 	return clamp(steps * DYNAMIC_RESOLUTION_SCALE_STEP, minimum, maximum)
 }
 
+frame_budget_minimum_shadow_resolution :: proc "contextless" (minimum_quality: f32) -> u32 {
+	if minimum_quality >= 0.75 {
+		return FRAME_BUDGET_SHADOW_MAXIMUM
+	}
+	if minimum_quality >= 0.5 {
+		return FRAME_BUDGET_SHADOW_MIDDLE
+	}
+	return FRAME_BUDGET_SHADOW_MINIMUM
+}
+
+camera_apply_adaptive_post_quality :: proc "contextless" (
+	camera: shared.Camera_Component,
+	quality: f32,
+) -> shared.Camera_Component {
+	resolved := camera
+	factor := clamp(quality, 0.25, 1)
+	resolved.ambient_occlusion_quality = max(
+		f32(0.25),
+		shared.camera_ambient_occlusion_quality(camera) * factor,
+	)
+	resolved.screen_space_reflections_quality = max(
+		f32(0.25),
+		shared.camera_screen_space_reflections_quality(camera) * factor,
+	)
+	return resolved
+}
+
+frame_budget_change :: proc "contextless" (state: ^Frame_Budget_State, degrade: bool) -> bool {
+	if state == nil {
+		return false
+	}
+	first_scale := dynamic_resolution_quantize(
+		max(state.minimum_scale, state.maximum_scale * FRAME_BUDGET_FIRST_SCALE_RATIO),
+		state.minimum_scale,
+		state.maximum_scale,
+	)
+	minimum_shadow := frame_budget_minimum_shadow_resolution(state.minimum_quality)
+	if degrade {
+		if state.effective_scale > first_scale {
+			state.effective_scale = dynamic_resolution_quantize(
+				state.effective_scale - DYNAMIC_RESOLUTION_SCALE_STEP,
+				state.minimum_scale,
+				state.maximum_scale,
+			)
+			return true
+		}
+		if state.effective_shadow_resolution > max(minimum_shadow, FRAME_BUDGET_SHADOW_MIDDLE) {
+			state.effective_shadow_resolution = max(
+				state.effective_shadow_resolution / 2,
+				max(minimum_shadow, FRAME_BUDGET_SHADOW_MIDDLE),
+			)
+			return true
+		}
+		if state.effective_scale > state.minimum_scale {
+			state.effective_scale = dynamic_resolution_quantize(
+				state.effective_scale - DYNAMIC_RESOLUTION_SCALE_STEP,
+				state.minimum_scale,
+				state.maximum_scale,
+			)
+			return true
+		}
+		if state.effective_post_quality > max(state.minimum_quality, f32(0.75)) {
+			state.effective_post_quality = max(
+				state.effective_post_quality - FRAME_BUDGET_QUALITY_STEP,
+				max(state.minimum_quality, f32(0.75)),
+			)
+			return true
+		}
+		if state.effective_shadow_resolution > minimum_shadow {
+			state.effective_shadow_resolution = max(
+				state.effective_shadow_resolution / 2,
+				minimum_shadow,
+			)
+			return true
+		}
+		if state.effective_post_quality > state.minimum_quality {
+			state.effective_post_quality = max(
+				state.effective_post_quality - FRAME_BUDGET_QUALITY_STEP,
+				state.minimum_quality,
+			)
+			return true
+		}
+		return false
+	}
+	if state.effective_post_quality < 0.75 {
+		state.effective_post_quality = min(
+			state.effective_post_quality + FRAME_BUDGET_QUALITY_STEP,
+			f32(0.75),
+		)
+		return true
+	}
+	if state.effective_shadow_resolution < FRAME_BUDGET_SHADOW_MIDDLE {
+		state.effective_shadow_resolution = min(
+			state.effective_shadow_resolution * 2,
+			FRAME_BUDGET_SHADOW_MIDDLE,
+		)
+		return true
+	}
+	if state.effective_post_quality < 1 {
+		state.effective_post_quality = min(
+			state.effective_post_quality + FRAME_BUDGET_QUALITY_STEP,
+			f32(1),
+		)
+		return true
+	}
+	if state.effective_scale < first_scale {
+		state.effective_scale = dynamic_resolution_quantize(
+			state.effective_scale + DYNAMIC_RESOLUTION_SCALE_STEP,
+			state.minimum_scale,
+			first_scale,
+		)
+		return true
+	}
+	if state.effective_shadow_resolution < FRAME_BUDGET_SHADOW_MAXIMUM {
+		state.effective_shadow_resolution = min(
+			state.effective_shadow_resolution * 2,
+			FRAME_BUDGET_SHADOW_MAXIMUM,
+		)
+		return true
+	}
+	if state.effective_scale < state.maximum_scale {
+		state.effective_scale = dynamic_resolution_quantize(
+			state.effective_scale + DYNAMIC_RESOLUTION_SCALE_STEP,
+			state.minimum_scale,
+			state.maximum_scale,
+		)
+		return true
+	}
+	return false
+}
+
 dynamic_resolution_scale :: proc "contextless" (
-	state: ^Dynamic_Resolution_State,
+	state: ^Frame_Budget_State,
 	camera: shared.Camera_Component,
 	timestamps_supported: bool,
 	sample_serial: u64,
@@ -229,6 +353,7 @@ dynamic_resolution_scale :: proc "contextless" (
 	maximum := shared.camera_resolution_scale(camera)
 	minimum := shared.camera_dynamic_resolution_min_scale(camera)
 	target := shared.camera_dynamic_resolution_target_ms(camera)
+	minimum_quality := shared.camera_adaptive_quality_minimum(camera)
 	enabled := camera.dynamic_resolution && timestamps_supported
 	if state == nil {
 		return maximum
@@ -239,12 +364,15 @@ dynamic_resolution_scale :: proc "contextless" (
 		state.policy_owner != policy_owner ||
 		state.maximum_scale != maximum ||
 		state.minimum_scale != minimum ||
-		state.target_ms != target
+		state.target_ms != target ||
+		state.minimum_quality != minimum_quality
 	if policy_changed {
 		was_enabled := state.initialized && state.enabled
 		owner_changed := state.initialized && state.policy_owner != policy_owner
 		if !was_enabled || !enabled || owner_changed {
 			state.effective_scale = maximum
+			state.effective_shadow_resolution = FRAME_BUDGET_SHADOW_MAXIMUM
+			state.effective_post_quality = 1
 		} else {
 			state.effective_scale = dynamic_resolution_quantize(
 				state.effective_scale,
@@ -259,6 +387,13 @@ dynamic_resolution_scale :: proc "contextless" (
 		state.maximum_scale = maximum
 		state.minimum_scale = minimum
 		state.target_ms = target
+		state.minimum_quality = minimum_quality
+		state.effective_shadow_resolution = clamp(
+			state.effective_shadow_resolution,
+			frame_budget_minimum_shadow_resolution(minimum_quality),
+			FRAME_BUDGET_SHADOW_MAXIMUM,
+		)
+		state.effective_post_quality = clamp(state.effective_post_quality, minimum_quality, 1)
 		state.filtered_gpu_ms = 0
 		state.has_filtered_sample = false
 		state.over_budget_samples = 0
@@ -292,124 +427,22 @@ dynamic_resolution_scale :: proc "contextless" (
 		state.over_budget_samples = 0
 		state.under_budget_samples = 0
 	}
-	next_scale := state.effective_scale
 	adjustment_due := false
 	if state.over_budget_samples >= DYNAMIC_RESOLUTION_OVER_BUDGET_SAMPLES {
-		next_scale -= DYNAMIC_RESOLUTION_SCALE_STEP
-		adjustment_due = true
+		adjustment_due = frame_budget_change(state, true)
 	} else if state.under_budget_samples >= DYNAMIC_RESOLUTION_UNDER_BUDGET_SAMPLES {
-		next_scale += DYNAMIC_RESOLUTION_SCALE_STEP
-		adjustment_due = true
+		adjustment_due = frame_budget_change(state, false)
 	}
 	if !adjustment_due {
 		return state.effective_scale
 	}
-	next_scale = dynamic_resolution_quantize(next_scale, minimum, maximum)
-	if next_scale != state.effective_scale {
-		state.effective_scale = next_scale
-		state.generation += 1
-		state.filtered_gpu_ms = 0
-		state.has_filtered_sample = false
-		state.cooldown_samples = DYNAMIC_RESOLUTION_CHANGE_COOLDOWN_SAMPLES
-	}
-	state.over_budget_samples = 0
-	state.under_budget_samples = 0
-	return state.effective_scale
-}
-
-dynamic_resolution_reject_measurements :: proc "contextless" (state: ^Dynamic_Resolution_State) {
-	if state == nil {
-		return
-	}
 	state.generation += 1
 	state.filtered_gpu_ms = 0
 	state.has_filtered_sample = false
+	state.cooldown_samples = DYNAMIC_RESOLUTION_CHANGE_COOLDOWN_SAMPLES
 	state.over_budget_samples = 0
 	state.under_budget_samples = 0
-	state.cooldown_samples = DYNAMIC_RESOLUTION_CHANGE_COOLDOWN_SAMPLES
-}
-
-adaptive_shadow_resolution :: proc "contextless" (
-	state: ^Adaptive_Shadow_Resolution_State,
-	dynamic_state: ^Dynamic_Resolution_State,
-	maximum_resolution, minimum_resolution: u32,
-) -> u32 {
-	if state == nil || dynamic_state == nil {
-		return maximum_resolution
-	}
-	minimum := min(max(minimum_resolution, u32(1)), maximum_resolution)
-	enabled := dynamic_state.enabled
-	policy_changed :=
-		!state.initialized ||
-		state.enabled != enabled ||
-		state.policy_owner != dynamic_state.policy_owner
-	if policy_changed {
-		state^ = {
-			initialized = true,
-			enabled = enabled,
-			policy_owner = dynamic_state.policy_owner,
-			effective_resolution = maximum_resolution,
-			last_sample_serial = dynamic_state.last_sample_serial,
-		}
-	}
-	if !enabled {
-		state.effective_resolution = maximum_resolution
-		return state.effective_resolution
-	}
-	if !dynamic_state.has_filtered_sample ||
-	   dynamic_state.last_sample_serial == 0 ||
-	   dynamic_state.last_sample_serial == state.last_sample_serial {
-		return state.effective_resolution
-	}
-	state.last_sample_serial = dynamic_state.last_sample_serial
-	if state.cooldown_samples > 0 {
-		state.cooldown_samples -= 1
-		return state.effective_resolution
-	}
-	first_step_scale := max(
-		dynamic_state.minimum_scale,
-		dynamic_state.maximum_scale * ADAPTIVE_SHADOW_FIRST_STEP_SCALE_RATIO,
-	)
-	can_reduce :=
-		state.effective_resolution > minimum &&
-		((state.effective_resolution == maximum_resolution &&
-					dynamic_state.effective_scale <= first_step_scale) ||
-				dynamic_state.effective_scale <= dynamic_state.minimum_scale)
-	over_budget :=
-		can_reduce &&
-		dynamic_state.filtered_gpu_ms >
-			f64(dynamic_state.target_ms) * DYNAMIC_RESOLUTION_OVER_BUDGET_RATIO
-	can_increase :=
-		state.effective_resolution < maximum_resolution &&
-		dynamic_state.effective_scale >= dynamic_state.maximum_scale
-	under_budget :=
-		can_increase &&
-		dynamic_state.filtered_gpu_ms <
-			f64(dynamic_state.target_ms) * ADAPTIVE_SHADOW_UNDER_BUDGET_RATIO
-	if over_budget {
-		state.over_budget_samples += 1
-		state.under_budget_samples = 0
-	} else if under_budget {
-		state.under_budget_samples += 1
-		state.over_budget_samples = 0
-	} else {
-		state.over_budget_samples = 0
-		state.under_budget_samples = 0
-	}
-	next_resolution := state.effective_resolution
-	if state.over_budget_samples >= ADAPTIVE_SHADOW_OVER_BUDGET_SAMPLES {
-		next_resolution = max(state.effective_resolution / 2, minimum)
-	} else if state.under_budget_samples >= ADAPTIVE_SHADOW_UNDER_BUDGET_SAMPLES {
-		next_resolution = min(state.effective_resolution * 2, maximum_resolution)
-	}
-	if next_resolution != state.effective_resolution {
-		state.effective_resolution = next_resolution
-		state.over_budget_samples = 0
-		state.under_budget_samples = 0
-		state.cooldown_samples = ADAPTIVE_SHADOW_CHANGE_COOLDOWN_SAMPLES
-		dynamic_resolution_reject_measurements(dynamic_state)
-	}
-	return state.effective_resolution
+	return state.effective_scale
 }
 
 PERFORMANCE_DIAGNOSTICS_PUBLISH_INTERVAL_FRAMES :: 5
@@ -608,6 +641,7 @@ performance_diagnostics_commit_frame :: proc(
 	snapshot.gpu_scene_ms = stats.gpu_scene_ms
 	snapshot.render_scale = stats.render_scale
 	snapshot.shadow_resolution = stats.shadow_resolution
+	snapshot.adaptive_post_quality = stats.adaptive_post_quality
 	snapshot.gpu_timestamps_valid = stats.gpu_timestamps_valid
 	snapshot.entity_count = world.scene_entity_count + world.runtime_entity_count
 	snapshot.retained_batches = stats.draw_batches

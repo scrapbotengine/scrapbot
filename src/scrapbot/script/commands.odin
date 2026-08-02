@@ -552,6 +552,14 @@ read_full_camera_table :: proc "c" (
 	); err != "" {
 		return
 	}
+	if err = read_ui_number_field(
+		L,
+		payload_index,
+		"adaptive_quality_minimum",
+		&value.adaptive_quality_minimum,
+	); err != "" {
+		return
+	}
 	if err = read_ui_number_field(L, payload_index, "exposure", &value.exposure); err != "" {
 		return
 	}
@@ -652,6 +660,10 @@ read_full_camera_table :: proc "c" (
 	   math.is_inf(value.dynamic_resolution_target_ms) ||
 	   value.dynamic_resolution_target_ms < 1 ||
 	   value.dynamic_resolution_target_ms > 100 ||
+	   math.is_nan(value.adaptive_quality_minimum) ||
+	   math.is_inf(value.adaptive_quality_minimum) ||
+	   value.adaptive_quality_minimum < 0.25 ||
+	   value.adaptive_quality_minimum > 1 ||
 	   math.is_nan(value.exposure) ||
 	   math.is_inf(value.exposure) ||
 	   value.exposure <= 0 ||

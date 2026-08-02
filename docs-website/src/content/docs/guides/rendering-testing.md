@@ -113,7 +113,9 @@ The checked-in semantic replays `tests/fixtures/ui/game-debug-meshlets.json`,
 `game-debug-occlusion.json`, and `game-debug-virtual-geometry.json` drive the editor selector and
 capture only Game. Pair LOD with `tests/fixtures/gpu-lod` for exact CPU/GPU parity. Pair visibility
 or Hi-Z with `examples/ecs-showcase`, the meshlet and virtual-geometry views with
-`examples/sponza`, and Occlusion Queries with the dense `examples/clustered-lights` cathedral.
+`examples/sponza`, and the automated Occlusion Queries gate with `tests/fixtures/gpu-driven` for a
+deterministic wall-and-hidden-bounds workload. Use the dense `examples/clustered-lights` cathedral
+to explore occlusion queries interactively in a representative scene.
 
 Visibility diagnostics remain GPU-native. The culling pass emits records into an aligned diagnostic range only while a matching view is active, copies its count into an indirect line draw, and publishes `meshlet_debug_records` through the existing asynchronous statistics path. Meshlet Visibility records rejected bounds. Occlusion Queries records the exact query rectangle, selected mip, nearest bound depth, sampled farthest depth, identity, and decision for every tested object or meshlet.
 
@@ -126,8 +128,9 @@ Pass `--cpu-culling` to run the same bounding-sphere tests, screen-radius LOD se
 Run `mise test-gpu` for the complete bounded GPU regression suite. It drives a greater-than-64-batch stress scene through compute and CPU visibility. It also verifies adaptive Hi-Z rejection plus asynchronous timestamps and counters.
 
 Run `mise test-virtual-geometry-gpu` for the dedicated residency-pressure gate. Its scripted camera
-steps across distinct procedural 48-page resources under a 64 KiB payload budget and requires streaming,
-whole-group eviction, fallback residency, bounded feedback, and a nonblank framegrab.
+traverses distinct procedural 48-page resources under a 64 KiB payload budget and requires
+streaming, prefetch promotion, whole-group eviction, fallback residency, bounded feedback, and a
+nonblank framegrab.
 
 For streaming, residency, LOD, temporal-history, animation, hot-reload, or camera-motion work, a
 single final frame is not sufficient evidence. Capture at least five consecutive frames with
@@ -432,7 +435,7 @@ The output directory contains:
 - `overview.png` from the final measured frame.
 - An optional `frames/` sequence for the inclusive range passed to `--capture-range`.
 
-Each row includes active CPU time, exact per-pass GPU time, their summed GPU frame duration, logical and physical dimensions, pixel density, viewport, shaded pixels, and a raw renderer snapshot. The snapshot includes effective `render_scale`, whether dynamic resolution is active, and its filtered scalable-GPU signal.
+Each row includes active CPU time, exact per-pass GPU time, their summed GPU frame duration, logical and physical dimensions, pixel density, viewport, shaded pixels, and a raw renderer snapshot. The snapshot includes effective `render_scale`, `shadow_resolution`, `adaptive_post_quality`, whether adaptation is active, and its filtered scalable-GPU signal.
 
 The `workload` object records the dispatch size, render extent, encoded draw-submission spans, instances, or sample count behind each pass. Shadow workload dimensions report the active raster resolution rather than retained capacity. This makes a timing actionable: for example, it distinguishes an expensive shader at a modest resolution from expected cost at a HiDPI physical resolution.
 
@@ -453,13 +456,14 @@ resolution_scale = 1
 dynamic_resolution = true
 dynamic_resolution_min_scale = 0.6
 dynamic_resolution_target_ms = 16.667
+adaptive_quality_minimum = 0.25
 ```
 
-The manual scale is the ceiling, not a second multiplier. WGPU processes every completed timestamp sample once, removes native UI time, filters the result, and uses hysteretic 5% world-resolution steps. It lowers scale faster than it raises it to avoid oscillation. Delayed samples from an old scale or active project camera are discarded.
+The manual scale is the ceiling, not a second multiplier. WGPU processes every completed scene-span timestamp sample once, filters the result, and advances at most one step on a shared quality ladder. Delayed samples from an old quality generation or active project camera are discarded.
 
-The same budget can lower directional-shadow rasterization from 2048² to 1024² and, under stronger sustained pressure, 512². Shadow changes use longer hysteresis and cooldown windows than world-resolution changes. Quality returns only after the world reaches its authored ceiling and maintains substantial headroom, preventing adjacent tiers from oscillating.
+The ladder coordinates 5% world-resolution steps, 2048²/1024²/512² directional-shadow tiers, and a normalized post factor. The post factor scales the authored AO and SSR quality ceilings and volumetric-fog ray count. `adaptive_quality_minimum` bounds the last two outputs. Quality returns in the exact reverse order only after sustained headroom, preventing adjacent tiers from fighting each other.
 
-Scale changes reject temporal history and resize only scale-dependent targets. An unchanged scale reuses all retained targets. Backends without timestamps stay at `resolution_scale`.
+Every step shares one cooldown and measurement generation. Scale changes reject temporal history and resize only scale-dependent targets; shadow and post-only changes retain those targets. Backends without timestamps stay at authored maxima.
 
 Use a long enough warmup when profiling adaptive policy. The measured rows should represent its settled scale rather than startup convergence. For fixed-scale feature comparisons, disable dynamic resolution.
 

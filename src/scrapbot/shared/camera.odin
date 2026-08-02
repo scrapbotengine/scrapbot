@@ -70,6 +70,7 @@ camera_defaults :: proc "contextless" () -> Camera_Component {
 		resolution_scale = 1,
 		dynamic_resolution_min_scale = 0.5,
 		dynamic_resolution_target_ms = 16.667,
+		adaptive_quality_minimum = 0.25,
 		exposure = 1,
 		automatic_exposure_min = 0.125,
 		automatic_exposure_max = 8,
@@ -97,6 +98,7 @@ camera_copy_render_features :: proc "contextless" (
 	destination.dynamic_resolution = source.dynamic_resolution
 	destination.dynamic_resolution_min_scale = source.dynamic_resolution_min_scale
 	destination.dynamic_resolution_target_ms = source.dynamic_resolution_target_ms
+	destination.adaptive_quality_minimum = source.adaptive_quality_minimum
 	destination.exposure = source.exposure
 	destination.automatic_exposure = source.automatic_exposure
 	destination.automatic_exposure_min = source.automatic_exposure_min
@@ -154,6 +156,13 @@ camera_dynamic_resolution_target_ms :: proc "contextless" (camera: Camera_Compon
 		return 16.667
 	}
 	return clamp(camera.dynamic_resolution_target_ms, 1, 100)
+}
+
+camera_adaptive_quality_minimum :: proc "contextless" (camera: Camera_Component) -> f32 {
+	if camera.adaptive_quality_minimum == 0 {
+		return 0.25
+	}
+	return clamp(camera.adaptive_quality_minimum, 0.25, 1)
 }
 
 camera_exposure :: proc "contextless" (camera: Camera_Component) -> f32 {

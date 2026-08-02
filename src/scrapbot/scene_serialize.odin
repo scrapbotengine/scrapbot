@@ -95,6 +95,11 @@ write_scene_entity :: proc(builder: ^strings.Builder, entity: ^shared.Scene_Enti
 			"dynamic_resolution_target_ms",
 			scene_f32(shared.camera_dynamic_resolution_target_ms(entity.camera)),
 		)
+		write_scene_value(
+			builder,
+			"adaptive_quality_minimum",
+			scene_f32(shared.camera_adaptive_quality_minimum(entity.camera)),
+		)
 		write_scene_value(builder, "exposure", scene_f32(shared.camera_exposure(entity.camera)))
 		write_scene_value(
 			builder,

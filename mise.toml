@@ -480,7 +480,7 @@ LOD_COMPUTE_JSON="$(bin/scrapbot run tests/fixtures/gpu-lod --headless --no-hot-
 LOD_CPU_JSON="$(bin/scrapbot run tests/fixtures/gpu-lod --headless --no-hot-reload --cpu-culling --frames 5 --framegrab "$LOD_CPU_FRAME" --json)"
 MESHLET_VISIBILITY_JSON="$(bin/scrapbot run examples/ecs-showcase --headless --editor --no-hot-reload --frames 20 --ui-script tests/fixtures/ui/game-debug-visibility.json --framegrab "$MESHLET_VISIBILITY_FRAME" --json)"
 HIZ_DEBUG_JSON="$(bin/scrapbot run examples/ecs-showcase --headless --editor --no-hot-reload --frames 60 --ui-script tests/fixtures/ui/game-debug-hiz.json --framegrab "$HIZ_DEBUG_FRAME" --json)"
-OCCLUSION_DEBUG_JSON="$(bin/scrapbot run examples/clustered-lights --headless --editor --no-hot-reload --frames 60 --ui-script tests/fixtures/ui/game-debug-occlusion.json --framegrab "$OCCLUSION_DEBUG_FRAME" --json)"
+OCCLUSION_DEBUG_JSON="$(bin/scrapbot run tests/fixtures/gpu-driven --headless --editor --no-hot-reload --frames 60 --ui-script tests/fixtures/ui/game-debug-occlusion.json --framegrab "$OCCLUSION_DEBUG_FRAME" --json)"
 TRANSFORM_COMPUTE_JSON="$(bin/scrapbot run examples/minimal --headless --no-hot-reload --frames 20 --framegrab "$TRANSFORM_COMPUTE_FRAME" --json)"
 TRANSFORM_CPU_JSON="$(bin/scrapbot run examples/minimal --headless --no-hot-reload --cpu-culling --frames 20 --framegrab "$TRANSFORM_CPU_FRAME" --json)"
 MASK_JSON="$(bin/scrapbot run tests/fixtures/gltf-materials --headless --no-hot-reload --frames 2 --framegrab "$MASK_FRAME" --json)"
@@ -585,8 +585,9 @@ if (result.schema_version !== 1 || result.command !== "run" || result.ok !== tru
     stats.frustum_candidates < 451 ||
     stats.frustum_candidates > result.result.renderables ||
     stats.visible_instances + stats.occlusion_culled_instances !== stats.frustum_candidates ||
-    stats.occlusion_culled_instances > 35) {
-  console.error("paused editor Hi-Z rejected a large near-field architectural bound");
+    stats.visible_instances < 300 ||
+    stats.occlusion_culled_instances < 1) {
+  console.error("paused editor Hi-Z did not preserve near-field architecture while rejecting hidden bounds");
   process.exit(1);
 }
 ' "$CLUSTER_PAUSED_JSON"
@@ -767,7 +768,7 @@ depends = ["build"]
 run = '''
 FRAME="${TMPDIR:-/tmp}/scrapbot-virtual-geometry-pressure.png"
 trap 'rm -f "$FRAME"' EXIT
-RESULT="$(bin/scrapbot run tests/fixtures/gpu-virtual-geometry-pressure --headless --no-hot-reload --frames 96 --framegrab "$FRAME" --json)"
+RESULT="$(bin/scrapbot run tests/fixtures/gpu-virtual-geometry-pressure --headless --no-hot-reload --frames 320 --framegrab "$FRAME" --json)"
 node -e '
 const result = JSON.parse(process.argv[1]);
 const stats = result.result?.render_stats;

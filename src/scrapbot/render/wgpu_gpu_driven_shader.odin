@@ -1147,6 +1147,9 @@ struct Cull_Uniform {
 	compact_shadow_pages: u32,
 	virtual_prefetch_enabled: u32,
 	meshlet_count: u32,
+	occlusion_depth_scale: f32,
+	occlusion_world_bias: f32,
+	_padding: vec2<u32>,
 	virtual_shadow_error_pixels: vec4<f32>,
 };
 
@@ -1472,6 +1475,8 @@ struct Occlusion_Result {
 	depths: vec4<f32>,
 };
 
+const OCCLUSION_FLOATING_POINT_BIAS = 9.536743e-7;
+
 fn camera_sphere_occlusion(bounds: vec4<f32>) -> Occlusion_Result {
 	var result: Occlusion_Result;
 	if (cull.hiz_enabled == 0u || cull.hiz_mip_count == 0u) {
@@ -1527,7 +1532,15 @@ fn camera_sphere_occlusion(bounds: vec4<f32>) -> Occlusion_Result {
 		1.0 - (high_px.y - cull.viewport.y) / cull.viewport.w * 2.0,
 	);
 	result.depths = vec4<f32>(nearest_depth, farthest_occluder, f32(mip), 0.0);
-	result.occluded = select(0u, 1u, nearest_depth > farthest_occluder + 0.0015);
+	// Express the safety margin in world space, then project it at the query depth.
+	// A fixed nonlinear-depth epsilon changes meaning with the camera near plane and
+	// previously disabled useful occlusion when the editor camera used a 0.01 near plane.
+	let world_bias = max(cull.occlusion_world_bias, bounds.w * 0.01);
+	let view_depth = max(nearest_clip.w, 0.0001);
+	let projected_bias =
+		cull.occlusion_depth_scale * world_bias / (view_depth * view_depth);
+	let depth_bias = max(projected_bias, OCCLUSION_FLOATING_POINT_BIAS);
+	result.occluded = select(0u, 1u, nearest_depth > farthest_occluder + depth_bias);
 	return result;
 }
 

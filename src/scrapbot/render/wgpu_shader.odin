@@ -1078,7 +1078,8 @@ fn integrate_volumetric_fog(
 	));
 	let world_direction = normalize((temporal.inverse_view * vec4<f32>(view_direction, 0.0)).xyz);
 	let camera_position = temporal.inverse_view[3].xyz;
-	let step_length = ray_distance / f32(FOG_STEP_COUNT);
+	let active_step_count = clamp(u32(temporal.fog_lighting.w), 4u, FOG_STEP_COUNT);
+	let step_length = ray_distance / f32(active_step_count);
 	// Rotate a low-discrepancy sub-step offset through the temporal sample
 	// sequence. TAA integrates these samples into smooth shafts without the
 	// fixed depth slices produced by midpoint-only ray marching.
@@ -1106,7 +1107,7 @@ fn integrate_volumetric_fog(
 		temporal.fog_lighting.x;
 	var transmittance = 1.0;
 	var scattering = vec3<f32>(0.0);
-	for (var step = 0u; step < FOG_STEP_COUNT; step += 1u) {
+	for (var step = 0u; step < active_step_count; step += 1u) {
 		let distance = (f32(step) + temporal_phase) * step_length;
 		let world_position = camera_position + world_direction * distance;
 		let height_offset = world_position.y - temporal.fog_height_distance.x;

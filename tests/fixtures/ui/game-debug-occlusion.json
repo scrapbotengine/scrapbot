@@ -2,6 +2,7 @@
   "schema_version": 1,
   "timeout_frames": 180,
   "actions": [
+    {"action": "wait", "frames": 10},
     {"action": "click", "target": {"text": "PAUSE", "origin": "editor"}},
     {"action": "click", "target": {"text": "VIEW / CAMERA", "origin": "editor"}},
     {"action": "click", "target": {"text": "OCCLUSION QUERIES", "origin": "editor"}},

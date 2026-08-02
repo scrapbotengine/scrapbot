@@ -197,6 +197,18 @@ init_registry :: proc(registry: ^Registry) {
 					maximum = 100,
 				},
 			},
+			Field_Definition {
+				name = "adaptive_quality_minimum",
+				field_type = .Number,
+				editor = {
+					draggable = true,
+					step = 0.25,
+					has_minimum = true,
+					minimum = 0.25,
+					has_maximum = true,
+					maximum = 1,
+				},
+			},
 			Field_Definition{name = "exposure", field_type = .Number},
 			Field_Definition{name = "automatic_exposure", field_type = .Bool},
 			Field_Definition {

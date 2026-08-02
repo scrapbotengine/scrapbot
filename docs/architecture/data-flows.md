@@ -197,9 +197,9 @@ Material revisions trigger one dependent-instance pass. WGPU replaces only that 
 
 ### Camera-selected postprocessing
 
-The active camera owns the manual world-render ceiling, optional GPU-budgeted dynamic-resolution floor/target, fixed/automatic exposure, TAA, current-frame fast AA, AO, SSR, and bloom switches. The editor fly camera contributes pose and lens while inheriting this policy.
+The active camera owns the world-render ceiling/floor, GPU target, adaptive post-quality floor, fixed/automatic exposure, TAA, current-frame fast AA, AO, SSR, and bloom switches. The editor fly camera contributes pose and lens while inheriting this policy.
 
-Before layout, WGPU drains any completed asynchronous timestamp readbacks. The scene span runs from the earliest executed timed pass boundary through the end of final composition, before native-resolution UI. Dynamic resolution processes every newly completed scene-span sample exactly once, filters it, and applies asymmetric hysteresis in quantized 5% steps. Samples retain their render-policy generation, so delayed evidence from an old scale or camera cannot affect the new controller state. The authored `resolution_scale` remains the ceiling, the authored minimum remains the floor, and adapters without timestamp queries select the ceiling.
+Before layout, WGPU drains completed asynchronous timestamp readbacks. The scene span runs from the earliest executed timed pass boundary through final composition, before native-resolution UI. One controller processes each sample exactly once, filters it, and applies asymmetric hysteresis to one ordered world-scale, shadow-resolution, or post-quality step. Samples retain their render-policy generation, so delayed evidence from any previous output or camera cannot affect current state. Authored values remain ceilings and floors; adapters without timestamp queries select maxima.
 
 WGPU derives one output layout and one effective world-render layout after that control step. The world, depth, Hi-Z, and post chain use the scaled layout. Final composition maps the complete scaled grid back onto the native output target. The native-resolution UI pass then paints project UI, editor-world overlays clipped to the Game viewport, and editor chrome in that order. Editor tabs and panels therefore occlude gizmos and camera visualizers when they cover the Game surface.
 

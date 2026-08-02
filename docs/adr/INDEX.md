@@ -53,3 +53,4 @@
 | [ADR-049](ADR-049-select-fully-resident-virtual-geometry-frontiers-on-the-gpu.md) | Select fully resident virtual Geometry frontiers on the GPU | 2026-07-31 |
 | [ADR-050](ADR-050-page-virtual-geometry-payloads.md) | Page virtual Geometry payloads | 2026-07-31 |
 | [ADR-051](ADR-051-wrap-runtime-assets-in-chunked-products.md) | Wrap runtime assets in chunked products | 2026-08-02 |
+| [ADR-052](ADR-052-coordinate-adaptive-render-quality-from-one-frame-budget.md) | Coordinate adaptive render quality from one frame budget | 2026-08-02 |

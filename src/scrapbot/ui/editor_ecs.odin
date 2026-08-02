@@ -1312,6 +1312,7 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		"GPU SCENE",
 		"RENDER SCALE",
 		"SHADOW MAP",
+		"POST QUALITY",
 		"ENTITIES",
 		"RETAINED BATCHES",
 		"VISIBLE BATCHES",
@@ -2177,13 +2178,14 @@ editor_ui_refresh_performance_diagnostics :: proc(state: ^State, world: ^shared.
 	if diagnostics.shadow_resolution > 0 {
 		shadow_resolution = fmt.tprintf("%d²", diagnostics.shadow_resolution)
 	}
-	values := [14]string {
+	values := [15]string {
 		fmt.tprintf("%.1f", diagnostics.fps),
 		fmt.tprintf("%.2f ms", diagnostics.frame_ms),
 		"--",
 		"--",
 		fmt.tprintf("%.0f%%", diagnostics.render_scale * 100),
 		shadow_resolution,
+		fmt.tprintf("%.0f%%", diagnostics.adaptive_post_quality * 100),
 		fmt.tprintf("%d", diagnostics.entity_count),
 		fmt.tprintf("%d", diagnostics.retained_batches),
 		fmt.tprintf("%d", diagnostics.visible_batches),
