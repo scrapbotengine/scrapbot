@@ -64,6 +64,11 @@ class Primitive {
     this.indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
   }
 
+  quadFacingZ(a, b, c, d, sign) {
+    if (sign < 0) this.quad(a, b, c, d, [0, 0, -1]);
+    else this.quad(d, c, b, a, [0, 0, 1]);
+  }
+
   box(center, halfSize) {
     const [x, y, z] = center;
     const [hx, hy, hz] = halfSize;
@@ -98,8 +103,8 @@ class Primitive {
         this.vertex([cx + Math.cos(angle) * radius, cy + halfHeight * sign, cz + Math.sin(angle) * radius], [0, sign, 0]);
       }
       for (let segment = 0; segment < segments; segment += 1) {
-        if (sign > 0) this.indices.push(centerIndex, rimBase + segment, rimBase + segment + 1);
-        else this.indices.push(centerIndex, rimBase + segment + 1, rimBase + segment);
+        if (sign > 0) this.indices.push(centerIndex, rimBase + segment + 1, rimBase + segment);
+        else this.indices.push(centerIndex, rimBase + segment, rimBase + segment + 1);
       }
     }
   }
@@ -119,7 +124,8 @@ class Primitive {
       const y1i = 8 + Math.sin(a1) * inner;
       for (const z of [centerZ - depth, centerZ + depth]) {
         const sign = z < centerZ ? -1 : 1;
-        this.quad([x0i, y0i, z], [x1i, y1i, z], [x1o, y1o, z], [x0o, y0o, z], [0, 0, sign]);
+        const face = [[x0i, y0i, z], [x1i, y1i, z], [x1o, y1o, z], [x0o, y0o, z]];
+        this.quadFacingZ(face[0], face[1], face[2], face[3], sign);
       }
       const middle = (a0 + a1) * 0.5;
       const outerNormal = [Math.cos(middle), Math.sin(middle), 0];
@@ -168,13 +174,13 @@ class Primitive {
       const points = [a0, a1].map((angle) => [Math.cos(angle), Math.sin(angle)]);
       for (const sign of [-1, 1]) {
         const z = cz + depth * sign;
-        this.quad(
+        const face = [
           [cx + points[0][0] * innerRadius, cy + points[0][1] * innerRadius, z],
           [cx + points[1][0] * innerRadius, cy + points[1][1] * innerRadius, z],
           [cx + points[1][0] * outerRadius, cy + points[1][1] * outerRadius, z],
           [cx + points[0][0] * outerRadius, cy + points[0][1] * outerRadius, z],
-          [0, 0, sign],
-        );
+        ];
+        this.quadFacingZ(face[0], face[1], face[2], face[3], sign);
       }
       const middle = (a0 + a1) * 0.5;
       const normal = [Math.cos(middle), Math.sin(middle), 0];
@@ -211,6 +217,8 @@ function addReliefPanel(primitive, side, bay, zCenter, bayLength, segments) {
   const yMax = 7.45;
   const zMin = zCenter - bayLength * 0.39;
   const zMax = zCenter + bayLength * 0.39;
+  const ySpan = yMax - yMin;
+  const zSpan = zMax - zMin;
   const base = primitive.positions.length / 3;
   const epsilon = 1 / segments;
   for (let row = 0; row <= segments; row += 1) {
@@ -223,10 +231,11 @@ function addReliefPanel(primitive, side, bay, zCenter, bayLength, segments) {
       const height = 0.035 + reliefHeight(u, v, bay);
       const du = (reliefHeight(Math.min(1, u + epsilon), v, bay) - reliefHeight(Math.max(0, u - epsilon), v, bay)) / (epsilon * 2);
       const dv = (reliefHeight(u, Math.min(1, v + epsilon), bay) - reliefHeight(u, Math.max(0, v - epsilon), bay)) / (epsilon * 2);
-      const normalLength = Math.hypot(1, du, dv) || 1;
+      const normal = [-side * ySpan * zSpan, -dv * zSpan, -du * ySpan];
+      const normalLength = Math.hypot(...normal) || 1;
       primitive.vertex(
-        [wallX - side * height, yMin + (yMax - yMin) * v, zMin + (zMax - zMin) * u],
-        [-side / normalLength, dv / normalLength, du / normalLength],
+        [wallX - side * height, yMin + ySpan * v, zMin + zSpan * u],
+        normal.map((value) => value / normalLength),
       );
     }
   }
@@ -234,8 +243,8 @@ function addReliefPanel(primitive, side, bay, zCenter, bayLength, segments) {
   for (let row = 0; row < segments; row += 1) {
     for (let column = 0; column < segments; column += 1) {
       const a = base + row * stride + column;
-      if (side < 0) primitive.indices.push(a, a + 1, a + stride + 1, a, a + stride + 1, a + stride);
-      else primitive.indices.push(a, a + stride + 1, a + 1, a, a + stride, a + stride + 1);
+      if (side < 0) primitive.indices.push(a, a + stride + 1, a + 1, a, a + stride, a + stride + 1);
+      else primitive.indices.push(a, a + 1, a + stride + 1, a, a + stride + 1, a + stride);
     }
   }
 }
@@ -286,7 +295,8 @@ function buildArchive(config) {
 
     for (let tile = -6; tile <= 6; tile += 1) {
       const x = tile * 2;
-      const inset = ((bay * 17 + tile * 13) % 7) * 0.012;
+      const variation = ((bay * 17 + tile * 13) % 7 + 7) % 7;
+      const inset = variation * 0.012;
       stone.box([x, 0.035 + inset, z - bayLength * 0.5], [0.94, 0.035 + inset, bayLength * 0.48]);
     }
     for (const side of [-1, 1]) {
@@ -328,6 +338,35 @@ function uintBuffer(values) {
   const buffer = Buffer.allocUnsafe(values.length * 4);
   for (let index = 0; index < values.length; index += 1) buffer.writeUInt32LE(values[index], index * 4);
   return buffer;
+}
+
+function assertConsistentWinding(primitives) {
+  for (const primitive of primitives) {
+    for (let index = 0; index < primitive.indices.length; index += 3) {
+      const triangle = primitive.indices.slice(index, index + 3);
+      const positions = triangle.map((vertex) => primitive.positions.slice(vertex * 3, vertex * 3 + 3));
+      const normals = triangle.map((vertex) => primitive.normals.slice(vertex * 3, vertex * 3 + 3));
+      const ab = positions[1].map((value, axis) => value - positions[0][axis]);
+      const ac = positions[2].map((value, axis) => value - positions[0][axis]);
+      const geometric = [
+        ab[1] * ac[2] - ab[2] * ac[1],
+        ab[2] * ac[0] - ab[0] * ac[2],
+        ab[0] * ac[1] - ab[1] * ac[0],
+      ];
+      const authored = [0, 1, 2].map((axis) => normals[0][axis] + normals[1][axis] + normals[2][axis]);
+      const geometricLength = Math.hypot(...geometric);
+      const authoredLength = Math.hypot(...authored);
+      if (geometricLength <= 1e-8 || authoredLength <= 1e-8) continue;
+      const alignment = geometric.reduce((sum, value, axis) => sum + value * authored[axis], 0);
+      if (alignment <= 0) {
+        throw new Error(
+          `${primitive.name} triangle ${index / 3} winds against its authored normal ` +
+          `(alignment ${alignment}, vertices ${triangle.join(",")}, positions ${JSON.stringify(positions)}, ` +
+          `geometric ${geometric.join(",")}, authored ${authored.join(",")})`,
+        );
+      }
+    }
+  }
 }
 
 function buildGlb(primitives, preset) {
@@ -410,6 +449,7 @@ const result = {
   primitives: primitives.map((primitive) => ({ name: primitive.name, triangles: primitive.indices.length / 3 })),
 };
 if (options.check) {
+  assertConsistentWinding(primitives);
   if (glb.readUInt32LE(0) !== 0x46546c67 || glb.readUInt32LE(4) !== 2 || glb.readUInt32LE(8) !== glb.length) {
     throw new Error("generated GLB header is inconsistent");
   }
