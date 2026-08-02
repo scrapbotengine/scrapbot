@@ -2073,6 +2073,12 @@ test_wgpu_virtual_geometry_prefetch_preserves_recent_residency :: proc(t: ^testi
 }
 
 @(test)
+test_wgpu_virtual_geometry_admission_starts_its_grace_window_at_upload :: proc(t: ^testing.T) {
+	testing.expect_value(t, wgpu_virtual_page_admission_frame(40, 36), u64(40))
+	testing.expect_value(t, wgpu_virtual_page_admission_frame(40, 40), u64(40))
+}
+
+@(test)
 test_wgpu_virtual_geometry_preloads_only_complete_resources_that_fit :: proc(t: ^testing.T) {
 	geometry := resources.Geometry {
 		vertices = []resources.Vertex{{}},

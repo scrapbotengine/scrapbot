@@ -185,7 +185,10 @@ function addReliefPanel(primitive, side, bay, zCenter, bayLength, segments) {
     const v = row / segments;
     for (let column = 0; column <= segments; column += 1) {
       const u = column / segments;
-      const height = reliefHeight(u, v, bay);
+      // Keep the complete relief surface in front of the shell. The procedural
+      // variation can cross zero, so a non-zero plinth is required to avoid a
+      // coplanar depth fight with the wall behind it.
+      const height = 0.035 + reliefHeight(u, v, bay);
       const du = (reliefHeight(Math.min(1, u + epsilon), v, bay) - reliefHeight(Math.max(0, u - epsilon), v, bay)) / (epsilon * 2);
       const dv = (reliefHeight(u, Math.min(1, v + epsilon), bay) - reliefHeight(u, Math.max(0, v - epsilon), bay)) / (epsilon * 2);
       const normalLength = Math.hypot(1, du, dv) || 1;

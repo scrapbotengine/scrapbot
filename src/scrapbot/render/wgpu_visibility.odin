@@ -187,6 +187,14 @@ WGPU_VIRTUAL_PAGE_TOUCH_CADENCE :: u64(16)
 WGPU_VIRTUAL_PAGE_FEEDBACK_GRACE_FRAMES ::
 	WGPU_VIRTUAL_PAGE_TOUCH_CADENCE + u64(WGPU_GPU_TIMESTAMP_FRAMES * 2)
 
+wgpu_virtual_page_admission_frame :: proc "contextless" (
+	current_frame, feedback_frame: u64,
+) -> u64 {
+	// Feedback is asynchronous: residency begins when the upload is admitted,
+	// never when the older request was produced.
+	return max(current_frame, feedback_frame)
+}
+
 WGPU_Virtual_Group_Request :: struct {
 	handle: shared.Geometry_Handle,
 	group_index: u32,
@@ -627,7 +635,14 @@ wgpu_process_virtual_page_feedback :: proc(
 			}
 			page.resident = true
 			page.prefetched = request.prefetch
-			page.last_used_frame = feedback_frame
+			// The page becomes usable in this frame, not in the older frame that
+			// produced its asynchronous request. Give a newly admitted group its
+			// complete visible-use grace window so its first sampled touch can
+			// arrive before eviction considers it stale.
+			page.last_used_frame = wgpu_virtual_page_admission_frame(
+				renderer.profile_frame_index,
+				feedback_frame,
+			)
 			delete(page.loaded_payload, os.heap_allocator())
 			page.loaded_payload = nil
 		}

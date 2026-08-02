@@ -1,6 +1,6 @@
 # Engine Systems
 
-**Last verified:** 2026-08-01
+**Last verified:** 2026-08-02
 **Canonical names:** `engine_system_profile_name` in `src/scrapbot/scrapbot.odin`  
 **Execution boundaries:** `run_frame_system` in `src/scrapbot/render/render.odin` and WGPU frame encoding in `src/scrapbot/render/wgpu.odin`
 
@@ -88,7 +88,7 @@ These are the engine-owned rows published to the editor's Systems panel. They ar
 
 - **Phase/order:** First WGPU render-encoding phase after preparation.
 - **Inputs:** GPU instance/draw database, camera frustum/projection, retained hierarchy groups and cluster commands, previous valid Hi-Z state, LOD/visibility configuration.
-- **Outputs:** One geometric-error camera frontier, visible instance lists or a compact camera instance/cluster stream, indirect draw arguments, explicit hierarchy/frustum/occlusion rejection counters, LOD counters, and next-pass state.
+- **Outputs:** One geometric-error camera frontier, visible instance lists or a compact camera instance/cluster stream, indirect draw arguments, explicit hierarchy/frustum/occlusion rejection counters, LOD counters, asynchronous page feedback, and next-pass state. Completed requests admit page groups with a fresh current-frame grace window before sampled visible-use touches govern eviction.
 - **Stable-frame behavior:** Does not rebuild membership, hierarchy products, shared geometry arenas, or submission policy; it encodes bounded GPU work over retained draw capacity. Native multi-draw adapters use the selected frontier for camera and cascade tests and share compatible arena-global command ranges. Other indirect-first-instance adapters append selected camera records into compatible material spans, increment one retained command per span, and produce classic indexed shadow lists from the selected object LOD without CPU readback or command generation. Diagnostics can transiently force the detailed native/emulated branch. Hi-Z samples a coarse mip covering the complete projected sphere footprint and skips unsafe camera-crossing or large near-field projections. CPU-reference mode is an explicit whole-primitive diagnostic substitute.
 - **Boundary:** WGPU compute/encoding phase with CPU fallback for reference testing.
 - **Source/tests:** `render/wgpu_visibility.odin`, `render/wgpu_hiz.odin`, `render/wgpu_gpu_driven.odin`; `render/render_test.odin`, `render/wgpu_math.odin` reference tests.

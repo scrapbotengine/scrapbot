@@ -28,7 +28,7 @@ Three presets trade generation/import time for source detail:
 
 - `small` is the fast iteration asset, with roughly 70,000 source triangles.
 - `showcase` creates roughly 380,000 unique source triangles and is the intended demonstration. It
-  stays inside the current portable compact-layout capacity while greatly exceeding the 8 MiB
+  stays inside the current portable compact-layout capacity and the checked-in 64 MiB
   fine-geometry residency budget.
 - `unhinged` creates roughly 19 million source triangles for deliberate import and residency
   stress. Expect a large GLB, substantial import time, high temporary memory use, and the safe
@@ -40,9 +40,10 @@ per-primitive triangle counts as one machine-readable document.
 ## What to look for
 
 The authored camera advances through the first twelve bays over 30 seconds, then jumps back to the
-threshold. That discontinuity deliberately asks the general residency system to recover from a
-large viewpoint change. Predictive prefetch remains enabled, while the project limits resident
-fine geometry to 8 MiB.
+threshold. That discontinuity exercises camera-cut and visibility recovery. Predictive prefetch
+remains enabled, while the checked-in 64 MiB budget keeps the showcase preset fully resident for a
+clean presentation. Lower the public `render.virtual_geometry_budget_mb` setting deliberately, or
+generate `unhinged`, when testing residency pressure and coarse-fallback recovery.
 
 Open the Game debug-view selector and choose **Virtual Geometry**. The colored clusters are the
 actual fully resident frontier selected by the GPU; amber marks a branch waiting for its complete

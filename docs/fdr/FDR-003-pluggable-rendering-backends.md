@@ -308,7 +308,9 @@ visible-use grace window; visible use promotes a prefetched group and records a 
 Asynchronous CPU processing applies touches, deduplicates and prioritizes group requests. Imported
 misses read exact Model-product byte ranges on a dedicated worker. Versioned completions admit or
 evict complete non-pinned groups under the project vertex-and-index payload budget while the
-resident coarse frontier remains drawable.
+resident coarse frontier remains drawable. A newly uploaded group begins its visible-use grace
+window in the admission frame, rather than spending that protection while its older GPU request is
+still crossing the asynchronous readback boundary.
 
 Per-frame byte and group limits bound streaming work. One admitted group or complete-resource
 preload becomes one combined arena transfer. Residency mutations update affected Geometry batches;

@@ -94,9 +94,11 @@ selected page that arrived through future-camera prefetch and has not yet been p
 visible use.
 
 Sponza uses the normal renderer budget so it remains a representative quality showcase. The
-generated Impossible Archive deliberately limits fine geometry to 8 MiB while a cinematic camera
-moves across dense, unique relief geometry and periodically jumps back to its starting point.
-Dedicated pressure fixtures exercise stricter persistent fallback and eviction contracts.
+generated Impossible Archive uses a 64 MiB budget so its showcase preset remains fully resident
+while a cinematic camera moves across dense, unique relief geometry and periodically jumps back to
+its starting point. Lower that public project setting, or generate the `unhinged` preset, when the
+goal is to study streaming pressure instead of presentation quality. Dedicated pressure fixtures
+exercise stricter persistent fallback and eviction contracts.
 `debug_hiz_mip` selects the retained
 pyramid level for `hiz`; `debug_occlusion_freeze` preserves the latest valid query records for
 `occlusion_queries`.
@@ -121,6 +123,19 @@ Run `mise test-gpu` for the complete bounded GPU regression suite. It drives a g
 Run `mise test-virtual-geometry-gpu` for the dedicated residency-pressure gate. Its scripted camera
 steps across distinct procedural 48-page resources under a 64 KiB payload budget and requires streaming,
 whole-group eviction, fallback residency, bounded feedback, and a nonblank framegrab.
+
+For streaming, residency, LOD, temporal-history, animation, hot-reload, or camera-motion work, a
+single final frame is not sufficient evidence. Capture at least five consecutive frames with
+`scrapbot profile --capture-range START:END`, then build a contact sheet and amplified adjacent-frame
+difference sheet:
+
+```sh
+mise frame-sequence-sheet -- /tmp/profile/frames /tmp/profile/sequence.png
+```
+
+Inspect every source frame as well as the sheets. Correlate suspicious transitions with the matching
+profile rows and `counter_deltas`; ordinary camera motion can change many pixels, while an isolated
+full-screen spike or a fixed-camera topology change is evidence of a temporal rendering defect.
 
 Whole-primitive compute/CPU comparisons permit at most one 8-bit channel step in sixteen channels across a complete frame. This covers harmless backend rounding without accepting a visible mismatch. The LOD fixture instead requires 44 dB PSNR: both paths must choose the same imported object LOD, while the compute path may additionally select its sub-object virtual-geometry frontier.
 
@@ -269,8 +284,8 @@ mise setup-assets
 mise scrapbot -- run examples/sponza --editor
 ```
 
-Use `examples/impossible-archive` to inspect virtual geometry under an intentionally constrained
-residency budget. Its deterministic generator writes an ordinary GLB; the project then exercises
+Use `examples/impossible-archive` to inspect virtual geometry across a dense generated scene. Its
+deterministic generator writes an ordinary GLB; the project then exercises
 the public model importer, ECS scene components, Luau camera mutation, and standard renderer
 configuration without an example-specific backend path:
 
