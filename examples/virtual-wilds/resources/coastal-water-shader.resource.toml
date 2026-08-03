@@ -8,7 +8,7 @@ cull_mode = "none"
 
 [shader.spectral_surface]
 enabled = true
-patch_size = 144
+patch_size = 384
 wind_speed = 13
 wind_direction = [0.94, 0.34]
 amplitude = 2.2

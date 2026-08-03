@@ -28,12 +28,14 @@ horizontal orbital displacement sharpens the result into Gerstner-style crests a
 The public helper returns world-space displacement, reconstructed normals, and crest compression,
 while the example decides how those values deform and shade water.
 
-The vertex hook combines the engine's evolving FFT field with four world-continuous Gerstner bands.
-The independent swell and cross-chop directions break up a single repeating Phillips patch without
-moving ocean behavior into the renderer.
+The vertex hook reserves a 384-meter FFT patch for broad energy, then combines it with four
+world-continuous Gerstner bands. A low-frequency non-periodic psrdnoise domain warp bends the swell
+phase so long parallel bands do not expose the periodic simulation tile. This composition stays in
+the project shader rather than moving ocean policy into the renderer.
 
 The fragment hook composes guarded screen-space refraction, Beer–Lambert absorption and scattering,
-procedural-sky Fresnel reflection with sun glints, and compression-driven whitecaps. Three
+procedural-sky Fresnel reflection with sun glints, and whitecaps driven jointly by FFT compression
+and analytic Gerstner crest phase. Three
 anisotropic psrdnoise bands add sub-vertex ripple detail with derivative-based distance filtering.
 Shore interaction projects opaque-scene depth onto the water normal, then uses separately broken
 leading and trailing wash bands instead of tracing every intersecting triangle with a uniform white

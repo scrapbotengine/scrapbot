@@ -99,14 +99,8 @@ struct Coastal_Spectral_Surface {
 struct Coastal_Gerstner_Wave {
 	displacement: vec3<f32>,
 	normal_xz: vec2<f32>,
+	crest: f32,
 };
-
-fn coastal_rotate(value: vec2<f32>, cosine: f32, sine: f32) -> vec2<f32> {
-	return vec2<f32>(
-		value.x * cosine - value.y * sine,
-		value.x * sine + value.y * cosine,
-	);
-}
 
 fn coastal_spectral_slope(normal: vec3<f32>) -> vec2<f32> {
 	return normal.xz / max(normal.y, 0.08);
@@ -129,50 +123,28 @@ fn coastal_gerstner_wave(
 	let horizontal = direction * (steepness * amplitude * cosine);
 	let height = amplitude * sine;
 	let normal_xz = -direction * (amplitude * wave_number * cosine);
-	return Coastal_Gerstner_Wave(vec3<f32>(horizontal.x, height, horizontal.y), normal_xz);
+	let crest = smoothstep(0.78, 0.985, sine) * smoothstep(0.4, 0.72, steepness);
+	return Coastal_Gerstner_Wave(vec3<f32>(horizontal.x, height, horizontal.y), normal_xz, crest);
 }
 
-// Re-sample the engine's continuous spectral field through rotated domains.
-// The bands share one FFT dispatch but break up the visibly periodic,
-// single-direction silhouette of a lone Phillips spectrum.
+fn coastal_wave_domain(world_position: vec2<f32>) -> vec2<f32> {
+	let warp = coastal_psrdnoise(world_position * 0.018, vec2<f32>(0.0), 0.73);
+	return world_position + vec2<f32>(warp.value, warp.gradient.x * 0.45 + warp.gradient.y * 0.2) * 2.8;
+}
+
+// Reserve the FFT field for broad, low-frequency energy. Fine structure comes
+// from independent Gerstner directions and non-periodic psrdnoise below; using
+// rotated copies of one small FFT tile only disguises repetition for a moment.
 fn coastal_spectral_surface(world_position: vec2<f32>) -> Coastal_Spectral_Surface {
 	let broad = scrapbot_spectral_surface(world_position);
-	let cross_cos = 0.7316889;
-	let cross_sin = 0.6816388;
-	let cross_scale = 0.57;
-	let cross = scrapbot_spectral_surface(
-		coastal_rotate(world_position, cross_cos, cross_sin) * cross_scale + vec2<f32>(37.0, 71.0),
-	);
-	let detail_cos = 0.4535961;
-	let detail_sin = -0.8912074;
-	let detail_scale = 1.72;
-	let detail = scrapbot_spectral_surface(
-		coastal_rotate(world_position, detail_cos, detail_sin) * detail_scale + vec2<f32>(-53.0, 19.0),
-	);
+	var displacement = broad.displacement * 0.62;
+	var normal_xz = coastal_spectral_slope(broad.normal) * 0.62;
+	let wave_position = coastal_wave_domain(world_position);
 
-	let cross_horizontal = coastal_rotate(cross.displacement.xz, cross_cos, -cross_sin);
-	let detail_horizontal = coastal_rotate(detail.displacement.xz, detail_cos, -detail_sin);
-	let spectral_horizontal = broad.displacement.xz * 0.42 + cross_horizontal * 0.18 + detail_horizontal * 0.045;
-	let spectral_height = broad.displacement.y * 0.42 + cross.displacement.y * 0.18 + detail.displacement.y * 0.045;
-	var displacement = vec3<f32>(spectral_horizontal.x, spectral_height, spectral_horizontal.y);
-
-	let broad_slope = coastal_spectral_slope(broad.normal) * 0.42;
-	let cross_slope = coastal_rotate(
-		coastal_spectral_slope(cross.normal),
-		cross_cos,
-		-cross_sin,
-	) * (0.18 * cross_scale);
-	let detail_slope = coastal_rotate(
-		coastal_spectral_slope(detail.normal),
-		detail_cos,
-		-detail_sin,
-	) * (0.045 * detail_scale);
-	var normal_xz = broad_slope + cross_slope + detail_slope;
-
-	let swell = coastal_gerstner_wave(world_position, normalize(vec2<f32>(0.94, 0.34)), 31.0, 0.46, 0.72, 0.0);
-	let cross_swell = coastal_gerstner_wave(world_position, normalize(vec2<f32>(-0.38, 0.925)), 18.0, 0.25, 0.58, 1.7);
-	let chop = coastal_gerstner_wave(world_position, normalize(vec2<f32>(0.29, 0.957)), 9.5, 0.11, 0.46, 4.1);
-	let cross_chop = coastal_gerstner_wave(world_position, normalize(vec2<f32>(-0.83, 0.558)), 6.2, 0.055, 0.34, 2.4);
+	let swell = coastal_gerstner_wave(wave_position, normalize(vec2<f32>(0.94, 0.34)), 31.0, 0.46, 0.72, 0.0);
+	let cross_swell = coastal_gerstner_wave(wave_position, normalize(vec2<f32>(-0.38, 0.925)), 18.0, 0.25, 0.58, 1.7);
+	let chop = coastal_gerstner_wave(wave_position, normalize(vec2<f32>(0.29, 0.957)), 9.5, 0.11, 0.46, 4.1);
+	let cross_chop = coastal_gerstner_wave(wave_position, normalize(vec2<f32>(-0.83, 0.558)), 6.2, 0.055, 0.34, 2.4);
 	displacement += swell.displacement + cross_swell.displacement + chop.displacement + cross_chop.displacement;
 	normal_xz += swell.normal_xz + cross_swell.normal_xz + chop.normal_xz + cross_chop.normal_xz;
 	return Coastal_Spectral_Surface(displacement, normalize(vec3<f32>(normal_xz.x, 1.0, normal_xz.y)));
@@ -241,7 +213,6 @@ fn coastal_detail_normal(
 struct Coastal_Foam_Layers {
 	intersection: f32,
 	crest: f32,
-	combined: f32,
 };
 
 fn coastal_foam_layers(
@@ -306,13 +277,38 @@ fn coastal_foam_layers(
 		1.0,
 	);
 
-	let compression = scrapbot_spectral_crest(position);
-	let crest_shape = smoothstep(0.075, 0.34, compression);
-	let crest_ridges = 1.0 - smoothstep(0.08, 0.3, abs(medium - 0.56));
-	let crest_breakup = crest_ridges * smoothstep(0.34, 0.74, coarse * 0.6 + fine * 0.4);
-	let crest = crest_shape * crest_breakup;
-	let combined = 1.0 - (1.0 - intersection) * (1.0 - crest * 0.72);
-	return Coastal_Foam_Layers(intersection, crest, clamp(combined, 0.0, 1.0));
+	let compression = max(scrapbot_spectral_crest(position), 0.0);
+	let spectral_crest = smoothstep(0.045, 0.19, compression);
+	let wave_position = coastal_wave_domain(position);
+	let swell_crest = coastal_gerstner_wave(
+		wave_position,
+		normalize(vec2<f32>(0.94, 0.34)),
+		31.0,
+		0.46,
+		0.72,
+		0.0,
+	).crest;
+	let cross_crest = coastal_gerstner_wave(
+		wave_position,
+		normalize(vec2<f32>(-0.38, 0.925)),
+		18.0,
+		0.25,
+		0.58,
+		1.7,
+	).crest;
+	let chop_crest = coastal_gerstner_wave(
+		wave_position,
+		normalize(vec2<f32>(0.29, 0.957)),
+		9.5,
+		0.11,
+		0.46,
+		4.1,
+	).crest;
+	let crest_shape = max(spectral_crest * 0.68, max(swell_crest, max(cross_crest, chop_crest * 0.72)));
+	let crest_ridges = 1.0 - smoothstep(0.07, 0.24, abs(medium - 0.54));
+	let crest_breakup = crest_ridges * smoothstep(0.31, 0.68, coarse * 0.55 + fine * 0.45);
+	let crest = crest_shape * mix(0.035, 1.0, crest_breakup);
+	return Coastal_Foam_Layers(intersection, crest);
 }
 
 fn coastal_fresnel(normal: vec3<f32>, view: vec3<f32>) -> f32 {
@@ -351,7 +347,9 @@ fn scrapbot_fragment(input: Scrapbot_Fragment) -> Scrapbot_Surface {
 
 	let foam_width = max(foam.w, 0.05);
 	let foam_layers = coastal_foam_layers(input, geometric_normal, water_thickness, foam_width);
-	let foam_mask = clamp(foam_layers.combined * settings.w, 0.0, 0.82);
+	let shore_foam = foam_layers.intersection * settings.w;
+	let crest_foam = foam_layers.crest * 0.62;
+	let foam_mask = clamp(1.0 - (1.0 - shore_foam) * (1.0 - crest_foam), 0.0, 0.88);
 	color = mix(color, foam.rgb, foam_mask);
 
 	// This hook has already composited transmission, scattering, reflection, and
