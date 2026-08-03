@@ -131,6 +131,9 @@ function main() {
     sourceTriangles += metadata.index_count / 3;
     clusterPages += metadata.cluster_page_count;
   }
+  // The built-in 64x64 water plane contributes its own compact hierarchy in
+  // addition to the three imported scan products.
+  const sceneVirtualPages = clusterPages + 15;
 
   if (framegrab) {
     const rendered = runScrapbot([
@@ -148,11 +151,11 @@ function main() {
     ]);
     const stats = rendered.result?.render_stats;
     if (
-      rendered.result?.renderables !== 9 ||
-      rendered.result?.draw_batches !== 13 ||
+      rendered.result?.renderables !== 49 ||
+      rendered.result?.draw_batches !== 14 ||
       stats?.virtual_geometry !== true ||
       stats?.virtual_geometry_compacted !== true ||
-      stats?.virtual_geometry_pages !== clusterPages ||
+      stats?.virtual_geometry_pages !== sceneVirtualPages ||
       stats?.virtual_geometry_resident_pages <= 0 ||
       stats?.virtual_geometry_resident_pages >= stats?.virtual_geometry_pages ||
       stats?.virtual_geometry_page_resident_bytes <= 0 ||
@@ -179,7 +182,7 @@ function main() {
           "--frames",
           "120",
           "--capture-range",
-          "56:63",
+          "57:63",
           "--stable-frontier",
         ],
       },
@@ -191,7 +194,7 @@ function main() {
           "--frames",
           "300",
           "--capture-range",
-          "240:263",
+          "240:259",
           "--require-transition",
         ],
       },

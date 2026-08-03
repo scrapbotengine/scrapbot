@@ -55,7 +55,13 @@ Reused CC0 scans build staggered headlands, offshore stacks, rock gardens, subme
 reefs, and stranded trunks along the route. The layered silhouettes make the landscape denser while
 giving absorption, refraction, and intersection foam real underwater topology.
 
-The ordinary public `scrapbot.volumetric_fog` component adds restrained blue-gray coastal haze.
+The ordinary public `scrapbot.volumetric_fog` component adds shadowed blue-gray coastal haze. A low sun cuts across the flooded canyon.
+
+Three clustered point lights create cold and amber mist pockets around the rock gates.
+
+The camera tour crosses opposing cliff walls, a tidal causeway, sea stacks, submerged reefs, distant headlands, and oversized wreckage silhouettes. Creatively stretched walls rise several times higher than the source scan without increasing the heavy scan's instance count.
+
+The scene deliberately reuses only the three pinned CC0 scans. Its complexity demonstrates virtualized instancing and composition rather than an example-only asset pipeline.
 Its low layer and forward-scattering response soften the distant route and catch the warm sun
 without obscuring the photogrammetry.
 
