@@ -73,10 +73,13 @@ cluster ranges rather than regenerating a Geometry's complete GPU residency tabl
 Capable adapters retain cluster metadata and arena-global indirect templates. They select the
 desired resident frontier and draw a coarse fallback while refinement is missing. Native
 multi-draw consumes cluster commands directly. Other indirect-first-instance adapters compact
-batch-local instance candidates, then test hierarchy clusters in parallel into bounded camera and
-streamed-shadow records before vertex-pulling from the arenas. Shadow cascades use progressively
-coarser hierarchy error thresholds, scaled again when adaptive shadow resolution selects a smaller
-raster region. Fully resident portable resources retain classic indexed shadows.
+batch-local instance candidates, then test hierarchy clusters in parallel into bounded camera
+records before vertex-pulling from the arenas.
+
+Fully resident portable resources retain classic indexed shadows. Streamed resources build one
+coarse indexed shadow proxy from their already-pinned root pages; its rebased index range aliases
+the pinned vertex allocation. Classic and compact culling never write the same shadow indirect
+command.
 Adapters without indirect-first-instance keep whole-primitive submission.
 
 Hot reload stages the resource registry, world, script/native runtime, source set, and playback baseline independently. Failure destroys the staged bundle; success swaps it atomically.

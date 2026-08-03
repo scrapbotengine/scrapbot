@@ -324,11 +324,25 @@ fn load_geometry_vertex(vertex_index: u32) -> Vertex_Input {
 	return vertex;
 }
 
-fn load_compact_vertex(record: Compact_Input, vertex_index: u32) -> Vertex_Input {
+fn compact_source_vertex_index(record: Compact_Input, vertex_index: u32) -> u32 {
 	let meshlet = meshlets[record.meshlet_index];
 	let local_index = select(0u, vertex_index, vertex_index < meshlet.triangle_count * 3u);
 	let source_index = geometry_indices[meshlet.first_index + local_index];
-	return load_geometry_vertex(meshlet.base_vertex + source_index);
+	return meshlet.base_vertex + source_index;
+}
+
+fn load_compact_position(record: Compact_Input, vertex_index: u32) -> vec3<f32> {
+	let source_vertex = compact_source_vertex_index(record, vertex_index);
+	let base = source_vertex * 12u;
+	return bitcast<vec3<f32>>(vec3<u32>(
+		geometry_vertices[base],
+		geometry_vertices[base + 1u],
+		geometry_vertices[base + 2u],
+	));
+}
+
+fn load_compact_vertex(record: Compact_Input, vertex_index: u32) -> Vertex_Input {
+	return load_geometry_vertex(compact_source_vertex_index(record, vertex_index));
 }
 
 fn virtual_transition_progress(start_token: u32) -> f32 {
@@ -1200,6 +1214,23 @@ fn compact_shadow_vs(
 	return output;
 }
 
+struct Compact_Depth_Only_Output {
+	@builtin(position) position: vec4<f32>,
+};
+
+@vertex
+fn compact_shadow_depth_only_vs(
+	record: Compact_Input,
+	@builtin(vertex_index) vertex_index: u32,
+) -> Compact_Depth_Only_Output {
+	let instance = instances[record.instance_slot];
+	let position = load_compact_position(record, vertex_index);
+	return Compact_Depth_Only_Output(
+		render.shadow_view_projections[shadow_cascade.index] *
+		instance.model * vec4<f32>(position, 1.0),
+	);
+}
+
 @vertex
 fn depth_vs(input: Vertex_Input, @builtin(instance_index) visible_index: u32) -> Mask_Output {
 	let instance = instances[visible_instances[visible_index]];
@@ -1234,6 +1265,16 @@ fn compact_depth_vs(
 		render.virtual_geometry_epoch.z != 0u,
 	);
 	return output;
+}
+
+@vertex
+fn compact_depth_only_vs(
+	record: Compact_Input,
+	@builtin(vertex_index) vertex_index: u32,
+) -> Compact_Depth_Only_Output {
+	let instance = instances[record.instance_slot];
+	let position = load_compact_position(record, vertex_index);
+	return Compact_Depth_Only_Output(render.view_projection * instance.model * vec4<f32>(position, 1.0));
 }
 
 @fragment
@@ -1338,7 +1379,7 @@ struct Cull_Uniform {
 	virtual_error_pixels: f32,
 	projection_y: f32,
 	virtual_feedback_epoch: u32,
-	compact_shadow_pages: u32,
+	virtual_transition_frames: u32,
 	virtual_prefetch_enabled: u32,
 	meshlet_count: u32,
 	occlusion_depth_scale: f32,
@@ -1554,6 +1595,15 @@ fn virtual_frontier_progress(
 	);
 }
 
+fn cull_virtual_transition_progress(start_token: u32) -> f32 {
+	if (start_token == 0u) {
+		return 1.0;
+	}
+	let start = start_token - 1u;
+	let duration = f32(max(cull.virtual_transition_frames, 1u));
+	return clamp(f32(cull.virtual_feedback_epoch - start) / duration, 0.0, 1.0);
+}
+
 fn virtual_cluster_selected(
 	instance: GPU_Instance,
 	meshlet: Meshlet_Info,
@@ -1598,7 +1648,9 @@ fn virtual_cluster_selected(
 	// child transition completes so the fragment shader's complementary
 	// coverage intervals always have both halves available.
 	return group_progress > 0.0 &&
-		(refined_progress < 1.0 || meshlet.refined_transition_start != 0u);
+		(refined_progress < 1.0 ||
+			(meshlet.refined_transition_start != 0u &&
+				cull_virtual_transition_progress(meshlet.refined_transition_start) < 1.0));
 }
 
 fn virtual_shadow_error_pixels(cascade_index: u32) -> f32 {
@@ -1633,14 +1685,21 @@ fn virtual_shadow_cluster_selected(
 		return true;
 	}
 	return group_progress > 0.0 &&
-		(refined_progress < 1.0 || meshlet.refined_transition_start != 0u);
+		(refined_progress < 1.0 ||
+			(meshlet.refined_transition_start != 0u &&
+				cull_virtual_transition_progress(meshlet.refined_transition_start) < 1.0));
 }
 
 fn virtual_cluster_blended(instance: GPU_Instance, meshlet: Meshlet_Info) -> bool {
 	if (meshlet.virtual_geometry == 0u) {
 		return false;
 	}
-	if (meshlet.transition_start != 0u || meshlet.refined_transition_start != 0u) {
+	if (
+		(meshlet.transition_start != 0u &&
+			cull_virtual_transition_progress(meshlet.transition_start) < 1.0) ||
+		(meshlet.refined_transition_start != 0u &&
+			cull_virtual_transition_progress(meshlet.refined_transition_start) < 1.0)
+	) {
 		return true;
 	}
 	let group_progress = virtual_frontier_progress(
@@ -2172,7 +2231,7 @@ fn cull_compact_shadow_clusters(invocation: vec3<u32>) {
 	}
 	let meshlet = meshlets[meshlet_index];
 	let batch = batches[batch_index];
-	if (batch_submission_mode(batch) != 2u) {
+	if (batch_submission_mode(batch) != 2u || batch.compact_shadow_pages == 0u) {
 		return;
 	}
 	let candidate_count = min(

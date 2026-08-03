@@ -83,7 +83,9 @@ geometric-detail selection does not require instance-count amortization.
 Adapters without indirect-first-instance, capacity-limited layouts, and `--cpu-culling` retain
 classic indexed drawing and the existing object-level imported LOD contract. The backend exposes
 hierarchy command, nonempty selected-cluster, instance-cluster threshold-rejection, and compacted-
-submission counters. The public `virtual_geometry` camera debug view colors submitted clusters by
+submission counters. Streamed portable resources build one coarse indexed shadow proxy from their
+already-pinned root pages, so their cascade path neither requires evicted canonical geometry nor
+padded compact vertex pulling. The public `virtual_geometry` camera debug view colors submitted clusters by
 identity within a mint-to-pink hierarchy-depth palette.
 
 ## Consequences
@@ -95,9 +97,8 @@ Virtual Geometry now operates on Metal adapters that expose indirect-first-insta
 their WGPU implementation does not expose native multi-draw. Compatible material runs amortize
 submission without requiring mesh shaders, backend-specific argument buffers, or one encoded draw
 per cluster. The portable camera path spends extra GPU culling and vertex-pulling work to preserve
-stable CPU frame cost. Its indexed shadow fallback preserves that CPU behavior while reducing GPU
-work on adapters where fixed-vertex compact shadow records are more expensive than indexed
-geometry.
+stable CPU frame cost. Its indexed pinned-root shadow proxy preserves that CPU behavior while
+avoiding fixed-vertex compact shadow records.
 
 The first implementation is fully resident. Hierarchy metadata and every cluster index stream are
 uploaded with the Geometry version, so large resources can consume more index-arena memory than

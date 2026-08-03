@@ -133,7 +133,8 @@ demand residency. Geometry cache groups distinguish memory residency from drawab
 Newly complete groups pass a bounded demand-aware settling window and wait for direct-parent
 transitions to settle, then enter a 16-frame admission handoff. The GPU combines that temporal
 progress with its steady projected-error overlap and depth-tests complete child/parent surfaces in
-world, depth, and cascade-specific shadow passes. The internal HDR alpha channel carries a
+world and depth passes. Native cluster shadows select their hierarchy directly; streamed portable
+shadows use a pinned-root indexed proxy. The internal HDR alpha channel carries a
 transition reactive marker, and temporal history encodes that marker alongside the existing
 bloom-enable bit. The temporal resolver owns its depth-tolerance adjustment. Completion is the
 point at which the child becomes the logical refinement. Active
@@ -183,6 +184,10 @@ Jacobian used for crest foam. Inactive and non-spectral Shaders encode no spectr
 renderer's shared zero field.
 
 Changing the Shader version releases only that Shader's spectral state and render pipeline. Resizing the scene target rebuilds only per-Shader scene/depth bind groups; the spectral field survives.
+
+Virtual Geometry caches additionally own any root-page shadow-proxy index range. The proxy aliases
+the already-pinned page-vertex allocation, is rebuilt only with that Geometry version, and is
+released with the cache. It does not create another vertex authority or stable-frame upload.
 
 The active camera's effective render scale sizes the world, depth, Hi-Z, surface, temporal, AO, reflection, fog, bloom, and exposure inputs. At scale `1`, WGPU borrows the native output depth target. Lower scales lazily own one matching depth target. Final composition stretches the complete scaled grid into the native output target, preserving editor-viewport coordinates. Project UI, editor-world overlays clipped to the Game viewport, and editor chrome are then painted at native resolution in that order.
 

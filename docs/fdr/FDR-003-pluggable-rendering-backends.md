@@ -296,7 +296,7 @@ only for backend cache creation. Retain
 canonical GPU vertex/index streams plus expanded page indices when the complete Geometry fits the
 remaining combined payload budget; otherwise pin its coarsest page frontier. On WGPU adapters
 with indirect-first-instance, project group error into pixels. Submit adjacent hierarchy levels
-inside a narrow 90%-to-110% overlap around the one-pixel threshold and the unique cluster frontier
+inside a narrow 98%-to-102% overlap around the one-pixel threshold and the unique cluster frontier
 outside it, before ordinary cluster culling.
 
 When finer detail is wanted but missing, submit the resident coarse cluster and append its group
@@ -316,17 +316,18 @@ group remains staged through the existing demand-aware settling window, with a b
 for continuous demand, and waits for its direct parent transition to settle. The child and complete
 parent then remain drawable together for a 16-render-frame admission handoff.
 
-The world, depth, and shadow paths submit both complete opaque levels during steady projected-error
-overlap and streamed admission. Normal depth testing retains the nearest available surface.
+The world and depth paths submit both complete opaque levels during steady projected-error overlap
+and streamed admission. Normal depth testing retains the nearest available surface.
 Scrapbot deliberately avoids complementary fragment discard because coarse and fine
 simplifications can cover different pixels around thin photogrammetry and silhouettes; discarding
 either side there creates cluster-shaped background holes. TAA marks transition fragments in the
 internal HDR target and keeps compatible parent/child history across bounded depth changes.
 
-Camera and shadow culling keep a coarse parent submitted for the complete streamed-admission
-interval, even when its newly resident child already satisfies the projected-error frontier. This
-keeps both complete surfaces depth-testable until the handoff finishes instead of revealing the
-background through child-shaped discard pixels.
+Camera culling keeps a coarse parent submitted for the complete streamed-admission interval, even
+when its newly resident child already satisfies the projected-error frontier. This keeps both
+complete surfaces depth-testable until the handoff finishes instead of revealing the background
+through child-shaped discard pixels. Native cluster shadows may select the hierarchy directly;
+portable streamed shadows use the pinned coarse proxy described below.
 
 Only completion makes the child logically replace its parent. Nested hierarchy transitions are
 serialized, and a transitioning child keeps its direct parent protected. This makes refinement
@@ -358,11 +359,15 @@ each stage within WebGPU's guaranteed eight-storage-buffer compute limit. Compat
 batches share one record span and one non-indexed indirect command; the vertex shader pulls cluster
 indices and attributes from the shared geometry arenas.
 
-Fully resident portable resources reuse canonical indexed-indirect shadows. Streamed portable
-resources compact page-local shadow records for all four cascades, so shadow casting never depends
-on evicted canonical geometry. Cascade-scaled hierarchy error thresholds retain near-cascade detail
-and progressively coarsen distant shadow frontiers. Stable frames perform no CPU readback,
-per-cluster command generation, or geometry upload.
+Fully resident portable resources reuse canonical indexed-indirect shadows. For streamed portable
+resources, cache creation rebases the already-pinned root-page indices into one coarse indexed
+shadow proxy. It aliases the pinned vertex allocation and owns only its compact index range, so
+shadow casting never depends on evicted canonical geometry or padded vertex pulling.
+
+Classic and compact shadow culling have exclusive ownership of each batch's indirect command.
+Compact cluster expansion is skipped globally when no batch needs it and rejected per batch when a
+canonical or root-page indexed path is active. Stable frames perform no CPU readback, per-cluster
+command generation, or geometry upload.
 
 The `virtual_geometry` camera view colors selected clusters by identity and hierarchy depth. Amber
 marks a branch whose finer group is not completely resident; cyan marks a selected page that
@@ -380,8 +385,8 @@ canonical arrays. Classic compatibility paths may perform one temporary page rec
 Geometry version enters the backend cache. Virtual WGPU vertex/index payloads are bounded.
 
 The compact camera path trades additional GPU culling and vertex-pulling cost for portable,
-bounded CPU submission. Portable shadows retain the canonical fast path when possible and pay the
-four-cascade compact cost only under actual streaming pressure. Adapters without
+bounded CPU submission. Portable shadows retain the canonical fast path when possible and use the
+pinned coarse proxy under actual streaming pressure. Adapters without
 indirect-first-instance and capacity-limited layouts keep the existing classic indexed and
 imported-LOD fallback.
 

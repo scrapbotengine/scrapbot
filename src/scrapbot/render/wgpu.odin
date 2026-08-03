@@ -56,6 +56,10 @@ WGPU_VIRTUAL_GEOMETRY_BLEND_LOW_SCALE :: f32(0.98)
 WGPU_VIRTUAL_GEOMETRY_BLEND_HIGH_SCALE :: f32(1.02)
 WGPU_HIZ_OCCLUSION_WORLD_BIAS :: f32(0.005)
 
+wgpu_depth_only_uses_mask_fragment :: proc(alpha_mode: shared.Material_Alpha_Mode) -> bool {
+	return alpha_mode == .Mask
+}
+
 WGPU_GPU_Timestamp_Phase :: enum u32 {
 	Instance_Expansion,
 	Clustered_Lighting,
@@ -394,7 +398,7 @@ WGPU_GPU_Cull_Uniform :: struct {
 	virtual_error_pixels: f32,
 	projection_y: f32,
 	virtual_feedback_epoch: u32,
-	compact_shadow_pages: u32,
+	virtual_transition_frames: u32,
 	virtual_prefetch_enabled: u32,
 	meshlet_count: u32,
 	occlusion_depth_scale: f32,
@@ -502,6 +506,9 @@ WGPU_Geometry_Cache :: struct {
 	version: u32,
 	vertex_range: WGPU_Arena_Range,
 	index_range: WGPU_Arena_Range,
+	shadow_index_range: WGPU_Arena_Range,
+	shadow_base_vertex: i32,
+	shadow_index_count: u32,
 	meshlet_index_range: WGPU_Arena_Range,
 	cluster_pages: [dynamic]WGPU_Cluster_Page_Cache,
 	cluster_groups: [dynamic]WGPU_Cluster_Group_Cache,
@@ -2531,6 +2538,7 @@ wgpu_release_geometry_cache_ranges :: proc(
 	}
 	wgpu_arena_release(&renderer.geometry_vertex_arena.allocator, cached.vertex_range)
 	wgpu_arena_release(&renderer.geometry_index_arena.allocator, cached.index_range)
+	wgpu_arena_release(&renderer.geometry_index_arena.allocator, cached.shadow_index_range)
 	wgpu_arena_release(&renderer.geometry_index_arena.allocator, cached.meshlet_index_range)
 	for page in cached.cluster_pages {
 		delete(page.loaded_payload, os.heap_allocator())
@@ -2647,8 +2655,12 @@ wgpu_geometry_cache :: proc(
 		)
 	}
 	meshlet_indices: []u32
+	shadow_index_range: WGPU_Arena_Range
+	shadow_base_vertex: i32
+	shadow_index_count: u32
 	meshlet_index_range := cached.meshlet_index_range
 	meshlet_range_reused := true
+	shadow_range_committed := false
 	cluster_pages: [dynamic]WGPU_Cluster_Page_Cache
 	cluster_groups: [dynamic]WGPU_Cluster_Group_Cache
 	refined_group_cluster_offsets: [dynamic]u32
@@ -2665,6 +2677,9 @@ wgpu_geometry_cache :: proc(
 		}
 		if !meshlet_range_reused {
 			wgpu_arena_release(&renderer.geometry_index_arena.allocator, meshlet_index_range)
+		}
+		if !shadow_range_committed {
+			wgpu_arena_release(&renderer.geometry_index_arena.allocator, shadow_index_range)
 		}
 		for page in cluster_pages {
 			if page.resident {
@@ -2764,6 +2779,23 @@ wgpu_geometry_cache :: proc(
 					wgpu_align_arena_offset(page_index_bytes, u64(size_of(u32))),
 					u64(size_of(u32)),
 				)
+				shadow_indices := wgpu_rebase_virtual_page_indices(
+					page_upload.indices,
+					page_upload.vertex_offsets,
+					page_upload.index_offsets,
+				)
+				shadow_index_bytes := u64(len(shadow_indices)) * u64(size_of(u32))
+				shadow_index_range = wgpu_arena_allocate(
+					&renderer.geometry_index_arena.allocator,
+					wgpu_align_arena_offset(shadow_index_bytes, u64(size_of(u32))),
+					u64(size_of(u32)),
+				)
+				if page_vertex_range.offset / u64(size_of(resources.Vertex)) > 0x7fff_ffff {
+					return nil,
+						"shared geometry shadow-proxy vertex offset exceeds indexed-draw limits"
+				}
+				shadow_base_vertex = i32(page_vertex_range.offset / u64(size_of(resources.Vertex)))
+				shadow_index_count = u32(len(shadow_indices))
 				for page_index, selection_index in selected_pages {
 					cluster_pages[page_index].range = {
 						offset = page_index_range.offset + page_upload.index_offsets[selection_index],
@@ -2793,9 +2825,19 @@ wgpu_geometry_cache :: proc(
 				); upload_err != "" {
 					return nil, upload_err
 				}
+				if upload_err := wgpu_geometry_arena_upload(
+					renderer,
+					&renderer.geometry_index_arena,
+					shadow_index_range,
+					raw_data(shadow_indices),
+					shadow_index_bytes,
+				); upload_err != "" {
+					return nil, upload_err
+				}
 			}
 			renderer.virtual_geometry_page_upload_count += u64(len(selected_pages))
-			renderer.virtual_geometry_page_upload_bytes += page_vertex_bytes + page_index_bytes
+			renderer.virtual_geometry_page_upload_bytes +=
+				page_vertex_bytes + page_index_bytes + shadow_index_range.size
 			for group in geometry.cluster_groups {
 				if preload_geometry || group.depth == geometry.cluster_max_depth {
 					renderer.virtual_geometry_group_upload_count += 1
@@ -2843,6 +2885,7 @@ wgpu_geometry_cache :: proc(
 	}
 	if vertex_range.offset / u64(size_of(resources.Vertex)) > 0x7fff_ffff ||
 	   index_range.offset / u64(size_of(u32)) > 0xffff_ffff ||
+	   shadow_index_range.offset / u64(size_of(u32)) > 0xffff_ffff ||
 	   meshlet_index_range.offset / u64(size_of(u32)) > 0xffff_ffff {
 		return nil, "shared geometry arena offsets exceed indexed-draw limits"
 	}
@@ -2886,6 +2929,7 @@ wgpu_geometry_cache :: proc(
 	if !index_range_reused {
 		wgpu_arena_release(&renderer.geometry_index_arena.allocator, cached.index_range)
 	}
+	wgpu_arena_release(&renderer.geometry_index_arena.allocator, cached.shadow_index_range)
 	if !meshlet_range_reused {
 		wgpu_arena_release(&renderer.geometry_index_arena.allocator, cached.meshlet_index_range)
 	}
@@ -2907,6 +2951,9 @@ wgpu_geometry_cache :: proc(
 		version = geometry.version,
 		vertex_range = vertex_range,
 		index_range = index_range,
+		shadow_index_range = shadow_index_range,
+		shadow_base_vertex = shadow_base_vertex,
+		shadow_index_count = shadow_index_count,
 		meshlet_index_range = meshlet_index_range,
 		cluster_pages = cluster_pages,
 		cluster_groups = cluster_groups,
@@ -2925,6 +2972,7 @@ wgpu_geometry_cache :: proc(
 	refined_group_clusters = nil
 	refined_group_parent_offsets = nil
 	refined_group_parents = nil
+	shadow_range_committed = true
 	committed = true
 	wgpu_recount_virtual_page_residency(renderer)
 	return cached, ""
@@ -3479,8 +3527,7 @@ wgpu_encode_depth_prepass :: proc(
 			batch_index = span.next_batch
 			continue
 		}
-		masked := material.desc.alpha_mode == .Mask
-		uses_mask_fragment := masked || batch.virtual_geometry
+		uses_mask_fragment := wgpu_depth_only_uses_mask_fragment(material.desc.alpha_mode)
 		pipeline := renderer.gpu_driven_depth_pipeline
 		if uses_mask_fragment {
 			pipeline = renderer.gpu_driven_depth_mask_pipeline
@@ -3740,8 +3787,7 @@ wgpu_encode_shadow_cascade_pass :: proc(
 				batch_index = span.next_batch
 				continue
 			}
-			masked := material.desc.alpha_mode == .Mask
-			uses_mask_fragment := masked || batch.virtual_geometry
+			uses_mask_fragment := wgpu_depth_only_uses_mask_fragment(material.desc.alpha_mode)
 			pipeline := renderer.gpu_driven_shadow_pipeline
 			if uses_mask_fragment {
 				pipeline = renderer.gpu_driven_shadow_mask_pipeline

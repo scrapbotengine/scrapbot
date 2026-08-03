@@ -2022,19 +2022,28 @@ test_wgpu_culling_shader_stays_within_portable_storage_binding_floor :: proc(t: 
 		),
 	)
 	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "virtual_frontier_progress"))
+	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "cull_virtual_transition_progress"))
 	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "refined_progress < 1.0"))
 	testing.expect(
 		t,
 		strings.count(
 			WGPU_GPU_CULL_SHADER,
-			"refined_progress < 1.0 || meshlet.refined_transition_start != 0u",
+			"cull_virtual_transition_progress(meshlet.refined_transition_start) < 1.0",
 		) ==
-		2,
+		3,
 	)
 	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "cull_compact_candidate"))
 	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "cull_compact_camera_clusters"))
 	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "cull_compact_shadow_clusters"))
+	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "batch.compact_shadow_pages == 0u"))
 	testing.expect_value(t, size_of(WGPU_GPU_Meshlet_Info) % 16, 0)
+}
+
+test_opaque_virtual_geometry_keeps_depth_only_passes_fragment_free :: proc(t: ^testing.T) {
+	testing.expect(t, !wgpu_depth_only_uses_mask_fragment(.Opaque))
+	testing.expect(t, wgpu_depth_only_uses_mask_fragment(.Mask))
+	testing.expect(t, strings.contains(WGPU_GPU_DRIVEN_SHADER, "fn compact_shadow_depth_only_vs("))
+	testing.expect(t, strings.contains(WGPU_GPU_DRIVEN_SHADER, "fn load_compact_position("))
 }
 
 @(test)
@@ -2889,6 +2898,16 @@ test_wgpu_compact_shadows_use_pages_only_for_streamed_geometry :: proc(t: ^testi
 		WGPU_Submission_Mode.Compact,
 	)
 
+	renderer.geometry_cache[0].shadow_index_count = 3
+	wgpu_recount_virtual_page_residency(&renderer)
+	testing.expect(t, !wgpu_compact_shadow_pages_active(&renderer))
+	testing.expect_value(
+		t,
+		wgpu_shadow_batch_submission_mode(&renderer, batch),
+		WGPU_Submission_Mode.Classic,
+	)
+	renderer.geometry_cache[0].shadow_index_count = 0
+
 	renderer.geometry_cache[0].vertex_range = {
 		offset = 64,
 		size = 1024,
@@ -2900,6 +2919,23 @@ test_wgpu_compact_shadows_use_pages_only_for_streamed_geometry :: proc(t: ^testi
 		wgpu_shadow_batch_submission_mode(&renderer, batch),
 		WGPU_Submission_Mode.Classic,
 	)
+}
+
+@(test)
+test_wgpu_virtual_page_shadow_proxy_rebases_page_local_indices :: proc(t: ^testing.T) {
+	indices := []u32{0, 2, 1, 0, 1, 2}
+	vertex_offsets := []u64 {
+		0,
+		u64(3 * size_of(resources.Vertex)),
+		u64(6 * size_of(resources.Vertex)),
+	}
+	index_offsets := []u64{0, 3 * size_of(u32), 6 * size_of(u32)}
+	rebased := wgpu_rebase_virtual_page_indices(indices, vertex_offsets, index_offsets)
+	expected := []u32{0, 2, 1, 3, 4, 5}
+	testing.expect_value(t, len(rebased), len(expected))
+	for value, index in rebased {
+		testing.expect_value(t, value, expected[index])
+	}
 }
 
 test_count_frame_system :: proc(data: rawptr, world: ^World, delta_seconds: f32) -> string {

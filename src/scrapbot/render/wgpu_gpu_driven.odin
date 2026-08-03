@@ -103,7 +103,7 @@ wgpu_cached_virtual_geometry_bytes :: proc "contextless" (cache: ^WGPU_Geometry_
 	if cache == nil || !cache.valid || !cache.virtual_geometry {
 		return 0
 	}
-	bytes := cache.vertex_range.size + cache.index_range.size
+	bytes := cache.vertex_range.size + cache.index_range.size + cache.shadow_index_range.size
 	for page in cache.cluster_pages {
 		if page.resident {
 			bytes += page.vertex_range.size + page.range.size
@@ -154,6 +154,10 @@ wgpu_virtual_shadow_error_pixels :: proc "contextless" (
 	cascade_index: int,
 	resolution_scale: f32 = 1,
 ) -> f32 {
+	// Compact shadow rendering executes one fixed-size vertex-pulling record per
+	// selected cluster. Keep its hierarchy comfortably below the shadow map's
+	// texel density instead of spending portable-path invocations on geometry
+	// that cannot change the stored shadow.
 	multipliers := [4]f32{8, 32, 128, 512}
 	return(
 		camera_error_pixels *
@@ -240,7 +244,8 @@ wgpu_batch_uses_compact_shadow_pages :: proc "contextless" (
 		cache_index >= 0 &&
 		renderer.geometry_cache[cache_index].valid &&
 		renderer.geometry_cache[cache_index].virtual_geometry &&
-		renderer.geometry_cache[cache_index].vertex_range.size == 0 \
+		renderer.geometry_cache[cache_index].vertex_range.size == 0 &&
+		renderer.geometry_cache[cache_index].shadow_index_count == 0 \
 	)
 }
 
@@ -641,6 +646,31 @@ wgpu_read_virtual_pages :: proc(
 	result.vertex_offsets[len(page_indices)] = vertex_cursor
 	result.index_offsets[len(page_indices)] = index_cursor
 	return result, ""
+}
+
+wgpu_rebase_virtual_page_indices :: proc(
+	indices: []u32,
+	vertex_offsets: []u64,
+	index_offsets: []u64,
+	allocator := context.temp_allocator,
+) -> []u32 {
+	if len(vertex_offsets) != len(index_offsets) || len(vertex_offsets) < 2 {
+		return nil
+	}
+	result := make([]u32, len(indices), allocator)
+	copy(result, indices)
+	for page_index in 0 ..< len(vertex_offsets) - 1 {
+		vertex_base := u32(vertex_offsets[page_index] / u64(size_of(resources.Vertex)))
+		index_start := int(index_offsets[page_index] / u64(size_of(u32)))
+		index_end := int(index_offsets[page_index + 1] / u64(size_of(u32)))
+		if index_end < index_start || index_end > len(result) {
+			return nil
+		}
+		for index in index_start ..< index_end {
+			result[index] += vertex_base
+		}
+	}
+	return result
 }
 
 wgpu_align_visible_capacity :: proc(count: u32) -> u32 {
@@ -1313,7 +1343,7 @@ wgpu_create_gpu_driven_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 		.Back,
 		false,
 		"Scrapbot GPU Compact Depth Prepass Pipeline",
-		"compact_depth_vs",
+		"compact_depth_only_vs",
 	)
 	renderer.gpu_compact_depth_double_sided_pipeline = wgpu_create_gpu_depth_pipeline(
 		renderer,
@@ -1321,7 +1351,7 @@ wgpu_create_gpu_driven_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 		.None,
 		false,
 		"Scrapbot GPU Compact Double-Sided Depth Pipeline",
-		"compact_depth_vs",
+		"compact_depth_only_vs",
 	)
 	renderer.gpu_compact_depth_mask_pipeline = wgpu_create_gpu_depth_pipeline(
 		renderer,
@@ -1373,7 +1403,7 @@ wgpu_create_gpu_driven_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 		.Back,
 		false,
 		"Scrapbot GPU Compact Shadow Pipeline",
-		"compact_shadow_vs",
+		"compact_shadow_depth_only_vs",
 	)
 	renderer.gpu_compact_shadow_double_sided_pipeline = wgpu_create_gpu_shadow_pipeline(
 		renderer,
@@ -1381,7 +1411,7 @@ wgpu_create_gpu_driven_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 		.None,
 		false,
 		"Scrapbot GPU Compact Double-Sided Shadow Pipeline",
-		"compact_shadow_vs",
+		"compact_shadow_depth_only_vs",
 	)
 	renderer.gpu_compact_shadow_mask_pipeline = wgpu_create_gpu_shadow_pipeline(
 		renderer,
@@ -2841,7 +2871,7 @@ wgpu_refresh_gpu_batch_layout :: proc(
 			compact_command_index = batch.compact_command_index,
 			compact_visible_offset = batch.compact_visible_offset,
 			compact_visible_capacity = batch.compact_visible_capacity,
-			compact_shadow_pages = 1 if batch.compact_submission && geometry.vertex_range.size == 0 else 0,
+			compact_shadow_pages = 1 if batch.compact_submission && geometry.vertex_range.size == 0 && geometry.shadow_index_count == 0 else 0,
 		}
 		if !renderer.gpu_meshlet_supported {
 			batch.world_bind_group = wgpu_make_batch_bind_group(
@@ -3096,8 +3126,14 @@ wgpu_update_indirect_template_cache :: proc(
 				index_count = WGPU_COMPACT_CLUSTER_VERTEX_COUNT,
 				base_vertex = i32(batch.compact_visible_offset),
 			}
-			if geometry.vertex_range.size == 0 {
+			if geometry.vertex_range.size == 0 && geometry.shadow_index_count == 0 {
 				shadow_template = template
+			} else if geometry.shadow_index_count > 0 {
+				shadow_template = wgpu_geometry_shadow_indirect_template(
+					geometry,
+					batch.visible_offset,
+					renderer.gpu_meshlet_supported,
+				)
 			}
 		}
 		if renderer.gpu_indirect_templates[batch_index] != template {
@@ -3110,6 +3146,22 @@ wgpu_update_indirect_template_cache :: proc(
 		}
 	}
 	return
+}
+
+wgpu_geometry_shadow_indirect_template :: proc "contextless" (
+	geometry: ^WGPU_Geometry_Cache,
+	visible_offset: u32,
+	global_visible_buffer: bool,
+) -> WGPU_Draw_Indexed_Indirect {
+	if geometry == nil || geometry.shadow_index_count == 0 {
+		return {}
+	}
+	return {
+		index_count = geometry.shadow_index_count,
+		first_index = u32(geometry.shadow_index_range.offset / u64(size_of(u32))),
+		base_vertex = geometry.shadow_base_vertex,
+		first_instance = visible_offset if global_visible_buffer else 0,
+	}
 }
 
 wgpu_geometry_indirect_template :: proc "contextless" (
@@ -4343,7 +4395,7 @@ wgpu_prepare_gpu_draw_batches :: proc(
 		),
 		projection_y = projection[5],
 		virtual_feedback_epoch = u32(renderer.profile_frame_index),
-		compact_shadow_pages = 1 if wgpu_compact_shadow_pages_active(renderer) else 0,
+		virtual_transition_frames = u32(WGPU_VIRTUAL_GROUP_TRANSITION_FRAMES),
 		virtual_prefetch_enabled = 1 if prediction.enabled else 0,
 		meshlet_count = u32(renderer.gpu_meshlet_draw_count),
 		occlusion_depth_scale = math.abs(projection[14]),
@@ -4534,21 +4586,23 @@ wgpu_encode_gpu_culling :: proc(
 				renderer.gpu_compact_camera_cull_bind_group,
 			)
 			wgpu.ComputePassEncoderDispatchWorkgroups(pass, cluster_workgroups, 1, 1)
-			wgpu.ComputePassEncoderSetPipeline(
-				pass,
-				renderer.gpu_compact_shadow_cluster_cull_pipeline,
-			)
-			wgpu.ComputePassEncoderSetBindGroup(
-				pass,
-				0,
-				renderer.gpu_compact_shadow_cull_bind_group,
-			)
-			wgpu.ComputePassEncoderDispatchWorkgroups(
-				pass,
-				cluster_workgroups,
-				WGPU_SHADOW_CASCADE_COUNT,
-				1,
-			)
+			if wgpu_compact_shadow_pages_active(renderer) {
+				wgpu.ComputePassEncoderSetPipeline(
+					pass,
+					renderer.gpu_compact_shadow_cluster_cull_pipeline,
+				)
+				wgpu.ComputePassEncoderSetBindGroup(
+					pass,
+					0,
+					renderer.gpu_compact_shadow_cull_bind_group,
+				)
+				wgpu.ComputePassEncoderDispatchWorkgroups(
+					pass,
+					cluster_workgroups,
+					WGPU_SHADOW_CASCADE_COUNT,
+					1,
+				)
+			}
 		}
 	}
 	wgpu.ComputePassEncoderEnd(pass)
