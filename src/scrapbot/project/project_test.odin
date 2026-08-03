@@ -1,6 +1,7 @@
 package project
 
 import shared "../shared"
+import "core:fmt"
 import "core:os"
 import "core:path/filepath"
 import "core:testing"
@@ -1306,6 +1307,34 @@ density = 0.02
 		validate_scene_component_singletons(&scene),
 		"a scene may contain only one scrapbot.volumetric_fog component",
 	)
+}
+
+@(test)
+test_scene_rejects_multiple_post_effect_components :: proc(t: ^testing.T) {
+	component_names := [?]string{"scrapbot.vignette", "scrapbot.lens_flare", "scrapbot.lens_dirt"}
+	for component_name in component_names {
+		source := fmt.tprintf(
+			`[[entities]]
+id = "a6000000-0000-4000-8000-000000000035"
+name = "First"
+[entities.components.%s]
+intensity = 0.2
+
+[[entities]]
+id = "a6000000-0000-4000-8000-000000000036"
+name = "Second"
+[entities.components.%s]
+intensity = 0.4
+`,
+			component_name,
+			component_name,
+		)
+		scene, result := parse_scene(source)
+		testing.expect_value(t, result.err, Parse_Error.None)
+		expected := fmt.tprintf("a scene may contain only one %s component", component_name)
+		testing.expect_value(t, validate_scene_component_singletons(&scene), expected)
+		destroy_scene(&scene)
+	}
 }
 
 @(test)

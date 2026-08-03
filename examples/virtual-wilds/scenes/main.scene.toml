@@ -55,11 +55,11 @@ ground_color = [0.025, 0.035, 0.045]
 turbidity = 4.2
 atmosphere_thickness = 1.15
 horizon_softness = 1
-sun_direction = [0.78, 0.32, -0.53]
+sun_direction = [0.04, 0.12, -0.99]
 sun_color = [1, 0.61, 0.32]
-sun_intensity = 2.8
+sun_intensity = 3.6
 sun_size = 0.36
-sun_glow = 0.28
+sun_glow = 0.38
 
 [entities.components.scrapbot.volumetric_fog]
 color = [0.24, 0.31, 0.38]
@@ -71,6 +71,30 @@ anisotropy = 0.58
 ambient_intensity = 0.022
 light_intensity = 1.65
 point_light_intensity = 0.9
+
+[entities.components.scrapbot.vignette]
+color = [0.008, 0.012, 0.018]
+intensity = 0.24
+center = [0.5, 0.47]
+smoothness = 0.38
+roundness = 0.82
+
+[entities.components.scrapbot.lens_flare]
+tint = [1, 0.72, 0.46]
+intensity = 0.9
+threshold = 0.005
+ghost_count = 6
+ghost_spacing = 0.31
+halo_intensity = 0.42
+halo_radius = 0.5
+chromatic_aberration = 0.0015
+
+[entities.components.scrapbot.lens_dirt]
+tint = [1, 0.82, 0.58]
+intensity = 0.34
+scale = 3.6
+contrast = 2.2
+seed = 19
 
 [[entities]]
 id = "7b100000-0000-4000-8000-000000000003"

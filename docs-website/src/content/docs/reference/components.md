@@ -17,6 +17,9 @@ Most components use the same suffix in every public surface:
 | `scrapbot.camera` | `[entities.camera]` | `scrapbot.camera` | Use `scrapbot.Component{name = "scrapbot.camera"}` for membership. |
 | `scrapbot.world_environment` | `[entities.world_environment]` | `scrapbot.world_environment` | Use `scrapbot.Component{name = "scrapbot.world_environment"}` for membership. |
 | `scrapbot.volumetric_fog` | `[entities.components.scrapbot.volumetric_fog]` | `scrapbot.volumetric_fog` | Use `scrapbot.Component{name = "scrapbot.volumetric_fog"}` for membership. |
+| `scrapbot.vignette` | `[entities.components.scrapbot.vignette]` | `scrapbot.vignette` | Use `scrapbot.Component{name = "scrapbot.vignette"}` for membership. |
+| `scrapbot.lens_flare` | `[entities.components.scrapbot.lens_flare]` | `scrapbot.lens_flare` | Use `scrapbot.Component{name = "scrapbot.lens_flare"}` for membership. |
+| `scrapbot.lens_dirt` | `[entities.components.scrapbot.lens_dirt]` | `scrapbot.lens_dirt` | Use `scrapbot.Component{name = "scrapbot.lens_dirt"}` for membership. |
 | `scrapbot.mesh` | `[entities.mesh]` | `scrapbot.mesh` | `scrapbot.Mesh_Component` |
 | `scrapbot.geometry` | `[entities.geometry]` | `scrapbot.geometry_component` | Use `scrapbot.Component{name = "scrapbot.geometry"}` for membership. |
 | `scrapbot.material` | `[entities.material]` | `scrapbot.material_component` | Use `scrapbot.Component{name = "scrapbot.material"}` for membership. |
@@ -35,6 +38,9 @@ The generated `.scrapbot/types/scrapbot.d.luau` file is the precise type referen
 | `scrapbot.camera` | Data | Perspective camera projection. |
 | `scrapbot.world_environment` | Data/resource references | Singleton scene lighting, sky presentation, and base exposure. |
 | `scrapbot.volumetric_fog` | Data | Singleton global height/distance fog with shadowed directional and clustered point-light scattering. |
+| `scrapbot.vignette` | Data | Singleton display-space edge framing composed after tone mapping. |
+| `scrapbot.lens_flare` | Data | Singleton HDR ghost-and-halo flare derived from visible bloom energy. |
+| `scrapbot.lens_dirt` | Data | Singleton procedural lens mask that modulates bloom and flare energy. |
 | `scrapbot.ambient_light` | Data | Scene-wide ambient contribution. |
 | `scrapbot.directional_light` | Data | Directional light and the source for the current shadow map. |
 | `scrapbot.point_light` | Data | Distance-attenuated light positioned by a Transform. |
@@ -224,6 +230,79 @@ When enabled, each midpoint reads every relevant point light from the same GPU-b
 Fog is depth-aware upsampled before temporal antialiasing and bloom. Its low-discrepancy sub-step offset rotates across the eight-frame temporal sequence, allowing TAA to integrate smooth shafts without exposing fixed ray-march slices. Local fog volumes, froxels, and explicit quality controls remain follow-up work.
 
 Luau systems can query and write the complete payload after declaring `scrapbot.volumetric_fog` in their access lists. Presence enables the feature; removing the component or setting `density` to zero skips the fog dispatch. The retained half-resolution target follows the normal post-target resize lifecycle.
+
+### `scrapbot.vignette`
+
+A scene may contain at most one Vignette component. It frames the tone-mapped world before presentation dithering, so it does not change exposure or bloom response.
+
+```toml
+[entities.components.scrapbot.vignette]
+color = [0.008, 0.012, 0.018]
+intensity = 0.24
+center = [0.5, 0.47]
+smoothness = 0.38
+roundness = 0.82
+```
+
+| Field | Type | Effective default | Meaning |
+| --- | --- | --- | --- |
+| `color` | Vec3 | `[0, 0, 0]` | Non-negative linear edge color. |
+| `intensity` | number | `0.3` | Blend strength from `0` to `1`. Absence of the component disables the effect. |
+| `center` | Vec2 | `[0.5, 0.5]` | Normalized screen-space center, clamped to the viewport. |
+| `smoothness` | number | `0.35` | Width of the edge transition from `0.01` to `1`. |
+| `roundness` | number | `0.75` | Aspect correction from screen-shaped (`0`) toward circular (`1`). |
+
+### `scrapbot.lens_flare`
+
+A scene may contain at most one Lens Flare component. It derives Unreal-style ghost images and a halo from bright energy already present in the camera's bloom pyramid. Sources outside the viewport, behind geometry, or below the bright-pass threshold cannot contribute because this is intentionally a bounded screen-space effect.
+
+```toml
+[entities.components.scrapbot.lens_flare]
+tint = [1, 0.72, 0.46]
+intensity = 0.72
+threshold = 0.16
+ghost_count = 6
+ghost_spacing = 0.31
+halo_intensity = 0.42
+halo_radius = 0.5
+chromatic_aberration = 0.005
+```
+
+| Field | Type | Effective default | Meaning |
+| --- | --- | --- | --- |
+| `tint` | Vec3 | `[1, 0.82, 0.62]` | Non-negative linear HDR tint shared by ghosts and halo. |
+| `intensity` | number | `0.65` | Optical-energy multiplier from `0` to `10`. Absence disables the effect. |
+| `threshold` | number | `1` | Additional post-bloom luminance threshold from `0` to `100`. |
+| `ghost_count` | number | `5` | Requested ghost samples from `1` to `8`. Adaptive post quality may reduce the effective count. |
+| `ghost_spacing` | number | `0.32` | Distance between mirrored ghost samples from `0.05` to `1`. |
+| `halo_intensity` | number | `0.35` | Radial halo multiplier from `0` to `5`. |
+| `halo_radius` | number | `0.48` | Normalized halo sample radius from `0.05` to `1`. |
+| `chromatic_aberration` | number | `0.006` | Radial red/blue sample separation from `0` to `0.05`. |
+
+Lens flares require camera bloom. Disabling bloom or selecting a non-lit debug view suppresses the effect without mutating the component.
+
+### `scrapbot.lens_dirt`
+
+A scene may contain at most one Lens Dirt component. The current implementation synthesizes a deterministic multi-scale haze-and-dust mask from the authored seed. It modulates only bloom and flare energy, so dark scene pixels remain untouched.
+
+```toml
+[entities.components.scrapbot.lens_dirt]
+tint = [1, 0.82, 0.58]
+intensity = 0.34
+scale = 3.6
+contrast = 2.2
+seed = 19
+```
+
+| Field | Type | Effective default | Meaning |
+| --- | --- | --- | --- |
+| `tint` | Vec3 | `[1, 0.88, 0.72]` | Non-negative linear tint applied to illuminated dirt. |
+| `intensity` | number | `0.55` | Optical-energy modulation from `0` to `5`. Absence disables the effect. |
+| `scale` | number | `3` | Procedural feature scale from `0.25` to `16`. |
+| `contrast` | number | `1.8` | Mask shaping exponent from `0.25` to `8`. |
+| `seed` | number | `7` | Deterministic pattern seed. |
+
+Lens dirt requires camera bloom and is suppressed by non-lit debug views. Changing its fields rewrites only a small post-process uniform; it does not allocate a texture or rebuild a pipeline.
 
 ### `scrapbot.mesh`
 

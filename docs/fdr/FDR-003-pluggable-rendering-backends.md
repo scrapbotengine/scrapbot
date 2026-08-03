@@ -1,7 +1,7 @@
 # FDR-003: Pluggable rendering backends
 
 **Status:** Active
-**Last reviewed:** 2026-08-02
+**Last reviewed:** 2026-08-03
 
 ## Overview
 
@@ -25,7 +25,7 @@ Pluggable rendering backends allow Scrapbot to start with `wgpu-native` while ke
   - applies half-resolution, 32-sector visibility-bitmask AO only to indirect diffuse;
   - resolves TAA with camera reprojection, previous-depth rejection, and neighborhood clamping;
   - optionally meters viewport log luminance and adapts exposure entirely on the GPU;
-  - builds five bloom levels, then tone maps once into the sRGB presentation target.
+  - builds five bloom levels, derives optional ghost flares and procedural lens dirt from that HDR energy, then tone maps and applies an optional vignette once into the sRGB presentation target.
 - Project UI, transform gizmos, editor-only project-camera bodies and projection frusta, and editor chrome render after world postprocessing and do not bloom.
 - Eligible entities receive internal render-instance components automatically.
 - Shared geometry/material pairs use one instanced draw batch. Geometry versions occupy aligned ranges in shared WGPU vertex/index arenas, while material texture uploads remain cached by handle and version.
@@ -142,6 +142,8 @@ TAA jitters the projection with an eight-sample sequence bounded to a quarter pi
 
 Automatic exposure uses one 256-thread GPU workgroup to reduce viewport-stratified log-luminance samples and exponentially adapt a persistent clamped scalar. HDR history remains scene-linear. Bloom and final composition share the scalar, while manual camera exposure becomes compensation. There is no CPU readback.
 
+Three optional singleton ECS components independently author vignette, ghost lens flares, and procedural lens dirt. Flares sample the bloom bright-pass into bounded chromatically separated ghosts plus a halo. Dirt modulates only bloom and flare energy, never the base scene. Adaptive post quality reduces the authored ghost count, and non-lit debug views bypass all three effects. Vignette is applied after tone mapping so its authored display-space framing remains independent of exposure.
+
 The editor fly view inherits the project camera's render policy. WGPU consumes an asynchronous ordered pass-boundary span that ends after final composition and before native UI. One hysteretic controller selects world scale, directional-shadow resolution, and a normalized AO/SSR/fog quality factor from a deterministic reversible ladder. All changes share one measurement generation and cooldown. Adapters without timestamp queries use authored maxima. Scale changes replace only size-dependent retained targets and reject temporal history. Disabled features skip their compute or history work. Tone map once into native output, then draw UI at native resolution. See ADR-052.
 **Why:** Architectural contacts and crevices need indirect-light grounding, participating media needs depth-aware and shadow-aware scattering, smooth materials need local reflections, bloom requires values above display white, broad halos need multiple spatial scales, subpixel geometry and texture detail need temporal supersampling, and text must remain crisp. Reusing depth supports fog bounds, AO, reflection ray intersection, and camera reprojection without another geometry pass or velocity target. See ADR-029.
 **Tradeoff:** These techniques deliberately exchange completeness, precision, latency, memory, and configurability for bounded real-time work:
@@ -150,6 +152,7 @@ The editor fly view inherits the project camera's render policy. WGPU consumes a
 - Camera-only temporal reprojection lacks exact motion for animated objects. Previous-depth rejection and neighborhood clamping bound history error until per-object motion vectors exist.
 - Fog is one global 4–16-step volume, and every step evaluates its complete clustered point-light list. Local volumes and froxels remain follow-up work.
 - Automatic exposure uses a bounded sparse meter rather than a full histogram and exposes only bounds, speed, and compensation.
+- Lens flares are screen-space and therefore see only bright energy present in the rendered viewport. Procedural dirt is deterministic and asset-free, but cannot reproduce a photographed lens texture.
 - Adaptive quality reacts to delayed, noisy GPU evidence instead of guaranteeing a hard deadline. Hysteresis favors visual stability over immediate recovery. Lower world scale, shadow resolution, and post tiers exchange precision for cost while preserving native UI and authored feature switches.
 - Camera fields expose frame-budget bounds, coarse switches, and AO/SSR quality ceilings. AO shaping and temporal/fast-AA/bloom quality and weights remain future work.
 - Compute paths require storage-texture support. Surface, indirect-diffuse, reflection, color, and depth history consume additional GPU memory, and final composition remains a fullscreen render pass.

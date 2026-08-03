@@ -140,11 +140,9 @@ test_composite_dithers_tone_mapped_output_in_fixed_display_space :: proc(t: ^tes
 	testing.expect(t, strings.contains(WGPU_COMPOSITE_SHADER, "noise / 255.0"))
 	testing.expect(
 		t,
-		strings.contains(
-			WGPU_COMPOSITE_SHADER,
-			"presentation_dither(aces(hdr), input.position.xy)",
-		),
+		strings.contains(WGPU_COMPOSITE_SHADER, "presentation_dither(graded, input.position.xy)"),
 	)
+	testing.expect(t, strings.contains(WGPU_COMPOSITE_SHADER, "apply_vignette(aces(hdr)"))
 }
 
 @(test)
@@ -3059,6 +3057,104 @@ test_volumetric_fog_settings_read_the_lowest_ordered_live_component :: proc(t: ^
 	testing.expect_value(t, settings.anisotropy, f32(0.9))
 	testing.expect_value(t, settings.max_distance, f32(0.1))
 	testing.expect_value(t, settings.point_light_intensity, f32(0.7))
+}
+
+@(test)
+test_post_effect_settings_are_independent_clamped_components :: proc(t: ^testing.T) {
+	world: World
+	defer delete(world.entities)
+	defer delete(world.custom_components)
+	append(&world.entities, shared.World_Entity{alive = true, scene_order = 1})
+
+	vignette := shared.Custom_Component {
+		entity_index = 0,
+	}
+	append(
+		&vignette.number_fields,
+		shared.Named_Number{name = "intensity", value = 4},
+		shared.Named_Number{name = "smoothness", value = 0},
+	)
+	append(&vignette.vec2_fields, shared.Named_Vec2{name = "center", value = {-1, 2}})
+	defer delete(vignette.number_fields)
+	defer delete(vignette.vec2_fields)
+	vignette_storage := shared.Custom_Component_Storage {
+		name = "scrapbot.vignette",
+	}
+	append(&vignette_storage.components, vignette)
+	append(&vignette_storage.active_component_indices, 0)
+	defer delete(vignette_storage.components)
+	defer delete(vignette_storage.active_component_indices)
+	append(&world.custom_components, vignette_storage)
+
+	flare := shared.Custom_Component {
+		entity_index = 0,
+	}
+	append(
+		&flare.number_fields,
+		shared.Named_Number{name = "ghost_count", value = 99},
+		shared.Named_Number{name = "chromatic_aberration", value = -1},
+		shared.Named_Number{name = "intensity", value = 0.8},
+	)
+	defer delete(flare.number_fields)
+	flare_storage := shared.Custom_Component_Storage {
+		name = "scrapbot.lens_flare",
+	}
+	append(&flare_storage.components, flare)
+	append(&flare_storage.active_component_indices, 0)
+	defer delete(flare_storage.components)
+	defer delete(flare_storage.active_component_indices)
+	append(&world.custom_components, flare_storage)
+
+	dirt := shared.Custom_Component {
+		entity_index = 0,
+	}
+	append(
+		&dirt.number_fields,
+		shared.Named_Number{name = "scale", value = 100},
+		shared.Named_Number{name = "contrast", value = 0},
+	)
+	defer delete(dirt.number_fields)
+	dirt_storage := shared.Custom_Component_Storage {
+		name = "scrapbot.lens_dirt",
+	}
+	append(&dirt_storage.components, dirt)
+	append(&dirt_storage.active_component_indices, 0)
+	defer delete(dirt_storage.components)
+	defer delete(dirt_storage.active_component_indices)
+	append(&world.custom_components, dirt_storage)
+
+	vignette_settings := wgpu_vignette_settings(&world)
+	flare_settings := wgpu_lens_flare_settings(&world)
+	dirt_settings := wgpu_lens_dirt_settings(&world)
+	testing.expect_value(t, vignette_settings.intensity, f32(1))
+	testing.expect_value(t, vignette_settings.center, shared.Vec2{0, 1})
+	testing.expect_value(t, vignette_settings.smoothness, f32(0.01))
+	testing.expect_value(t, flare_settings.intensity, f32(0.8))
+	testing.expect_value(t, flare_settings.ghost_count, f32(8))
+	testing.expect_value(t, flare_settings.chromatic_aberration, f32(0))
+	testing.expect_value(t, dirt_settings.scale, f32(16))
+	testing.expect_value(t, dirt_settings.contrast, f32(0.25))
+}
+
+@(test)
+test_composite_shader_keeps_post_effects_hdr_composable :: proc(t: ^testing.T) {
+	testing.expect(t, strings.contains(WGPU_COMPOSITE_SHADER, "fn lens_flare"))
+	testing.expect(t, strings.contains(WGPU_COMPOSITE_SHADER, "fn procedural_lens_dirt"))
+	testing.expect(t, strings.contains(WGPU_COMPOSITE_SHADER, "fn apply_vignette"))
+	testing.expect(t, strings.contains(WGPU_COMPOSITE_SHADER, "let optical ="))
+	testing.expect(t, strings.contains(WGPU_COMPOSITE_SHADER, "apply_vignette(aces(hdr)"))
+}
+
+@(test)
+test_post_effect_uniform_upload_is_change_driven :: proc(t: ^testing.T) {
+	renderer: WGPU_Renderer
+	uniform := WGPU_Post_Effects_Uniform {
+		vignette_color_intensity = {0, 0, 0, 0.25},
+	}
+	testing.expect(t, wgpu_store_post_effects_uniform(&renderer, uniform))
+	testing.expect(t, !wgpu_store_post_effects_uniform(&renderer, uniform))
+	uniform.flare_tint_intensity = {1, 0.8, 0.6, 0.5}
+	testing.expect(t, wgpu_store_post_effects_uniform(&renderer, uniform))
 }
 
 @(test)

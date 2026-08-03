@@ -57,6 +57,8 @@ giving absorption, refraction, and intersection foam real underwater topology.
 
 The ordinary public `scrapbot.volumetric_fog` component adds shadowed blue-gray coastal haze. A low sun cuts across the flooded canyon.
 
+The same scene consumes Scrapbot's public composable post stack: a restrained vignette frames the canyon, screen-space ghost flares react to visible HDR highlights, and deterministic procedural lens dirt catches only bloom/flare energy. None of these effects is hard-coded into the example.
+
 Three clustered point lights create cold and amber mist pockets around the rock gates.
 
 The camera tour crosses opposing cliff walls, a tidal causeway, sea stacks, submerged reefs, distant headlands, and oversized wreckage silhouettes. Creatively stretched walls rise several times higher than the source scan without increasing the heavy scan's instance count.

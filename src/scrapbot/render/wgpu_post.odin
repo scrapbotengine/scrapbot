@@ -16,6 +16,88 @@ WGPU_Volumetric_Fog_Settings :: struct {
 	point_light_intensity: f32,
 }
 
+WGPU_Vignette_Settings :: struct {
+	color: shared.Vec3,
+	intensity: f32,
+	center: shared.Vec2,
+	smoothness: f32,
+	roundness: f32,
+}
+
+WGPU_Lens_Flare_Settings :: struct {
+	tint: shared.Vec3,
+	intensity: f32,
+	threshold: f32,
+	ghost_count: f32,
+	ghost_spacing: f32,
+	halo_intensity: f32,
+	halo_radius: f32,
+	chromatic_aberration: f32,
+}
+
+WGPU_Lens_Dirt_Settings :: struct {
+	tint: shared.Vec3,
+	intensity: f32,
+	scale: f32,
+	contrast: f32,
+	seed: f32,
+}
+
+WGPU_Post_Effects_Uniform :: struct {
+	vignette_color_intensity: [4]f32,
+	vignette_center_shape: [4]f32,
+	flare_tint_intensity: [4]f32,
+	flare_ghosts: [4]f32,
+	flare_optics: [4]f32,
+	dirt_tint_intensity: [4]f32,
+	dirt_parameters: [4]f32,
+}
+
+wgpu_store_post_effects_uniform :: proc(
+	renderer: ^WGPU_Renderer,
+	uniform: WGPU_Post_Effects_Uniform,
+) -> bool {
+	if renderer == nil ||
+	   (renderer.post_effects_uniform_valid && renderer.post_effects_uniform == uniform) {
+		return false
+	}
+	renderer.post_effects_uniform = uniform
+	renderer.post_effects_uniform_valid = true
+	return true
+}
+
+wgpu_post_component :: proc(world: ^shared.World, name: string) -> ^shared.Custom_Component {
+	if world == nil {
+		return nil
+	}
+	component: ^shared.Custom_Component
+	best_scene_order := 0
+	for &storage in world.custom_components {
+		if storage.name != name {
+			continue
+		}
+		for component_index in storage.active_component_indices {
+			if component_index < 0 || component_index >= len(storage.components) {
+				continue
+			}
+			candidate := &storage.components[component_index]
+			entity_index := candidate.entity_index
+			if entity_index < 0 ||
+			   entity_index >= len(world.entities) ||
+			   !world.entities[entity_index].alive {
+				continue
+			}
+			scene_order := world.entities[entity_index].scene_order
+			if component == nil || scene_order < best_scene_order {
+				component = candidate
+				best_scene_order = scene_order
+			}
+		}
+		break
+	}
+	return component
+}
+
 wgpu_fog_number :: proc(component: ^shared.Custom_Component, name: string, fallback: f32) -> f32 {
 	if component == nil {
 		return fallback
@@ -56,6 +138,29 @@ wgpu_fog_vec3 :: proc(
 	return fallback
 }
 
+wgpu_post_vec2 :: proc(
+	component: ^shared.Custom_Component,
+	name: string,
+	fallback: shared.Vec2,
+) -> shared.Vec2 {
+	if component == nil {
+		return fallback
+	}
+	for field in component.vec2_fields {
+		if field.name == name {
+			value := field.value
+			if math.is_nan(value.x) ||
+			   math.is_inf(value.x) ||
+			   math.is_nan(value.y) ||
+			   math.is_inf(value.y) {
+				return fallback
+			}
+			return value
+		}
+	}
+	return fallback
+}
+
 wgpu_volumetric_fog_settings :: proc(world: ^shared.World) -> WGPU_Volumetric_Fog_Settings {
 	settings := WGPU_Volumetric_Fog_Settings {
 		color = {0.62, 0.72, 0.82},
@@ -68,31 +173,7 @@ wgpu_volumetric_fog_settings :: proc(world: ^shared.World) -> WGPU_Volumetric_Fo
 	if world == nil {
 		return settings
 	}
-	component: ^shared.Custom_Component
-	best_scene_order := 0
-	for &storage in world.custom_components {
-		if storage.name != "scrapbot.volumetric_fog" {
-			continue
-		}
-		for component_index in storage.active_component_indices {
-			if component_index < 0 || component_index >= len(storage.components) {
-				continue
-			}
-			candidate := &storage.components[component_index]
-			entity_index := candidate.entity_index
-			if entity_index < 0 ||
-			   entity_index >= len(world.entities) ||
-			   !world.entities[entity_index].alive {
-				continue
-			}
-			scene_order := world.entities[entity_index].scene_order
-			if component == nil || scene_order < best_scene_order {
-				component = candidate
-				best_scene_order = scene_order
-			}
-		}
-		break
-	}
+	component := wgpu_post_component(world, "scrapbot.volumetric_fog")
 	if component == nil {
 		return settings
 	}
@@ -132,6 +213,116 @@ wgpu_volumetric_fog_settings :: proc(world: ^shared.World) -> WGPU_Volumetric_Fo
 		f32(0),
 		f32(10),
 	)
+	return settings
+}
+
+wgpu_vignette_settings :: proc(world: ^shared.World) -> WGPU_Vignette_Settings {
+	settings := WGPU_Vignette_Settings {
+		color = {},
+		center = {0.5, 0.5},
+		smoothness = 0.35,
+		roundness = 0.75,
+	}
+	component := wgpu_post_component(world, "scrapbot.vignette")
+	if component == nil {
+		return settings
+	}
+	settings.color = wgpu_fog_vec3(component, "color", settings.color)
+	settings.color.x = max(settings.color.x, 0)
+	settings.color.y = max(settings.color.y, 0)
+	settings.color.z = max(settings.color.z, 0)
+	settings.intensity = clamp(wgpu_fog_number(component, "intensity", 0.3), f32(0), f32(1))
+	settings.center = wgpu_post_vec2(component, "center", settings.center)
+	settings.center.x = clamp(settings.center.x, f32(0), f32(1))
+	settings.center.y = clamp(settings.center.y, f32(0), f32(1))
+	settings.smoothness = clamp(
+		wgpu_fog_number(component, "smoothness", settings.smoothness),
+		f32(0.01),
+		f32(1),
+	)
+	settings.roundness = clamp(
+		wgpu_fog_number(component, "roundness", settings.roundness),
+		f32(0),
+		f32(1),
+	)
+	return settings
+}
+
+wgpu_lens_flare_settings :: proc(world: ^shared.World) -> WGPU_Lens_Flare_Settings {
+	settings := WGPU_Lens_Flare_Settings {
+		tint = {1, 0.82, 0.62},
+		threshold = 1,
+		ghost_count = 5,
+		ghost_spacing = 0.32,
+		halo_intensity = 0.35,
+		halo_radius = 0.48,
+		chromatic_aberration = 0.006,
+	}
+	component := wgpu_post_component(world, "scrapbot.lens_flare")
+	if component == nil {
+		return settings
+	}
+	settings.tint = wgpu_fog_vec3(component, "tint", settings.tint)
+	settings.tint.x = max(settings.tint.x, 0)
+	settings.tint.y = max(settings.tint.y, 0)
+	settings.tint.z = max(settings.tint.z, 0)
+	settings.intensity = clamp(wgpu_fog_number(component, "intensity", 0.65), f32(0), f32(10))
+	settings.threshold = clamp(
+		wgpu_fog_number(component, "threshold", settings.threshold),
+		f32(0),
+		f32(100),
+	)
+	settings.ghost_count = clamp(
+		wgpu_fog_number(component, "ghost_count", settings.ghost_count),
+		f32(1),
+		f32(8),
+	)
+	settings.ghost_spacing = clamp(
+		wgpu_fog_number(component, "ghost_spacing", settings.ghost_spacing),
+		f32(0.05),
+		f32(1),
+	)
+	settings.halo_intensity = clamp(
+		wgpu_fog_number(component, "halo_intensity", settings.halo_intensity),
+		f32(0),
+		f32(5),
+	)
+	settings.halo_radius = clamp(
+		wgpu_fog_number(component, "halo_radius", settings.halo_radius),
+		f32(0.05),
+		f32(1),
+	)
+	settings.chromatic_aberration = clamp(
+		wgpu_fog_number(component, "chromatic_aberration", settings.chromatic_aberration),
+		f32(0),
+		f32(0.05),
+	)
+	return settings
+}
+
+wgpu_lens_dirt_settings :: proc(world: ^shared.World) -> WGPU_Lens_Dirt_Settings {
+	settings := WGPU_Lens_Dirt_Settings {
+		tint = {1, 0.88, 0.72},
+		scale = 3,
+		contrast = 1.8,
+		seed = 7,
+	}
+	component := wgpu_post_component(world, "scrapbot.lens_dirt")
+	if component == nil {
+		return settings
+	}
+	settings.tint = wgpu_fog_vec3(component, "tint", settings.tint)
+	settings.tint.x = max(settings.tint.x, 0)
+	settings.tint.y = max(settings.tint.y, 0)
+	settings.tint.z = max(settings.tint.z, 0)
+	settings.intensity = clamp(wgpu_fog_number(component, "intensity", 0.55), f32(0), f32(5))
+	settings.scale = clamp(wgpu_fog_number(component, "scale", settings.scale), f32(0.25), f32(16))
+	settings.contrast = clamp(
+		wgpu_fog_number(component, "contrast", settings.contrast),
+		f32(0.25),
+		f32(8),
+	)
+	settings.seed = wgpu_fog_number(component, "seed", settings.seed)
 	return settings
 }
 
@@ -603,6 +794,17 @@ wgpu_create_post_process_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 	   renderer.automatic_exposure_state_buffer == nil {
 		return "failed to allocate automatic exposure buffers"
 	}
+	renderer.post_effects_uniform_buffer = wgpu.DeviceCreateBuffer(
+		renderer.device,
+		&wgpu.BufferDescriptor {
+			label = "Scrapbot Post Effects Uniform Buffer",
+			usage = {.Uniform, .CopyDst},
+			size = u64(size_of(WGPU_Post_Effects_Uniform)),
+		},
+	)
+	if renderer.post_effects_uniform_buffer == nil {
+		return "failed to allocate post effects uniform buffer"
+	}
 	initial_exposure := WGPU_Automatic_Exposure_State {
 		values = {1, 1, 1, 1},
 	}
@@ -692,7 +894,7 @@ wgpu_create_post_process_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 	if renderer.composite_shader == nil {
 		return "failed to create HDR composite shader"
 	}
-	composite_entries: [3 + WGPU_BLOOM_LEVELS]wgpu.BindGroupLayoutEntry
+	composite_entries: [4 + WGPU_BLOOM_LEVELS]wgpu.BindGroupLayoutEntry
 	composite_entries[0] = {
 		binding = 0,
 		visibility = {.Fragment},
@@ -717,6 +919,11 @@ wgpu_create_post_process_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 			type = .ReadOnlyStorage,
 			minBindingSize = u64(size_of(WGPU_Automatic_Exposure_State)),
 		},
+	}
+	composite_entries[3 + WGPU_BLOOM_LEVELS] = {
+		binding = u32(3 + WGPU_BLOOM_LEVELS),
+		visibility = {.Fragment},
+		buffer = {type = .Uniform, minBindingSize = u64(size_of(WGPU_Post_Effects_Uniform))},
 	}
 	renderer.composite_bind_group_layout = wgpu.DeviceCreateBindGroupLayout(
 		renderer.device,
@@ -1032,6 +1239,11 @@ wgpu_release_post_process :: proc(renderer: ^WGPU_Renderer) {
 	if renderer.automatic_exposure_state_buffer != nil {
 		wgpu.BufferRelease(renderer.automatic_exposure_state_buffer)
 	}
+	if renderer.post_effects_uniform_buffer != nil {
+		wgpu.BufferRelease(renderer.post_effects_uniform_buffer)
+		renderer.post_effects_uniform_buffer = nil
+	}
+	renderer.post_effects_uniform_valid = false
 	if renderer.automatic_exposure_pipeline != nil {
 		wgpu.ComputePipelineRelease(renderer.automatic_exposure_pipeline)
 	}
@@ -1442,7 +1654,7 @@ wgpu_ensure_post_targets :: proc(
 		}
 	}
 	for temporal_index in 0 ..< len(renderer.temporal_color_views) {
-		composite_entries: [3 + WGPU_BLOOM_LEVELS]wgpu.BindGroupEntry
+		composite_entries: [4 + WGPU_BLOOM_LEVELS]wgpu.BindGroupEntry
 		composite_entries[0] = {
 			binding = 0,
 			textureView = renderer.temporal_color_views[temporal_index],
@@ -1462,6 +1674,12 @@ wgpu_ensure_post_targets :: proc(
 			buffer = renderer.automatic_exposure_state_buffer,
 			offset = 0,
 			size = u64(size_of(WGPU_Automatic_Exposure_State)),
+		}
+		composite_entries[3 + WGPU_BLOOM_LEVELS] = {
+			binding = u32(3 + WGPU_BLOOM_LEVELS),
+			buffer = renderer.post_effects_uniform_buffer,
+			offset = 0,
+			size = u64(size_of(WGPU_Post_Effects_Uniform)),
 		}
 		renderer.composite_bind_groups[temporal_index] = wgpu.DeviceCreateBindGroup(
 			renderer.device,
@@ -1910,6 +2128,66 @@ wgpu_encode_bloom_and_composite :: proc(
 		}
 		wgpu.ComputePassEncoderEnd(pass)
 		wgpu.ComputePassEncoderRelease(pass)
+	}
+	vignette := wgpu_vignette_settings(world)
+	lens_flare := wgpu_lens_flare_settings(world)
+	lens_dirt := wgpu_lens_dirt_settings(world)
+	if debug_view {
+		vignette.intensity = 0
+		lens_flare.intensity = 0
+		lens_dirt.intensity = 0
+	}
+	if !resolved_camera.bloom {
+		lens_flare.intensity = 0
+		lens_dirt.intensity = 0
+	}
+	post_effects_uniform := WGPU_Post_Effects_Uniform {
+		vignette_color_intensity = {
+			vignette.color.x,
+			vignette.color.y,
+			vignette.color.z,
+			vignette.intensity,
+		},
+		vignette_center_shape = {
+			vignette.center.x,
+			vignette.center.y,
+			vignette.smoothness,
+			vignette.roundness,
+		},
+		flare_tint_intensity = {
+			lens_flare.tint.x,
+			lens_flare.tint.y,
+			lens_flare.tint.z,
+			lens_flare.intensity,
+		},
+		flare_ghosts = {
+			lens_flare.threshold,
+			lens_flare.ghost_count,
+			lens_flare.ghost_spacing,
+			adaptive_post_quality,
+		},
+		flare_optics = {
+			lens_flare.halo_intensity,
+			lens_flare.halo_radius,
+			lens_flare.chromatic_aberration,
+			0,
+		},
+		dirt_tint_intensity = {
+			lens_dirt.tint.x,
+			lens_dirt.tint.y,
+			lens_dirt.tint.z,
+			lens_dirt.intensity,
+		},
+		dirt_parameters = {lens_dirt.scale, lens_dirt.contrast, lens_dirt.seed, 0},
+	}
+	if wgpu_store_post_effects_uniform(renderer, post_effects_uniform) {
+		wgpu.QueueWriteBuffer(
+			renderer.queue,
+			renderer.post_effects_uniform_buffer,
+			0,
+			&post_effects_uniform,
+			size_of(post_effects_uniform),
+		)
 	}
 	err := wgpu_encode_fullscreen_pass(
 		renderer,

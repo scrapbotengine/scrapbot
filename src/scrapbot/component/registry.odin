@@ -448,6 +448,189 @@ init_registry :: proc(registry: ^Registry) {
 	)
 	register_engine_component(
 		registry,
+		"scrapbot.vignette",
+		{
+			Field_Definition{name = "color", field_type = .Vec3, editor = {color = true}},
+			Field_Definition {
+				name = "intensity",
+				field_type = .Number,
+				editor = {
+					draggable = true,
+					step = 0.01,
+					has_minimum = true,
+					minimum = 0,
+					has_maximum = true,
+					maximum = 1,
+				},
+			},
+			Field_Definition{name = "center", field_type = .Vec2},
+			Field_Definition {
+				name = "smoothness",
+				field_type = .Number,
+				editor = {
+					draggable = true,
+					step = 0.01,
+					has_minimum = true,
+					minimum = 0.01,
+					has_maximum = true,
+					maximum = 1,
+				},
+			},
+			Field_Definition {
+				name = "roundness",
+				field_type = .Number,
+				editor = {
+					draggable = true,
+					step = 0.01,
+					has_minimum = true,
+					minimum = 0,
+					has_maximum = true,
+					maximum = 1,
+				},
+			},
+		},
+	)
+	register_engine_component(
+		registry,
+		"scrapbot.lens_flare",
+		{
+			Field_Definition{name = "tint", field_type = .Vec3, editor = {color = true}},
+			Field_Definition {
+				name = "intensity",
+				field_type = .Number,
+				editor = {
+					draggable = true,
+					step = 0.05,
+					has_minimum = true,
+					minimum = 0,
+					has_maximum = true,
+					maximum = 10,
+				},
+			},
+			Field_Definition {
+				name = "threshold",
+				field_type = .Number,
+				editor = {
+					draggable = true,
+					step = 0.1,
+					has_minimum = true,
+					minimum = 0,
+					has_maximum = true,
+					maximum = 100,
+				},
+			},
+			Field_Definition {
+				name = "ghost_count",
+				field_type = .Number,
+				editor = {
+					draggable = true,
+					step = 1,
+					has_minimum = true,
+					minimum = 1,
+					has_maximum = true,
+					maximum = 8,
+				},
+			},
+			Field_Definition {
+				name = "ghost_spacing",
+				field_type = .Number,
+				editor = {
+					draggable = true,
+					step = 0.01,
+					has_minimum = true,
+					minimum = 0.05,
+					has_maximum = true,
+					maximum = 1,
+				},
+			},
+			Field_Definition {
+				name = "halo_intensity",
+				field_type = .Number,
+				editor = {
+					draggable = true,
+					step = 0.05,
+					has_minimum = true,
+					minimum = 0,
+					has_maximum = true,
+					maximum = 5,
+				},
+			},
+			Field_Definition {
+				name = "halo_radius",
+				field_type = .Number,
+				editor = {
+					draggable = true,
+					step = 0.01,
+					has_minimum = true,
+					minimum = 0.05,
+					has_maximum = true,
+					maximum = 1,
+				},
+			},
+			Field_Definition {
+				name = "chromatic_aberration",
+				field_type = .Number,
+				editor = {
+					draggable = true,
+					step = 0.0005,
+					has_minimum = true,
+					minimum = 0,
+					has_maximum = true,
+					maximum = 0.05,
+				},
+			},
+		},
+	)
+	register_engine_component(
+		registry,
+		"scrapbot.lens_dirt",
+		{
+			Field_Definition{name = "tint", field_type = .Vec3, editor = {color = true}},
+			Field_Definition {
+				name = "intensity",
+				field_type = .Number,
+				editor = {
+					draggable = true,
+					step = 0.05,
+					has_minimum = true,
+					minimum = 0,
+					has_maximum = true,
+					maximum = 5,
+				},
+			},
+			Field_Definition {
+				name = "scale",
+				field_type = .Number,
+				editor = {
+					draggable = true,
+					step = 0.1,
+					has_minimum = true,
+					minimum = 0.25,
+					has_maximum = true,
+					maximum = 16,
+				},
+			},
+			Field_Definition {
+				name = "contrast",
+				field_type = .Number,
+				editor = {
+					draggable = true,
+					step = 0.05,
+					has_minimum = true,
+					minimum = 0.25,
+					has_maximum = true,
+					maximum = 8,
+				},
+			},
+			Field_Definition {
+				name = "seed",
+				field_type = .Number,
+				editor = {draggable = true, step = 1},
+			},
+		},
+	)
+	register_engine_component(
+		registry,
 		"scrapbot.ambient_light",
 		{
 			Field_Definition {
@@ -954,6 +1137,12 @@ engine_component_storage :: proc "contextless" (name: string) -> (Storage_Kind, 
 		case "scrapbot.world_environment":
 			return .World_Environment, .Authored
 		case "scrapbot.volumetric_fog":
+			return .Custom, .Authored
+		case "scrapbot.vignette":
+			return .Custom, .Authored
+		case "scrapbot.lens_flare":
+			return .Custom, .Authored
+		case "scrapbot.lens_dirt":
 			return .Custom, .Authored
 		case "scrapbot.ambient_light":
 			return .Ambient_Light, .Authored

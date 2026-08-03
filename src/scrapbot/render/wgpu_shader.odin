@@ -1831,6 +1831,17 @@ struct Automatic_Exposure_State {
 };
 @group(0) @binding(7) var<storage, read> automatic_exposure: Automatic_Exposure_State;
 
+struct Post_Effects {
+	vignette_color_intensity: vec4<f32>,
+	vignette_center_shape: vec4<f32>,
+	flare_tint_intensity: vec4<f32>,
+	flare_ghosts: vec4<f32>,
+	flare_optics: vec4<f32>,
+	dirt_tint_intensity: vec4<f32>,
+	dirt_parameters: vec4<f32>,
+};
+@group(0) @binding(8) var<uniform> post_effects: Post_Effects;
+
 struct Fullscreen_Output {
 	@builtin(position) position: vec4<f32>,
 	@location(0) uv: vec2<f32>,
@@ -1886,6 +1897,98 @@ fn presentation_dither(color: vec3<f32>, pixel: vec2<f32>) -> vec3<f32> {
 	return srgb_to_linear(encoded);
 }
 
+fn hash12(point: vec2<f32>) -> f32 {
+	let p = fract(point * vec2<f32>(123.34, 456.21));
+	return fract((p.x + p.y) * (p.x + p.y + 45.32));
+}
+
+fn value_noise(point: vec2<f32>, seed: f32) -> f32 {
+	let cell = floor(point);
+	let local = fract(point);
+	let blend = local * local * (3.0 - 2.0 * local);
+	let offset = vec2<f32>(seed * 0.137, seed * 0.271);
+	let a = hash12(cell + offset);
+	let b = hash12(cell + vec2<f32>(1.0, 0.0) + offset);
+	let c = hash12(cell + vec2<f32>(0.0, 1.0) + offset);
+	let d = hash12(cell + vec2<f32>(1.0, 1.0) + offset);
+	return mix(mix(a, b, blend.x), mix(c, d, blend.x), blend.y);
+}
+
+fn procedural_lens_dirt(uv: vec2<f32>) -> f32 {
+	if (post_effects.dirt_tint_intensity.w <= 0.0) {
+		return 0.0;
+	}
+	let dimensions = vec2<f32>(textureDimensions(hdr_texture));
+	let aspect = dimensions.x / max(dimensions.y, 1.0);
+	let scale = post_effects.dirt_parameters.x;
+	let seed = post_effects.dirt_parameters.z;
+	let point = vec2<f32>(uv.x * aspect, uv.y) * scale;
+	let broad = value_noise(point, seed);
+	let medium = value_noise(point * 3.17 + vec2<f32>(4.1, 8.7), seed + 19.0);
+	let fine = value_noise(point * 11.3 + vec2<f32>(1.7, 2.9), seed + 43.0);
+	let haze = smoothstep(0.38, 0.82, broad * 0.55 + medium * 0.45);
+	let dust = smoothstep(0.78, 0.98, fine) * (0.35 + broad * 0.65);
+	return pow(clamp(haze * 0.72 + dust, 0.0, 1.0), post_effects.dirt_parameters.y);
+}
+
+fn flare_source(uv: vec2<f32>, radial: vec2<f32>) -> vec3<f32> {
+	let aberration = post_effects.flare_optics.z;
+	let red_uv = clamp(uv + radial * aberration, vec2<f32>(0.0), vec2<f32>(1.0));
+	let blue_uv = clamp(uv - radial * aberration, vec2<f32>(0.0), vec2<f32>(1.0));
+	let red = textureSampleLevel(bloom_1, linear_sampler, red_uv, 0.0).r +
+		textureSampleLevel(bloom_2, linear_sampler, red_uv, 0.0).r * 0.5;
+	let green = textureSampleLevel(bloom_1, linear_sampler, clamp(uv, vec2<f32>(0.0), vec2<f32>(1.0)), 0.0).g +
+		textureSampleLevel(bloom_2, linear_sampler, clamp(uv, vec2<f32>(0.0), vec2<f32>(1.0)), 0.0).g * 0.5;
+	let blue = textureSampleLevel(bloom_1, linear_sampler, blue_uv, 0.0).b +
+		textureSampleLevel(bloom_2, linear_sampler, blue_uv, 0.0).b * 0.5;
+	let source = vec3<f32>(red, green, blue);
+	let luminance = dot(source, vec3<f32>(0.2126, 0.7152, 0.0722));
+	let threshold = post_effects.flare_ghosts.x;
+	return source * max(luminance - threshold, 0.0) / max(luminance, 0.0001);
+}
+
+fn lens_flare(uv: vec2<f32>) -> vec3<f32> {
+	if (post_effects.flare_tint_intensity.w <= 0.0) {
+		return vec3<f32>(0.0);
+	}
+	let to_center = vec2<f32>(0.5) - uv;
+	let radial = normalize(to_center + vec2<f32>(0.00001));
+	let quality_count = max(1.0, floor(post_effects.flare_ghosts.y * post_effects.flare_ghosts.w + 0.5));
+	var ghosts = vec3<f32>(0.0);
+	var weight_sum = 0.0;
+	for (var index = 0; index < 8; index += 1) {
+		if (f32(index) >= quality_count) {
+			continue;
+		}
+		let distance = (f32(index) + 1.0) * post_effects.flare_ghosts.z;
+		let sample_uv = uv + to_center * distance;
+		let edge = smoothstep(0.0, 0.08, min(min(sample_uv.x, sample_uv.y), min(1.0 - sample_uv.x, 1.0 - sample_uv.y)));
+		let weight = (1.0 - f32(index) / max(quality_count, 1.0)) * edge;
+		ghosts += flare_source(sample_uv, radial) * weight;
+		weight_sum += weight;
+	}
+	ghosts /= max(weight_sum, 1.0);
+
+	let halo_uv = vec2<f32>(0.5) + radial * post_effects.flare_optics.y;
+	let halo_edge = smoothstep(0.0, 0.08, min(min(halo_uv.x, halo_uv.y), min(1.0 - halo_uv.x, 1.0 - halo_uv.y)));
+	let halo = flare_source(halo_uv, radial) * post_effects.flare_optics.x * halo_edge;
+	return (ghosts + halo) * post_effects.flare_tint_intensity.rgb * post_effects.flare_tint_intensity.w;
+}
+
+fn apply_vignette(color: vec3<f32>, uv: vec2<f32>) -> vec3<f32> {
+	let intensity = post_effects.vignette_color_intensity.w;
+	if (intensity <= 0.0) {
+		return color;
+	}
+	let dimensions = vec2<f32>(textureDimensions(hdr_texture));
+	let aspect = dimensions.x / max(dimensions.y, 1.0);
+	var point = (uv - post_effects.vignette_center_shape.xy) * 2.0;
+	point.x *= mix(1.0, aspect, post_effects.vignette_center_shape.w);
+	let distance = length(point);
+	let mask = smoothstep(1.0 - post_effects.vignette_center_shape.z, 1.0, distance);
+	return mix(color, post_effects.vignette_color_intensity.rgb, mask * intensity);
+}
+
 @fragment
 fn composite_fs(input: Fullscreen_Output) -> @location(0) vec4<f32> {
 	var bloom = textureSample(bloom_0, linear_sampler, input.uv).rgb * 0.34;
@@ -1900,10 +2003,14 @@ fn composite_fs(input: Fullscreen_Output) -> @location(0) vec4<f32> {
 			1.0,
 		);
 	}
-	let hdr =
-		resolved.rgb * automatic_exposure.values.x +
-		bloom * (0.8 * step(0.5, resolved.a));
-	return vec4<f32>(presentation_dither(aces(hdr), input.position.xy), 1.0);
+	let bloom_enabled = step(0.5, resolved.a);
+	let flare = lens_flare(input.uv) * bloom_enabled;
+	let dirt = procedural_lens_dirt(input.uv) * post_effects.dirt_tint_intensity.w;
+	let optical = (bloom * 0.8 + flare) *
+		(vec3<f32>(1.0) + post_effects.dirt_tint_intensity.rgb * dirt) * bloom_enabled;
+	let hdr = resolved.rgb * automatic_exposure.values.x + optical;
+	let graded = apply_vignette(aces(hdr), input.uv);
+	return vec4<f32>(presentation_dither(graded, input.position.xy), 1.0);
 }
 `
 

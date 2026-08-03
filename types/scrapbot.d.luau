@@ -26,6 +26,10 @@ export type Scrapbot = {
 	},
 	camera: ScrapbotCameraComponent,
 	world_environment: ScrapbotWorldEnvironmentComponent,
+	volumetric_fog: ScrapbotVolumetricFogComponent,
+	vignette: ScrapbotVignetteComponent,
+	lens_flare: ScrapbotLensFlareComponent,
+	lens_dirt: ScrapbotLensDirtComponent,
 	ambient_light: ScrapbotAmbientLightComponent,
 	directional_light: ScrapbotDirectionalLightComponent,
 	point_light: ScrapbotPointLightComponent,
@@ -463,6 +467,66 @@ export type ReadonlyScrapbotVolumetricFog = {
 }
 
 export type ScrapbotVolumetricFogComponent = ScrapbotComponent<ScrapbotVolumetricFog, ReadonlyScrapbotVolumetricFog>
+
+export type ScrapbotVignette = {
+	color: Vec3,
+	intensity: number,
+	center: Vec2,
+	smoothness: number,
+	roundness: number,
+}
+
+export type ReadonlyScrapbotVignette = {
+	read color: ReadonlyVec3,
+	read intensity: number,
+	read center: ReadonlyVec2,
+	read smoothness: number,
+	read roundness: number,
+}
+
+export type ScrapbotVignetteComponent = ScrapbotComponent<ScrapbotVignette, ReadonlyScrapbotVignette>
+
+export type ScrapbotLensFlare = {
+	tint: Vec3,
+	intensity: number,
+	threshold: number,
+	ghost_count: number,
+	ghost_spacing: number,
+	halo_intensity: number,
+	halo_radius: number,
+	chromatic_aberration: number,
+}
+
+export type ReadonlyScrapbotLensFlare = {
+	read tint: ReadonlyVec3,
+	read intensity: number,
+	read threshold: number,
+	read ghost_count: number,
+	read ghost_spacing: number,
+	read halo_intensity: number,
+	read halo_radius: number,
+	read chromatic_aberration: number,
+}
+
+export type ScrapbotLensFlareComponent = ScrapbotComponent<ScrapbotLensFlare, ReadonlyScrapbotLensFlare>
+
+export type ScrapbotLensDirt = {
+	tint: Vec3,
+	intensity: number,
+	scale: number,
+	contrast: number,
+	seed: number,
+}
+
+export type ReadonlyScrapbotLensDirt = {
+	read tint: ReadonlyVec3,
+	read intensity: number,
+	read scale: number,
+	read contrast: number,
+	read seed: number,
+}
+
+export type ScrapbotLensDirtComponent = ScrapbotComponent<ScrapbotLensDirt, ReadonlyScrapbotLensDirt>
 
 export type ScrapbotAmbientLight = {
 	color: Vec3,

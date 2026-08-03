@@ -1,6 +1,6 @@
 # Engine Components
 
-**Last verified:** 2026-07-31
+**Last verified:** 2026-08-03
 **Source of truth:** `src/scrapbot/component/registry.odin`  
 **Canonical public field reference:** `docs-website/src/content/docs/reference/components.md`
 
@@ -22,6 +22,9 @@ Lifecycle meanings:
 | `scrapbot.camera` | Spatial/render | Authored | Yes | Selects projection, coordinated GPU-budgeted world/shadow/post bounds, exposure, and per-view TAA/fast-AA/AO/SSR/bloom policy; project camera is distinct from the editor fly camera. |
 | `scrapbot.world_environment` | Environment/render | Authored | Yes | Singleton scene selection for imported lighting, procedural or imported sky presentation, and base exposure. |
 | `scrapbot.volumetric_fog` | Environment/render | Authored | Yes | Singleton global height/distance medium with ambient, shadowed directional, and clustered point-light scattering. |
+| `scrapbot.vignette` | Postprocessing | Authored | Yes | Singleton display-space edge framing composed after tone mapping. |
+| `scrapbot.lens_flare` | Postprocessing | Authored | Yes | Singleton bounded ghost-and-halo optical response derived from HDR bloom energy. |
+| `scrapbot.lens_dirt` | Postprocessing | Authored | Yes | Singleton deterministic procedural dirt mask that modulates bloom and flare energy. |
 | `scrapbot.ambient_light` | Lighting | Authored | Yes | Compact scene-wide ambient light input. |
 | `scrapbot.directional_light` | Lighting | Authored | Yes | Directional light and current shadow-map source. |
 | `scrapbot.point_light` | Lighting | Authored | Yes | Bounded local light using the entity's resolved world position. |
@@ -127,6 +130,36 @@ These entries deliberately omit exhaustive field/default documentation. Follow t
 - **Invalidation:** Membership and value mutation use ordinary custom-component lifecycle/revisions. The current bounded frame input visits only the fog storage's compact active set; it never scans entities or component capacity. No fog-specific GPU target is allocated, and zero density takes the shader no-op branch.
 - **Surfaces:** Public in scene TOML, generated Luau query data/writeback, native membership, runtime-generated editor inspection, history, and persistence; see the [public component reference](../../docs-website/src/content/docs/reference/components.md#scrapbotvolumetric_fog).
 - **Source/tests:** `component/registry.odin`, `project/project.odin`, `render/wgpu_post.odin`, `render/wgpu_shader.odin`; `component/registry_test.odin`, `render/render_test.odin`, Sponza WGPU framegrab smoke tests.
+
+### `scrapbot.vignette`
+
+- **Contract:** At most one authored component controls display-space edge color, intensity, center, softness, and aspect-aware roundness. Absence disables the effect.
+- **Storage/lifecycle:** Registry-defined custom ECS storage with canonical Number/Vec2/Vec3 fields; authored singleton-by-validation on an ordinary entity.
+- **Producers:** Scene loading, runtime type-inspected editor controls/history, validated Luau writes, native component commands, and playback restore.
+- **Consumers:** WGPU's final HDR composite clamps the selected compact payload and applies it after tone mapping but before fixed presentation dithering.
+- **Invalidation:** Ordinary custom-component membership/value revisions contribute to one retained composite uniform. WGPU uploads it only when the effective clamped stack or render policy changes; stable frames reuse the pipeline, bind group, and buffer without an upload.
+- **Surfaces:** Public in scene TOML, generated Luau query data/writeback, native membership, editor authoring, history, and persistence; see the [public component reference](../../docs-website/src/content/docs/reference/components.md#scrapbotvignette).
+- **Source/tests:** `component/registry.odin`, `project/project.odin`, `render/wgpu_post.odin`, `render/wgpu_shader.odin`; `component/registry_test.odin`, `project/project_test.odin`, `render/render_test.odin`, Virtual Wilds WGPU framegrabs.
+
+### `scrapbot.lens_flare`
+
+- **Contract:** At most one authored component controls a screen-space HDR optical response with bounded chromatically separated ghosts and a radial halo. Absence or zero intensity disables flare sampling.
+- **Storage/lifecycle:** Registry-defined custom ECS storage with canonical Number/Vec3 fields; authored singleton-by-validation on an ordinary entity.
+- **Producers:** Scene loading, runtime type-inspected editor controls/history, validated Luau writes, native component commands, and playback restore.
+- **Consumers:** WGPU's final composite samples the retained bloom pyramid. The active camera's adaptive post quality reduces the effective ghost count; disabled bloom and non-lit debug views suppress the effect.
+- **Invalidation:** Ordinary custom-component membership/value revisions contribute to one retained composite uniform. The fixed eight-iteration shader bound allocates no targets or pipelines, and unchanged effective values produce no upload.
+- **Surfaces:** Public in scene TOML, generated Luau query data/writeback, native membership, editor authoring, history, and persistence; see the [public component reference](../../docs-website/src/content/docs/reference/components.md#scrapbotlens_flare).
+- **Source/tests:** `component/registry.odin`, `project/project.odin`, `render/wgpu_post.odin`, `render/wgpu_shader.odin`; `component/registry_test.odin`, `project/project_test.odin`, `render/render_test.odin`, Virtual Wilds WGPU framegrabs.
+
+### `scrapbot.lens_dirt`
+
+- **Contract:** At most one authored component controls a deterministic multi-scale procedural lens mask. Dirt colors and amplifies only bloom/flare energy; it never overlays or tints the base scene.
+- **Storage/lifecycle:** Registry-defined custom ECS storage with canonical Number/Vec3 fields; authored singleton-by-validation on an ordinary entity.
+- **Producers:** Scene loading, runtime type-inspected editor controls/history, validated Luau writes, native component commands, and playback restore.
+- **Consumers:** WGPU's final composite evaluates the mask only when intensity and camera bloom are nonzero, then modulates the composited optical-energy term before tone mapping.
+- **Invalidation:** Ordinary custom-component membership/value revisions contribute to one retained composite uniform. Seed, scale, contrast, tint, and intensity changes allocate and rebuild nothing; unchanged effective values produce no upload.
+- **Surfaces:** Public in scene TOML, generated Luau query data/writeback, native membership, editor authoring, history, and persistence; see the [public component reference](../../docs-website/src/content/docs/reference/components.md#scrapbotlens_dirt).
+- **Source/tests:** `component/registry.odin`, `project/project.odin`, `render/wgpu_post.odin`, `render/wgpu_shader.odin`; `component/registry_test.odin`, `project/project_test.odin`, `render/render_test.odin`, Virtual Wilds WGPU framegrabs.
 
 ### `scrapbot.ambient_light`
 

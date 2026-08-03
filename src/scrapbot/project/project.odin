@@ -767,15 +767,34 @@ validate_scene_component_singletons :: proc(scene: ^Scene) -> string {
 		return ""
 	}
 	volumetric_fog_count := 0
+	vignette_count := 0
+	lens_flare_count := 0
+	lens_dirt_count := 0
 	for entity in scene.entities {
 		for scene_component in entity.custom_components {
-			if scene_component.name == "scrapbot.volumetric_fog" {
-				volumetric_fog_count += 1
+			switch scene_component.name {
+				case "scrapbot.volumetric_fog":
+					volumetric_fog_count += 1
+				case "scrapbot.vignette":
+					vignette_count += 1
+				case "scrapbot.lens_flare":
+					lens_flare_count += 1
+				case "scrapbot.lens_dirt":
+					lens_dirt_count += 1
 			}
 		}
 	}
 	if volumetric_fog_count > 1 {
 		return "a scene may contain only one scrapbot.volumetric_fog component"
+	}
+	if vignette_count > 1 {
+		return "a scene may contain only one scrapbot.vignette component"
+	}
+	if lens_flare_count > 1 {
+		return "a scene may contain only one scrapbot.lens_flare component"
+	}
+	if lens_dirt_count > 1 {
+		return "a scene may contain only one scrapbot.lens_dirt component"
 	}
 	return ""
 }

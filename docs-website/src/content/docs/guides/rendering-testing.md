@@ -251,6 +251,8 @@ World-environment and active-camera exposure multiply together. A camera may ins
 
 Enabled bloom builds five bright-pass levels before one ACES-style tone-map pass presents through an sRGB target. A fixed screen-space sub-LSB dither breaks up 8-bit bands in smooth sky and fog gradients without introducing a temporally changing pattern.
 
+Optional scene-owned `scrapbot.lens_flare` and `scrapbot.lens_dirt` components consume that bloom energy inside the same final composite. Flares add a bounded chromatic ghost train and halo; procedural dirt modulates only bloom and flare light. `scrapbot.vignette` then frames the tone-mapped image independently. Removing any component disables only that effect, while disabling camera bloom suppresses both optical effects. See the [component reference](/reference/components/#scrapbotlens_flare) for every field.
+
 Disabled AO, SSR, and bloom skip their compute dispatches. Project UI, gizmos, and editor chrome render afterward, so world postprocessing never softens text or controls.
 
 ### Screen-space limits
