@@ -46,10 +46,16 @@ Sponza is a manifest bundle: every file has an individual byte count and SHA-256
 - Local path: `downloads/gltf/VirtualWilds/`
 - Upstream: [Poly Haven models](https://polyhaven.com/models)
 - Purpose: high-density photogrammetry import, generated LODs, virtual-geometry paging, bounded residency, and temporal streaming development
-- Pinned shape: 15 files, 3 models, 1,183,929 vertices, 2,300,990 source triangles, and 5,970 cluster pages
+- Pinned shape: 25 files, 5 models, 1,652,269 vertices, 3,138,836 source triangles, and 8,440 cluster pages
 - Licensing: CC0
 
-The bundle contains [Coastal Cliff 04](https://polyhaven.com/a/coastal_cliff_04) and [Coast Rocks 01](https://polyhaven.com/a/coast_rocks_01), photographed and processed by Rob Tuytel with cleanup by Rico Cilliers. [Dead Tree Trunk 02](https://polyhaven.com/a/dead_tree_trunk_02) was photographed by Jenelle van Heerden and processed by Rico Cilliers.
+The bundle contains [Coastal Cliff 04](https://polyhaven.com/a/coastal_cliff_04), [Coast Rocks
+01](https://polyhaven.com/a/coast_rocks_01), and [Coast Rocks
+05](https://polyhaven.com/a/coast_rocks_05) by Rob Tuytel. [Boulder
+01](https://polyhaven.com/a/boulder_01) is by Rico Cilliers.
+
+[Dead Tree Trunk 02](https://polyhaven.com/a/dead_tree_trunk_02) was photographed by Jenelle van
+Heerden and processed by Rico Cilliers.
 
 `mise setup-assets` copies the verified bundle into ignored `examples/virtual-wilds/assets/` state. The example compiles these ordinary glTF inputs into Scrapbot's versioned split model products; neither source nor imported products belong in Git or Scrapbot distributions.
 
@@ -59,4 +65,7 @@ Run `mise test-gltf` to validate the real-world import product, or `mise test-gl
 
 Run `mise test-sponza` for the explicit heavyweight import contract, or `mise test-sponza-gpu` to import it and capture a bounded WGPU frame. Launch the persistent example with `mise scrapbot run examples/sponza --editor`.
 
-Run `mise test-virtual-wilds` for the pinned three-scan import contract. `mise test-virtual-wilds-gpu` additionally drives the camera long enough to require detail-page reads, checks the 128 MiB residency bound, and captures a WGPU frame. Launch the interactive tour with `mise scrapbot -- run examples/virtual-wilds --editor`.
+Run `mise test-virtual-wilds` for the pinned five-scan import contract.
+`mise test-virtual-wilds-gpu` additionally drives the camera long enough to require detail-page
+reads, checks the 192 MiB residency bound, and captures a WGPU frame. Launch the interactive tour
+with `mise scrapbot -- run examples/virtual-wilds --editor`.

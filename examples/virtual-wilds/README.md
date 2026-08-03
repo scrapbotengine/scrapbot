@@ -1,8 +1,8 @@
 # Virtual Wilds
 
 Virtual Wilds is Scrapbot's real-world virtual-geometry showcase. It builds a moving coastal route
-from three full-detail CC0 Poly Haven scans: Coastal Cliff 04, Coast Rocks 01, and Dead Tree Trunk
-02.
+from five full-detail CC0 Poly Haven scans: a coastal cliff, two rock formations, a boulder, and a
+dead trunk.
 
 Install the ignored source fixtures, then launch the editor:
 
@@ -16,10 +16,11 @@ checksum-verified files and places them under `assets/`. Scrapbot compiles them 
 versioned runtime products on first use.
 
 Use the camera's `virtual_geometry`, `meshlets`, and `lod` debug views to inspect the selected
-cluster frontier. The scans contain about 2.3 million source triangles and compile into 5,970
-streamable cluster pages. The 128 MiB residency budget is intentionally smaller than that complete
-detail set, so the camera tour exercises visible page demand, predictive prefetch, and eviction
-while coarse geometry remains available.
+cluster frontier. The scans contain 3,138,836 source triangles and compile into 8,440 streamable
+cluster pages. The 192 MiB residency budget is intentionally smaller than that complete detail set.
+
+The camera tour therefore exercises visible page demand, predictive prefetch, and eviction while
+coarse geometry remains available.
 
 The route also demonstrates project-authored vertex and fragment hooks. A subdivided procedural
 plane consumes Scrapbot's reusable GPU spectral-surface field: a deterministic Phillips wind
@@ -53,8 +54,14 @@ shallows. Every tile samples the same world-space spectrum, so boundaries match 
 retains useful vertex density and culls independently.
 
 Reused CC0 scans build staggered headlands, offshore stacks, rock gardens, submerged shelves,
-reefs, and stranded trunks along the route. The layered silhouettes make the landscape denser while
-giving absorption, refraction, and intersection foam real underwater topology.
+reefs, and stranded trunks along the route. The layered silhouettes make the
+landscape denser while giving absorption, refraction, and intersection foam real underwater
+topology.
+
+A project-local Luau scatter system adds 220 shared low-poly rocks and 80 three-part conifers using
+the public procedural Geometry, Material, ECS spawn, and Transform APIs. This brings the stable
+scene to 515 renderables while the WGPU backend retains only 24 material/LOD batches. Most scatter
+instances sit outside the narrow camera corridor, making frustum and Hi-Z telemetry meaningful.
 
 The ordinary public `scrapbot.volumetric_fog` component adds shadowed blue-gray coastal haze. A low sun cuts across the flooded canyon.
 
@@ -64,9 +71,9 @@ Three clustered point lights create cold and amber mist pockets around the rock 
 
 The camera tour crosses opposing cliff walls, a tidal causeway, sea stacks, submerged reefs, distant headlands, and oversized wreckage silhouettes. Creatively stretched walls rise several times higher than the source scan without increasing the heavy scan's instance count.
 
-The scene deliberately reuses only the three pinned CC0 scans. Its complexity demonstrates virtualized instancing and composition rather than an example-only asset pipeline.
-Its low layer and forward-scattering response soften the distant route and catch the warm sun
-without obscuring the photogrammetry.
+The scene's complexity demonstrates virtualized geometry alongside ordinary shared-resource
+instancing. Its low fog layer and forward-scattering response soften the distant route and catch
+the warm sun without obscuring the photogrammetry.
 
 The water shader adapts Stefan Gustavson and Ian McEwan's
 [`psrdnoise2.wgsl`](https://github.com/stegu/psrdnoise) at commit

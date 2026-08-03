@@ -5,6 +5,7 @@ This file tracks current actionable engineering work. The broad product roadmap 
 ## Rendering
 
 - [ ] Keep streamed virtual Geometry drawable when visibility-table capacity is exceeded; partition or bound compact submission instead of silently selecting an empty Classic fallback.
+- [ ] Deduplicate virtual-Geometry page feedback by group before bounded GPU readback; prove moving high-detail views reach zero overflow without enlarging renderer state.
 - [ ] Maintain a repeatable 60 Hz adaptive-quality baseline matrix across representative integrated/discrete GPUs; record settled world, shadow, and post tiers. See [ADR-052](adr/ADR-052-coordinate-adaptive-render-quality-from-one-frame-budget.md).
 - [ ] Compress Model v16 catalogs, material images, and virtual-Geometry pages with independently decodable page records; measure import time, product size, startup, and streaming cost on `impossible-archive` unhinged.
 - [ ] Strip source assets from exported games and package the same validated runtime products used by development runs.

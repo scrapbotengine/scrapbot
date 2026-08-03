@@ -300,31 +300,42 @@ fn coastal_foam_layers(
 		0.46,
 		4.1,
 	).crest;
-	let crest_shape = max(spectral_crest * 0.55, max(swell_crest, max(cross_crest, chop_crest * 0.64)));
+	// One dominant crest owns the breaking lip. Treating every wave direction
+	// as an equal foam source produces conspicuous moving crosses where their
+	// thin white bands intersect. Secondary waves instead vary the dominant
+	// lip's strength without drawing independent foam lines.
+	let dominant_crest = max(spectral_crest * 0.55, swell_crest);
+	let secondary_modulation = mix(
+		0.64,
+		1.0,
+		clamp(cross_crest * 0.68 + chop_crest * 0.32, 0.0, 1.0),
+	);
+	let crest_shape = dominant_crest * secondary_modulation;
 
 	// Transport the foam pattern downwind instead of evaluating a nearly
 	// stationary world-space mask. The low-frequency packet controls where a
 	// crest can break, while elongated crosswind patches form torn filaments.
 	// The footprint gates subpixel bubbles before TAA can turn them into broad
 	// blurry islands.
+	let dominant_phase_speed = sqrt(9.81 * 31.0 / 6.28318530718);
 	let transported_flow = vec2<f32>(
-		dot(position, wind) - time * 1.45,
+		dot(position, wind) - time * dominant_phase_speed,
 		dot(position, crosswind) + sin(time * 0.17) * 0.24,
 	);
 	let packet = coastal_psrdnoise(
 		transported_flow * vec2<f32>(0.17, 0.42),
 		vec2<f32>(0.0),
-		time * 0.11,
+		0.31,
 	).value * 0.5 + 0.5;
 	let filament = coastal_psrdnoise(
-		transported_flow * vec2<f32>(0.48, 1.75) + vec2<f32>(time * 0.06, -time * 0.025),
+		transported_flow * vec2<f32>(0.48, 1.75),
 		vec2<f32>(0.0),
-		-time * 0.19,
+		-0.57,
 	).value;
 	let micro = coastal_psrdnoise(
-		transported_flow * vec2<f32>(1.35, 4.8) + vec2<f32>(-time * 0.12, time * 0.07),
+		transported_flow * vec2<f32>(1.35, 4.8),
 		vec2<f32>(0.0),
-		time * 0.31,
+		1.02,
 	).value * 0.5 + 0.5;
 	let foam_footprint = max(length(fwidth(position)), 0.001);
 	let filament_visibility = 1.0 - smoothstep(0.32, 1.4, foam_footprint);

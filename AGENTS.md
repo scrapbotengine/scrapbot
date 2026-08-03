@@ -19,6 +19,17 @@ Please refer to the `README.md` for a high-level overview of the engine's featur
 - This project is in super-early development.
 - Breaking changes are 100% acceptable and we don't need to make changes backward-compatible unless specifically requested by the user.
 
+## Examples And Engine Boundaries
+
+- Examples are first-party consumers and pressure tests of public engine contracts. They must not become implicit owners of engine architecture, global policy, or renderer limits.
+- Build example-specific composition, art direction, population, camera behavior, and quality tuning in the example through public resources, ECS components, scripts, and project configuration.
+- An example may reveal an engine bug or missing general capability. Promote that finding into engine work only when it can be stated without reference to the example and reproduced with a focused, representative workload.
+- Before changing engine code for an example, define the reusable contract, affected platforms and workloads, bounded behavior, and acceptance evidence. If that work materially expands the user's request, record it in `docs/TODO.md` and report it separately instead of silently folding it into the example.
+- Do not raise global capacities, budgets, defaults, or retained state merely to make one scene pass. First measure the actual bottleneck and consider project-local tuning, workload reduction, bounded compaction, streaming, or graceful degradation.
+- A global engine-policy change requires before-and-after evidence from the motivating workload and at least one independent regression workload. Include relevant CPU, GPU, memory, binary/product-size, startup, and visual-stability checks rather than optimizing only the failing counter.
+- Engine implementations and tests must not contain example identities, asset identities, scene coordinates, authored entity UUIDs, or other content-specific assumptions. Regression fixtures may preserve the smallest content needed to reproduce a general contract.
+- Keep discovered engine work distinct from example completion. An example can be complete within documented budgets while a separately tracked engine improvement remains outstanding.
+
 ## Architectural Invariants
 
 - Built-in component changes are cross-surface changes. Audit shared types/defaults/validation, ECS storage and lifecycle, scene TOML, Luau queries and deferred mutation, generated Luau declarations, native ABI/wrappers, examples, tests, and public documentation.

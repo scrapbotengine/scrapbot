@@ -135,6 +135,66 @@
           "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/dead_tree_trunk_02/dead_tree_trunk_02_nor_gl_1k.jpg",
           "bytes": 1192056,
           "sha256": "9b26c29b89afced0ddb91dbe6f917e59038bed5ba6076dfceb8d1b4b00ca04f7"
+        },
+        {
+          "path": "coast_rocks_05/coast_rocks_05_1k.gltf",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/coast_rocks_05/coast_rocks_05_1k.gltf",
+          "bytes": 2821,
+          "sha256": "4b5e97d42b4d9e1999ee5961922adc6b5d81f4aad34219915def7975bb2a8eb7"
+        },
+        {
+          "path": "coast_rocks_05/coast_rocks_05.bin",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/coast_rocks_05/coast_rocks_05.bin",
+          "bytes": 22102224,
+          "sha256": "c46b19d62dd5d42d5f03bc7508e22fdc00ec88fa197b4fdf8db8e40929ea13cc"
+        },
+        {
+          "path": "coast_rocks_05/textures/coast_rocks_05_arm_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/coast_rocks_05/coast_rocks_05_arm_1k.jpg",
+          "bytes": 893696,
+          "sha256": "26b851f13a6e00500440d964393bee8aa1865660777c05b9082bdb12c43a23b6"
+        },
+        {
+          "path": "coast_rocks_05/textures/coast_rocks_05_diff_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/coast_rocks_05/coast_rocks_05_diff_1k.jpg",
+          "bytes": 954605,
+          "sha256": "2ec4ec09422a14d55cc890ad902486cf76df8e663688fbc32f78a15684646ee1"
+        },
+        {
+          "path": "coast_rocks_05/textures/coast_rocks_05_nor_gl_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/coast_rocks_05/coast_rocks_05_nor_gl_1k.jpg",
+          "bytes": 1327762,
+          "sha256": "5d32e03ea42abc05dd913e7ead4e915d9d60f27c8942f75128a87f84e7baee9d"
+        },
+        {
+          "path": "boulder_01/boulder_01_1k.gltf",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/boulder_01/boulder_01_1k.gltf",
+          "bytes": 2773,
+          "sha256": "51487934db898b4c24072780a451e34eca5c02e3ada24a62bbc600bbc4019e92"
+        },
+        {
+          "path": "boulder_01/boulder_01.bin",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/boulder_01/boulder_01.bin",
+          "bytes": 2938808,
+          "sha256": "7f5b06503d62bd95bfe9c6b8a354a5cc8ff04a4d271a8cf87a3e3125db4232d7"
+        },
+        {
+          "path": "boulder_01/textures/boulder_01_arm_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/boulder_01/boulder_01_arm_1k.jpg",
+          "bytes": 659386,
+          "sha256": "c57187c5746b6be913fa53846cb44ff78743e7ca5000f131c9627b99563c2b87"
+        },
+        {
+          "path": "boulder_01/textures/boulder_01_diff_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/boulder_01/boulder_01_diff_1k.jpg",
+          "bytes": 987467,
+          "sha256": "c38f0e918f6dc16b8d386ba3cdd89805c78320c119a1ceec85856f82b09a65b8"
+        },
+        {
+          "path": "boulder_01/textures/boulder_01_nor_gl_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/boulder_01/boulder_01_nor_gl_1k.jpg",
+          "bytes": 1183552,
+          "sha256": "0810cf6e89d89bb6eb065b4d2e2855288f5dcbd2c15c6e40ab90d462021b50aa"
         }
       ]
     },

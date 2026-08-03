@@ -33,6 +33,7 @@ bloom = true
 origin = [0, 4.2, 9]
 travel = 168
 duration = 30
+lead_in = 5
 
 [[entities]]
 id = "7b100000-0000-4000-8000-000000000002"
@@ -390,6 +391,96 @@ primitive = "plane"
 resource = "7b000000-0000-4000-8000-000000000007"
 
 [entities.shadow_receiver]
+
+# BEGIN GENERATED LANDSCAPE INSTANCES
+
+[[entities]]
+id = "7b200000-0000-4000-8000-000000000001"
+name = "Generated Shore Formation 1"
+
+[entities.transform]
+position = [-15.3556, -0.9818, -73.2364]
+rotation = [-0.1092, 2.4686, -0.0665]
+scale = [1.2617, 0.8766, 1.389]
+
+[entities.model]
+resource = "7b000000-0000-4000-8000-00000000000b"
+
+[entities.shadow_caster]
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "7b200000-0000-4000-8000-000000000002"
+name = "Generated Talus Boulder 1"
+
+[entities.transform]
+position = [23.7914, 2.6223, -152.3639]
+rotation = [-0.0666, 2.631, 0.1491]
+scale = [1.4303, 1.6969, 1.6833]
+
+[entities.model]
+resource = "7b000000-0000-4000-8000-00000000000c"
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "7b200000-0000-4000-8000-000000000003"
+name = "Generated Talus Boulder 2"
+
+[entities.transform]
+position = [-27.3528, 3.9746, -52.9665]
+rotation = [-0.0174, 2.1281, -0.0817]
+scale = [1.5707, 2.1592, 1.7028]
+
+[entities.model]
+resource = "7b000000-0000-4000-8000-00000000000c"
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "7b200000-0000-4000-8000-000000000004"
+name = "Generated Talus Boulder 3"
+
+[entities.transform]
+position = [16.837, 1.4137, -93.1032]
+rotation = [0.1244, 2.2384, -0.0033]
+scale = [3.4488, 2.9724, 3.7651]
+
+[entities.model]
+resource = "7b000000-0000-4000-8000-00000000000c"
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "7b200000-0000-4000-8000-000000000005"
+name = "Generated Talus Boulder 4"
+
+[entities.transform]
+position = [38.5621, 5.2065, -170.8894]
+rotation = [-0.2104, 0.6737, -0.1471]
+scale = [1.3306, 1.5846, 1.548]
+
+[entities.model]
+resource = "7b000000-0000-4000-8000-00000000000c"
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "7b200000-0000-4000-8000-000000000006"
+name = "Generated Talus Boulder 5"
+
+[entities.transform]
+position = [-37.594, 5.1457, -130.8554]
+rotation = [-0.1253, -0.0778, 0.0045]
+scale = [2.7639, 3.7317, 2.6587]
+
+[entities.model]
+resource = "7b000000-0000-4000-8000-00000000000c"
+
+[entities.shadow_receiver]
+
+# END GENERATED LANDSCAPE INSTANCES
 
 [[entities]]
 id = "7b100000-0000-4000-8000-000000000060"

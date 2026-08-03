@@ -320,9 +320,9 @@ Choose **Virtual Geometry** in the Game debug-view selector to inspect the resid
 frontier. Use `mise archive-profile` for a bounded 1600×900 profile of the showcase preset.
 
 Use `examples/virtual-wilds` when virtual geometry needs real photogrammetry rather than generated
-geometry. It imports three pinned CC0 Poly Haven scans containing about 2.3 million source
-triangles, generates their LOD and cluster hierarchies, and flies along a coastal route while
-5,970 pages compete for a 128 MiB residency budget:
+geometry. It imports five pinned CC0 Poly Haven scans containing 3.14 million source triangles,
+generates their LOD and cluster hierarchies, and flies along a coastal route while 8,440 imported
+pages compete for a 192 MiB residency budget:
 
 ```sh
 mise setup-assets
@@ -330,10 +330,13 @@ mise scrapbot -- run examples/virtual-wilds --editor
 ```
 
 The example is an ordinary project. Its glTF resources, scene components, Luau camera system, and
-render settings use the same public paths available to games. `mise test-virtual-wilds` rebuilds
-and validates the pinned import products. `mise test-virtual-wilds-gpu` profiles a deterministic
-camera segment, preserves eight consecutive PNGs, and rejects feedback overflow, page-read failure,
-or a page upload, eviction, or projected-error change inside that settled capture window.
+render settings use the same public paths available to games. A deterministic Luau scatter system
+adds 220 procedural rocks and 80 three-part conifers through public Geometry, Material, ECS spawn,
+and Transform APIs. The stable scene contains 515 renderables and 24 WGPU material/LOD batches.
+
+`mise test-virtual-wilds` rebuilds and validates the pinned import products.
+`mise test-virtual-wilds-gpu` profiles a deterministic camera segment, preserves consecutive PNGs,
+and rejects feedback overflow, page-read failure, or unstable settled-frontier behavior.
 
 The GPU virtual-geometry pressure test also captures an active refinement. Its sequence gate
 requires at least one transitioning group, visible clusters using blended coverage, and a settled

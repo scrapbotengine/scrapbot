@@ -78,7 +78,7 @@ Example projects live in [`examples/`](examples/):
 - `pbr-materials` — deterministic authored metallic/roughness reference grid for isolating material and lighting changes.
 - `sponza` — the Khronos Sponza atrium as 103 ECS renderables with 25 PBR materials, directional shadows, and clustered point lights.
 - `impossible-archive` — a deterministically generated carved megastructure for virtual-geometry residency, predictive streaming, and cluster-frontier debug views.
-- `virtual-wilds` — three full-detail CC0 photogrammetry scans arranged as a moving coastal route, with about 2.3 million source triangles competing for a 128 MiB virtual-geometry residency budget.
+- `virtual-wilds` — five full-detail CC0 scans and 460 public-API scatter renderables arranged as a moving coastal route, with 3.14 million source triangles competing for a 192 MiB virtual-geometry residency budget.
 
 ### Testing
 

@@ -1,0 +1,9 @@
+id = "7b000000-0000-4000-8000-00000000000c"
+type = "scrapbot.model"
+name = "Boulder 01"
+
+[model]
+source = "assets/boulder_01/boulder_01_1k.gltf"
+generate_lods = true
+lod_ratios = [0.5, 0.25, 0.125]
+lod_screen_radii = [0.18, 0.055, 0.018]
