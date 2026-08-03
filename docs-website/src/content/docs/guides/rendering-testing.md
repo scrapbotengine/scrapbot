@@ -219,7 +219,7 @@ The primary directional light supplies anisotropic in-scattering. Its four casca
 
 `point_light_intensity` independently opts clustered point lights into the medium. Every ray step reuses its complete GPU-built view-frustum cluster; Scrapbot does not build or upload another fog-only light list.
 
-Fog is depth-aware upsampled before TAA and bloom. A low-discrepancy sub-step offset rotates across the eight-frame temporal sequence. TAA integrates those samples into smooth shafts without the bands produced by fixed midpoint slices. Remove the component or set `density = 0` to skip the fog dispatch. See [`scrapbot.volumetric_fog`](/reference/components/#scrapbotvolumetric_fog) for every field.
+Fog is depth-aware upsampled before TAA and bloom. A low-discrepancy sub-step offset rotates across the eight-frame temporal sequence inside a centered portion of each ray interval. TAA integrates those samples into smooth shafts without the bands produced by fixed midpoint slices or a conspicuous half-resolution pattern during camera motion. Remove the component or set `density = 0` to skip the fog dispatch. See [`scrapbot.volumetric_fog`](/reference/components/#scrapbotvolumetric_fog) for every field.
 
 This implementation remains one global volume. It does not yet support local fog shapes or authored quality controls.
 

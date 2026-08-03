@@ -3117,6 +3117,7 @@ test_volumetric_fog_shader_is_energy_normalized_shadowed_and_temporally_resolved
 		t,
 		strings.contains(WGPU_TEMPORAL_AA_SHADER, "temporal.reflections.w * 0.754877666"),
 	)
+	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "mix(0.5, rotating_phase, 0.38)"))
 	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "f32(step) + temporal_phase"))
 	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "closest_depth_delta"))
 	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "fn rgb_to_ycocg"))

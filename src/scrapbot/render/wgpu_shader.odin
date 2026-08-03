@@ -1096,7 +1096,12 @@ fn integrate_volumetric_fog(
 		52.9829189 *
 			fract(dot(vec2<f32>(pixel), vec2<f32>(0.06711056, 0.00583715))),
 	);
-	let temporal_phase = fract(spatial_phase + temporal.reflections.w * 0.754877666);
+	// Keep the rotating low-discrepancy sequence centered inside each ray
+	// interval. A full interval of spatial jitter exposes the half-resolution
+	// fog grid during camera motion before TAA can converge; the centered span
+	// preserves temporal coverage while bounding that variance.
+	let rotating_phase = fract(spatial_phase + temporal.reflections.w * 0.754877666);
+	let temporal_phase = mix(0.5, rotating_phase, 0.38);
 	var directional_radiance = vec3<f32>(0.0);
 	if (render.light_counts.x > 0u) {
 		let light_direction = normalize(-render.directional_direction_intensity[0].xyz);
