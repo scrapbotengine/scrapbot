@@ -1,6 +1,6 @@
 # Resources and Registries
 
-**Last verified:** 2026-08-02
+**Last verified:** 2026-08-03
 **Persistent declarations:** `shared.Project_Resource` and `project.load_project_resources`  
 **Runtime authority:** `resources.Registry`
 
@@ -83,7 +83,10 @@ The recursive project loader rejects duplicate UUIDs. Scene validation resolves 
 
 - A `scrapbot.shader` resource owns one safe project-relative `shaders/*.wgsl` source and a fixed cull-mode policy.
 - Project source supplies `scrapbot_vertex` and `scrapbot_fragment` hooks. WGPU composes them with engine-owned camera, instance, material, opaque-color, depth, timing, output, and blending contracts.
-- An optional typed spectral-surface description owns patch size, wind speed/direction, amplitude, and small-wave damping. WGPU derives one shader-versioned GPU field from it; the project never owns backend bindings or compute pipelines.
+- An optional typed spectral-surface description owns patch size, wind speed/direction, amplitude,
+  small-wave damping, and bounded choppiness. WGPU derives one shader-versioned GPU
+  displacement/normal/crest field from it; the project never owns backend bindings or compute
+  pipelines.
 - Materials reference Shader UUIDs and four `Vec4` parameter slots. A changed Shader version invalidates only its cached module and pipelines.
 - Blended custom materials render after opaque world shading, test existing depth without writing it, sample a retained opaque-color copy, and sort material batches back to front. Exact per-instance sorting remains tracked work.
 - Custom shaders currently require blended materials. Matching displaced opaque depth-prepass and shadow variants remain tracked work.

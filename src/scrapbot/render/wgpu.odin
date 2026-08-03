@@ -562,6 +562,7 @@ WGPU_Custom_Shader_Cache :: struct {
 	module: wgpu.ShaderModule,
 	blend_pipeline: wgpu.RenderPipeline,
 	spectral_intermediate_buffer: wgpu.Buffer,
+	spectral_spatial_buffer: wgpu.Buffer,
 	spectral_field_buffer: wgpu.Buffer,
 	spectral_uniform_buffer: wgpu.Buffer,
 	spectral_compute_bind_group: wgpu.BindGroup,
@@ -575,6 +576,7 @@ WGPU_Custom_Shader_Cache :: struct {
 WGPU_Spectral_Surface_Uniform :: struct {
 	parameters: [4]f32,
 	wind_time: [4]f32,
+	shape: [4]f32,
 }
 
 WGPU_Transparent_Draw :: struct {
@@ -1106,6 +1108,7 @@ WGPU_Renderer :: struct {
 	spectral_surface_pipeline_layout: wgpu.PipelineLayout,
 	spectral_surface_horizontal_pipeline: wgpu.ComputePipeline,
 	spectral_surface_vertical_pipeline: wgpu.ComputePipeline,
+	spectral_surface_finalize_pipeline: wgpu.ComputePipeline,
 	spectral_surface_dummy_field_buffer: wgpu.Buffer,
 	spectral_surface_dummy_uniform_buffer: wgpu.Buffer,
 	spectral_surface_dispatch_count: u64,
@@ -1527,7 +1530,7 @@ wgpu_profile_workload :: proc(
 			renderer.spectral_surface_active_count > 0,
 			WGPU_SPECTRAL_SURFACE_SIZE,
 			WGPU_SPECTRAL_SURFACE_SIZE,
-			renderer.spectral_surface_active_count * 2,
+			renderer.spectral_surface_active_count * 3,
 			1,
 		),
 		shadow = shadow,

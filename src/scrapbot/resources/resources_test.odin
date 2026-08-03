@@ -155,6 +155,7 @@ test_project_shader_registry_versions_hook_source :: proc(t: ^testing.T) {
 				wind_direction = {0.94, 0.34},
 				amplitude = 0.7,
 				small_wave_damping = 0.35,
+				choppiness = 0.9,
 			},
 		},
 	}
@@ -168,6 +169,7 @@ test_project_shader_registry_versions_hook_source :: proc(t: ^testing.T) {
 		testing.expect(t, shader.spectral_surface.enabled)
 		testing.expect_value(t, shader.spectral_surface.patch_size, f32(192))
 		testing.expect_value(t, shader.spectral_surface.amplitude, f32(0.7))
+		testing.expect_value(t, shader.spectral_surface.choppiness, f32(0.9))
 		testing.expect_value(t, shader.version, u32(1))
 	}
 

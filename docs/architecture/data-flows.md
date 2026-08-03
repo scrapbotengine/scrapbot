@@ -1,6 +1,6 @@
 # Major Data Flows
 
-**Last verified:** 2026-08-02
+**Last verified:** 2026-08-03
 
 ## Project load and world bootstrap
 
@@ -159,7 +159,7 @@ typed ECS/resource mutation
                                       │
                  shadow + depth/sky/world + camera-selected debug/postprocessing
                                       │
-       optional Shader spectrum → GPU inverse FFT → height/slope field ─┐
+ optional Shader spectrum → GPU inverse FFT → displacement/crest field ─┐
                 opaque scene copy + depth + environment ────────────────┤
                                                                        ▼
                                                            project shader hooks

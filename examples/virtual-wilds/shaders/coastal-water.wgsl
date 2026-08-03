@@ -95,8 +95,8 @@ fn scrapbot_vertex(input: Scrapbot_Vertex) -> Scrapbot_Vertex {
 	var output = input;
 	let world_position = (input.model * vec4<f32>(input.position, 1.0)).xz;
 	let wave = scrapbot_spectral_surface(world_position);
-	output.position.y += wave.x;
-	output.normal = normalize(vec3<f32>(-wave.y, 1.0, -wave.z));
+	output.position += scrapbot_world_vector_to_object(input, wave.displacement);
+	output.normal = scrapbot_world_normal_to_object(input, wave.normal);
 	return output;
 }
 
@@ -153,10 +153,9 @@ fn scrapbot_fragment(input: Scrapbot_Fragment) -> Scrapbot_Surface {
 	).value * 0.5 + 0.5;
 	let shoreline = 1.0 - smoothstep(max(fwidth(water_thickness) * 1.5, 0.025), foam_width, water_thickness);
 	let broken_shore = shoreline * smoothstep(0.16, 0.68, foam_noise + shoreline * 0.24);
-	let wave = scrapbot_spectral_surface(input.world_position.xz);
-	let steepness = length(wave.yz);
-	let crest = smoothstep(0.18, 0.72, wave.x + steepness * 0.42) * smoothstep(0.48, 0.78, foam_noise);
-	let foam_mask = clamp((broken_shore + crest * 0.32) * settings.w, 0.0, 0.88);
+	let crest_compression = scrapbot_spectral_crest(input.world_position.xz);
+	let crest = smoothstep(0.06, 0.32, crest_compression) * smoothstep(0.42, 0.76, foam_noise);
+	let foam_mask = clamp((broken_shore + crest * 0.46) * settings.w, 0.0, 0.88);
 	color = mix(color, foam.rgb, foam_mask);
 
 	// This hook has already composited transmission, scattering, reflection, and

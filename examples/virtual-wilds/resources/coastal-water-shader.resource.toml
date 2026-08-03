@@ -8,8 +8,9 @@ cull_mode = "none"
 
 [shader.spectral_surface]
 enabled = true
-patch_size = 192
-wind_speed = 11
+patch_size = 144
+wind_speed = 13
 wind_direction = [0.94, 0.34]
-amplitude = 0.7
-small_wave_damping = 0.35
+amplitude = 2.2
+small_wave_damping = 0.28
+choppiness = 0.98

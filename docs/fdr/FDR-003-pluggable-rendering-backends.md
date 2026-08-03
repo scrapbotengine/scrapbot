@@ -404,13 +404,21 @@ Blended hooks receive the opaque scene color/depth and render in a depth-tested,
 
 **Decision:** Let a Shader resource opt into a renderer-owned 64×64 spectral surface. WGPU builds a deterministic Phillips wind spectrum, evolves its deep-water dispersion every rendered frame, and performs horizontal and vertical inverse FFT passes entirely on the GPU.
 
-Project hooks sample the periodic world-space field through `scrapbot_spectral_surface`. The helper returns height and two horizontal derivatives. The engine owns bindings, allocation, simulation time, and one cached field per Shader resource; projects own how that data deforms or shades a surface.
+Project hooks sample the periodic world-space field through `scrapbot_spectral_surface`. The helper
+returns displacement, a reconstructed normal, and crest compression. A bounded `choppiness`
+parameter converts the evolved height spectrum into frequency-domain horizontal orbital
+displacement, producing the sharpened crests and broad troughs associated with Gerstner waves.
+
+The engine owns bindings, allocation, simulation time, and one cached field per Shader resource;
+projects own how that data deforms or shades a surface. Shared helpers convert world-space vectors
+and normals back into project-hook object space under arbitrary entity transforms.
 
 Shaders without the option bind a shared zero field and disabled uniform. They pay no FFT dispatch. Multiple materials that reference one Shader share its field and dispatch at most once per frame.
 
 **Why:** Water, windblown terrain, and other broad stochastic surfaces need coherent low-frequency motion without copying backend bindings or compute orchestration into each project.
 
-**Tradeoff:** The first field has fixed resolution and one frequency band. It does not yet provide choppy horizontal displacement, currents, interaction masks, caustics, underwater rendering, or water-aware motion vectors.
+**Tradeoff:** The first field has fixed resolution and one frequency band. It does not yet provide
+currents, interaction masks, caustics, underwater rendering, or water-aware motion vectors.
 
 ## Related
 

@@ -23,11 +23,13 @@ while coarse geometry remains available.
 
 The route also demonstrates project-authored vertex and fragment hooks. A subdivided procedural
 plane consumes Scrapbot's reusable GPU spectral-surface field: a deterministic Phillips wind
-spectrum evolves through deep-water dispersion and a two-pass 64×64 inverse FFT. The public helper
-returns world-space height and slopes, while the example decides how those values deform water.
+spectrum evolves through deep-water dispersion and a two-axis 64×64 inverse FFT. Frequency-domain
+horizontal orbital displacement sharpens the result into Gerstner-style crests and broader troughs.
+The public helper returns world-space displacement, reconstructed normals, and crest compression,
+while the example decides how those values deform and shade water.
 
 The fragment hook composes guarded screen-space refraction, Beer–Lambert absorption and scattering,
-environment Fresnel reflection, and narrow depth-intersection and crest foam. psrdnoise supplies
+environment Fresnel reflection, and narrow depth-intersection and compression-driven crest foam. psrdnoise supplies
 only the smaller derivative-driven ripples and breakup, so the broad ocean motion no longer comes
 from a short repeating list of authored sine waves.
 
@@ -35,10 +37,14 @@ The material uses Scrapbot's sorted transparent pass and public scene-sampling A
 is therefore a normal consumer of the same shader-resource and material API available to every
 project, not a renderer-only water path.
 
-A broad authored seabed closes the complete camera route beneath the water. Reused instances of
-the Coastal Rocks scan form submerged shelves at several depths, giving absorption, refraction,
-and intersection foam real underwater topology instead of exposing the renderer's empty clear
-color through the surface.
+A seamless grid of ocean tiles and one matching seabed extend far beyond the complete camera route,
+leaving open water around the composed cove instead of ending near the visible coast. Every tile
+samples the same world-space spectrum, so boundaries match while each tile retains useful vertex
+density and culls independently.
+
+Reused CC0 scans build staggered headlands, offshore stacks, rock gardens, submerged shelves,
+reefs, and stranded trunks along the route. The layered silhouettes make the landscape denser while
+giving absorption, refraction, and intersection foam real underwater topology.
 
 The ordinary public `scrapbot.volumetric_fog` component adds restrained blue-gray coastal haze.
 Its low layer and forward-scattering response soften the distant route and catch the warm sun

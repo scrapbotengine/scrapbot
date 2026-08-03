@@ -496,7 +496,7 @@ Each row includes active CPU time, exact per-pass GPU time, their summed GPU fra
 The `workload` object records the dispatch size, render extent, encoded draw-submission spans,
 instances, or sample count behind each pass. Shadow workload dimensions report the active raster
 resolution rather than retained capacity. Spectral-surface workload reports its fixed field
-dimensions and both inverse-FFT passes for every active Shader resource.
+dimensions, both inverse-FFT axes, and spatial finalization pass for every active Shader resource.
 
 This makes a timing actionable. It distinguishes an expensive shader at a modest resolution from
 expected cost at a HiDPI physical resolution.

@@ -36,6 +36,7 @@ parse_project_resource :: proc(
 	resource.shader.spectral_surface.wind_direction = {0.94, 0.34}
 	resource.shader.spectral_surface.amplitude = 0.55
 	resource.shader.spectral_surface.small_wave_damping = 0.35
+	resource.shader.spectral_surface.choppiness = 0.85
 	resource.material.base_color = {1, 1, 1, 1}
 	resource.material.roughness = 0.8
 	resource.material.alpha_cutoff = 0.5
@@ -274,6 +275,8 @@ parse_project_resource :: proc(
 					resource.shader.spectral_surface.amplitude, found = parse_f32(value)
 				case "small_wave_damping":
 					resource.shader.spectral_surface.small_wave_damping, found = parse_f32(value)
+				case "choppiness":
+					resource.shader.spectral_surface.choppiness, found = parse_f32(value)
 				case:
 					return resource, fail(
 						.Invalid_Field,
@@ -682,6 +685,15 @@ parse_project_resource :: proc(
 				return resource, fail(
 					.Invalid_Field,
 					"shader.spectral_surface.small_wave_damping must be between zero and 10",
+				)
+			}
+			if math.is_nan(spectral.choppiness) ||
+			   math.is_inf(spectral.choppiness) ||
+			   spectral.choppiness < 0 ||
+			   spectral.choppiness > 1 {
+				return resource, fail(
+					.Invalid_Field,
+					"shader.spectral_surface.choppiness must be between zero and one",
 				)
 			}
 		}

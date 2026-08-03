@@ -12,7 +12,7 @@ This file tracks current actionable engineering work. The broad product roadmap 
 - [ ] Add GPU-native compressed texture products for imported images.
 - [ ] Add sorted glTF `BLEND` transparency, richer PBR extensions, animation, skins, morph targets, and compressed geometry. (`OPAQUE`, `MASK`, alpha cutoffs, and double-sided materials are supported.)
 - [ ] Add a bounded GPU sort path for large transparent sets; project-shader transparency currently performs exact CPU back-to-front instance sorting.
-- [ ] Extend spectral surfaces into a reusable water resource/component with multiple frequency bands, choppy displacement, current/deformation masks, caustics, underwater rendering, water-aware motion vectors, and scalable quality tiers.
+- [ ] Extend spectral surfaces into a reusable water resource/component with multiple frequency bands, current/deformation masks, caustics, underwater rendering, water-aware motion vectors, and scalable quality tiers.
 - [ ] Add custom-vertex depth and shadow variants so displaced opaque geometry participates in the prepass and cascades without running a mismatched vertex contract.
 - [ ] Surface WGSL compilation and pipeline-validation failures as structured project diagnostics instead of allowing wgpu-native's default uncaptured-error handler to abort.
 - [ ] Add optional per-target post-processing, grids, axes, wireframe, and transparent presentation to embedded ECS viewports.

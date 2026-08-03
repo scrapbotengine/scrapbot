@@ -58,6 +58,7 @@ struct Custom_Uniform {
 struct Spectral_Surface_Uniform {
 	parameters: vec4<f32>,
 	wind_time: vec4<f32>,
+	shape: vec4<f32>,
 };
 struct Environment_Uniform {
 	intensity: f32,
@@ -136,29 +137,57 @@ fn scrapbot_parameter(index: u32) -> vec4<f32> {
 fn scrapbot_time_seconds() -> f32 { return scrapbot_custom.time.x; }
 fn scrapbot_delta_seconds() -> f32 { return scrapbot_custom.time.y; }
 fn scrapbot_frame_index() -> f32 { return scrapbot_custom.time.z; }
-fn scrapbot_spectral_height_index(x: u32, y: u32) -> f32 {
-	return scrapbot_spectral_field[(y & 63u) * 64u + (x & 63u)].x;
+struct Scrapbot_Spectral_Surface {
+	displacement: vec3<f32>,
+	normal: vec3<f32>,
+	crest: f32,
+};
+fn scrapbot_spectral_sample_index(x: u32, y: u32) -> vec4<f32> {
+	return scrapbot_spectral_field[((y & 63u) * 64u + (x & 63u)) * 2u];
 }
-fn scrapbot_spectral_height(world_xz: vec2<f32>) -> f32 {
-	if (scrapbot_spectral.parameters.x < 0.5) { return 0.0; }
+fn scrapbot_spectral_normal_index(x: u32, y: u32) -> vec3<f32> {
+	return scrapbot_spectral_field[((y & 63u) * 64u + (x & 63u)) * 2u + 1u].xyz;
+}
+fn scrapbot_spectral_sample(world_xz: vec2<f32>) -> vec4<f32> {
+	if (scrapbot_spectral.parameters.x < 0.5) { return vec4<f32>(0.0); }
 	let grid = fract(world_xz / max(scrapbot_spectral.parameters.y, 0.001)) * 64.0;
 	let base = vec2<u32>(floor(grid));
 	let blend = fract(grid);
-	let h00 = scrapbot_spectral_height_index(base.x, base.y);
-	let h10 = scrapbot_spectral_height_index(base.x + 1u, base.y);
-	let h01 = scrapbot_spectral_height_index(base.x, base.y + 1u);
-	let h11 = scrapbot_spectral_height_index(base.x + 1u, base.y + 1u);
-	return mix(mix(h00, h10, blend.x), mix(h01, h11, blend.x), blend.y);
+	let s00 = scrapbot_spectral_sample_index(base.x, base.y);
+	let s10 = scrapbot_spectral_sample_index(base.x + 1u, base.y);
+	let s01 = scrapbot_spectral_sample_index(base.x, base.y + 1u);
+	let s11 = scrapbot_spectral_sample_index(base.x + 1u, base.y + 1u);
+	return mix(mix(s00, s10, blend.x), mix(s01, s11, blend.x), blend.y);
 }
-fn scrapbot_spectral_surface(world_xz: vec2<f32>) -> vec3<f32> {
-	if (scrapbot_spectral.parameters.x < 0.5) { return vec3<f32>(0.0); }
-	let spacing = scrapbot_spectral.parameters.y / 64.0;
-	let height = scrapbot_spectral_height(world_xz);
-	let slope_x = (scrapbot_spectral_height(world_xz + vec2<f32>(spacing, 0.0)) -
-		scrapbot_spectral_height(world_xz - vec2<f32>(spacing, 0.0))) / (2.0 * spacing);
-	let slope_z = (scrapbot_spectral_height(world_xz + vec2<f32>(0.0, spacing)) -
-		scrapbot_spectral_height(world_xz - vec2<f32>(0.0, spacing))) / (2.0 * spacing);
-	return vec3<f32>(height, slope_x, slope_z);
+fn scrapbot_spectral_displacement(world_xz: vec2<f32>) -> vec3<f32> {
+	return scrapbot_spectral_sample(world_xz).xyz;
+}
+fn scrapbot_spectral_normal(world_xz: vec2<f32>) -> vec3<f32> {
+	if (scrapbot_spectral.parameters.x < 0.5) { return vec3<f32>(0.0, 1.0, 0.0); }
+	let grid = fract(world_xz / max(scrapbot_spectral.parameters.y, 0.001)) * 64.0;
+	let base = vec2<u32>(floor(grid));
+	let blend = fract(grid);
+	let n00 = scrapbot_spectral_normal_index(base.x, base.y);
+	let n10 = scrapbot_spectral_normal_index(base.x + 1u, base.y);
+	let n01 = scrapbot_spectral_normal_index(base.x, base.y + 1u);
+	let n11 = scrapbot_spectral_normal_index(base.x + 1u, base.y + 1u);
+	return normalize(mix(mix(n00, n10, blend.x), mix(n01, n11, blend.x), blend.y));
+}
+fn scrapbot_spectral_crest(world_xz: vec2<f32>) -> f32 {
+	return scrapbot_spectral_sample(world_xz).w;
+}
+fn scrapbot_spectral_surface(world_xz: vec2<f32>) -> Scrapbot_Spectral_Surface {
+	if (scrapbot_spectral.parameters.x < 0.5) {
+		return Scrapbot_Spectral_Surface(vec3<f32>(0.0), vec3<f32>(0.0, 1.0, 0.0), 0.0);
+	}
+	let center = scrapbot_spectral_sample(world_xz);
+	return Scrapbot_Spectral_Surface(center.xyz, scrapbot_spectral_normal(world_xz), center.w);
+}
+fn scrapbot_world_vector_to_object(input: Scrapbot_Vertex, world_vector: vec3<f32>) -> vec3<f32> {
+	return (transpose(input.normal_model) * vec4<f32>(world_vector, 0.0)).xyz;
+}
+fn scrapbot_world_normal_to_object(input: Scrapbot_Vertex, world_normal: vec3<f32>) -> vec3<f32> {
+	return normalize((transpose(input.model) * vec4<f32>(world_normal, 0.0)).xyz);
 }
 fn scrapbot_pixel_size() -> vec2<f32> { return vec2<f32>(1.0) / max(scrapbot_custom.viewport.zw, vec2<f32>(1.0)); }
 fn scrapbot_scene_pixel_size() -> vec2<f32> {
@@ -299,21 +328,57 @@ fn octahedral_encode(direction: vec3<f32>) -> vec2<f32> {
 
 WGPU_SPECTRAL_SURFACE_SIZE :: u32(64)
 WGPU_SPECTRAL_SURFACE_TEXEL_COUNT :: u64(64 * 64)
+WGPU_SPECTRAL_SURFACE_FIELD_VALUE_COUNT :: u64(2)
 
 WGPU_SPECTRAL_SURFACE_SHADER :: `
 struct Spectral_Surface_Uniform {
 	parameters: vec4<f32>,
 	wind_time: vec4<f32>,
+	shape: vec4<f32>,
+};
+struct Spectral_Value {
+	height: vec2<f32>,
+	displacement_x: vec2<f32>,
+	displacement_z: vec2<f32>,
+	padding: vec2<f32>,
 };
 @group(0) @binding(0) var<uniform> spectral: Spectral_Surface_Uniform;
-@group(0) @binding(1) var<storage, read_write> intermediate: array<vec2<f32>>;
-@group(0) @binding(2) var<storage, read_write> field: array<vec4<f32>>;
+@group(0) @binding(1) var<storage, read_write> intermediate: array<Spectral_Value>;
+@group(0) @binding(2) var<storage, read_write> spatial: array<vec4<f32>>;
+@group(0) @binding(3) var<storage, read_write> field: array<vec4<f32>>;
 
-var<workgroup> fft_a: array<vec2<f32>, 64>;
-var<workgroup> fft_b: array<vec2<f32>, 64>;
+var<workgroup> fft_a: array<Spectral_Value, 64>;
+var<workgroup> fft_b: array<Spectral_Value, 64>;
 
 fn complex_multiply(a: vec2<f32>, b: vec2<f32>) -> vec2<f32> {
 	return vec2<f32>(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x);
+}
+
+fn spectral_add(a: Spectral_Value, b: Spectral_Value) -> Spectral_Value {
+	return Spectral_Value(
+		a.height + b.height,
+		a.displacement_x + b.displacement_x,
+		a.displacement_z + b.displacement_z,
+		vec2<f32>(0.0),
+	);
+}
+
+fn spectral_scale(value: Spectral_Value, scale: f32) -> Spectral_Value {
+	return Spectral_Value(
+		value.height * scale,
+		value.displacement_x * scale,
+		value.displacement_z * scale,
+		vec2<f32>(0.0),
+	);
+}
+
+fn spectral_twiddle(value: Spectral_Value, twiddle: vec2<f32>) -> Spectral_Value {
+	return Spectral_Value(
+		complex_multiply(value.height, twiddle),
+		complex_multiply(value.displacement_x, twiddle),
+		complex_multiply(value.displacement_z, twiddle),
+		vec2<f32>(0.0),
+	);
 }
 
 fn bit_reverse_6(value: u32) -> u32 {
@@ -380,6 +445,23 @@ fn evolved_spectrum(x: u32, y: u32) -> vec2<f32> {
 		complex_multiply(vec2<f32>(h0_opposite.x, -h0_opposite.y), vec2<f32>(rotation.x, -rotation.y));
 }
 
+fn evolved_spectral_value(x: u32, y: u32) -> Spectral_Value {
+	let height = evolved_spectrum(x, y);
+	let wave = vec2<f32>(signed_frequency(x), signed_frequency(y)) *
+		(6.28318530718 / max(spectral.parameters.y, 16.0));
+	let wave_length = length(wave);
+	var direction = vec2<f32>(0.0);
+	if (wave_length > 0.000001) {
+		direction = wave / wave_length;
+	}
+	// Frequency-domain horizontal orbital displacement is Tessendorf's
+	// spectral counterpart to Gerstner-wave choppiness.
+	let choppiness = clamp(spectral.shape.x, 0.0, 1.0);
+	let displacement_x = complex_multiply(height, vec2<f32>(0.0, -direction.x * choppiness));
+	let displacement_z = complex_multiply(height, vec2<f32>(0.0, -direction.y * choppiness));
+	return Spectral_Value(height, displacement_x, displacement_z, vec2<f32>(0.0));
+}
+
 fn fft_stage(local_index: u32, stage: u32) {
 	let span = 1u << (stage + 1u);
 	let half_span = span >> 1u;
@@ -390,16 +472,22 @@ fn fft_stage(local_index: u32, stage: u32) {
 	let odd_index = even_index + half_span;
 	let angle = 6.28318530718 * f32(pair_lane) / f32(span);
 	let twiddle = vec2<f32>(cos(angle), sin(angle));
-	var even: vec2<f32>;
-	var odd: vec2<f32>;
+	var even: Spectral_Value;
+	var odd: Spectral_Value;
 	if ((stage & 1u) == 0u) {
 		even = fft_a[even_index];
 		odd = fft_a[odd_index];
-		fft_b[local_index] = even + select(-1.0, 1.0, lane < half_span) * complex_multiply(twiddle, odd);
+		fft_b[local_index] = spectral_add(
+			even,
+			spectral_scale(spectral_twiddle(odd, twiddle), select(-1.0, 1.0, lane < half_span)),
+		);
 	} else {
 		even = fft_b[even_index];
 		odd = fft_b[odd_index];
-		fft_a[local_index] = even + select(-1.0, 1.0, lane < half_span) * complex_multiply(twiddle, odd);
+		fft_a[local_index] = spectral_add(
+			even,
+			spectral_scale(spectral_twiddle(odd, twiddle), select(-1.0, 1.0, lane < half_span)),
+		);
 	}
 }
 
@@ -410,7 +498,7 @@ fn horizontal(
 ) {
 	let local_index = local_id.x;
 	let row = group_id.y;
-	fft_a[local_index] = evolved_spectrum(bit_reverse_6(local_index), row);
+	fft_a[local_index] = evolved_spectral_value(bit_reverse_6(local_index), row);
 	workgroupBarrier();
 	for (var stage = 0u; stage < 6u; stage = stage + 1u) {
 		fft_stage(local_index, stage);
@@ -432,7 +520,53 @@ fn vertical(
 		fft_stage(local_index, stage);
 		workgroupBarrier();
 	}
-	field[local_index * 64u + column] = vec4<f32>(fft_a[local_index].x, 0.0, 0.0, 0.0);
+	let value = fft_a[local_index];
+	spatial[local_index * 64u + column] = vec4<f32>(
+		value.displacement_x.x,
+		value.height.x,
+		value.displacement_z.x,
+		0.0,
+	);
+}
+
+fn spatial_sample(x: u32, y: u32) -> vec3<f32> {
+	return spatial[(y & 63u) * 64u + (x & 63u)].xyz;
+}
+
+@compute @workgroup_size(8, 8)
+fn finalize(@builtin(global_invocation_id) global_id: vec3<u32>) {
+	if (global_id.x >= 64u || global_id.y >= 64u) { return; }
+	let x = global_id.x;
+	let y = global_id.y;
+	let center = spatial_sample(x, y);
+	let left = spatial_sample(x - 1u, y);
+	let right = spatial_sample(x + 1u, y);
+	let back = spatial_sample(x, y - 1u);
+	let front = spatial_sample(x, y + 1u);
+	let spacing = max(spectral.parameters.y, 16.0) / 64.0;
+	let inverse_span = 1.0 / (2.0 * spacing);
+	let displacement_x_x = (right.x - left.x) * inverse_span;
+	let displacement_x_z = (front.x - back.x) * inverse_span;
+	let displacement_z_x = (right.z - left.z) * inverse_span;
+	let displacement_z_z = (front.z - back.z) * inverse_span;
+	let jacobian =
+		(1.0 + displacement_x_x) * (1.0 + displacement_z_z) -
+		displacement_x_z * displacement_z_x;
+	let crest = clamp(1.0 - jacobian, 0.0, 1.0);
+	let tangent_x = vec3<f32>(
+		2.0 * spacing + right.x - left.x,
+		right.y - left.y,
+		right.z - left.z,
+	);
+	let tangent_z = vec3<f32>(
+		front.x - back.x,
+		front.y - back.y,
+		2.0 * spacing + front.z - back.z,
+	);
+	let normal = normalize(cross(tangent_z, tangent_x));
+	let output_index = (y * 64u + x) * 2u;
+	field[output_index] = vec4<f32>(center, crest);
+	field[output_index + 1u] = vec4<f32>(normal, 0.0);
 }
 `
 
@@ -481,6 +615,7 @@ wgpu_spectral_surface_uniform :: proc(
 			time_seconds,
 			config.small_wave_damping,
 		},
+		shape = {config.choppiness, 0, 0, 0},
 	}
 }
 
@@ -497,7 +632,15 @@ wgpu_create_spectral_surface_cache :: proc(
 		&wgpu.BufferDescriptor {
 			label = "Scrapbot Spectral Surface Intermediate Buffer",
 			usage = {.Storage},
-			size = WGPU_SPECTRAL_SURFACE_TEXEL_COUNT * u64(size_of([2]f32)),
+			size = WGPU_SPECTRAL_SURFACE_TEXEL_COUNT * u64(size_of([8]f32)),
+		},
+	)
+	entry.spectral_spatial_buffer = wgpu.DeviceCreateBuffer(
+		renderer.device,
+		&wgpu.BufferDescriptor {
+			label = "Scrapbot Spectral Surface Spatial Buffer",
+			usage = {.Storage},
+			size = WGPU_SPECTRAL_SURFACE_TEXEL_COUNT * u64(size_of([4]f32)),
 		},
 	)
 	entry.spectral_field_buffer = wgpu.DeviceCreateBuffer(
@@ -505,7 +648,9 @@ wgpu_create_spectral_surface_cache :: proc(
 		&wgpu.BufferDescriptor {
 			label = "Scrapbot Spectral Surface Field Buffer",
 			usage = {.Storage},
-			size = WGPU_SPECTRAL_SURFACE_TEXEL_COUNT * u64(size_of([4]f32)),
+			size = WGPU_SPECTRAL_SURFACE_TEXEL_COUNT *
+			WGPU_SPECTRAL_SURFACE_FIELD_VALUE_COUNT *
+			u64(size_of([4]f32)),
 		},
 	)
 	entry.spectral_uniform_buffer = wgpu.DeviceCreateBuffer(
@@ -517,6 +662,7 @@ wgpu_create_spectral_surface_cache :: proc(
 		},
 	)
 	if entry.spectral_intermediate_buffer == nil ||
+	   entry.spectral_spatial_buffer == nil ||
 	   entry.spectral_field_buffer == nil ||
 	   entry.spectral_uniform_buffer == nil {
 		return "failed to create spectral surface buffers"
@@ -530,12 +676,19 @@ wgpu_create_spectral_surface_cache :: proc(
 		{
 			binding = 1,
 			buffer = entry.spectral_intermediate_buffer,
-			size = WGPU_SPECTRAL_SURFACE_TEXEL_COUNT * u64(size_of([2]f32)),
+			size = WGPU_SPECTRAL_SURFACE_TEXEL_COUNT * u64(size_of([8]f32)),
 		},
 		{
 			binding = 2,
-			buffer = entry.spectral_field_buffer,
+			buffer = entry.spectral_spatial_buffer,
 			size = WGPU_SPECTRAL_SURFACE_TEXEL_COUNT * u64(size_of([4]f32)),
+		},
+		{
+			binding = 3,
+			buffer = entry.spectral_field_buffer,
+			size = WGPU_SPECTRAL_SURFACE_TEXEL_COUNT *
+			WGPU_SPECTRAL_SURFACE_FIELD_VALUE_COUNT *
+			u64(size_of([4]f32)),
 		},
 	}
 	entry.spectral_compute_bind_group = wgpu.DeviceCreateBindGroup(
@@ -565,6 +718,7 @@ wgpu_release_custom_shader_cache_entry :: proc(entry: ^WGPU_Custom_Shader_Cache)
 	}
 	if entry.spectral_uniform_buffer != nil { wgpu.BufferRelease(entry.spectral_uniform_buffer) }
 	if entry.spectral_field_buffer != nil { wgpu.BufferRelease(entry.spectral_field_buffer) }
+	if entry.spectral_spatial_buffer != nil { wgpu.BufferRelease(entry.spectral_spatial_buffer) }
 	if entry.spectral_intermediate_buffer != nil {
 		wgpu.BufferRelease(entry.spectral_intermediate_buffer)
 	}
@@ -731,6 +885,7 @@ wgpu_create_spectral_surface_resources :: proc(renderer: ^WGPU_Renderer) -> stri
 		},
 		{binding = 1, visibility = {.Compute}, buffer = {type = .Storage}},
 		{binding = 2, visibility = {.Compute}, buffer = {type = .Storage}},
+		{binding = 3, visibility = {.Compute}, buffer = {type = .Storage}},
 	}
 	renderer.spectral_surface_bind_group_layout = wgpu.DeviceCreateBindGroupLayout(
 		renderer.device,
@@ -768,12 +923,22 @@ wgpu_create_spectral_surface_resources :: proc(renderer: ^WGPU_Renderer) -> stri
 			compute = {module = renderer.spectral_surface_shader, entryPoint = "vertical"},
 		},
 	)
+	renderer.spectral_surface_finalize_pipeline = wgpu.DeviceCreateComputePipeline(
+		renderer.device,
+		&wgpu.ComputePipelineDescriptor {
+			label = "Scrapbot Spectral Surface Finalize Pipeline",
+			layout = renderer.spectral_surface_pipeline_layout,
+			compute = {module = renderer.spectral_surface_shader, entryPoint = "finalize"},
+		},
+	)
 	renderer.spectral_surface_dummy_field_buffer = wgpu.DeviceCreateBuffer(
 		renderer.device,
 		&wgpu.BufferDescriptor {
 			label = "Scrapbot Spectral Surface Dummy Field Buffer",
 			usage = {.Storage},
-			size = WGPU_SPECTRAL_SURFACE_TEXEL_COUNT * u64(size_of([4]f32)),
+			size = WGPU_SPECTRAL_SURFACE_TEXEL_COUNT *
+			WGPU_SPECTRAL_SURFACE_FIELD_VALUE_COUNT *
+			u64(size_of([4]f32)),
 		},
 	)
 	renderer.spectral_surface_dummy_uniform_buffer = wgpu.DeviceCreateBuffer(
@@ -787,6 +952,7 @@ wgpu_create_spectral_surface_resources :: proc(renderer: ^WGPU_Renderer) -> stri
 	if renderer.spectral_surface_pipeline_layout == nil ||
 	   renderer.spectral_surface_horizontal_pipeline == nil ||
 	   renderer.spectral_surface_vertical_pipeline == nil ||
+	   renderer.spectral_surface_finalize_pipeline == nil ||
 	   renderer.spectral_surface_dummy_field_buffer == nil ||
 	   renderer.spectral_surface_dummy_uniform_buffer == nil {
 		return "failed to create spectral surface compute resources"
@@ -820,7 +986,9 @@ wgpu_create_custom_shader_resources :: proc(renderer: ^WGPU_Renderer) -> string 
 			visibility = {.Vertex, .Fragment},
 			buffer = {
 				type = .ReadOnlyStorage,
-				minBindingSize = WGPU_SPECTRAL_SURFACE_TEXEL_COUNT * u64(size_of([4]f32)),
+				minBindingSize = WGPU_SPECTRAL_SURFACE_TEXEL_COUNT *
+				WGPU_SPECTRAL_SURFACE_FIELD_VALUE_COUNT *
+				u64(size_of([4]f32)),
 			},
 		},
 		{
@@ -934,6 +1102,10 @@ wgpu_release_custom_shader_resources :: proc(renderer: ^WGPU_Renderer) {
 		wgpu.ComputePipelineRelease(renderer.spectral_surface_vertical_pipeline)
 	}
 	renderer.spectral_surface_vertical_pipeline = nil
+	if renderer.spectral_surface_finalize_pipeline != nil {
+		wgpu.ComputePipelineRelease(renderer.spectral_surface_finalize_pipeline)
+	}
+	renderer.spectral_surface_finalize_pipeline = nil
 	if renderer.spectral_surface_horizontal_pipeline != nil {
 		wgpu.ComputePipelineRelease(renderer.spectral_surface_horizontal_pipeline)
 	}
@@ -1050,7 +1222,9 @@ wgpu_ensure_custom_shader_bind_group :: proc(
 		{
 			binding = 4,
 			buffer = field_buffer,
-			size = WGPU_SPECTRAL_SURFACE_TEXEL_COUNT * u64(size_of([4]f32)),
+			size = WGPU_SPECTRAL_SURFACE_TEXEL_COUNT *
+			WGPU_SPECTRAL_SURFACE_FIELD_VALUE_COUNT *
+			u64(size_of([4]f32)),
 		},
 		{
 			binding = 5,
@@ -1108,10 +1282,17 @@ wgpu_encode_spectral_surface :: proc(
 	wgpu.ComputePassEncoderDispatchWorkgroups(pass, 1, WGPU_SPECTRAL_SURFACE_SIZE, 1)
 	wgpu.ComputePassEncoderSetPipeline(pass, renderer.spectral_surface_vertical_pipeline)
 	wgpu.ComputePassEncoderDispatchWorkgroups(pass, WGPU_SPECTRAL_SURFACE_SIZE, 1, 1)
+	wgpu.ComputePassEncoderSetPipeline(pass, renderer.spectral_surface_finalize_pipeline)
+	wgpu.ComputePassEncoderDispatchWorkgroups(
+		pass,
+		(WGPU_SPECTRAL_SURFACE_SIZE + 7) / 8,
+		(WGPU_SPECTRAL_SURFACE_SIZE + 7) / 8,
+		1,
+	)
 	wgpu.ComputePassEncoderEnd(pass)
 	wgpu.ComputePassEncoderRelease(pass)
 	entry.spectral_last_frame = renderer.profile_frame_index
-	renderer.spectral_surface_dispatch_count += 2
+	renderer.spectral_surface_dispatch_count += 3
 	renderer.spectral_surface_active_count += 1
 	return ""
 }

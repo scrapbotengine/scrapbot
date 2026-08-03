@@ -442,6 +442,7 @@ wind_speed = 14
 wind_direction = [0.8, 0.6]
 amplitude = 0.75
 small_wave_damping = 0.4
+choppiness = 0.9
 `,
 	)
 	testing.expect(t, shader_result.err == .None)
@@ -452,6 +453,7 @@ small_wave_damping = 0.4
 	testing.expect_value(t, shader.shader.spectral_surface.patch_size, f32(256))
 	testing.expect_value(t, shader.shader.spectral_surface.wind_direction, Vec2{0.8, 0.6})
 	testing.expect_value(t, shader.shader.spectral_surface.amplitude, f32(0.75))
+	testing.expect_value(t, shader.shader.spectral_surface.choppiness, f32(0.9))
 
 	material, material_result := parse_project_resource(
 		`id = "a1000000-0000-4000-8000-000000000011"
@@ -491,6 +493,19 @@ wind_direction = [0, 0]
 `,
 	)
 	testing.expect(t, invalid_spectrum.err == .Invalid_Field)
+
+	_, invalid_choppiness := parse_project_resource(
+		`id = "a1000000-0000-4000-8000-000000000014"
+type = "scrapbot.shader"
+name = "Looping Water"
+[shader]
+source = "shaders/water.wgsl"
+[shader.spectral_surface]
+enabled = true
+choppiness = 1.1
+`,
+	)
+	testing.expect(t, invalid_choppiness.err == .Invalid_Field)
 }
 
 @(test)

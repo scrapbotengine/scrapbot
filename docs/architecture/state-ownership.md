@@ -1,6 +1,6 @@
 # State Ownership and Invalidation
 
-**Last verified:** 2026-08-02
+**Last verified:** 2026-08-03
 
 Scrapbot separates authoritative project/runtime state from derived indexes, caches, render data, and editor views. A derived owner must update from explicit lifecycle or revision signals where feasible; stable frames must not rediscover unchanged state.
 
@@ -174,9 +174,15 @@ While query freeze is active, the renderer leaves the latest valid tail and indi
 
 ### Project spectral surfaces
 
-The Shader resource owns spectral parameters and versioning. Its WGPU cache owns the frequency-domain intermediate buffer, spatial height field, uniform, bind groups, and pipeline association.
+The Shader resource owns spectral parameters and versioning. Its WGPU cache owns the
+frequency-domain intermediate buffer, raw spatial displacement buffer, finalized
+displacement/normal/crest field, uniform, bind groups, and pipeline association.
 
-Simulation time is frame-valued. Each active spectral Shader updates its uniform and encodes one horizontal plus one vertical inverse FFT at most once per frame, even when several transparent draws share it. Inactive and non-spectral Shaders encode no spectral work and bind the renderer's shared zero field.
+Simulation time is frame-valued. Each active spectral Shader updates its uniform and encodes one
+horizontal plus one vertical inverse FFT followed by one spatial finalization dispatch at most once
+per frame, even when several transparent draws share it. Finalization derives the compression
+Jacobian used for crest foam. Inactive and non-spectral Shaders encode no spectral work and bind the
+renderer's shared zero field.
 
 Changing the Shader version releases only that Shader's spectral state and render pipeline. Resizing the scene target rebuilds only per-Shader scene/depth bind groups; the spectral field survives.
 

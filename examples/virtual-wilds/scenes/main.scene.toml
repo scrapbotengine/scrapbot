@@ -96,13 +96,88 @@ primitive = "plane"
 resource = "7b000000-0000-4000-8000-000000000009"
 
 [[entities]]
+id = "7b100000-0000-4000-8000-000000000040"
+name = "Coastal Water West"
+
+[entities.transform]
+position = [-84, -0.2, -50]
+rotation = [0, 0, 0]
+scale = [84, 1, 300]
+
+[entities.mesh]
+primitive = "plane"
+
+[entities.material]
+resource = "7b000000-0000-4000-8000-000000000009"
+
+[[entities]]
+id = "7b100000-0000-4000-8000-000000000041"
+name = "Coastal Water East"
+
+[entities.transform]
+position = [84, -0.2, -50]
+rotation = [0, 0, 0]
+scale = [84, 1, 300]
+
+[entities.mesh]
+primitive = "plane"
+
+[entities.material]
+resource = "7b000000-0000-4000-8000-000000000009"
+
+[[entities]]
+id = "7b100000-0000-4000-8000-000000000042"
+name = "Coastal Water Far"
+
+[entities.transform]
+position = [0, -0.2, -350]
+rotation = [0, 0, 0]
+scale = [84, 1, 300]
+
+[entities.mesh]
+primitive = "plane"
+
+[entities.material]
+resource = "7b000000-0000-4000-8000-000000000009"
+
+[[entities]]
+id = "7b100000-0000-4000-8000-000000000043"
+name = "Coastal Water Far West"
+
+[entities.transform]
+position = [-84, -0.2, -350]
+rotation = [0, 0, 0]
+scale = [84, 1, 300]
+
+[entities.mesh]
+primitive = "plane"
+
+[entities.material]
+resource = "7b000000-0000-4000-8000-000000000009"
+
+[[entities]]
+id = "7b100000-0000-4000-8000-000000000044"
+name = "Coastal Water Far East"
+
+[entities.transform]
+position = [84, -0.2, -350]
+rotation = [0, 0, 0]
+scale = [84, 1, 300]
+
+[entities.mesh]
+primitive = "plane"
+
+[entities.material]
+resource = "7b000000-0000-4000-8000-000000000009"
+
+[[entities]]
 id = "7b100000-0000-4000-8000-000000000006"
 name = "Coastal Seabed"
 
 [entities.transform]
-position = [0, -3.2, -50]
+position = [0, -3.2, -100]
 rotation = [0, 0, 0]
-scale = [84, 1, 300]
+scale = [240, 1, 700]
 
 [entities.mesh]
 primitive = "plane"
@@ -225,6 +300,62 @@ resource = "7b000000-0000-4000-8000-000000000003"
 [entities.shadow_receiver]
 
 [[entities]]
+id = "7b100000-0000-4000-8000-000000000015"
+name = "Cove Gate Cliff"
+
+[entities.transform]
+position = [25, -0.7, -58]
+rotation = [0.04, -1.42, -0.03]
+scale = [0.72, 1.05, 0.78]
+
+[entities.model]
+resource = "7b000000-0000-4000-8000-000000000003"
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "7b100000-0000-4000-8000-000000000017"
+name = "Near Offshore Stack"
+
+[entities.transform]
+position = [-17, -1.65, -20]
+rotation = [0.06, 1.08, -0.04]
+scale = [0.62, 0.92, 0.58]
+
+[entities.model]
+resource = "7b000000-0000-4000-8000-000000000004"
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "7b100000-0000-4000-8000-000000000020"
+name = "Cove Rock Garden"
+
+[entities.transform]
+position = [10.5, -1.35, -39]
+rotation = [0.08, -2.48, 0.02]
+scale = [0.48, 0.7, 0.52]
+
+[entities.model]
+resource = "7b000000-0000-4000-8000-000000000004"
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "7b100000-0000-4000-8000-000000000022"
+name = "Submerged Reef Near"
+
+[entities.transform]
+position = [8, -2.75, -22]
+rotation = [0.12, -1.04, 0]
+scale = [1.25, 0.46, 1.55]
+
+[entities.model]
+resource = "7b000000-0000-4000-8000-000000000004"
+
+[entities.shadow_receiver]
+
+[[entities]]
 id = "7b100000-0000-4000-8000-000000000030"
 name = "Bleached Trunk"
 
@@ -232,6 +363,34 @@ name = "Bleached Trunk"
 position = [3.5, 0.65, -5]
 rotation = [0.08, 0.45, -0.12]
 scale = [2.8, 2.8, 2.8]
+
+[entities.model]
+resource = "7b000000-0000-4000-8000-000000000006"
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "7b100000-0000-4000-8000-000000000033"
+name = "Stranded Cove Trunk"
+
+[entities.transform]
+position = [8.5, 0.15, -31]
+rotation = [0.18, 2.15, -0.22]
+scale = [2.4, 2.4, 2.4]
+
+[entities.model]
+resource = "7b000000-0000-4000-8000-000000000006"
+
+[entities.shadow_receiver]
+
+[[entities]]
+id = "7b100000-0000-4000-8000-000000000034"
+name = "Reef Snag"
+
+[entities.transform]
+position = [-9, -0.05, -69]
+rotation = [-0.2, -1.65, 0.3]
+scale = [3.1, 3.1, 3.1]
 
 [entities.model]
 resource = "7b000000-0000-4000-8000-000000000006"

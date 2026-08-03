@@ -168,6 +168,7 @@ Shader_Spectral_Surface :: struct {
 	wind_direction: Vec2,
 	amplitude: f32,
 	small_wave_damping: f32,
+	choppiness: f32,
 }
 
 Project_Material_Resource :: struct {
