@@ -262,19 +262,21 @@ fn coastal_foam_layers(
 	let breakup_field = medium * 0.62 + fine * 0.28 + coarse * 0.1;
 	let wash_breakup = smoothstep(0.43, 0.68, breakup_field);
 	let bubbles = smoothstep(0.8, 0.95, fine) * shore_envelope;
-	// A soft depth envelope avoids drawing a second family of closed contours
-	// around every submerged rock. The advected breakup supplies structure
-	// within the wash instead of defining the silhouette of the wash itself.
-	let waterline = 1.0 - smoothstep(0.0, 0.26 + depth_aa, warped_depth);
-	let broken_wash = (1.0 - smoothstep(0.08, 1.05, warped_depth)) * wash_breakup;
+	// Start the visible wash slightly away from zero depth. An exact waterline
+	// contour outlines every open photogrammetry edge and turns scan fringe into
+	// a moving comb under refraction. The broad band below still reaches the
+	// beach, but its shape comes from depth and breakup rather than silhouettes.
+	let wash_envelope = smoothstep(0.05 + depth_aa, 0.24 + depth_aa, warped_depth) *
+		(1.0 - smoothstep(0.42, 1.18, warped_depth));
+	let broken_wash = wash_envelope * wash_breakup;
 	let intersection = clamp(
-		waterline * 0.2 + broken_wash * 0.34 + bubbles * 0.04,
+		broken_wash * 0.27 + bubbles * 0.025,
 		0.0,
 		1.0,
 	);
 
 	let compression = max(scrapbot_spectral_crest(position), 0.0);
-	let spectral_crest = smoothstep(0.085, 0.24, compression);
+	let spectral_crest = smoothstep(0.075, 0.26, compression);
 	let wave_position = coastal_wave_domain(position);
 	let swell_crest = coastal_gerstner_wave(
 		wave_position,
@@ -300,17 +302,15 @@ fn coastal_foam_layers(
 		0.46,
 		4.1,
 	).crest;
-	// One dominant crest owns the breaking lip. Treating every wave direction
-	// as an equal foam source produces conspicuous moving crosses where their
-	// thin white bands intersect. Secondary waves instead vary the dominant
-	// lip's strength without drawing independent foam lines.
-	let dominant_crest = max(spectral_crest * 0.55, swell_crest);
-	let secondary_modulation = mix(
-		0.64,
+	// FFT compression owns foam placement. Analytic Gerstner crests only vary
+	// that irregular field; letting a sinusoidal crest create foam on its own
+	// exposes its wavelength as a long, evenly spaced comb across the water.
+	let analytic_modulation = clamp(
+		swell_crest * 0.5 + cross_crest * 0.32 + chop_crest * 0.18,
+		0.0,
 		1.0,
-		clamp(cross_crest * 0.68 + chop_crest * 0.32, 0.0, 1.0),
 	);
-	let crest_shape = dominant_crest * secondary_modulation;
+	let crest_shape = spectral_crest * mix(0.58, 1.0, analytic_modulation);
 
 	// Transport the foam pattern downwind instead of evaluating a nearly
 	// stationary world-space mask. The low-frequency packet controls where a
@@ -327,10 +327,23 @@ fn coastal_foam_layers(
 		vec2<f32>(0.0),
 		0.31,
 	).value * 0.5 + 0.5;
+	let filament_domain = vec2<f32>(
+		transported_flow.x * 0.29 + transported_flow.y * 0.11,
+		transported_flow.y * 0.54 - transported_flow.x * 0.07,
+	);
 	let filament = coastal_psrdnoise(
-		transported_flow * vec2<f32>(0.48, 1.75),
+		filament_domain,
 		vec2<f32>(0.0),
 		-0.57,
+	).value;
+	let tear_domain = vec2<f32>(
+		transported_flow.y * 0.43 - transported_flow.x * 0.16,
+		transported_flow.x * 0.37 + transported_flow.y * 0.09,
+	);
+	let tear = coastal_psrdnoise(
+		tear_domain,
+		vec2<f32>(0.0),
+		1.37,
 	).value;
 	let micro = coastal_psrdnoise(
 		transported_flow * vec2<f32>(1.35, 4.8),
@@ -340,7 +353,8 @@ fn coastal_foam_layers(
 	let foam_footprint = max(length(fwidth(position)), 0.001);
 	let filament_visibility = 1.0 - smoothstep(0.32, 1.4, foam_footprint);
 	let micro_visibility = 1.0 - smoothstep(0.08, 0.48, foam_footprint);
-	let filament_breakup = smoothstep(0.46, 0.72, filament * 0.5 + 0.5) *
+	let filament_field = filament * 0.68 + tear * 0.32;
+	let filament_breakup = smoothstep(0.42, 0.7, filament_field * 0.5 + 0.5) *
 		filament_visibility;
 	let breaking_packet = smoothstep(0.5, 0.76, packet);
 	let crest_lip = smoothstep(0.48, 0.86, crest_shape) *

@@ -40,8 +40,9 @@ and narrow analytic Gerstner crest lips. Wind-advected foam packets break those 
 filaments and distance-filtered microbubbles instead of painting a broad static mask over the
 surface. Three anisotropic psrdnoise bands add sub-vertex ripple detail with derivative-based
 distance filtering.
-Shore interaction projects opaque-scene depth onto the water normal, then uses separately broken
-waterline and wash envelopes rather than drawing thin depth contours around every submerged object.
+Shore interaction projects opaque-scene depth onto the water normal, rejects exact zero-depth
+silhouettes, and shapes a broad noise-broken wash envelope instead of outlining every submerged
+photogrammetry edge.
 
 The material uses Scrapbot's sorted transparent pass and public scene-sampling ABI. Virtual Wilds
 is therefore a normal consumer of the same shader-resource and material API available to every
