@@ -35,11 +35,12 @@ the project shader rather than moving ocean policy into the renderer.
 
 The fragment hook composes guarded screen-space refraction, Beer–Lambert absorption and scattering,
 procedural-sky Fresnel reflection with sun glints, and whitecaps driven jointly by FFT compression
-and analytic Gerstner crest phase. Three
-anisotropic psrdnoise bands add sub-vertex ripple detail with derivative-based distance filtering.
+and narrow analytic Gerstner crest lips. Wind-advected foam packets break those lips into trailing
+filaments and distance-filtered microbubbles instead of painting a broad static mask over the
+surface. Three anisotropic psrdnoise bands add sub-vertex ripple detail with derivative-based
+distance filtering.
 Shore interaction projects opaque-scene depth onto the water normal, then uses separately broken
-leading and trailing wash bands instead of tracing every intersecting triangle with a uniform white
-outline.
+waterline and wash envelopes rather than drawing thin depth contours around every submerged object.
 
 The material uses Scrapbot's sorted transparent pass and public scene-sampling ABI. Virtual Wilds
 is therefore a normal consumer of the same shader-resource and material API available to every

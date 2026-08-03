@@ -123,7 +123,9 @@ fn coastal_gerstner_wave(
 	let horizontal = direction * (steepness * amplitude * cosine);
 	let height = amplitude * sine;
 	let normal_xz = -direction * (amplitude * wave_number * cosine);
-	let crest = smoothstep(0.78, 0.985, sine) * smoothstep(0.4, 0.72, steepness);
+	// Breaking water occupies a thin lip near the wave maximum. A broad
+	// sine-envelope reads as a white texture painted across the surface.
+	let crest = smoothstep(0.9, 0.992, sine) * smoothstep(0.4, 0.72, steepness);
 	return Coastal_Gerstner_Wave(vec3<f32>(horizontal.x, height, horizontal.y), normal_xz, crest);
 }
 
@@ -254,31 +256,25 @@ fn coastal_foam_layers(
 		0.0,
 	);
 	let shore_envelope = 1.0 - smoothstep(0.18, 1.35, warped_depth);
-	let leading_center = 0.2 + (coarse - 0.5) * 0.08;
-	let trailing_center = 0.58 + (medium - 0.5) * 0.12;
-	let leading_ridge = 1.0 - smoothstep(
-		0.055 + depth_aa,
-		0.18 + depth_aa,
-		abs(warped_depth - leading_center),
-	);
-	let trailing_ridge = 1.0 - smoothstep(
-		0.07 + depth_aa,
-		0.22 + depth_aa,
-		abs(warped_depth - trailing_center),
-	);
-	let medium_lace = 1.0 - smoothstep(0.07, 0.24, abs(medium - 0.52));
-	let fine_lace = 1.0 - smoothstep(0.045, 0.17, abs(fine - 0.56));
-	let lace = clamp(medium_lace * 0.7 + fine_lace * 0.3, 0.0, 1.0) *
-		smoothstep(0.2, 0.72, coarse);
+	// Threshold a moving, multi-scale field instead of selecting a noise
+	// iso-contour. Iso-contours form recognizable closed worms that look like a
+	// static texture even when their coordinates are animated.
+	let breakup_field = medium * 0.62 + fine * 0.28 + coarse * 0.1;
+	let wash_breakup = smoothstep(0.43, 0.68, breakup_field);
 	let bubbles = smoothstep(0.8, 0.95, fine) * shore_envelope;
+	// A soft depth envelope avoids drawing a second family of closed contours
+	// around every submerged rock. The advected breakup supplies structure
+	// within the wash instead of defining the silhouette of the wash itself.
+	let waterline = 1.0 - smoothstep(0.0, 0.26 + depth_aa, warped_depth);
+	let broken_wash = (1.0 - smoothstep(0.08, 1.05, warped_depth)) * wash_breakup;
 	let intersection = clamp(
-		(leading_ridge * 0.58 + trailing_ridge * 0.12) * lace * shore_envelope + bubbles * 0.08,
+		waterline * 0.2 + broken_wash * 0.34 + bubbles * 0.04,
 		0.0,
 		1.0,
 	);
 
 	let compression = max(scrapbot_spectral_crest(position), 0.0);
-	let spectral_crest = smoothstep(0.045, 0.19, compression);
+	let spectral_crest = smoothstep(0.085, 0.24, compression);
 	let wave_position = coastal_wave_domain(position);
 	let swell_crest = coastal_gerstner_wave(
 		wave_position,
@@ -304,10 +300,46 @@ fn coastal_foam_layers(
 		0.46,
 		4.1,
 	).crest;
-	let crest_shape = max(spectral_crest * 0.68, max(swell_crest, max(cross_crest, chop_crest * 0.72)));
-	let crest_ridges = 1.0 - smoothstep(0.07, 0.24, abs(medium - 0.54));
-	let crest_breakup = crest_ridges * smoothstep(0.31, 0.68, coarse * 0.55 + fine * 0.45);
-	let crest = crest_shape * mix(0.035, 1.0, crest_breakup);
+	let crest_shape = max(spectral_crest * 0.55, max(swell_crest, max(cross_crest, chop_crest * 0.64)));
+
+	// Transport the foam pattern downwind instead of evaluating a nearly
+	// stationary world-space mask. The low-frequency packet controls where a
+	// crest can break, while elongated crosswind patches form torn filaments.
+	// The footprint gates subpixel bubbles before TAA can turn them into broad
+	// blurry islands.
+	let transported_flow = vec2<f32>(
+		dot(position, wind) - time * 1.45,
+		dot(position, crosswind) + sin(time * 0.17) * 0.24,
+	);
+	let packet = coastal_psrdnoise(
+		transported_flow * vec2<f32>(0.17, 0.42),
+		vec2<f32>(0.0),
+		time * 0.11,
+	).value * 0.5 + 0.5;
+	let filament = coastal_psrdnoise(
+		transported_flow * vec2<f32>(0.48, 1.75) + vec2<f32>(time * 0.06, -time * 0.025),
+		vec2<f32>(0.0),
+		-time * 0.19,
+	).value;
+	let micro = coastal_psrdnoise(
+		transported_flow * vec2<f32>(1.35, 4.8) + vec2<f32>(-time * 0.12, time * 0.07),
+		vec2<f32>(0.0),
+		time * 0.31,
+	).value * 0.5 + 0.5;
+	let foam_footprint = max(length(fwidth(position)), 0.001);
+	let filament_visibility = 1.0 - smoothstep(0.32, 1.4, foam_footprint);
+	let micro_visibility = 1.0 - smoothstep(0.08, 0.48, foam_footprint);
+	let filament_breakup = smoothstep(0.46, 0.72, filament * 0.5 + 0.5) *
+		filament_visibility;
+	let breaking_packet = smoothstep(0.5, 0.76, packet);
+	let crest_lip = smoothstep(0.48, 0.86, crest_shape) *
+		breaking_packet *
+		mix(0.14, 1.0, filament_breakup);
+	let trailing_foam = smoothstep(0.2, 0.58, crest_shape) *
+		filament_breakup * (1.0 - breaking_packet * 0.42);
+	let crest_bubbles = smoothstep(0.7, 0.9, micro) * micro_visibility *
+		smoothstep(0.28, 0.64, crest_shape) * breaking_packet * 0.08;
+	let crest = clamp(crest_lip * 0.26 + trailing_foam * 0.05 + crest_bubbles, 0.0, 0.3);
 	return Coastal_Foam_Layers(intersection, crest);
 }
 
@@ -348,9 +380,10 @@ fn scrapbot_fragment(input: Scrapbot_Fragment) -> Scrapbot_Surface {
 	let foam_width = max(foam.w, 0.05);
 	let foam_layers = coastal_foam_layers(input, geometric_normal, water_thickness, foam_width);
 	let shore_foam = foam_layers.intersection * settings.w;
-	let crest_foam = foam_layers.crest * 0.62;
-	let foam_mask = clamp(1.0 - (1.0 - shore_foam) * (1.0 - crest_foam), 0.0, 0.88);
-	color = mix(color, foam.rgb, foam_mask);
+	let crest_foam = foam_layers.crest;
+	let foam_mask = clamp(1.0 - (1.0 - shore_foam) * (1.0 - crest_foam), 0.0, 0.62);
+	let foam_color = foam.rgb * 0.72 + reflection * 0.16;
+	color = mix(color, foam_color, foam_mask);
 
 	// This hook has already composited transmission, scattering, reflection, and
 	// foam over the opaque scene. Alpha one prevents the transparent pass from
