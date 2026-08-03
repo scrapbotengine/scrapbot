@@ -28,19 +28,26 @@ horizontal orbital displacement sharpens the result into Gerstner-style crests a
 The public helper returns world-space displacement, reconstructed normals, and crest compression,
 while the example decides how those values deform and shade water.
 
+The vertex hook combines the engine's evolving FFT field with four world-continuous Gerstner bands.
+The independent swell and cross-chop directions break up a single repeating Phillips patch without
+moving ocean behavior into the renderer.
+
 The fragment hook composes guarded screen-space refraction, Beer–Lambert absorption and scattering,
-environment Fresnel reflection, and narrow depth-intersection and compression-driven crest foam. psrdnoise supplies
-only the smaller derivative-driven ripples and breakup, so the broad ocean motion no longer comes
-from a short repeating list of authored sine waves.
+procedural-sky Fresnel reflection with sun glints, and compression-driven whitecaps. Three
+anisotropic psrdnoise bands add sub-vertex ripple detail with derivative-based distance filtering.
+Shore interaction projects opaque-scene depth onto the water normal, then uses separately broken
+leading and trailing wash bands instead of tracing every intersecting triangle with a uniform white
+outline.
 
 The material uses Scrapbot's sorted transparent pass and public scene-sampling ABI. Virtual Wilds
 is therefore a normal consumer of the same shader-resource and material API available to every
 project, not a renderer-only water path.
 
-A seamless grid of ocean tiles and one matching seabed extend far beyond the complete camera route,
-leaving open water around the composed cove instead of ending near the visible coast. Every tile
-samples the same world-space spectrum, so boundaries match while each tile retains useful vertex
-density and culls independently.
+A seamless grid of ocean tiles and one deep matching seabed extend far beyond the complete camera
+route, leaving open water around the composed cove instead of ending near the visible coast. The
+deep floor lets open water reach its dark absorption color while scanned shelves retain turquoise
+shallows. Every tile samples the same world-space spectrum, so boundaries match while each tile
+retains useful vertex density and culls independently.
 
 Reused CC0 scans build staggered headlands, offshore stacks, rock gardens, submerged shelves,
 reefs, and stranded trunks along the route. The layered silhouettes make the landscape denser while

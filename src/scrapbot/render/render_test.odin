@@ -102,6 +102,14 @@ test_project_shaders_receive_object_transforms_and_environment_reflections :: pr
 	)
 	testing.expect(
 		t,
+		strings.contains(
+			WGPU_CUSTOM_SHADER_PRELUDE,
+			"scrapbot_environment.sun_direction_intensity",
+		),
+	)
+	testing.expect(t, strings.contains(WGPU_CUSTOM_SHADER_PRELUDE, "sun_alignment"))
+	testing.expect(
+		t,
 		strings.contains(WGPU_CUSTOM_SHADER_FOOTER, "instance.model, instance.normal_model"),
 	)
 }
@@ -2002,11 +2010,10 @@ test_wgpu_culling_shader_stays_within_portable_storage_binding_floor :: proc(t: 
 		),
 	)
 	testing.expect(t, strings.contains(WGPU_GPU_DRIVEN_SHADER, "apply_virtual_transition"))
-	testing.expect(t, strings.contains(WGPU_GPU_DRIVEN_SHADER, "threshold < transition.x"))
-	testing.expect(t, strings.contains(WGPU_GPU_DRIVEN_SHADER, "threshold >= transition.y"))
+	testing.expect(t, strings.contains(WGPU_GPU_DRIVEN_SHADER, "Keep both opaque sides complete"))
+	testing.expect(t, !strings.contains(WGPU_GPU_DRIVEN_SHADER, "threshold < transition.x"))
 	testing.expect(t, strings.contains(WGPU_GPU_DRIVEN_SHADER, "virtual_lod_progress"))
 	testing.expect(t, strings.contains(WGPU_GPU_DRIVEN_SHADER, "virtual_transition_marker"))
-	testing.expect(t, strings.contains(WGPU_GPU_DRIVEN_SHADER, "0.61803398875"))
 	testing.expect(
 		t,
 		strings.contains(

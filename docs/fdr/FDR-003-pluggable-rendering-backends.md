@@ -316,20 +316,17 @@ group remains staged through the existing demand-aware settling window, with a b
 for continuous demand, and waits for its direct parent transition to settle. The child and complete
 parent then remain drawable together for a 16-render-frame admission handoff.
 
-The world and depth fragment paths apply complementary coverage intervals to both the steady
-projected-error overlap and streamed admission. This preserves one opaque surface sample per pixel
-without transparency, sorting, or double-depth coverage. TAA camera passes rotate the coverage
-hash through a low-discrepancy sequence and mark transition fragments in the internal HDR target.
-The temporal resolver keeps compatible parent/child history across bounded depth changes and
-recovers a previous transition sample for one frame where changing silhouettes expose background.
-Non-temporal camera views use a stable spatial hash. Shadow cascades submit both sides of their
-cascade-scaled hierarchy overlap without coverage discard, letting depth conservatively retain the
-nearest caster instead of leaking light through simplified-silhouette differences.
+The world, depth, and shadow paths submit both complete opaque levels during steady projected-error
+overlap and streamed admission. Normal depth testing retains the nearest available surface.
+Scrapbot deliberately avoids complementary fragment discard because coarse and fine
+simplifications can cover different pixels around thin photogrammetry and silhouettes; discarding
+either side there creates cluster-shaped background holes. TAA marks transition fragments in the
+internal HDR target and keeps compatible parent/child history across bounded depth changes.
 
 Camera and shadow culling keep a coarse parent submitted for the complete streamed-admission
 interval, even when its newly resident child already satisfies the projected-error frontier. This
-ensures both halves of complementary coverage remain drawable until the handoff finishes instead of
-revealing the background through child-shaped discard pixels.
+keeps both complete surfaces depth-testable until the handoff finishes instead of revealing the
+background through child-shaped discard pixels.
 
 Only completion makes the child logically replace its parent. Nested hierarchy transitions are
 serialized, and a transitioning child keeps its direct parent protected. This makes refinement
@@ -392,7 +389,7 @@ imported-LOD fallback.
 
 **Decision:** Let projects provide `scrapbot_vertex` and `scrapbot_fragment` WGSL hooks while the backend owns entry points, resources, instance transport, render targets, and pass ordering.
 
-Vertex hooks receive the object's model and normal matrices. Fragment hooks receive both viewport-local `screen_uv` and full-target `scene_uv`, plus helpers for guarded viewport sampling, conservative nearest-depth stabilization, device-to-view depth conversion, and roughness-filtered environment reflection.
+Vertex hooks receive the object's model and normal matrices. Fragment hooks receive both viewport-local `screen_uv` and full-target `scene_uv`, plus helpers for guarded viewport sampling, conservative nearest-depth stabilization, device-to-view depth conversion, and roughness-filtered environment reflection. The reflection helper preserves the configured procedural atmosphere and its sun highlight when a project does not assign a reflection cubemap.
 
 Blended hooks receive the opaque scene color/depth and render in a depth-tested, no-depth-write pass. This supports both conventional alpha blending and single-layer transmission shaders that return an already-composited result with alpha one.
 

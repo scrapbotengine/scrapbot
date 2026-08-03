@@ -168,7 +168,8 @@ Fragment input exposes viewport-local `screen_uv` for procedural effects and ful
 - `scrapbot_scene_uv` and `scrapbot_scene_uv_valid` to convert and guard displaced samples inside the active viewport; and
 - `scrapbot_spectral_surface(world_xz)` for an enabled Shader's world-space displacement, reconstructed normal, and crest compression;
 - `scrapbot_world_vector_to_object` and `scrapbot_world_normal_to_object` to apply world-space deformation correctly under rotated or non-uniformly scaled entities;
-- `scrapbot_environment_reflection` for the active roughness-filtered reflection environment.
+- `scrapbot_environment_reflection` for the active roughness-filtered reflection environment,
+  including the sun highlight from a procedural atmosphere when no reflection cubemap is assigned.
 
 `[shader.spectral_surface]` is optional. When enabled, Scrapbot evolves a deterministic Phillips
 wind spectrum and performs a 64×64 inverse FFT on the GPU. `patch_size` is the repeating

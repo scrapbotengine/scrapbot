@@ -254,8 +254,40 @@ fn scrapbot_environment_reflection(direction: vec3<f32>, roughness: f32) -> vec3
 			clamp(roughness, 0.0, 1.0) * scrapbot_environment.max_specular_lod,
 		).rgb * scrapbot_environment.intensity * scrapbot_environment.reflection_intensity;
 	}
-	let horizon = pow(clamp(normalize(direction).y * 0.5 + 0.5, 0.0, 1.0), 0.35);
-	return mix(scrapbot_environment.atmosphere_ground_color.rgb, scrapbot_environment.atmosphere_sky_tint.rgb, horizon) * render.ambient.w;
+	let reflected_direction = normalize(direction);
+	let roughness_blur = clamp(roughness * roughness, 0.0, 1.0);
+	let horizon = pow(clamp(reflected_direction.y * 0.5 + 0.5, 0.0, 1.0), 0.35);
+	let average_sky = mix(
+		vec3<f32>(0.003, 0.006, 0.018),
+		scrapbot_environment.atmosphere_sky_tint.rgb,
+		0.62,
+	);
+	let average_ground = scrapbot_environment.atmosphere_ground_color.rgb * 0.32;
+	var radiance = mix(
+		scrapbot_environment.atmosphere_ground_color.rgb,
+		scrapbot_environment.atmosphere_sky_tint.rgb,
+		horizon,
+	);
+	radiance = mix(radiance, mix(average_ground, average_sky, 0.62), roughness_blur * 0.65);
+	let sun_direction_length = length(scrapbot_environment.sun_direction_intensity.xyz);
+	if (
+		sun_direction_length > 0.0001 &&
+		scrapbot_environment.sun_direction_intensity.w > 0.0
+	) {
+		let sun_direction = scrapbot_environment.sun_direction_intensity.xyz / sun_direction_length;
+		let sun_size = clamp(scrapbot_environment.atmosphere_parameters.w, 0.1, 10.0);
+		let sun_alignment = max(dot(reflected_direction, sun_direction), 0.0);
+		let sun_exponent = mix(1024.0, 4.0, roughness_blur) / sun_size;
+		let sun_energy = mix(6.0, 0.18, roughness_blur);
+		radiance +=
+			scrapbot_environment.sun_color.rgb *
+			scrapbot_environment.sun_direction_intensity.w *
+			pow(sun_alignment, sun_exponent) *
+			sun_energy;
+	}
+	return max(radiance, vec3<f32>(0.0)) *
+		render.ambient.w *
+		scrapbot_environment.reflection_intensity;
 }
 `
 
