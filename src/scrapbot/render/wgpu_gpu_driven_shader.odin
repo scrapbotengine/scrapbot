@@ -877,18 +877,11 @@ fn meshlet_debug_color(identity: u32) -> vec3<f32> {
 const VIRTUAL_TRANSITION_MARKER: f32 = 0.25;
 
 fn apply_virtual_transition(position: vec4<f32>, transition: vec2<f32>, epoch: u32) {
-	if (transition.x <= 0.0 && transition.y >= 1.0) {
-		return;
-	}
-	let pixel = vec2<u32>(floor(position.xy));
-	var value = pixel.x * 1664525u ^ pixel.y * 1013904223u;
-	value = (value ^ (value >> 16u)) * 2246822519u;
-	value = (value ^ (value >> 13u)) * 3266489917u;
-	let spatial = (f32((value ^ (value >> 16u)) & 255u) + 0.5) / 256.0;
-	let threshold = fract(spatial + f32(epoch & 255u) * 0.61803398875);
-	if (threshold < transition.x || threshold >= transition.y) {
-		discard;
-	}
+	// Adjacent simplifications can have different silhouettes and coverage,
+	// especially for thin photogrammetry sheets. Complementary stochastic
+	// discard exposes the background wherever only one side covers a pixel.
+	// Keep both opaque sides complete and let the depth buffer select the
+	// nearest sample. The interval remains available to the temporal marker.
 }
 
 fn virtual_transition_marker(transition: vec2<f32>) -> f32 {

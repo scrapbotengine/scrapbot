@@ -170,35 +170,60 @@ function main() {
   }
 
   if (sequenceOut) {
-    const sequence = spawnSync(
-      process.execPath,
-      [
-        join(repositoryRoot, "tools/test_render_sequence.mjs"),
-        "--binary",
-        "bin/scrapbot",
-        "--project",
-        "examples/virtual-wilds",
-        "--warmup",
-        "120",
-        "--frames",
-        "120",
-        "--capture-range",
-        "56:63",
-        "--resolution",
-        "1280x720",
-        "--stable-frontier",
-        "--out",
-        sequenceOut,
-      ],
-      { cwd: repositoryRoot, encoding: "utf8", maxBuffer: 32 * 1024 * 1024 },
-    );
-    if (sequence.error) {
-      throw sequence.error;
+    const sequences = [
+      {
+        name: "stable",
+        arguments: [
+          "--warmup",
+          "120",
+          "--frames",
+          "120",
+          "--capture-range",
+          "56:63",
+          "--stable-frontier",
+        ],
+      },
+      {
+        name: "transition",
+        arguments: [
+          "--warmup",
+          "0",
+          "--frames",
+          "300",
+          "--capture-range",
+          "240:263",
+          "--require-transition",
+        ],
+      },
+    ];
+    for (const sequenceConfig of sequences) {
+      const sequence = spawnSync(
+        process.execPath,
+        [
+          join(repositoryRoot, "tools/test_render_sequence.mjs"),
+          "--binary",
+          "bin/scrapbot",
+          "--project",
+          "examples/virtual-wilds",
+          ...sequenceConfig.arguments,
+          "--resolution",
+          "1280x720",
+          "--out",
+          join(sequenceOut, sequenceConfig.name),
+        ],
+        { cwd: repositoryRoot, encoding: "utf8", maxBuffer: 32 * 1024 * 1024 },
+      );
+      if (sequence.error) {
+        throw sequence.error;
+      }
+      if (sequence.status !== 0) {
+        throw new Error(
+          sequence.stderr.trim() ||
+            `Virtual Wilds ${sequenceConfig.name} render sequence failed`,
+        );
+      }
+      process.stdout.write(sequence.stdout);
     }
-    if (sequence.status !== 0) {
-      throw new Error(sequence.stderr.trim() || "Virtual Wilds render sequence failed");
-    }
-    process.stdout.write(sequence.stdout);
   }
 
   console.log(

@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-31
 
-**Updated:** 2026-08-02
+**Updated:** 2026-08-03
 
 ## Context
 
@@ -51,19 +51,19 @@ Both submission modes are GPU-produced. Ordinary frames neither read selected cl
 expand their command topology on the CPU.
 
 The compute culler projects each group's monotonic geometric error into pixels. A narrow overlap
-band spans 90% through 110% of the active error threshold. Within that band, it submits adjacent
-hierarchy levels together and assigns them exact complementary coverage. Outside the band, it
+band spans 98% through 102% of the active error threshold. Within that band, it submits adjacent
+hierarchy levels together as complete opaque surfaces. Outside the band, it
 submits a cluster exactly when:
 
 1. its owning group exceeds the one-pixel error threshold; and
 2. its refined group is absent or is at or below that threshold.
 
 That rule selects one complete frontier for camera rendering. The overlap temporarily broadens
-that frontier without introducing translucent double coverage: the render passes retain a fragment
-only when its stable coverage hash lies inside that level's complementary interval. TAA rotates and
-integrates the camera mask over time. A transition-only reactive marker lets the temporal resolver
-retain compatible history across bounded parent/child depth and silhouette changes. Non-temporal
-camera views keep a stable spatial mask.
+that frontier. Both opaque levels remain complete and depth-test normally because adjacent
+simplifications do not guarantee identical pixel coverage around thin surfaces and silhouettes;
+complementary fragment discard can expose background where only one side has geometry. A
+transition-only reactive marker lets the temporal resolver retain compatible history across
+bounded parent/child depth and silhouette changes.
 
 Shadow overlap submits both hierarchy levels without fragment coverage discard. The depth-only
 result conservatively retains the nearest caster and cannot leak stochastic light through small
@@ -71,9 +71,9 @@ parent/child silhouette differences.
 
 A newly resident child does not immediately make its coarse parent ineligible. GPU camera and
 shadow selection keep the parent submitted throughout the bounded admission transition, even when
-the child's projected error would otherwise select the child alone. Both halves of the fragment
-coverage pair are therefore drawable until the handoff completes; residency cannot expose
-cluster-shaped gaps by removing the parent early.
+the child's projected error would otherwise select the child alone. Both complete opaque surfaces
+remain depth-testable until the handoff completes; residency and transition coverage cannot expose
+cluster-shaped gaps by removing or discarding the only surface at a pixel.
 
 Native multi-draw adapters also use the hierarchy for shadows before applying cascade sphere and
 normal-cone tests. The portable path uses the camera-selected object LOD for conservative cascade
