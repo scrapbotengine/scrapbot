@@ -2493,6 +2493,16 @@ wgpu_release_submission_bind_groups :: proc(renderer: ^WGPU_Renderer) {
 	renderer.transparent_world_bind_group = nil
 }
 
+wgpu_geometry_storage_binding_bytes :: proc "contextless" (
+	renderer: ^WGPU_Renderer,
+	capacity: u64,
+) -> u64 {
+	if renderer == nil || renderer.max_storage_buffer_binding_size == 0 {
+		return capacity
+	}
+	return min(capacity, renderer.max_storage_buffer_binding_size)
+}
+
 wgpu_make_batch_bind_group :: proc(
 	renderer: ^WGPU_Renderer,
 	visible_buffer: wgpu.Buffer,
@@ -2548,12 +2558,18 @@ wgpu_make_batch_bind_group :: proc(
 			{
 				binding = 11,
 				buffer = renderer.geometry_vertex_arena.buffer,
-				size = renderer.geometry_vertex_arena.capacity,
+				size = wgpu_geometry_storage_binding_bytes(
+					renderer,
+					renderer.geometry_vertex_arena.capacity,
+				),
 			},
 			{
 				binding = 12,
 				buffer = renderer.geometry_index_arena.buffer,
-				size = renderer.geometry_index_arena.capacity,
+				size = wgpu_geometry_storage_binding_bytes(
+					renderer,
+					renderer.geometry_index_arena.capacity,
+				),
 			},
 			{
 				binding = 13,
@@ -2616,12 +2632,18 @@ wgpu_make_batch_bind_group :: proc(
 		{
 			binding = 11,
 			buffer = renderer.geometry_vertex_arena.buffer,
-			size = renderer.geometry_vertex_arena.capacity,
+			size = wgpu_geometry_storage_binding_bytes(
+				renderer,
+				renderer.geometry_vertex_arena.capacity,
+			),
 		},
 		{
 			binding = 12,
 			buffer = renderer.geometry_index_arena.buffer,
-			size = renderer.geometry_index_arena.capacity,
+			size = wgpu_geometry_storage_binding_bytes(
+				renderer,
+				renderer.geometry_index_arena.capacity,
+			),
 		},
 		{
 			binding = 13,
@@ -3171,6 +3193,21 @@ wgpu_geometry_indirect_template :: proc "contextless" (
 ) -> WGPU_Draw_Indexed_Indirect {
 	if geometry == nil {
 		return {}
+	}
+	// Streamed virtual Geometry deliberately has no complete canonical arena
+	// allocation. If compact or native cluster submission is unavailable, draw
+	// the indexed proxy assembled from its pinned coarse pages instead of
+	// emitting an empty classic command. Capacity pressure may reduce detail,
+	// but it must never make an otherwise drawable resource disappear.
+	if geometry.virtual_geometry &&
+	   geometry.vertex_range.size == 0 &&
+	   geometry.index_range.size == 0 &&
+	   geometry.shadow_index_count > 0 {
+		return wgpu_geometry_shadow_indirect_template(
+			geometry,
+			visible_offset,
+			global_visible_buffer,
+		)
 	}
 	return {
 		index_count = geometry.index_count,

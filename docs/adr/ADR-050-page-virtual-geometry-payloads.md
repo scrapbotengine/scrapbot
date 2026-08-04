@@ -1,7 +1,7 @@
 # ADR-050: Page virtual Geometry payloads
 
 **Date:** 2026-07-31
-**Updated:** 2026-08-02
+**Updated:** 2026-08-04
 
 ## Context
 
@@ -59,6 +59,11 @@ When one Geometry's complete canonical vertex/index streams and expanded page in
 remaining budget, WGPU admits that representation as a fast path. It avoids page-local vertex
 duplication and retains classic indexed shadow submission. Under actual streaming pressure,
 portable compact submission uses page-local vertices and indices for both camera and shadow work.
+
+Cache creation also rebases the pinned coarse pages into one indexed compatibility proxy. It is
+used by shadows where applicable and by world/depth classic submission whenever the detailed
+visibility layout is unavailable. The proxy makes capacity fallback a quality reduction rather
+than an empty draw without retaining or reconstructing the complete canonical payload.
 
 Meshlet and hierarchy-cluster visibility ranges use exact instance cardinality. They are addressed
 as indices inside one shared storage binding and do not inherit the 256-byte dynamic-binding

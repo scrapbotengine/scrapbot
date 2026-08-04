@@ -133,7 +133,15 @@ Visibility diagnostics remain GPU-native. The culling pass emits records into an
 
 Freeze stops replacing only the diagnostic range and indirect count. It does not pause simulation or reuse stale Hi-Z for real visibility decisions. Leaving the view invalidates the retained evidence. No topology rebuild or synchronous CPU readback is required.
 
-`--cpu-culling`, adapters without indirect-first-instance, non-hierarchical single-instance batches, and layouts exceeding 1,048,576 cluster-visible entries use whole-primitive indexed-indirect submission. This is a policy, capability, or memory fallback, not a different project-facing geometry format. The compact path is what prevents an adapter without native multi-draw from turning fixed cluster ranges into thousands of CPU-encoded calls.
+`--cpu-culling`, adapters without indirect-first-instance, non-hierarchical single-instance batches,
+and layouts exceeding 1,048,576 cluster-visible entries use whole-primitive indexed-indirect
+submission. Complete resources use their canonical or imported-LOD payload. Streamed virtual
+Geometry instead uses the indexed compatibility proxy assembled from its pinned coarse pages, so
+capacity pressure lowers detail rather than emitting an empty draw.
+
+This is a policy, capability, or memory fallback, not a different project-facing geometry format.
+The compact path is what prevents an adapter without native multi-draw from turning fixed cluster
+ranges into thousands of CPU-encoded calls.
 
 Pass `--cpu-culling` to run the same bounding-sphere tests, screen-radius LOD selection, and compaction on the CPU while retaining WGPU storage-buffer shaders and indirect draws. This is useful as a correctness oracle and compatibility diagnostic; compute culling remains the default. Hi-Z rejection is GPU-only and therefore disabled on the reference path. The compute path also disables previous-frame Hi-Z rejection whenever the camera or a persistent instance record changes, then rebuilds the pyramid from the current conservative frustum result.
 

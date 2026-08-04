@@ -1,6 +1,6 @@
 # State Ownership and Invalidation
 
-**Last verified:** 2026-08-03
+**Last verified:** 2026-08-04
 
 Scrapbot separates authoritative project/runtime state from derived indexes, caches, render data, and editor views. A derived owner must update from explicit lifecycle or revision signals where feasible; stable frames must not rediscover unchanged state.
 
@@ -94,7 +94,10 @@ candidate, camera, and shadow bind groups reuse the baseline eight-storage-buffe
 Mixed frames encode classic, native-cluster, and portable compact work in the same visibility pass.
 Stable frames do not rescan resources, rebuild cluster metadata, upload debug identities, or
 regenerate compact records on the CPU. Adapters without indirect-first-instance and layouts above
-the bounded visibility capacity use the retained whole-primitive database.
+the bounded visibility capacity use the retained whole-primitive database. Streamed virtual
+Geometry has no complete canonical allocation, so its classic command references the immutable
+indexed proxy assembled from pinned coarse pages. Capacity pressure therefore lowers detail
+without producing an empty world or depth draw.
 
 The retained batch count follows topology invalidation. Camera-visible batches, nonempty meshlet
 draws, selected virtual clusters, and hierarchy-threshold rejections are frame-valued GPU counters.
@@ -111,7 +114,9 @@ index arena own the backing buffers, aligned first-fit free lists, high-water ma
 mutation counters. Exact version hits do no allocator or upload work. Replacement commits new
 ranges only after all uploads succeed; stale handles are reclaimed when the registry's geometry
 topology revision changes. Growth is geometric and copies retained bytes before replacing the
-backing buffer. Stable frames never scan, compact, hash, or upload the arenas.
+backing buffer. Vertex-pulling bind groups advertise no more than the device's maximum storage
+binding range even when the shared vertex/index buffers have grown beyond it. Stable frames never
+scan, compact, hash, or upload the arenas.
 
 Hierarchy metadata and each Geometry's file-or-memory page source are resource-owned. WGPU owns
 canonical fast-path or page-local vertex/index arena ranges, residency, visible-use age, pending

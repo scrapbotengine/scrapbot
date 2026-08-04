@@ -2871,6 +2871,61 @@ test_wgpu_indirect_template_uses_shared_geometry_arena_offsets :: proc(t: ^testi
 }
 
 @(test)
+test_wgpu_streamed_virtual_geometry_uses_pinned_proxy_when_visibility_layout_falls_back :: proc(
+	t: ^testing.T,
+) {
+	renderer := WGPU_Renderer {
+		gpu_meshlet_supported = true,
+		gpu_meshlet_submission_active = false,
+		gpu_meshlet_layout_valid = false,
+	}
+	batch := WGPU_Draw_Batch {
+		meshlet_submission = true,
+		compact_submission = true,
+		virtual_geometry = true,
+	}
+	testing.expect_value(
+		t,
+		wgpu_batch_submission_mode(&renderer, batch),
+		WGPU_Submission_Mode.Classic,
+	)
+
+	geometry := WGPU_Geometry_Cache {
+		virtual_geometry = true,
+		index_count = 98_765,
+		shadow_index_range = {offset = u64(size_of(u32)) * 73, size = 4096},
+		shadow_base_vertex = 29,
+		shadow_index_count = 384,
+		valid = true,
+	}
+	template := wgpu_geometry_indirect_template(&geometry, 51, true)
+	testing.expect_value(t, template.index_count, u32(384))
+	testing.expect_value(t, template.first_index, u32(73))
+	testing.expect_value(t, template.base_vertex, i32(29))
+	testing.expect_value(t, template.first_instance, u32(51))
+
+	template = wgpu_geometry_indirect_template(&geometry, 51, false)
+	testing.expect_value(t, template.first_instance, u32(0))
+}
+
+@(test)
+test_wgpu_geometry_storage_bindings_respect_the_device_limit :: proc(t: ^testing.T) {
+	renderer := WGPU_Renderer {
+		max_storage_buffer_binding_size = 128 * 1024 * 1024,
+	}
+	testing.expect_value(
+		t,
+		wgpu_geometry_storage_binding_bytes(&renderer, 64 * 1024 * 1024),
+		u64(64 * 1024 * 1024),
+	)
+	testing.expect_value(
+		t,
+		wgpu_geometry_storage_binding_bytes(&renderer, 256 * 1024 * 1024),
+		u64(128 * 1024 * 1024),
+	)
+}
+
+@(test)
 test_wgpu_compact_shadows_use_pages_only_for_streamed_geometry :: proc(t: ^testing.T) {
 	renderer := WGPU_Renderer {
 		gpu_meshlet_submission_active = true,

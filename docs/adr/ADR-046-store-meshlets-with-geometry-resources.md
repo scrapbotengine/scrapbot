@@ -1,6 +1,7 @@
 # ADR-046: Store meshlets with geometry resources
 
 **Date:** 2026-07-30
+**Updated:** 2026-08-04
 
 ## Context
 
@@ -66,8 +67,9 @@ batches exist. Both dispatches use the same batch table and counters, bind their
 visibility/indirect buffers, and immediately reject instances assigned to the other policy.
 
 Adapters without `indirect-first-instance`, `--cpu-culling`, empty meshlet layouts, or layouts that
-would exceed the bounded visibility allocation retain the existing whole-primitive indexed-
-indirect path with the same visual result.
+would exceed the bounded visibility allocation retain indexed-indirect submission. Complete
+resources use their canonical whole-primitive payload. Streamed resources use their pinned coarse
+indexed proxy, preserving coverage while intentionally reducing detail.
 
 Meshlet construction is allowed only at explicit geometry creation or replacement boundaries.
 Stable frames never rebuild, scan, hash, or upload unchanged meshlet data.

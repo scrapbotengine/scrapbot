@@ -1,7 +1,7 @@
 # FDR-003: Pluggable rendering backends
 
 **Status:** Active
-**Last reviewed:** 2026-08-03
+**Last reviewed:** 2026-08-04
 
 ## Overview
 
@@ -31,7 +31,10 @@ Pluggable rendering backends allow Scrapbot to start with `wgpu-native` while ke
 - Shared geometry/material pairs use one instanced draw batch. Geometry versions occupy aligned ranges in shared WGPU vertex/index arenas, while material texture uploads remain cached by handle and version.
 - WGPU keeps a persistent slot-addressed GPU instance table, separates static source state from hot Transform state, sends Transform-only changes through one dense update upload, coalesces nearby static slot changes into bounded uploads, retains compact render/culling uniforms and instance-to-LOD batch mappings, computes camera and shadow frustum visibility into compacted batch slices, and obtains instance counts from indexed indirect draw arguments.
 - The retained draw database grows geometrically past the original 64-batch limit. It rebuilds only when render membership, geometry LOD topology, or required capacity changes.
-- Every Geometry version owns bounded meshlets and a crack-aware, deterministically paged cluster hierarchy. Hierarchy simplification preserves normal and UV discontinuities and never falls back to attribute-blind reduction. Complete page sets that fit the remaining budget are admitted immediately; coarse pages remain pinned for streamed resources. The GPU selects resident detail, requests missing finer pages, and draws the nearest resident fallback before camera sphere, normal-cone, and Hi-Z tests. Native multi-draw adapters retain one indirect command per hierarchy cluster. Other indirect-first-instance adapters append selected instance/cluster records into a bounded camera stream and vertex-pull compatible material spans through one indirect command. Adapters without indirect-first-instance and `--cpu-culling` retain whole-primitive imported LOD selection.
+- Every Geometry version owns bounded meshlets and a crack-aware, deterministically paged cluster hierarchy. Simplification preserves normal and UV discontinuities and never falls back to attribute-blind reduction.
+- Complete page sets that fit the remaining budget are admitted immediately; coarse pages remain pinned for streamed resources. The GPU selects resident detail, requests missing finer pages, and draws the nearest resident fallback before camera sphere, normal-cone, and Hi-Z tests.
+- Native multi-draw adapters retain one indirect command per hierarchy cluster. Other indirect-first-instance adapters append selected instance/cluster records into a bounded camera stream and vertex-pull compatible material spans through one indirect command.
+- Adapters without indirect-first-instance and `--cpu-culling` retain whole-primitive imported LOD selection. Streamed resources use the indexed proxy built from pinned coarse pages.
 - The active camera selects a backend-neutral debug view: lit output, material inputs, mapped world normals, logarithmic depth, retained meshlet identity, exact GPU-selected LOD, selected virtual-geometry clusters and hierarchy depth, object/meshlet visibility classification, one retained Hi-Z mip, or exact screen-space Hi-Z query footprints. Non-lit views skip presentation effects so diagnostics remain direct and stable.
 - Hi-Z false color and texel boundaries expose the exact conservative max-depth hierarchy without readback or rebuilding it. Occlusion Queries records each tested rectangle, selected mip, bound depth, sampled farthest depth, identity, and visible/culled decision in a bounded GPU-native stream.
 - The camera can freeze the latest valid occlusion-query records while that view remains selected. Freeze preserves only diagnostic records and their indirect draw count; ordinary culling continues from current safe Hi-Z state.
@@ -364,8 +367,12 @@ indices and attributes from the shared geometry arenas.
 
 Fully resident portable resources reuse canonical indexed-indirect shadows. For streamed portable
 resources, cache creation rebases the already-pinned root-page indices into one coarse indexed
-shadow proxy. It aliases the pinned vertex allocation and owns only its compact index range, so
-shadow casting never depends on evicted canonical geometry or padded vertex pulling.
+compatibility proxy. It aliases the pinned vertex allocation and owns only its compact index range.
+
+Portable shadows use that proxy whenever page-local compact shadows are unavailable. World and
+depth submission also use it when capability, policy, or visibility-table capacity disables the
+detailed path. Streamed Geometry therefore remains drawable at coarse detail without reconstructing
+or retaining its complete canonical payload.
 
 Classic and compact shadow culling have exclusive ownership of each batch's indirect command.
 Compact cluster expansion is skipped globally when no batch needs it and rejected per batch when a
@@ -389,9 +396,14 @@ Geometry version enters the backend cache. Virtual WGPU vertex/index payloads ar
 
 The compact camera path trades additional GPU culling and vertex-pulling cost for portable,
 bounded CPU submission. Portable shadows retain the canonical fast path when possible and use the
-pinned coarse proxy under actual streaming pressure. Adapters without
-indirect-first-instance and capacity-limited layouts keep the existing classic indexed and
-imported-LOD fallback.
+pinned coarse proxy under actual streaming pressure. Adapters without indirect-first-instance and
+capacity-limited layouts retain classic indexed submission; streamed resources use their pinned
+coarse proxy while complete resources keep their canonical or imported-LOD fallback.
+
+Shared geometry buffers may grow beyond one device storage-binding range because indexed and
+vertex-buffer submission can still address them. WGPU caps every storage binding at the reported
+device limit. Portable vertex pulling across multiple such ranges still requires partitioned
+bindings or page-relative offsets and remains tracked separately.
 
 ### 24. Compose project shader hooks into an engine-owned render contract
 
