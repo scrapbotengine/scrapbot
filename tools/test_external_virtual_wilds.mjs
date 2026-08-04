@@ -61,6 +61,104 @@ const models = [
     clusters: 7299,
     groups: 446,
   },
+  {
+    id: "7b000000-0000-4000-8000-00000000000d",
+    source: "assets/pine_sapling_small/pine_sapling_small_1k.gltf",
+    nodes: 3,
+    meshes: 3,
+    primitives: 6,
+    materials: 2,
+    textures: 6,
+    vertices: 406356,
+    indices: 1194432,
+    lods: 0,
+    clusters: 14390,
+    groups: 995,
+  },
+  {
+    id: "7b000000-0000-4000-8000-00000000000e",
+    source: "assets/kenney-nature/tree_pineDefaultA.glb",
+    nodes: 2,
+    primitives: 2,
+    materials: 2,
+    textures: 0,
+    vertices: 784,
+    indices: 690,
+    lods: 0,
+    clusters: 7,
+    groups: 2,
+    virtual: false,
+  },
+  {
+    id: "7b000000-0000-4000-8000-00000000000f",
+    source: "assets/kenney-nature/tree_pineDefaultB.glb",
+    nodes: 2,
+    primitives: 2,
+    materials: 2,
+    textures: 0,
+    vertices: 832,
+    indices: 738,
+    lods: 0,
+    clusters: 7,
+    groups: 2,
+    virtual: false,
+  },
+  {
+    id: "7b000000-0000-4000-8000-000000000010",
+    source: "assets/kenney-nature/tree_pineTallA_detailed.glb",
+    nodes: 2,
+    primitives: 2,
+    materials: 2,
+    textures: 0,
+    vertices: 448,
+    indices: 402,
+    lods: 0,
+    clusters: 4,
+    groups: 2,
+    virtual: false,
+  },
+  {
+    id: "7b000000-0000-4000-8000-000000000011",
+    source: "assets/kenney-nature/tree_pineTallB_detailed.glb",
+    nodes: 2,
+    primitives: 2,
+    materials: 2,
+    textures: 0,
+    vertices: 544,
+    indices: 498,
+    lods: 0,
+    clusters: 5,
+    groups: 2,
+    virtual: false,
+  },
+  {
+    id: "7b000000-0000-4000-8000-000000000012",
+    source: "assets/kenney-nature/tree_pineTallC_detailed.glb",
+    nodes: 2,
+    primitives: 2,
+    materials: 2,
+    textures: 0,
+    vertices: 488,
+    indices: 462,
+    lods: 0,
+    clusters: 5,
+    groups: 2,
+    virtual: false,
+  },
+  {
+    id: "7b000000-0000-4000-8000-000000000013",
+    source: "assets/kenney-nature/tree_pineTallD_detailed.glb",
+    nodes: 2,
+    primitives: 2,
+    materials: 2,
+    textures: 0,
+    vertices: 536,
+    indices: 510,
+    lods: 0,
+    clusters: 6,
+    groups: 2,
+    virtual: false,
+  },
 ];
 
 function runScrapbot(args) {
@@ -123,7 +221,7 @@ function main() {
     imported.result?.imported !== models.length ||
     imported.result?.products !== models.length
   ) {
-    throw new Error("expected a fresh five-model Virtual Wilds import");
+    throw new Error("expected a fresh twelve-model Virtual Wilds import");
   }
   runScrapbot(["check", project, "--json"]);
   const simulated = runScrapbot([
@@ -138,8 +236,8 @@ function main() {
     "--json",
   ]);
   if (
-    simulated.result?.renderables !== 515 ||
-    simulated.result?.draw_batches !== 10
+    simulated.result?.renderables !== 1425 ||
+    simulated.result?.draw_batches !== 26
   ) {
     throw new Error(
       "Virtual Wilds did not preserve its high-instance shared-batch workload",
@@ -155,6 +253,7 @@ function main() {
         "utf8",
       ),
     );
+    const expectedLods = expected.lods ?? 3;
     if (
       metadata.schema !== "scrapbot.model.v16.attribute-hierarchy" ||
       metadata.source !== expected.source ||
@@ -166,9 +265,11 @@ function main() {
       metadata.ignored_texture_count !== 0 ||
       metadata.vertex_count !== expected.vertices ||
       metadata.index_count !== expected.indices ||
-      metadata.lod_count !== (expected.lods ?? 3) ||
-      metadata.lod_vertex_count <= 0 ||
-      metadata.lod_index_count <= 0 ||
+      metadata.lod_count !== expectedLods ||
+      (expectedLods > 0 && metadata.lod_vertex_count <= 0) ||
+      (expectedLods > 0 && metadata.lod_index_count <= 0) ||
+      (expectedLods === 0 && metadata.lod_vertex_count !== 0) ||
+      (expectedLods === 0 && metadata.lod_index_count !== 0) ||
       metadata.cluster_count !== expected.clusters ||
       metadata.cluster_group_count !== expected.groups ||
       metadata.cluster_page_count !== expected.groups
@@ -178,10 +279,12 @@ function main() {
       );
     }
     sourceTriangles += metadata.index_count / 3;
-    clusterPages += metadata.cluster_page_count;
+    if (expected.virtual !== false) {
+      clusterPages += metadata.cluster_page_count;
+    }
   }
-  // The water plane and two shared procedural scatter meshes contribute their
-  // own compact hierarchies in addition to the imported products.
+  // The water plane and shared procedural rock mesh contribute their own
+  // compact hierarchies in addition to the imported products.
   const sceneVirtualPages = clusterPages + 17;
 
   if (framegrab) {
@@ -200,8 +303,8 @@ function main() {
     ]);
     const stats = rendered.result?.render_stats;
     if (
-      rendered.result?.renderables !== 515 ||
-      rendered.result?.draw_batches !== 24 ||
+      rendered.result?.renderables !== 1425 ||
+      rendered.result?.draw_batches !== 40 ||
       stats?.virtual_geometry !== true ||
       stats?.virtual_geometry_compacted !== true ||
       stats?.meshlet_visible_capacity > 1048576 ||
@@ -283,7 +386,7 @@ function main() {
       if (
         profile.frames?.some(
           (frame) =>
-            frame.render?.draw_batches !== 24 ||
+            frame.render?.draw_batches !== 40 ||
             frame.render?.virtual_geometry_compacted !== true ||
             frame.render?.meshlet_visible_capacity > 1048576 ||
             frame.render?.virtual_geometry_page_request_overflow !== 0,
@@ -301,7 +404,7 @@ function main() {
 
   console.log(
     `[external-virtual-wilds] imported ${sourceTriangles} source triangles across ` +
-      `${models.length} CC0 scans and ${clusterPages} streamable cluster pages`,
+      `${models.length} CC0 models and ${clusterPages} streamable cluster pages`,
   );
 }
 

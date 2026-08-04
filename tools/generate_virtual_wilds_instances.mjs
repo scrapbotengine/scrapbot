@@ -13,6 +13,15 @@ const endMarker = "# END GENERATED LANDSCAPE INSTANCES";
 const resources = {
   rocks: "7b000000-0000-4000-8000-00000000000b",
   boulder: "7b000000-0000-4000-8000-00000000000c",
+  heroPine: "7b000000-0000-4000-8000-00000000000d",
+  forestPines: [
+    "7b000000-0000-4000-8000-00000000000e",
+    "7b000000-0000-4000-8000-00000000000f",
+    "7b000000-0000-4000-8000-000000000010",
+    "7b000000-0000-4000-8000-000000000011",
+    "7b000000-0000-4000-8000-000000000012",
+    "7b000000-0000-4000-8000-000000000013",
+  ],
 };
 
 function configuredCount(name, fallback) {
@@ -30,6 +39,8 @@ function configuredCount(name, fallback) {
 const counts = {
   rocks: configuredCount("VIRTUAL_WILDS_ROCKS", 1),
   boulders: configuredCount("VIRTUAL_WILDS_BOULDERS", 5),
+  heroPines: configuredCount("VIRTUAL_WILDS_HERO_PINES", 5),
+  forestPines: configuredCount("VIRTUAL_WILDS_FOREST_PINES", 560),
 };
 
 let state = 0x51a7f00d;
@@ -112,6 +123,56 @@ for (let index = 0; index < counts.boulders; index += 1) {
       uniformScale * between(0.8, 1.3),
     ],
     shadowCaster: false,
+  });
+}
+
+// Each photogrammetry pine root contains three distinct saplings. A small hero
+// grove brings alpha-masked needles close to the route without multiplying its
+// 398k-triangle source into an unbounded GPU submission table.
+for (let index = 0; index < counts.heroPines; index += 1) {
+  const side = index % 2 === 0 ? -1 : 1;
+  const lateral = between(11, 17);
+  const scale = between(4.5, 6.4);
+  addEntity({
+    name: `Generated Hero Pine Grove ${index + 1}`,
+    resource: resources.heroPine,
+    position: [
+      side * lateral,
+      2.4 + (lateral - 11) * 0.22 + between(-0.25, 0.35),
+      4 - index * 42 + between(-4, 4),
+    ],
+    rotation: [between(-0.025, 0.025), between(-Math.PI, Math.PI), between(-0.02, 0.02)],
+    scale: [
+      scale * between(0.88, 1.12),
+      scale * between(0.9, 1.18),
+      scale * between(0.88, 1.12),
+    ],
+    shadowCaster: index % 3 === 0,
+  });
+}
+
+// Hundreds of tiny CC0 forest-kit models form the distant canopy. They remain
+// ordinary model components: shared resources, transforms, batching, frustum
+// culling, and sparse shadows all flow through the same public engine path.
+for (let index = 0; index < counts.forestPines; index += 1) {
+  const side = index % 2 === 0 ? -1 : 1;
+  const lateral = between(42, 78);
+  const scale = between(4.8, 9.2);
+  addEntity({
+    name: `Generated Forest Pine ${index + 1}`,
+    resource: resources.forestPines[index % resources.forestPines.length],
+    position: [
+      side * lateral + Math.sin(index * 2.399963) * 7,
+      18 + (lateral - 42) * 0.28 + between(-0.5, 0.7),
+      between(-215, 45),
+    ],
+    rotation: [between(-0.035, 0.035), between(-Math.PI, Math.PI), between(-0.03, 0.03)],
+    scale: [
+      scale * between(0.82, 1.18),
+      scale * between(0.9, 1.25),
+      scale * between(0.82, 1.18),
+    ],
+    shadowCaster: index % 24 === 0,
   });
 }
 

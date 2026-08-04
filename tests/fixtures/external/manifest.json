@@ -195,6 +195,107 @@
           "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/boulder_01/boulder_01_nor_gl_1k.jpg",
           "bytes": 1183552,
           "sha256": "0810cf6e89d89bb6eb065b4d2e2855288f5dcbd2c15c6e40ab90d462021b50aa"
+        },
+        {
+          "path": "pine_sapling_small/pine_sapling_small_1k.gltf",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/pine_sapling_small/pine_sapling_small_1k.gltf",
+          "bytes": 11442,
+          "sha256": "f358c01926861dd082f32dba60f7c9fba232b585a985cf38c0d2229eecf4bc48"
+        },
+        {
+          "path": "pine_sapling_small/pine_sapling_small.bin",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/pine_sapling_small/pine_sapling_small.bin",
+          "bytes": 17771796,
+          "sha256": "b4d2fc73d53f1d8717eb5ef9a2c66957d2a53152787e543aace88fcd6fca94ef"
+        },
+        {
+          "path": "pine_sapling_small/textures/pine_sapling_small_bark_arm_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/pine_sapling_small/pine_sapling_small_bark_arm_1k.jpg",
+          "bytes": 801278,
+          "sha256": "336a4680cd571b6076b67afee2310b290b8900d9d126eb39ec1ae92e95be2ea9"
+        },
+        {
+          "path": "pine_sapling_small/textures/pine_sapling_small_bark_diff_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/pine_sapling_small/pine_sapling_small_bark_diff_1k.jpg",
+          "bytes": 725265,
+          "sha256": "5c76836b01c3536fa0e24207b67bf4f3315b53ebe2b4ecc6f08dfcf3f8d74929"
+        },
+        {
+          "path": "pine_sapling_small/textures/pine_sapling_small_bark_nor_gl_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/pine_sapling_small/pine_sapling_small_bark_nor_gl_1k.jpg",
+          "bytes": 1016849,
+          "sha256": "05c46455531781b6cf18cae0648cf627f60ee942adaa8bcbfd1592fc2506a9e0"
+        },
+        {
+          "path": "pine_sapling_small/textures/pine_sapling_small_twig_arm_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/pine_sapling_small/pine_sapling_small_twig_arm_1k.jpg",
+          "bytes": 394056,
+          "sha256": "2eb0aa44124b5a4ae9401e00b23b3c916f4c3f421616ce1bb932f248fc061288"
+        },
+        {
+          "path": "pine_sapling_small/textures/pine_sapling_small_twig_diff_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/pine_sapling_small/pine_sapling_small_twig_diff_1k.jpg",
+          "bytes": 477942,
+          "sha256": "54af7d6fb664b5a38bcb118b557bc50e01e86ec54d6f1a573c3e32c649a53362"
+        },
+        {
+          "path": "pine_sapling_small/textures/pine_sapling_small_twig_nor_gl_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/pine_sapling_small/pine_sapling_small_twig_nor_gl_1k.jpg",
+          "bytes": 692711,
+          "sha256": "76af87821d7ff00e25768d5d97a449394fe64a21ae55d099da7f5ed46d9098c8"
+        }
+      ]
+    },
+    {
+      "id": "kenney-nature-kit",
+      "path": "archives/kenney_nature-kit.zip",
+      "url": "https://kenney.nl/media/pages/assets/nature-kit/37ac38a37b-1677698939/kenney_nature-kit.zip",
+      "bytes": 10537521,
+      "sha256": "fa7974a0d342bfe63c38664ba9f8ec1a4aab8ea25f099bdc56870e33588c4d9d",
+      "source": "https://kenney.nl/assets/nature-kit",
+      "license": "CC0",
+      "archive_members": [
+        {
+          "path": "Models/GLTF format/tree_pineDefaultA.glb",
+          "placement": "examples/virtual-wilds/assets/kenney-nature/tree_pineDefaultA.glb",
+          "bytes": 17220,
+          "sha256": "744e840445f30141fc0097fb1e0b5c81365c80634fe3141391dadaa0a0a07046",
+          "byte_replacements": [{ "from": "\"scenes\":[{\"nodes\":[1]}]", "to": "\"scenes\":[{\"nodes\":[0]}]" }]
+        },
+        {
+          "path": "Models/GLTF format/tree_pineDefaultB.glb",
+          "placement": "examples/virtual-wilds/assets/kenney-nature/tree_pineDefaultB.glb",
+          "bytes": 18180,
+          "sha256": "bb504167326883119e7a85ddfc97311e9f9529a4acd03cfbfa43a47eba6be08e",
+          "byte_replacements": [{ "from": "\"scenes\":[{\"nodes\":[1]}]", "to": "\"scenes\":[{\"nodes\":[0]}]" }]
+        },
+        {
+          "path": "Models/GLTF format/tree_pineTallA_detailed.glb",
+          "placement": "examples/virtual-wilds/assets/kenney-nature/tree_pineTallA_detailed.glb",
+          "bytes": 10708,
+          "sha256": "9a64bd14b6722a01048ccd78dd51f63aac4bc750934ccdaf876db21dee790ea7",
+          "byte_replacements": [{ "from": "\"scenes\":[{\"nodes\":[1]}]", "to": "\"scenes\":[{\"nodes\":[0]}]" }]
+        },
+        {
+          "path": "Models/GLTF format/tree_pineTallB_detailed.glb",
+          "placement": "examples/virtual-wilds/assets/kenney-nature/tree_pineTallB_detailed.glb",
+          "bytes": 12632,
+          "sha256": "624fb6895fbc2e0ec0d6a2a8410b597055b426055aaa9d28ed8ee63f89c135e0",
+          "byte_replacements": [{ "from": "\"scenes\":[{\"nodes\":[1]}]", "to": "\"scenes\":[{\"nodes\":[0]}]" }]
+        },
+        {
+          "path": "Models/GLTF format/tree_pineTallC_detailed.glb",
+          "placement": "examples/virtual-wilds/assets/kenney-nature/tree_pineTallC_detailed.glb",
+          "bytes": 11588,
+          "sha256": "84f87e5aeaed31729b5826536944602b28b5feb64c7702bd0f255d7bea77194e",
+          "byte_replacements": [{ "from": "\"scenes\":[{\"nodes\":[1]}]", "to": "\"scenes\":[{\"nodes\":[0]}]" }]
+        },
+        {
+          "path": "Models/GLTF format/tree_pineTallD_detailed.glb",
+          "placement": "examples/virtual-wilds/assets/kenney-nature/tree_pineTallD_detailed.glb",
+          "bytes": 12548,
+          "sha256": "197742a4e3fa2e3b3aef196566a725a11ea124a0d2a979785364db2f820d575f",
+          "byte_replacements": [{ "from": "\"scenes\":[{\"nodes\":[1]}]", "to": "\"scenes\":[{\"nodes\":[0]}]" }]
         }
       ]
     },

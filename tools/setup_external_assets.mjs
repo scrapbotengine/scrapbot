@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { spawnSync } from "node:child_process";
 import {
   createReadStream,
   createWriteStream,
@@ -9,6 +10,7 @@ import {
   renameSync,
   rmSync,
   statSync,
+  writeFileSync,
 } from "node:fs";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
@@ -120,6 +122,87 @@ async function ensurePlacement(asset, source, placement) {
   if (!asset.quiet) {
     console.log(`[external-assets] installed ${asset.id} at ${placement}`);
   }
+  return true;
+}
+
+async function ensureArchiveMember(asset, source, member) {
+  if (
+    typeof member.path !== "string" ||
+    member.path === "" ||
+    member.path.includes("\\") ||
+    member.path
+      .split("/")
+      .some((part) => part === "" || part === "." || part === "..")
+  ) {
+    throw new Error(`${asset.id}: archive member path must be safe and relative`);
+  }
+  if (
+    typeof member.placement !== "string" ||
+    member.placement === "" ||
+    !Number.isSafeInteger(member.bytes) ||
+    member.bytes < 0 ||
+    typeof member.sha256 !== "string"
+  ) {
+    throw new Error(
+      `${asset.id}:${member.path}: invalid archive member declaration`,
+    );
+  }
+  const expected = {
+    ...member,
+    id: `${asset.id}:${member.path}`,
+  };
+  const destination = placementPath(asset, member.placement);
+  if (await assetIsCurrent(expected, destination)) {
+    return true;
+  }
+  if (checkOnly) {
+    console.error(
+      `[external-assets] missing or invalid ${asset.id}:${member.path} at ${member.placement}`,
+    );
+    return false;
+  }
+  const extracted = spawnSync("unzip", ["-p", source, member.path], {
+    encoding: null,
+    maxBuffer: Math.max(member.bytes + 1024 * 1024, 2 * 1024 * 1024),
+  });
+  if (extracted.error) {
+    throw extracted.error;
+  }
+  if (extracted.status !== 0) {
+    throw new Error(
+      `${asset.id}:${member.path}: unzip failed: ${extracted.stderr.toString().trim()}`,
+    );
+  }
+  mkdirSync(dirname(destination), { recursive: true });
+  const temporary = `${destination}.install`;
+  rmSync(temporary, { force: true });
+  let bytes = extracted.stdout;
+  for (const replacement of member.byte_replacements ?? []) {
+    const from = Buffer.from(replacement.from ?? "", "utf8");
+    const to = Buffer.from(replacement.to ?? "", "utf8");
+    if (from.length === 0 || from.length !== to.length) {
+      throw new Error(
+        `${asset.id}:${member.path}: byte replacements must be non-empty and length preserving`,
+      );
+    }
+    const offset = bytes.indexOf(from);
+    if (offset < 0 || bytes.indexOf(from, offset + from.length) >= 0) {
+      throw new Error(
+        `${asset.id}:${member.path}: byte replacement must match exactly once`,
+      );
+    }
+    bytes = Buffer.from(bytes);
+    to.copy(bytes, offset);
+  }
+  writeFileSync(temporary, bytes);
+  if (!(await assetIsCurrent(expected, temporary))) {
+    rmSync(temporary, { force: true });
+    throw new Error(
+      `${asset.id}:${member.path}: extracted bytes failed verification`,
+    );
+  }
+  rmSync(destination, { force: true });
+  renameSync(temporary, destination);
   return true;
 }
 
@@ -246,6 +329,24 @@ async function main() {
     for (const placement of placements) {
       if (!(await ensurePlacement(asset, destination, placement))) {
         missing = true;
+      }
+    }
+    if (asset.archive_members !== undefined) {
+      if (
+        !Array.isArray(asset.archive_members) ||
+        asset.archive_members.length === 0
+      ) {
+        throw new Error(`${asset.id}: archive_members must be a non-empty array`);
+      }
+      for (const member of asset.archive_members) {
+        if (!(await ensureArchiveMember(asset, destination, member))) {
+          missing = true;
+        }
+      }
+      if (!asset.quiet) {
+        console.log(
+          `[external-assets] ready ${asset.id} (${asset.archive_members.length} extracted members)`,
+        );
       }
     }
   });

@@ -34,46 +34,7 @@ scrapbot.system(Cameras, {
 end)
 
 local scatterRock = scrapbot.geometry.icosphere("wilds_scatter_rock", 1, 1)
-local scatterTrunk = scrapbot.geometry.cylinder("wilds_scatter_trunk", 0.34, 2.8, 8)
-local function coniferCrownDescriptor()
-	local vertices = {}
-	local indices = {}
-	local segments = 12
-	for segment = 0, segments - 1 do
-		local angle0 = segment / segments * math.pi * 2
-		local angle1 = (segment + 1) / segments * math.pi * 2
-		local middle = (angle0 + angle1) * 0.5
-		local normal = {
-			x = math.cos(middle) * 0.9,
-			y = 0.44,
-			z = math.sin(middle) * 0.9,
-		}
-		local base = #vertices
-		table.insert(vertices, {
-			position = { x = 0, y = 1, z = 0 },
-			normal = normal,
-			uv = { x = 0.5, y = 0 },
-		})
-		table.insert(vertices, {
-			position = { x = math.cos(angle0), y = -1, z = math.sin(angle0) },
-			normal = normal,
-			uv = { x = 0, y = 1 },
-		})
-		table.insert(vertices, {
-			position = { x = math.cos(angle1), y = -1, z = math.sin(angle1) },
-			normal = normal,
-			uv = { x = 1, y = 1 },
-		})
-		table.insert(indices, base)
-		table.insert(indices, base + 1)
-		table.insert(indices, base + 2)
-	end
-	return { vertices = vertices, indices = indices }
-end
-local scatterCrown = scrapbot.geometry.create("wilds_scatter_crown", coniferCrownDescriptor())
 local scatterRockMaterial = scrapbot.material.lit("wilds_scatter_rock", 0.14, 0.13, 0.11, 1)
-local scatterTrunkMaterial = scrapbot.material.lit("wilds_scatter_trunk", 0.11, 0.065, 0.035, 1)
-local scatterCrownMaterial = scrapbot.material.lit("wilds_scatter_crown", 0.045, 0.2, 0.09, 1)
 
 local scatterState = 0x28c4a11
 local function scatterRandom(): number
@@ -158,42 +119,4 @@ scrapbot.system({
 		)
 	end
 
-	for index = 1, 80 do
-		local side = scatterSide()
-		local lateral = scatterBetween(18, 38)
-		local height = scatterBetween(2.8, 5.6)
-		local x = side * lateral
-		local y = 1.5 + (lateral - 12) * 0.2 + scatterBetween(-0.2, 0.35)
-		local z = scatterBetween(-194, 25)
-		local yaw = scatterBetween(-math.pi, math.pi)
-
-		spawnScatterRenderable(
-			string.format("Scatter Pine Trunk %03d", index),
-			scatterTrunk,
-			scatterTrunkMaterial,
-			{ x = x, y = y + height * 0.24, z = z },
-			{ x = 0, y = yaw, z = 0 },
-			{ x = height * 0.14, y = height * 0.34, z = height * 0.14 }
-		)
-		spawnScatterRenderable(
-			string.format("Scatter Pine Lower Crown %03d", index),
-			scatterCrown,
-			scatterCrownMaterial,
-			{ x = x, y = y + height * 0.67, z = z },
-			{ x = 0, y = yaw, z = 0 },
-			{ x = height * 0.34, y = height * 0.39, z = height * 0.34 }
-		)
-		spawnScatterRenderable(
-			string.format("Scatter Pine Upper Crown %03d", index),
-			scatterCrown,
-			scatterCrownMaterial,
-			{
-				x = x + scatterBetween(-0.12, 0.12),
-				y = y + height * 0.98,
-				z = z + scatterBetween(-0.12, 0.12),
-			},
-			{ x = 0, y = yaw + 0.7, z = 0 },
-			{ x = height * 0.22, y = height * 0.3, z = height * 0.22 }
-		)
-	end
 end)

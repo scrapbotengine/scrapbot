@@ -1,0 +1,7 @@
+id = "7b000000-0000-4000-8000-000000000010"
+type = "scrapbot.model"
+name = "Kenney Pine Tall A"
+
+[model]
+source = "assets/kenney-nature/tree_pineTallA_detailed.glb"
+generate_lods = false

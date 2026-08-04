@@ -1,0 +1,7 @@
+id = "7b000000-0000-4000-8000-00000000000d"
+type = "scrapbot.model"
+name = "Pine Sapling Small"
+
+[model]
+source = "assets/pine_sapling_small/pine_sapling_small_1k.gltf"
+generate_lods = false

@@ -1,0 +1,7 @@
+id = "7b000000-0000-4000-8000-00000000000f"
+type = "scrapbot.model"
+name = "Kenney Pine Default B"
+
+[model]
+source = "assets/kenney-nature/tree_pineDefaultB.glb"
+generate_lods = false
