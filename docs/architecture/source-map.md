@@ -5,6 +5,7 @@
 | Path | Responsibility | Important boundaries |
 | --- | --- | --- |
 | `src/scrapbot_cli/main.odin` | CLI entry point and command dispatch. | Human/JSON diagnostics delegate into engine packages. |
+| `src/scrapbot/live_debug/` | Transport-independent live diagnostic snapshots, bounded capture jobs, discovery, and the loopback HTTP JSON/CBOR adapter. | The network worker never traverses ECS, resources, renderer, or GPU state; engine-thread publishers provide immutable snapshots and consume bounded commands. |
 | `src/scrapbot/scrapbot.odin` | Runtime composition, native/Luau scheduling, profiling, project load/run orchestration. | Joins registries, executor, resources, renderer, and hot reload. |
 | `src/scrapbot/shared/` | Cross-package POD types, UUIDs, transforms, camera math, public world shapes, and canonical UI theme vocabulary/resolution. | Avoid backend-owned objects and allocator-sensitive ABI leakage. Theme recipes may produce only ordinary public UI component values. |
 | `src/scrapbot/component/` | Component registry and generated Luau declarations. | Canonical component names, ownership, storage kind, lifecycle, and field schemas. |
@@ -36,6 +37,7 @@
 - `component`, `ecs`, `project`, and `resources` define runtime data and ownership.
 - `script` and `native` adapt project-authored behavior onto those contracts.
 - `ui` and `render` consume ECS/resources while retaining derived state behind explicit invalidation.
+- `live_debug` owns transport and synchronized diagnostic copies without importing engine owners; the root runtime and renderer publish into it.
 - the root runtime composes lifetimes and frame order; the CLI remains outside engine internals.
 
 Avoid importing renderer/backend details into public ECS components, project resources, scripting payloads, or native ABI types.

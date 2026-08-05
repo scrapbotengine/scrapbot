@@ -1,6 +1,7 @@
 package render
 
 import ecs "../ecs"
+import live_debug "../live_debug"
 import platform "../platform"
 import resources "../resources"
 import shared "../shared"
@@ -586,6 +587,9 @@ Run_Config :: struct {
 	allocator_current_bytes: ^i64,
 	allocator_peak_bytes: ^i64,
 	log_enabled: bool,
+	live_debug_enabled: bool,
+	live_debug_port: int,
+	live_debug: ^live_debug.Service,
 	ui_state: ^ui.State,
 	ui_driver: ^ui.Diagnostic_Driver,
 	input_override: ^shared.Input_Frame,
@@ -798,7 +802,8 @@ run_renderer :: proc(config: Run_Config, world: ^World) -> (frame: Render_Frame,
 				}
 				render_prepare_start := time.tick_now()
 				if run_config.runtime_stats_collector != nil ||
-				   run_config.system_profile_record != nil {
+				   run_config.system_profile_record != nil ||
+				   run_config.live_debug != nil {
 					ecs.populate_resource_render_list(
 						world,
 						run_config.resource_registry,
@@ -817,6 +822,16 @@ run_renderer :: proc(config: Run_Config, world: ^World) -> (frame: Render_Frame,
 					world,
 					1.0 / 60.0,
 					frame_active_seconds(active_frame_start),
+				)
+				publish_live_debug_snapshot(
+					&run_config,
+					world,
+					&render_list,
+					u64(i),
+					u32(max(run_config.window_width, 0)),
+					u32(max(run_config.window_height, 0)),
+					1,
+					{},
 				)
 				render_phases := [8]Engine_System_Profile_Phase {
 					Engine_System_Profile_Phase.Render_Cull,

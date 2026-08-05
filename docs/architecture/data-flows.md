@@ -389,4 +389,25 @@ recoverable project transaction → atomic source replacement
 
 Play/Step capture an in-memory authoring baseline. Running/paused mutations are disposable. Stop restores the in-memory baseline without reloading code; Revert stages disk resources and a validated replacement world, then commits both together without reloading Luau or native code. A failed Revert preserves the complete live resource/world pair.
 
+## Live debug diagnostics
+
+```text
+ECS extraction + renderer stats + active camera
+                    │ engine frame boundary
+                    ▼
+          immutable owned snapshot
+                    │
+      loopback HTTP JSON/CBOR adapter
+                    │
+ authenticated client request ──> bounded capture command
+                                      │ engine thread
+                                      ▼
+                          consecutive snapshot files
+                                + manifest
+```
+
+The root runtime owns the service before asset import and updates its lifecycle phase through runtime initialization. Render backends publish current frame evidence after their ordinary statistics are coherent. The network thread owns no ECS, resource, UI, renderer, or GPU reference.
+
+One ignored per-process discovery file supplies the URL and random bearer token. The server binds only to loopback, limits request bytes, and allows one bounded capture job. JSON and deterministic CBOR are representations of the same schema-versioned service state. See [ADR-053](../adr/ADR-053-expose-live-debugging-through-a-transport-independent-service.md).
+
 See [FDR-001](../fdr/FDR-001-runtime-cli.md), [FDR-005](../fdr/FDR-005-system-scheduling.md), [FDR-007](../fdr/FDR-007-ecs-ui.md), [FDR-008](../fdr/FDR-008-editor-shell.md), and [FDR-009](../fdr/FDR-009-project-resources.md).

@@ -34,6 +34,7 @@ export default defineConfig({
 						{ label: 'Luau Scripting', slug: 'guides/luau-scripting' },
 						{ label: 'Native Extensions', slug: 'guides/native-extensions' },
 						{ label: 'Live Editor', slug: 'guides/live-editor' },
+						{ label: 'Live Debug API', slug: 'guides/live-debug-api' },
 						{ label: 'Performance', slug: 'guides/performance' },
 						{ label: 'Rendering And Testing', slug: 'guides/rendering-testing' },
 					],

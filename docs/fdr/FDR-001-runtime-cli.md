@@ -1,7 +1,7 @@
 # FDR-001: Runtime CLI
 
 **Status:** Active
-**Last reviewed:** 2026-07-24
+**Last reviewed:** 2026-08-05
 
 ## Overview
 
@@ -25,6 +25,8 @@ The runtime CLI is the entry point for creating, validating, running, and openin
 - Users can pass `--no-hot-reload` to disable the default periodic checks of `project.toml`, the default scene TOML, `scripts/main.luau`, native extension libraries, and declared native extension source directories. `--hot-reload` remains available as an explicit, backward-compatible spelling.
 - Users can pass `--scheduler-trace` to report native worker count, parallel stage count, and maximum parallel width after a run.
 - Users can pass `--runtime-stats` to collect early/late engine-frame cost through render preparation, engine-allocator bytes, and detailed ECS storage checkpoints for bounded runs.
+- Windowed editor runs expose a token-authenticated loopback live debug API automatically. Other source and packaged runs may opt in with `--live-debug` and choose a port with `--live-debug-port`.
+- Live debug clients can read schema-versioned JSON or CBOR camera/renderer snapshots and request a bounded one-to-16-frame telemetry sequence. One capture may run at a time.
 - Windowed runtime-stat runs require a nonzero `--frames` limit; unbounded sessions are rejected because they have no deterministic late sample window.
 - Users can ask for top-level help or command-specific help.
 - `init`, `check`, `build`, `run`, and `profile` accept `--json` and emit one versioned JSON document with structured diagnostics and command result data.
@@ -69,9 +71,17 @@ The runtime CLI is the entry point for creating, validating, running, and openin
 **Why:** Running a game during development is the primary human path and should require only the project path. Automation benefits more from explicit execution constraints than from inheriting historical development defaults.
 **Tradeoff:** Existing scripts that relied on an implicit null renderer must add explicit deterministic flags. WGPU still requires a usable platform graphics environment.
 
+### 7. Keep live diagnostics local and machine-readable
+
+**Decision:** Editor runs publish a loopback-only live debug service with JSON and CBOR representations; non-editor runs require an explicit opt-in. See ADR-053.
+
+**Why:** Tools need exact running camera and renderer evidence without scraping logs or granting a network thread access to mutable engine state.
+
+**Tradeoff:** Clients must read the per-process discovery file and bearer token. Remote debugging and large visual attachments require additional explicit design.
+
 ## Related
 
-- **ADRs:** ADR-001, ADR-002, ADR-003, ADR-004, ADR-005, ADR-006, ADR-008
+- **ADRs:** ADR-001, ADR-002, ADR-003, ADR-004, ADR-005, ADR-006, ADR-008, ADR-053
 - **FDRs:** FDR-002, FDR-003, FDR-006, FDR-008, FDR-012
 
 ## Open Questions

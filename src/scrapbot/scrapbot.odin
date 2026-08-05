@@ -3,6 +3,7 @@ package scrapbot
 import asset_import "./asset_import"
 import component "./component"
 import ecs "./ecs"
+import live_debug "./live_debug"
 import native "./native"
 import project "./project"
 import render "./render"
@@ -673,6 +674,44 @@ run_project_internal_untracked :: proc(
 		result.err = loaded.err
 		return result
 	}
+	live_debug_service: live_debug.Service
+	live_debug_server: live_debug.HTTP_Server
+	live_debug_initialized := false
+	live_debug_server_started := false
+	defer {
+		if live_debug_server_started {
+			live_debug.stop_http_server(&live_debug_server)
+		}
+		if live_debug_initialized {
+			live_debug.destroy_service(&live_debug_service)
+		}
+	}
+	live_debug_active := run_config.live_debug_enabled || run_config.editor && run_config.window
+	if live_debug_active {
+		live_debug_initialized = true
+		if live_err := live_debug.init_service(&live_debug_service, root); live_err != "" {
+			result.err = live_err
+			return result
+		}
+		if live_err := live_debug.start_http_server(
+			&live_debug_server,
+			&live_debug_service,
+			run_config.live_debug_port,
+		); live_err != "" {
+			result.err = live_err
+			return result
+		}
+		live_debug_server_started = true
+		run_config.live_debug = &live_debug_service
+		if run_config.log_enabled {
+			fmt.printf(
+				"live debug: http://127.0.0.1:%d (discovery: %s)\n",
+				live_debug_service.port,
+				live_debug_service.discovery_path,
+			)
+		}
+		live_debug.update_phase(&live_debug_service, "importing-assets")
+	}
 	imports := asset_import.ensure_project_imports(
 		root,
 		loaded.resources[:],
@@ -682,6 +721,9 @@ run_project_internal_untracked :: proc(
 	if imports.err != "" {
 		result.err, _ = strings.clone(imports.err)
 		return result
+	}
+	if live_debug_active {
+		live_debug.update_phase(&live_debug_service, "initializing-runtime")
 	}
 	if !run_config.override_window_size {
 		run_config.window_width = loaded.config.window.width
@@ -704,6 +746,9 @@ run_project_internal_untracked :: proc(
 
 	world := ecs.build_world(&loaded.scene)
 	defer ecs.destroy_world(&world)
+	if live_debug_active {
+		live_debug.update_phase(&live_debug_service, "initializing-ui")
+	}
 	ui_state := new(ui.State)
 	defer free(ui_state)
 	if ui_err := ui.init(ui_state); ui_err != "" { result.err = ui_err; return result }
@@ -745,6 +790,9 @@ run_project_internal_untracked :: proc(
 		run_config.runtime_reimport = hot_reload_reimport_resources
 		run_config.runtime_reimport_data = hot_reload
 		run_config.resource_registry = &hot_reload.resources
+		if live_debug_active {
+			live_debug.update_phase(&live_debug_service, "initializing-renderer")
+		}
 		result.frame, result.err = render.run_renderer(run_config, &world)
 		if run_config.runtime_stats != nil {
 			run_config.runtime_stats.native_queries = native.query_stats(
@@ -844,6 +892,9 @@ run_project_internal_untracked :: proc(
 	run_config.runtime_reimport = frame_runtime_reimport_resources
 	run_config.runtime_reimport_data = frame_runtime
 
+	if live_debug_active {
+		live_debug.update_phase(&live_debug_service, "initializing-renderer")
+	}
 	result.frame, result.err = render.run_renderer(run_config, &world)
 	if run_config.runtime_stats != nil {
 		run_config.runtime_stats.native_queries = native.query_stats(

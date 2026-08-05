@@ -108,7 +108,7 @@ Performs project validation:
 ## `scrapbot run`
 
 ```sh
-scrapbot run [path] [--backend null|wgpu] [--window|--headless] [--hot-reload|--no-hot-reload] [--editor] [--scheduler-trace] [--runtime-stats] [--frames n] [--framegrab out.png] [--framegrab-region x,y,width,height] [--ui-script actions.json] [--ui-dump tree.json] [--json]
+scrapbot run [path] [--backend null|wgpu] [--window|--headless] [--hot-reload|--no-hot-reload] [--editor] [--live-debug] [--live-debug-port n] [--scheduler-trace] [--runtime-stats] [--frames n] [--framegrab out.png] [--framegrab-region x,y,width,height] [--ui-script actions.json] [--ui-dump tree.json] [--json]
 ```
 
 Runs a project through the selected renderer backend after stepping registered native and Luau systems. Source-project runs default to WGPU, a visible window, and hot reload:
@@ -129,6 +129,8 @@ Options:
 | `--window` | Explicitly open the default platform window. |
 | `--headless` | Run without SDL or a presentation surface. WGPU renders to an offscreen texture even when no framegrab is requested. |
 | `--editor` | Start with the editor shell visible. `Cmd/Ctrl+E` toggles it in a visible window. |
+| `--live-debug` | Expose the token-authenticated live debug API on loopback. Windowed editor runs enable it automatically. |
+| `--live-debug-port n` | Request a loopback port for live debugging. Zero selects an available port. |
 | `--hot-reload` | Explicitly enable the default project-file, script, asset, and native-extension polling. |
 | `--no-hot-reload` | Disable source-project hot reload for deterministic runs. |
 | `--scheduler-trace` | Print native worker count, parallel stage count, and maximum stage width. |
@@ -156,6 +158,8 @@ Stopped is authoring mode. Inspector and gizmo gestures enter UUID-addressed und
 Play snapshots the current authoring state in memory. Stop restores that state and discards playback mutations and runtime spawns. Runtime entities and running or paused mutations are never persisted. The Scene pane distinguishes authored entities from runtime spawns and hides editor-origin entities.
 
 Combine `--editor`, `--headless`, `--ui-script`, `--ui-dump`, and `--framegrab` to reproduce editor interactions deterministically. Framegrabs are losslessly compressed; explicit regions or semantic capture targets crop the output without scaling its pixels. See [Rendering And Testing](/guides/rendering-testing/#semantic-ui-diagnostics) for the script contract.
+
+The [Live Debug API](/guides/live-debug-api/) exposes current camera, viewport, renderer, virtual-geometry, and GPU timing state to local tools. It can also preserve a bounded sequence of consecutive telemetry snapshots from the running process.
 
 With `--runtime-stats`, JSON results include a `runtime_stats` object. It reports the frame count, warm-up and sample-window sizes, early and late nanoseconds per engine frame, their ratio, engine-allocator bytes, and early/late/peak/final ECS storage slot counts. Timing covers systems, engine UI/editor updates, render reconciliation, extraction, and batching preparation; it excludes GPU command encoding, submission, and execution. `allocator_final_bytes` is captured after project runtime teardown. Allocator numbers cover allocations routed through Odin's engine allocator; direct Luau, SDL, WGPU, driver, GPU, and OS allocations are outside this report.
 

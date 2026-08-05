@@ -54,3 +54,4 @@
 | [ADR-050](ADR-050-page-virtual-geometry-payloads.md) | Page virtual Geometry payloads | 2026-07-31 |
 | [ADR-051](ADR-051-wrap-runtime-assets-in-chunked-products.md) | Wrap runtime assets in chunked products | 2026-08-02 |
 | [ADR-052](ADR-052-coordinate-adaptive-render-quality-from-one-frame-budget.md) | Coordinate adaptive render quality from one frame budget | 2026-08-02 |
+| [ADR-053](ADR-053-expose-live-debugging-through-a-transport-independent-service.md) | Expose live debugging through a transport-independent service | 2026-08-05 |

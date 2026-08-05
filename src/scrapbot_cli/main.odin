@@ -50,6 +50,8 @@ Run_Options :: struct {
 	framegrab_region: string `name:"framegrab-region" usage:"Export a 1:1 top-left pixel crop as x,y,width,height."`,
 	ui_script: string `name:"ui-script" usage:"Replay semantic UI actions from a JSON script."`,
 	ui_dump: string `name:"ui-dump" usage:"Write the final reconciled UI tree as JSON."`,
+	live_debug: bool `name:"live-debug" usage:"Expose the token-authenticated live debug API on loopback. Editor runs enable it automatically."`,
+	live_debug_port: int `name:"live-debug-port" usage:"Live debug loopback port. Zero selects an available port."`,
 	json: bool `usage:"Emit one machine-readable JSON result."`,
 }
 
@@ -78,6 +80,8 @@ Packaged_Run_Options :: struct {
 	framegrab_region: string `name:"framegrab-region" usage:"Export a 1:1 top-left pixel crop as x,y,width,height."`,
 	ui_script: string `name:"ui-script" usage:"Replay semantic UI actions from a JSON script."`,
 	ui_dump: string `name:"ui-dump" usage:"Write the final reconciled UI tree as JSON."`,
+	live_debug: bool `name:"live-debug" usage:"Expose the token-authenticated live debug API on loopback."`,
+	live_debug_port: int `name:"live-debug-port" usage:"Live debug loopback port. Zero selects an available port."`,
 	runtime_stats: bool `name:"runtime-stats" usage:"Collect ECS storage, engine allocator, and early/late engine-frame timing statistics."`,
 	json: bool `usage:"Emit one machine-readable JSON result."`,
 }
@@ -583,6 +587,8 @@ run_packaged :: proc(args: []string) -> int {
 		framegrab_region = framegrab_region,
 		ui_script_path = opt.ui_script,
 		ui_dump_path = opt.ui_dump,
+		live_debug_enabled = opt.live_debug,
+		live_debug_port = opt.live_debug_port,
 		collect_runtime_stats = opt.runtime_stats,
 		log_enabled = !opt.json,
 	}
@@ -650,6 +656,8 @@ run_project :: proc(args: []string) -> int {
 		framegrab_region = framegrab_region,
 		ui_script_path = opt.ui_script,
 		ui_dump_path = opt.ui_dump,
+		live_debug_enabled = opt.live_debug,
+		live_debug_port = opt.live_debug_port,
 		collect_runtime_stats = opt.runtime_stats,
 		log_enabled = !opt.json,
 	}
@@ -828,7 +836,7 @@ print_help :: proc() {
   scrapbot import [path]         Import declared source assets into the local product cache
   scrapbot check [path]          Validate project.toml and the default scene
   scrapbot build [path]          Build a host-native runnable game package
-  scrapbot run [path] [--backend null|wgpu] [--cpu-culling] [--window] [--editor] [--hot-reload] [--scheduler-trace] [--runtime-stats] [--frames n] [--framegrab out.png] [--framegrab-region x,y,width,height] [--ui-script actions.json] [--ui-dump tree.json]
+  scrapbot run [path] [--backend null|wgpu] [--cpu-culling] [--window] [--editor] [--hot-reload] [--live-debug] [--live-debug-port n] [--scheduler-trace] [--runtime-stats] [--frames n] [--framegrab out.png] [--framegrab-region x,y,width,height] [--ui-script actions.json] [--ui-dump tree.json]
                                   Load the project and render
   scrapbot profile [path] [--out profile] [--warmup n] [--frames n] [--resolution WIDTHxHEIGHT] [--capture-range START:END] [--disabled-features names]
                                   Capture deterministic CPU/GPU frame telemetry and optional replay frames

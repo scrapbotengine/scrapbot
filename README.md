@@ -24,7 +24,7 @@ Scrapbot is a small Odin CLI and runtime with an embedded Luau scripting layer, 
 - `scrapbot init [path] [name]` safely creates a runnable text-first project without overwriting existing files. Authored data lives in `assets/`, `native/`, `resources/`, `scenes/`, and `scripts/`; generated types and caches live under ignored `.scrapbot/` state; distributable packages live under `build/`.
 - `scrapbot check [path] [--json]` builds declared native extensions, validates the manifest, default scene, and Luau component schemas, refreshes generated Luau LSP types, and runs Luau static analysis when `luau-analyze` is available.
 - `scrapbot build [path] [--target host] [--json]` creates a host-native runnable package under `build/<target>` with the game executable, project data, and native extension artifacts.
-- `scrapbot run [path] [options]` loads the scene into a native ECS world, executes `scripts/main.luau`, runs native and script systems, and renders through the selected backend. Ordinary development is simply `scrapbot run <path>` (windowed WGPU with hot reload). Options include `--backend null|wgpu`, `--window|--headless`, `--hot-reload|--no-hot-reload`, `--editor`, `--frames n`, `--framegrab out.png`, `--scheduler-trace`, `--runtime-stats`, `--ui-script`, `--ui-dump`, and `--cpu-culling` (deterministic CPU reference path for GPU culling).
+- `scrapbot run [path] [options]` loads the scene into a native ECS world, executes `scripts/main.luau`, runs native and script systems, and renders through the selected backend. Ordinary development is simply `scrapbot run <path>` (windowed WGPU with hot reload). Options include `--backend null|wgpu`, `--window|--headless`, `--hot-reload|--no-hot-reload`, `--editor`, `--live-debug`, `--frames n`, `--framegrab out.png`, `--scheduler-trace`, `--runtime-stats`, `--ui-script`, `--ui-dump`, and `--cpu-culling` (deterministic CPU reference path for GPU culling).
 - `scrapbot help <command>` prints command-specific options parsed by Odin's `core:flags`.
 - Every command emits structured `--json` output with stable diagnostic codes — the automation contract for agents. Headless WGPU runs create a device and offscreen target without SDL or an OS presentation surface, can execute without a pixel readback, and optionally support final-frame PNG framegrabs and semantic UI scripting. `--ui-script` targets reconciled controls by UUID, name, or text, replays interactions, and asserts state; `--ui-dump` exposes the full logical and screen-space UI tree as JSON.
 
@@ -68,6 +68,7 @@ During development, use `mise build` to compile the optimized CLI and `mise scra
 - RMB-captured WASD fly camera, precise entity picking, and translation/rotation/scale gizmos with plane and center handles.
 - System profiler publishing engine, project-Odin, Luau, and CPU render-phase timings from a rolling window.
 - Bounded headless render profiler with exact frame-correlated GPU pass timestamps, active-CPU timing, per-frame upload/rebuild counters, resolution metadata, and optional lossless replay captures.
+- Token-authenticated loopback live debug API with JSON/CBOR camera, viewport, renderer, and virtual-geometry snapshots plus bounded consecutive-frame telemetry captures. Windowed editor runs enable it automatically.
 
 ### Examples
 

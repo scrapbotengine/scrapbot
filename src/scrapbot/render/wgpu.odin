@@ -4233,6 +4233,16 @@ wgpu_draw_frame :: proc(
 			config.render_feature_overrides,
 		),
 	)
+	publish_live_debug_snapshot(
+		config,
+		world,
+		&renderer.render_list,
+		profile_frame_index,
+		u32(renderer.width),
+		u32(renderer.height),
+		platform.runtime_window_pixel_density(),
+		viewport,
+	)
 	renderer.profile_frame_index += 1
 	commit_system_profile_frame(config)
 
