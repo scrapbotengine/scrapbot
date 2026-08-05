@@ -399,14 +399,17 @@ ECS extraction + renderer stats + active camera
                     │
       loopback HTTP JSON/CBOR adapter
                     │
- authenticated client request ──> bounded capture command
+ authenticated client request ──> bounded capture plan
                                       │ engine thread
                                       ▼
-                          consecutive snapshot files
-                                + manifest
+                  renderer-owned optional readbacks
+                              + snapshots
+                              + manifest
 ```
 
-The root runtime owns the service before asset import and updates its lifecycle phase through runtime initialization. Render backends publish current frame evidence after their ordinary statistics are coherent. The network thread owns no ECS, resource, UI, renderer, or GPU reference.
+The root runtime owns the service before asset import and updates its lifecycle phase through runtime initialization. Render backends publish current frame evidence after their ordinary statistics are coherent.
+
+WGPU consumes an optional color-artifact plan before command encoding, reads the final composited output after submission, and writes the frame-numbered PNG before publishing the matching snapshot. The null backend rejects color while retaining telemetry capture. The network thread owns no ECS, resource, UI, renderer, or GPU reference.
 
 One ignored per-process discovery file supplies the URL and random bearer token. The server binds only to loopback, limits request bytes, and allows one bounded capture job. JSON and deterministic CBOR are representations of the same schema-versioned service state. See [ADR-053](../adr/ADR-053-expose-live-debugging-through-a-transport-independent-service.md).
 

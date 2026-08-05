@@ -250,6 +250,7 @@ wgpu_init_renderer :: proc(
 		// FIFO is guaranteed by WebGPU and provides the window loop's frame pacing.
 		renderer.present_mode = .Fifo
 		renderer.alpha_mode = capabilities.alphaModes[0]
+		renderer.surface_copy_src_supported = .CopySrc in capabilities.usages
 	} else {
 		renderer.format = offscreen_format
 	}
@@ -1640,10 +1641,14 @@ wgpu_configure_surface :: proc(renderer: ^WGPU_Renderer) -> (drawable: bool, err
 
 	wgpu_release_surface_depth(renderer)
 
+	usage: wgpu.TextureUsageFlags = {.RenderAttachment}
+	if renderer.surface_copy_src_supported {
+		usage |= {.CopySrc}
+	}
 	surface_config := wgpu.SurfaceConfiguration {
 		device = renderer.device,
 		format = renderer.format,
-		usage = {.RenderAttachment},
+		usage = usage,
 		width = next_width,
 		height = next_height,
 		alphaMode = renderer.alpha_mode,

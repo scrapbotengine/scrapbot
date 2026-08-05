@@ -47,7 +47,7 @@ This file tracks current actionable engineering work. The broad product roadmap 
 
 ## Testing And Diagnostics
 
-- [ ] Add live-debug PNG, depth, meshlet-identity, and visibility-buffer capture providers behind the transport-independent service ([ADR-053](adr/ADR-053-expose-live-debugging-through-a-transport-independent-service.md)).
+- [ ] Add live-debug depth, meshlet-identity, and visibility-buffer capture providers beside the shipped composited-color provider ([ADR-053](adr/ADR-053-expose-live-debugging-through-a-transport-independent-service.md)).
 - [ ] Add a generated Connect/protobuf transport when Odin schema tooling can preserve presence, oneofs, unknown fields, and deterministic evolution ([ADR-053](adr/ADR-053-expose-live-debugging-through-a-transport-independent-service.md)).
 - [ ] Extend offscreen WGPU CI coverage from Metal to representative Vulkan and D3D12 adapters.
 - [ ] Add reusable named camera-path and depth/meshlet-debug matrices for external example render regressions.

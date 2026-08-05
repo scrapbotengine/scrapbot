@@ -63,6 +63,14 @@ publish_live_debug_snapshot :: proc(
 	}
 	publish_live_debug_render_stats(&snapshot.renderer, config.stats)
 	live_debug.publish_snapshot(config.live_debug, snapshot)
+	plan := live_debug.begin_capture_frame(config.live_debug)
+	if live_debug.capture_artifact_requested(plan, .Color) && config.backend != .WGPU {
+		live_debug.capture_fail(
+			config.live_debug,
+			"the active renderer does not provide live color capture",
+		)
+		return
+	}
 	_ = live_debug.capture_published_snapshot(config.live_debug)
 }
 

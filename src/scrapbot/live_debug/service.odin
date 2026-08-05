@@ -26,6 +26,12 @@ Capture_Status :: enum {
 	Failed,
 }
 
+Capture_Artifact :: enum {
+	Color,
+}
+
+Capture_Artifacts :: bit_set[Capture_Artifact]
+
 Vec3 :: struct {
 	x, y, z: f32,
 }
@@ -95,6 +101,7 @@ Snapshot :: struct {
 
 Capture_Request :: struct {
 	frames: u32,
+	artifacts: []string,
 }
 
 Capture_Job :: struct {
@@ -106,12 +113,21 @@ Capture_Job :: struct {
 	directory: string,
 	manifest: string,
 	error: string,
+	artifacts: []string,
 }
 
-Capture_Command :: struct {
+Capture_Frame_Plan :: struct {
+	active: bool,
 	id: u64,
-	frames: u32,
+	frame_number: u32,
 	directory: string,
+	artifacts: Capture_Artifacts,
+}
+
+Capture_Artifact_Manifest :: struct {
+	kind: string,
+	media_type: string,
+	pattern: string,
 }
 
 Capture_Manifest :: struct {
@@ -121,6 +137,7 @@ Capture_Manifest :: struct {
 	first_frame_index: u64,
 	last_frame_index: u64,
 	snapshot_pattern: string,
+	artifacts: []Capture_Artifact_Manifest,
 }
 
 Error_Response :: struct {
@@ -142,8 +159,8 @@ Service :: struct {
 	next_capture_id: u64,
 	capture: Capture_Job,
 	capture_status: Capture_Status,
-	capture_command_pending: bool,
 	capture_first_frame_index: u64,
+	capture_artifacts: Capture_Artifacts,
 }
 
 init_service :: proc(service: ^Service, root: string) -> string {
@@ -207,6 +224,7 @@ destroy_service :: proc(service: ^Service) {
 	delete(service.capture.error)
 	delete(service.capture.manifest)
 	delete(service.capture.directory)
+	delete(service.capture.artifacts)
 	destroy_snapshot_strings(&service.snapshot)
 	delete(service.token)
 	delete(service.capture_root)
@@ -247,15 +265,14 @@ capture_published_snapshot :: proc(service: ^Service) -> string {
 	if service == nil {
 		return ""
 	}
+	_ = begin_capture_frame(service)
 	sync.mutex_lock(&service.mutex)
-	if service.capture_status == .Pending {
-		set_capture_status(service, .Capturing)
-		service.capture_command_pending = false
-		service.capture_first_frame_index = service.snapshot.frame_index
-	}
 	if service.capture_status != .Capturing {
 		sync.mutex_unlock(&service.mutex)
 		return ""
+	}
+	if service.capture.frames_captured == 0 {
+		service.capture_first_frame_index = service.snapshot.frame_index
 	}
 	capture_id := service.capture.id
 	frame_number := service.capture.frames_captured
@@ -305,8 +322,10 @@ capture_published_snapshot :: proc(service: ^Service) -> string {
 		first_frame_index = service.capture_first_frame_index,
 		last_frame_index = service.snapshot.frame_index,
 		snapshot_pattern = "frame-%04d.json",
+		artifacts = capture_artifact_manifest(service.capture_artifacts),
 	}
 	sync.mutex_unlock(&service.mutex)
+	defer delete(manifest.artifacts)
 	if !complete {
 		return ""
 	}
@@ -405,7 +424,14 @@ encode_snapshot :: proc(service: ^Service, codec: Codec) -> ([]byte, string) {
 	return nil, "unsupported live debug codec"
 }
 
-enqueue_capture :: proc(service: ^Service, requested_frames: u32) -> (Capture_Job, string) {
+enqueue_capture :: proc(
+	service: ^Service,
+	requested_frames: u32,
+	artifacts: Capture_Artifacts = {},
+) -> (
+	Capture_Job,
+	string,
+) {
 	if service == nil {
 		return {}, "live debug service is unavailable"
 	}
@@ -418,6 +444,7 @@ enqueue_capture :: proc(service: ^Service, requested_frames: u32) -> (Capture_Jo
 	delete(service.capture.error)
 	delete(service.capture.manifest)
 	delete(service.capture.directory)
+	delete(service.capture.artifacts)
 	id := service.next_capture_id
 	service.next_capture_id += 1
 	directory_name := fmt.aprintf("capture-%06d", id)
@@ -432,41 +459,66 @@ enqueue_capture :: proc(service: ^Service, requested_frames: u32) -> (Capture_Jo
 		status = capture_status_name(.Pending),
 		frames_requested = frames,
 		directory = directory,
+		artifacts = capture_artifact_names(artifacts),
 	}
-	service.capture_command_pending = true
+	service.capture_artifacts = artifacts
 	service.capture_status = .Pending
 	return service.capture, ""
 }
 
-take_capture_command :: proc(service: ^Service) -> (Capture_Command, bool) {
+begin_capture_frame :: proc(service: ^Service) -> Capture_Frame_Plan {
 	if service == nil {
-		return {}, false
+		return {}
 	}
 	sync.mutex_lock(&service.mutex)
 	defer sync.mutex_unlock(&service.mutex)
-	if !service.capture_command_pending || service.capture_status != .Pending {
-		return {}, false
+	if service.capture_status == .Pending {
+		set_capture_status(service, .Capturing)
 	}
-	service.capture_command_pending = false
-	set_capture_status(service, .Capturing)
+	if service.capture_status != .Capturing {
+		return {}
+	}
 	return {
-			id = service.capture.id,
-			frames = service.capture.frames_requested,
-			directory = service.capture.directory,
-		},
-		true
+		active = true,
+		id = service.capture.id,
+		frame_number = service.capture.frames_captured,
+		directory = service.capture.directory,
+		artifacts = service.capture_artifacts,
+	}
 }
 
-capture_frame_completed :: proc(service: ^Service) {
-	if service == nil {
-		return
+capture_artifact_requested :: proc "contextless" (
+	plan: Capture_Frame_Plan,
+	artifact: Capture_Artifact,
+) -> bool {
+	return plan.active && artifact in plan.artifacts
+}
+
+capture_artifact_path :: proc(
+	plan: Capture_Frame_Plan,
+	artifact: Capture_Artifact,
+) -> (
+	string,
+	string,
+) {
+	if !capture_artifact_requested(plan, artifact) {
+		return "", "capture artifact was not requested"
 	}
-	sync.mutex_lock(&service.mutex)
-	defer sync.mutex_unlock(&service.mutex)
-	if service.capture_status != .Capturing {
-		return
+	if make_err := ensure_directory(plan.directory); make_err != nil {
+		return "", fmt.tprintf("failed to create live debug capture directory: %v", make_err)
 	}
-	service.capture.frames_captured += 1
+	name := fmt.aprintf(
+		"%s-%04d%s",
+		capture_artifact_name(artifact),
+		plan.frame_number,
+		capture_artifact_extension(artifact),
+	)
+	defer delete(name)
+	path, path_err := filepath.join({plan.directory, name})
+	if path_err != nil {
+		return "", "failed to allocate capture artifact path"
+	}
+	return path, ""
 }
 
 capture_complete :: proc(service: ^Service, manifest: string) {
@@ -555,9 +607,81 @@ decode_capture_request :: proc(data: []byte, codec: Codec) -> (Capture_Request, 
 			}
 	}
 	if request.frames == 0 || request.frames > MAX_CAPTURE_FRAMES {
+		destroy_capture_request(&request)
 		return {}, fmt.tprintf("capture frames must be between 1 and %d", MAX_CAPTURE_FRAMES)
 	}
+	if _, artifact_err := parse_capture_artifacts(request.artifacts); artifact_err != "" {
+		destroy_capture_request(&request)
+		return {}, artifact_err
+	}
 	return request, ""
+}
+
+destroy_capture_request :: proc(request: ^Capture_Request) {
+	if request == nil {
+		return
+	}
+	for artifact in request.artifacts {
+		delete(artifact)
+	}
+	delete(request.artifacts)
+	request^ = {}
+}
+
+parse_capture_artifacts :: proc(values: []string) -> (Capture_Artifacts, string) {
+	result: Capture_Artifacts
+	for value in values {
+		switch value {
+			case "color":
+				result |= {.Color}
+			case:
+				return {}, fmt.tprintf("unsupported capture artifact %q", value)
+		}
+	}
+	return result, ""
+}
+
+capture_artifact_name :: proc "contextless" (artifact: Capture_Artifact) -> string {
+	switch artifact {
+		case .Color:
+			return "color"
+	}
+	return "unknown"
+}
+
+capture_artifact_extension :: proc "contextless" (artifact: Capture_Artifact) -> string {
+	switch artifact {
+		case .Color:
+			return ".png"
+	}
+	return ".bin"
+}
+
+capture_artifact_names :: proc(artifacts: Capture_Artifacts) -> []string {
+	result := make([]string, card(artifacts))
+	index := 0
+	for artifact in artifacts {
+		result[index] = capture_artifact_name(artifact)
+		index += 1
+	}
+	return result
+}
+
+capture_artifact_manifest :: proc(artifacts: Capture_Artifacts) -> []Capture_Artifact_Manifest {
+	result := make([]Capture_Artifact_Manifest, card(artifacts))
+	index := 0
+	for artifact in artifacts {
+		switch artifact {
+			case .Color:
+				result[index] = {
+					kind = "color",
+					media_type = "image/png",
+					pattern = "color-%04d.png",
+				}
+				index += 1
+		}
+	}
+	return result
 }
 
 encode_error :: proc(code, message: string, codec: Codec) -> []byte {

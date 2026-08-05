@@ -159,7 +159,7 @@ Play snapshots the current authoring state in memory. Stop restores that state a
 
 Combine `--editor`, `--headless`, `--ui-script`, `--ui-dump`, and `--framegrab` to reproduce editor interactions deterministically. Framegrabs are losslessly compressed; explicit regions or semantic capture targets crop the output without scaling its pixels. See [Rendering And Testing](/guides/rendering-testing/#semantic-ui-diagnostics) for the script contract.
 
-The [Live Debug API](/guides/live-debug-api/) exposes current camera, viewport, renderer, virtual-geometry, and GPU timing state to local tools. It can also preserve a bounded sequence of consecutive telemetry snapshots from the running process.
+The [Live Debug API](/guides/live-debug-api/) exposes current camera, viewport, renderer, virtual-geometry, and GPU timing state to local tools. It can also preserve a bounded sequence of consecutive telemetry snapshots and frame-matched composited WGPU images from the running process.
 
 With `--runtime-stats`, JSON results include a `runtime_stats` object. It reports the frame count, warm-up and sample-window sizes, early and late nanoseconds per engine frame, their ratio, engine-allocator bytes, and early/late/peak/final ECS storage slot counts. Timing covers systems, engine UI/editor updates, render reconciliation, extraction, and batching preparation; it excludes GPU command encoding, submission, and execution. `allocator_final_bytes` is captured after project runtime teardown. Allocator numbers cover allocations routed through Odin's engine allocator; direct Luau, SDL, WGPU, driver, GPU, and OS allocations are outside this report.
 

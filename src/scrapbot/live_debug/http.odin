@@ -5,6 +5,7 @@ import "core:encoding/json"
 import "core:fmt"
 import "core:net"
 import "core:os"
+import "core:path/filepath"
 import "core:strconv"
 import "core:strings"
 import "core:sync"
@@ -319,6 +320,18 @@ handle_http_request :: proc(
 		write_http_response(client, 200, response_codec, data)
 		return
 	}
+	artifact_prefix := "/v1/captures/current/artifacts/"
+	if request.method == "GET" && strings.has_prefix(request.path, artifact_prefix) {
+		file_name := request.path[len(artifact_prefix):]
+		data, media_type, read_err := read_current_capture_artifact(service, file_name)
+		if read_err != "" {
+			write_http_error(client, 404, "ARTIFACT_NOT_FOUND", read_err, response_codec)
+			return
+		}
+		defer delete(data)
+		write_http_media_response(client, 200, media_type, data)
+		return
+	}
 	if request.method == "POST" && request.path == "/v1/captures" {
 		request_codec, supported := codec_from_content_type(request.content_type)
 		if !supported {
@@ -336,7 +349,13 @@ handle_http_request :: proc(
 			write_http_error(client, 400, "INVALID_CAPTURE", decode_err, response_codec)
 			return
 		}
-		_, enqueue_err := enqueue_capture(service, capture_request.frames)
+		defer destroy_capture_request(&capture_request)
+		artifacts, artifact_err := parse_capture_artifacts(capture_request.artifacts)
+		if artifact_err != "" {
+			write_http_error(client, 400, "INVALID_CAPTURE", artifact_err, response_codec)
+			return
+		}
+		_, enqueue_err := enqueue_capture(service, capture_request.frames, artifacts)
 		if enqueue_err != "" {
 			write_http_error(client, 409, "CAPTURE_ACTIVE", enqueue_err, response_codec)
 			return
@@ -351,6 +370,44 @@ handle_http_request :: proc(
 		return
 	}
 	write_http_error(client, 404, "NOT_FOUND", "unknown live debug endpoint", response_codec)
+}
+
+read_current_capture_artifact :: proc(
+	service: ^Service,
+	file_name: string,
+) -> (
+	[]byte,
+	string,
+	string,
+) {
+	if file_name == "" ||
+	   strings.contains(file_name, "/") ||
+	   strings.contains(file_name, "\\") ||
+	   strings.contains(file_name, "..") {
+		return nil, "", "invalid capture artifact name"
+	}
+	sync.mutex_lock(&service.mutex)
+	directory := strings.clone(service.capture.directory)
+	complete := service.capture_status == .Complete
+	sync.mutex_unlock(&service.mutex)
+	defer delete(directory)
+	if !complete || directory == "" {
+		return nil, "", "the current capture is not complete"
+	}
+	path, path_err := filepath.join({directory, file_name})
+	if path_err != nil {
+		return nil, "", "failed to allocate capture artifact path"
+	}
+	defer delete(path)
+	data, read_err := os.read_entire_file(path, context.allocator)
+	if read_err != nil {
+		return nil, "", "capture artifact does not exist"
+	}
+	media_type := "application/octet-stream"
+	if strings.has_suffix(file_name, ".png") {
+		media_type = "image/png"
+	}
+	return data, media_type, ""
 }
 
 write_http_error :: proc(
@@ -391,6 +448,23 @@ write_http_response :: proc(client: net.TCP_Socket, status: int, codec: Codec, b
 		status,
 		status_text,
 		content_type,
+		len(body),
+	)
+	defer delete(header)
+	write_http_bytes(client, transmute([]byte)header)
+	write_http_bytes(client, body)
+}
+
+write_http_media_response :: proc(
+	client: net.TCP_Socket,
+	status: int,
+	media_type: string,
+	body: []byte,
+) {
+	header := fmt.aprintf(
+		"HTTP/1.1 %d OK\r\nContent-Type: %s\r\nContent-Length: %d\r\nConnection: close\r\nCache-Control: no-store\r\n\r\n",
+		status,
+		media_type,
 		len(body),
 	)
 	defer delete(header)

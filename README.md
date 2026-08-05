@@ -68,7 +68,7 @@ During development, use `mise build` to compile the optimized CLI and `mise scra
 - RMB-captured WASD fly camera, precise entity picking, and translation/rotation/scale gizmos with plane and center handles.
 - System profiler publishing engine, project-Odin, Luau, and CPU render-phase timings from a rolling window.
 - Bounded headless render profiler with exact frame-correlated GPU pass timestamps, active-CPU timing, per-frame upload/rebuild counters, resolution metadata, and optional lossless replay captures.
-- Token-authenticated loopback live debug API with JSON/CBOR camera, viewport, renderer, and virtual-geometry snapshots plus bounded consecutive-frame telemetry captures. Windowed editor runs enable it automatically.
+- Token-authenticated loopback live debug API with JSON/CBOR camera, viewport, renderer, and virtual-geometry snapshots plus bounded consecutive-frame telemetry and composited-color captures. Windowed editor runs enable it automatically.
 
 ### Examples
 

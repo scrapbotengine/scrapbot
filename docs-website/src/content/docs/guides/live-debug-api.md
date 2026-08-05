@@ -1,6 +1,6 @@
 ---
 title: Live Debug API
-description: Inspect a running Scrapbot process and capture consecutive frame telemetry over a local authenticated API.
+description: Inspect a running Scrapbot process and capture consecutive frame telemetry and images over a local authenticated API.
 ---
 
 Scrapbot's live debug API lets local tools inspect the exact state of a running editor or game. It is useful when a renderer defect depends on camera pose, viewport size, virtual-geometry residency, or changes across several frames.
@@ -53,7 +53,7 @@ curl --header "Authorization: Bearer $token" \
 
 Read `schema_version` before assuming a response shape. Human log messages are not part of the API contract.
 
-## Capture consecutive telemetry
+## Capture consecutive evidence
 
 Request between one and 16 consecutive published frames:
 
@@ -61,7 +61,7 @@ Request between one and 16 consecutive published frames:
 curl --request POST \
   --header "Authorization: Bearer $token" \
   --header 'Content-Type: application/json' \
-  --data '{"frames":5}' \
+  --data '{"frames":5,"artifacts":["color"]}' \
   "$url/v1/captures"
 ```
 
@@ -72,9 +72,25 @@ curl --header "Authorization: Bearer $token" \
   "$url/v1/captures/current" | jq
 ```
 
-A completed job reports `status: "complete"`, the number of captured frames, and a manifest path. Its capture directory contains `frame-0000.json` and the following consecutive snapshots plus `manifest.json`.
+A completed job reports `status: "complete"`, the number of captured frames, requested `artifacts`, and a manifest path. Its capture directory contains `frame-0000.json` and the following consecutive snapshots plus `manifest.json`.
+
+The optional `color` artifact captures the final composited WGPU output as `color-0000.png`. In an editor run, this includes the editor chrome and the game viewport exactly as presented. Every PNG uses the same capture-frame number as its JSON snapshot.
+
+Download a completed artifact through the authenticated API:
+
+```sh
+curl --header "Authorization: Bearer $token" \
+  --output /tmp/scrapbot-color.png \
+  "$url/v1/captures/current/artifacts/color-0000.png"
+```
+
+Telemetry-only requests may omit `artifacts`. The null backend accepts telemetry captures but fails a request for `color` with an explicit capture error.
 
 Only one capture may be active. A second request receives `409 Conflict`. Values outside the supported frame count are clamped to the safe range.
+
+A capture advances only when the renderer produces a frame. If a window is fully occluded or the platform suspends drawing, the job remains `pending` or `capturing` until rendering resumes.
+
+Color capture performs an explicit GPU readback on each requested frame. This diagnostic work can stall presentation, so live-capture frame timings are evidence about state and ordering rather than representative performance measurements. Use `scrapbot profile` for controlled performance analysis.
 
 ## Use CBOR
 
@@ -95,4 +111,4 @@ The server binds only to `127.0.0.1`, requires its per-process bearer token, rej
 
 The network worker never traverses or mutates ECS, resource, renderer, or GPU state. The engine thread publishes immutable snapshots at frame boundaries and consumes bounded capture requests. Remote binding is intentionally unsupported.
 
-Telemetry capture currently writes structured frame evidence. PNG, depth, visibility, and GPU-buffer attachments are planned as optional capture providers behind the same service.
+WGPU supplies the color provider without exposing its texture or readback buffer to the service or network worker. Depth, meshlet identity, visibility, and other GPU evidence remain additional providers behind the same engine-thread capture plan.

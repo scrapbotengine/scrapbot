@@ -121,3 +121,78 @@ test_live_debug_service_reuses_existing_engine_directories :: proc(t: ^testing.T
 	testing.expect_value(t, init_service(&second, root), "")
 	destroy_service(&second)
 }
+
+@(test)
+test_live_debug_color_artifact_uses_the_same_capture_frame :: proc(t: ^testing.T) {
+	root, root_err := os.make_directory_temp("", "scrapbot-live-artifact-*", context.allocator)
+	testing.expect(t, root_err == nil)
+	if root_err != nil {
+		return
+	}
+	defer os.remove_all(root)
+	defer delete(root)
+	service: Service
+	testing.expect_value(t, init_service(&service, root), "")
+	defer destroy_service(&service)
+	_, enqueue_err := enqueue_capture(&service, 1, {.Color})
+	testing.expect_value(t, enqueue_err, "")
+	plan := begin_capture_frame(&service)
+	testing.expect(t, capture_artifact_requested(plan, .Color))
+	artifact_path, path_err := capture_artifact_path(plan, .Color)
+	defer delete(artifact_path)
+	testing.expect_value(t, path_err, "")
+	png_bytes := []byte{0x89, 'P', 'N', 'G'}
+	testing.expect(t, write_private_file(artifact_path, png_bytes) == nil)
+	publish_snapshot(&service, Snapshot{phase = "running", frame_index = 27})
+	testing.expect_value(t, capture_published_snapshot(&service), "")
+	testing.expect_value(t, service.capture.status, "complete")
+
+	manifest_data, manifest_err := os.read_entire_file(service.capture.manifest, context.allocator)
+	defer delete(manifest_data)
+	testing.expect(t, manifest_err == nil)
+	manifest: Capture_Manifest
+	defer {
+		delete(manifest.snapshot_pattern)
+		for &artifact in manifest.artifacts {
+			delete(artifact.kind)
+			delete(artifact.media_type)
+			delete(artifact.pattern)
+		}
+		delete(manifest.artifacts)
+	}
+	testing.expect(t, json.unmarshal(manifest_data, &manifest) == nil)
+	testing.expect_value(t, manifest.first_frame_index, u64(27))
+	testing.expect_value(t, len(manifest.artifacts), 1)
+	testing.expect_value(t, manifest.artifacts[0].kind, "color")
+	testing.expect_value(t, manifest.artifacts[0].pattern, "color-%04d.png")
+
+	artifact_data, media_type, read_artifact_err := read_current_capture_artifact(
+		&service,
+		"color-0000.png",
+	)
+	defer delete(artifact_data)
+	testing.expect_value(t, read_artifact_err, "")
+	testing.expect_value(t, media_type, "image/png")
+	testing.expect_value(t, len(artifact_data), len(png_bytes))
+	for value, index in artifact_data {
+		testing.expect_value(t, value, png_bytes[index])
+	}
+}
+
+@(test)
+test_live_debug_capture_request_rejects_unknown_artifacts :: proc(t: ^testing.T) {
+	request, request_err := decode_capture_request(
+		transmute([]byte)(string(`{"frames":5,"artifacts":["color"]}`)),
+		.JSON,
+	)
+	defer destroy_capture_request(&request)
+	testing.expect_value(t, request_err, "")
+	artifacts, artifact_err := parse_capture_artifacts(request.artifacts)
+	testing.expect_value(t, artifact_err, "")
+	testing.expect(t, .Color in artifacts)
+	_, invalid_err := decode_capture_request(
+		transmute([]byte)(string(`{"frames":5,"artifacts":["depth"]}`)),
+		.JSON,
+	)
+	testing.expect(t, invalid_err != "")
+}

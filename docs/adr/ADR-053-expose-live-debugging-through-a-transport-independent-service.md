@@ -28,10 +28,12 @@ Editor runs enable the service automatically. Standalone source and packaged gam
 
 ## Consequences
 
-Agents and tools can inspect the exact running camera and renderer state instead of guessing a reproduction. Bounded consecutive-frame telemetry captures preserve temporal evidence without stopping the process.
+Agents and tools can inspect the exact running camera and renderer state instead of guessing a reproduction. Bounded consecutive-frame snapshots and optional renderer artifacts preserve temporal evidence without stopping the process.
 
 JSON keeps ad hoc inspection easy, while CBOR reduces larger machine payloads without adding a dependency or changing the data model. Clients must inspect `schema_version` and must not depend on enum ordinals or human log text.
 
-The in-tree HTTP adapter deliberately implements only the subset Scrapbot needs. Streaming images, depth, visibility buffers, and other large artifacts remain capture providers to add behind the service rather than reasons to expose renderer internals to the network thread.
+The in-tree HTTP adapter deliberately implements only the subset Scrapbot needs. WGPU implements final composited color as the first renderer-owned artifact provider. It consumes the engine-thread frame plan before command encoding, copies the exact output frame, and completes the PNG before the matching telemetry snapshot advances the capture. The service and HTTP worker never receive a texture, command encoder, or GPU buffer.
+
+Depth, meshlet identity, visibility buffers, and other large artifacts remain providers to add behind the same frame plan rather than reasons to expose renderer internals to the network thread.
 
 Discovery files contain a bearer token and therefore remain ignored engine state. Loopback authentication is a development safeguard, not a remote-debug security boundary; remote binding is unsupported.

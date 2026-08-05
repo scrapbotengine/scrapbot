@@ -1148,6 +1148,7 @@ WGPU_Renderer :: struct {
 	format: wgpu.TextureFormat,
 	present_mode: wgpu.PresentMode,
 	alpha_mode: wgpu.CompositeAlphaMode,
+	surface_copy_src_supported: bool,
 	width: u32,
 	height: u32,
 	configured: bool,
@@ -4081,6 +4082,14 @@ wgpu_draw_frame :: proc(
 	}
 	record_system_profile_phase(config, .Render_Prepare, render_prepare_start)
 	finish_runtime_frame(config, world, frame_start)
+	live_debug_capture := wgpu_live_debug_prepare_capture(
+		renderer,
+		config,
+		u32(renderer.width),
+		u32(renderer.height),
+		renderer.surface_copy_src_supported,
+	)
+	defer wgpu_live_debug_destroy_capture(&live_debug_capture)
 
 	cull_start := time.tick_now()
 	encoder := wgpu.DeviceCreateCommandEncoder(
@@ -4156,6 +4165,7 @@ wgpu_draw_frame :: proc(
 	if !config.cpu_culling {
 		wgpu_visibility_resolve(renderer, encoder)
 	}
+	wgpu_live_debug_encode_capture(&live_debug_capture, encoder, texture)
 	wgpu_gpu_timing_resolve(renderer, encoder)
 	finish_start := time.tick_now()
 	command_buffer := wgpu.CommandEncoderFinish(
@@ -4174,6 +4184,7 @@ wgpu_draw_frame :: proc(
 	if !config.cpu_culling {
 		wgpu_visibility_after_submit(renderer)
 	}
+	wgpu_live_debug_finish_capture(renderer, &live_debug_capture)
 	record_system_profile_phase(config, .Render_Submit, submit_start)
 	present_start := time.tick_now()
 	if wgpu.SurfacePresent(renderer.surface) != .Success {
@@ -4365,6 +4376,8 @@ wgpu_render_offscreen_frame :: proc(
 	}
 	record_system_profile_phase(config, .Render_Prepare, render_prepare_start)
 	finish_runtime_frame(config, world, frame_start)
+	live_debug_capture := wgpu_live_debug_prepare_capture(renderer, config, width, height)
+	defer wgpu_live_debug_destroy_capture(&live_debug_capture)
 
 	cull_start := time.tick_now()
 	encoder := wgpu.DeviceCreateCommandEncoder(
@@ -4455,6 +4468,7 @@ wgpu_render_offscreen_frame :: proc(
 			&wgpu.Extent3D{width = width, height = height, depthOrArrayLayers = 1},
 		)
 	}
+	wgpu_live_debug_encode_capture(&live_debug_capture, encoder, texture)
 	wgpu_gpu_timing_resolve(renderer, encoder)
 	finish_start := time.tick_now()
 	command_buffer := wgpu.CommandEncoderFinish(
@@ -4473,6 +4487,7 @@ wgpu_render_offscreen_frame :: proc(
 	if !config.cpu_culling {
 		wgpu_visibility_after_submit(renderer)
 	}
+	wgpu_live_debug_finish_capture(renderer, &live_debug_capture)
 	record_system_profile_phase(config, .Render_Submit, submit_start)
 	profile_active_frame_seconds := frame_active_seconds(active_frame_start)
 	if config.profile != nil && (profile_frame_index + 1) % u64(WGPU_GPU_TIMESTAMP_FRAMES) == 0 {
@@ -4526,6 +4541,16 @@ wgpu_render_offscreen_frame :: proc(
 			config.stats,
 			config.render_feature_overrides,
 		),
+	)
+	publish_live_debug_snapshot(
+		config,
+		world,
+		&renderer.render_list,
+		profile_frame_index,
+		width,
+		height,
+		1,
+		viewport,
 	)
 	renderer.profile_frame_index += 1
 	commit_system_profile_frame(config)
