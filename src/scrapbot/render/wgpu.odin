@@ -109,7 +109,7 @@ WGPU_Dynamic_Resolution_Sample :: struct {
 	gpu_ms: f64,
 }
 
-WGPU_GPU_Visibility_Counters :: struct {
+WGPU_GPU_Visibility_Summary :: struct {
 	visible_instances: u32,
 	shadow_visible_instances: u32,
 	frustum_candidates: u32,
@@ -135,10 +135,19 @@ WGPU_GPU_Visibility_Counters :: struct {
 	virtual_page_demand_feedback_overflow: u32,
 	virtual_page_touch_feedback_overflow: u32,
 	virtual_page_prefetch_feedback_overflow: u32,
-	virtual_page_demand_feedback: [WGPU_VIRTUAL_PAGE_FEEDBACK_CAPACITY]WGPU_GPU_Virtual_Page_Feedback,
+}
+
+WGPU_GPU_Visibility_Counters :: struct {
+	summary: WGPU_GPU_Visibility_Summary,
+	virtual_page_demand_feedback: [WGPU_VIRTUAL_PAGE_DEMAND_FEEDBACK_CAPACITY]WGPU_GPU_Virtual_Page_Feedback,
 	virtual_page_touch_feedback: [WGPU_VIRTUAL_PAGE_FEEDBACK_CAPACITY]WGPU_GPU_Virtual_Page_Feedback,
 	virtual_page_prefetch_feedback: [WGPU_VIRTUAL_PAGE_FEEDBACK_CAPACITY]WGPU_GPU_Virtual_Page_Feedback,
 }
+#assert(
+	offset_of(WGPU_GPU_Visibility_Counters, virtual_page_demand_feedback) ==
+	size_of(WGPU_GPU_Visibility_Summary),
+)
+WGPU_VIRTUAL_PAGE_DEMAND_FEEDBACK_CAPACITY :: 8_192
 WGPU_VIRTUAL_PAGE_FEEDBACK_CAPACITY :: 4_096
 WGPU_GPU_Virtual_Page_Feedback :: struct {
 	geometry_index: u32,
@@ -358,7 +367,7 @@ WGPU_GPU_Instance :: struct {
 	normal_model: Mat4,
 	color: [4]f32,
 	emissive: [4]f32,
-	shadow_flags: [4]f32,
+	render_flags: [4]f32,
 	bounds: [4]f32,
 	batch_indices: [shared.MAX_GEOMETRY_LODS]u32,
 	lod_screen_radii: [shared.MAX_GEOMETRY_LODS]f32,
@@ -905,7 +914,7 @@ WGPU_Renderer :: struct {
 	gpu_visibility_readbacks: [WGPU_GPU_TIMESTAMP_FRAMES]WGPU_GPU_Visibility_Readback,
 	gpu_visibility_next_slot: int,
 	gpu_visibility_active_slot: int,
-	gpu_visibility_counters: WGPU_GPU_Visibility_Counters,
+	gpu_visibility_counters: WGPU_GPU_Visibility_Summary,
 	gpu_instance_records: [dynamic]WGPU_GPU_Instance,
 	gpu_instance_transform_records: [dynamic]WGPU_GPU_Instance_Transform,
 	gpu_instance_sources: [dynamic]WGPU_Instance_Source_State,

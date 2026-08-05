@@ -3324,10 +3324,10 @@ wgpu_build_gpu_instance :: proc(
 		normal_model = wgpu_build_normal_model_from_model(model, instance.transform.scale),
 		color = {color.x, color.y, color.z, color.w},
 		emissive = {emissive.x, emissive.y, emissive.z, 0},
-		shadow_flags = {
+		render_flags = {
 			1 if instance.shadow_caster else 0,
 			1 if instance.shadow_receiver else 0,
-			0,
+			1 if wgpu_transform_preserves_meshlet_cones(instance.transform.scale) else 0,
 			0,
 		},
 		bounds = wgpu_instance_bounds(instance, geometry, model),
@@ -3341,6 +3341,12 @@ wgpu_build_gpu_instance :: proc(
 		lod_count = u32(geometry.lod_count),
 		active = 1,
 	}
+}
+
+wgpu_transform_preserves_meshlet_cones :: proc(scale: Vec3) -> bool {
+	minimum := min(scale.x, min(scale.y, scale.z))
+	maximum := max(scale.x, max(scale.y, scale.z))
+	return minimum > 0.000001 && maximum <= minimum * 1.001
 }
 
 wgpu_find_draw_batch :: proc(
@@ -3773,7 +3779,7 @@ wgpu_cpu_cull_counts :: proc(
 		if instance.active == 0 || int(batch_index) >= batch_count {
 			continue
 		}
-		if shadow && instance.shadow_flags[0] < 0.5 {
+		if shadow && instance.render_flags[0] < 0.5 {
 			continue
 		}
 		if wgpu_sphere_visible(instance.bounds, planes) {
@@ -4647,7 +4653,7 @@ wgpu_encode_gpu_culling :: proc(
 		wgpu.CommandEncoderCopyBufferToBuffer(
 			encoder,
 			renderer.gpu_visibility_counter_buffer,
-			u64(offset_of(WGPU_GPU_Visibility_Counters, meshlet_debug_records)),
+			u64(offset_of(WGPU_GPU_Visibility_Summary, meshlet_debug_records)),
 			renderer.gpu_meshlet_debug_indirect_buffer,
 			u64(offset_of(WGPU_Draw_Indirect, instance_count)),
 			u64(size_of(u32)),
@@ -4819,7 +4825,7 @@ wgpu_prepare_cpu_culling :: proc(
 			renderer.gpu_visibility_counters.frustum_culled_instances += 1
 		}
 		for cascade_index in 0 ..< WGPU_SHADOW_CASCADE_COUNT {
-			if instance.shadow_flags[0] > 0.5 &&
+			if instance.render_flags[0] > 0.5 &&
 			   wgpu_sphere_visible(instance.bounds, shadow_planes[cascade_index]) {
 				shadow_visible_index :=
 					cascade_index * renderer.gpu_visible_capacity +

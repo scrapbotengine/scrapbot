@@ -13,7 +13,7 @@ struct GPU_Instance {
 	normal_model: mat4x4<f32>,
 	color: vec4<f32>,
 	emissive: vec4<f32>,
-	shadow_flags: vec4<f32>,
+	render_flags: vec4<f32>,
 	bounds: vec4<f32>,
 	batch_indices: array<u32, 4>,
 	lod_screen_radii: array<f32, 4>,
@@ -67,6 +67,12 @@ fn scale_matrix(value: vec3<f32>) -> mat4x4<f32> {
 	);
 }
 
+fn transform_preserves_meshlet_cones(scale: vec3<f32>) -> bool {
+	let minimum = min(scale.x, min(scale.y, scale.z));
+	let maximum = max(scale.x, max(scale.y, scale.z));
+	return minimum > 0.000001 && maximum <= minimum * 1.001;
+}
+
 @compute @workgroup_size(64)
 fn expand_transforms(@builtin(global_invocation_id) invocation: vec3<u32>) {
 	let update_count = u32(transform_updates[0].position.w);
@@ -104,6 +110,11 @@ fn expand_transforms(@builtin(global_invocation_id) invocation: vec3<u32>) {
 	instances[slot].model = model;
 	instances[slot].normal_model = rotation * scale_matrix(inverse_scale);
 	instances[slot].bounds = vec4<f32>(world_center.xyz, world_radius);
+	instances[slot].render_flags.z = select(
+		0.0,
+		1.0,
+		transform_preserves_meshlet_cones(transform.scale.xyz),
+	);
 }
 `
 
@@ -179,7 +190,7 @@ struct GPU_Instance {
 	normal_model: mat4x4<f32>,
 	color: vec4<f32>,
 	emissive: vec4<f32>,
-	shadow_flags: vec4<f32>,
+	render_flags: vec4<f32>,
 	bounds: vec4<f32>,
 	batch_indices: array<u32, 4>,
 	lod_screen_radii: array<f32, 4>,
@@ -458,7 +469,7 @@ fn transform_vertex(
 	output.color = instance.color;
 	output.emissive = instance.emissive.rgb;
 	output.view_depth = -(render.view * instance.model * local_position).z;
-	output.shadow_receiver = instance.shadow_flags.y;
+	output.shadow_receiver = instance.render_flags.y;
 	output.uv = input.uv;
 	output.meshlet_identity = meshlet_identity;
 	output.lod_level = select(0u, selected_lod(instance), render.debug.x == 7u);
@@ -1297,7 +1308,7 @@ struct GPU_Instance {
 	normal_model: mat4x4<f32>,
 	color: vec4<f32>,
 	emissive: vec4<f32>,
-	shadow_flags: vec4<f32>,
+	render_flags: vec4<f32>,
 	bounds: vec4<f32>,
 	batch_indices: array<u32, 4>,
 	lod_screen_radii: array<f32, 4>,
@@ -1423,7 +1434,7 @@ struct Visibility_Counters {
 	virtual_page_demand_feedback_overflow: atomic<u32>,
 	virtual_page_touch_feedback_overflow: atomic<u32>,
 	virtual_page_prefetch_feedback_overflow: atomic<u32>,
-	virtual_page_demand_feedback: array<Virtual_Page_Feedback, 4096>,
+	virtual_page_demand_feedback: array<Virtual_Page_Feedback, 8192>,
 	virtual_page_touch_feedback: array<Virtual_Page_Feedback, 4096>,
 	virtual_page_prefetch_feedback: array<Virtual_Page_Feedback, 4096>,
 	visible_batch_words: array<atomic<u32>, 16384>,
@@ -1529,7 +1540,7 @@ fn append_virtual_page_feedback(
 	var feedback_index = 0u;
 	if ((flags & 1u) != 0u) {
 		feedback_index = atomicAdd(&counters.virtual_page_demand_feedback_count, 1u);
-		if (feedback_index < 4096u) {
+		if (feedback_index < 8192u) {
 			counters.virtual_page_demand_feedback[feedback_index] = Virtual_Page_Feedback(
 				meshlet.request_geometry_index,
 				meshlet.request_geometry_generation,
@@ -1776,7 +1787,11 @@ fn meshlet_cone_culled(
 	meshlet: Meshlet_Info,
 	bounds: vec4<f32>,
 ) -> bool {
-	if ((meshlet.flags & 1u) != 0u || meshlet.cone_axis_cutoff.w >= 1.0) {
+	if (
+		instance.render_flags.z < 0.5 ||
+		(meshlet.flags & 1u) != 0u ||
+		meshlet.cone_axis_cutoff.w >= 1.0
+	) {
 		return false;
 	}
 	let axis = normalize(
@@ -2056,7 +2071,7 @@ fn cull_compact_candidate(invocation: vec3<u32>) {
 	if (predictive_visible) {
 		flags = flags | COMPACT_CANDIDATE_PREDICTIVE;
 	}
-	if (instance.shadow_flags.x > 0.5) {
+	if (instance.render_flags.x > 0.5) {
 		for (var cascade_index = 0u; cascade_index < 4u; cascade_index = cascade_index + 1u) {
 			if (shadow_sphere_visible(instance.bounds, cascade_index)) {
 				flags = flags | (COMPACT_CANDIDATE_SHADOW_BASE << cascade_index);
@@ -2433,7 +2448,7 @@ fn cull_instances(invocation: vec3<u32>, submission_mode: u32) {
 	}
 	let owns_shadow = active_submission_mode != 2u || compact_shadow_fallback ||
 		(batch.compact_shadow_pages != 0u && active_submission_mode == 2u);
-	if (owns_shadow && instance.shadow_flags.x > 0.5 && shadow_sphere_visible(instance.bounds, cascade_index)) {
+	if (owns_shadow && instance.render_flags.x > 0.5 && shadow_sphere_visible(instance.bounds, cascade_index)) {
 		if (batch_uses_meshlets(batch) && !compact_shadow_fallback) {
 			for (
 				var local_meshlet = 0u;

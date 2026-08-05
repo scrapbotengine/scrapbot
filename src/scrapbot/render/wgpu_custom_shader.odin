@@ -31,7 +31,7 @@ struct GPU_Instance {
 	normal_model: mat4x4<f32>,
 	color: vec4<f32>,
 	emissive: vec4<f32>,
-	shadow_flags: vec4<f32>,
+	render_flags: vec4<f32>,
 	bounds: vec4<f32>,
 	batch_indices: array<u32, 4>,
 	lod_screen_radii: array<f32, 4>,

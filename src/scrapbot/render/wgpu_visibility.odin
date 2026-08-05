@@ -909,15 +909,15 @@ wgpu_process_virtual_page_feedback :: proc(
 		return ""
 	}
 	demand_feedback_count := min(
-		int(counters.virtual_page_demand_feedback_count),
-		WGPU_VIRTUAL_PAGE_FEEDBACK_CAPACITY,
+		int(counters.summary.virtual_page_demand_feedback_count),
+		WGPU_VIRTUAL_PAGE_DEMAND_FEEDBACK_CAPACITY,
 	)
 	touch_feedback_count := min(
-		int(counters.virtual_page_touch_feedback_count),
+		int(counters.summary.virtual_page_touch_feedback_count),
 		WGPU_VIRTUAL_PAGE_FEEDBACK_CAPACITY,
 	)
 	prefetch_feedback_count := min(
-		int(counters.virtual_page_prefetch_feedback_count),
+		int(counters.summary.virtual_page_prefetch_feedback_count),
 		WGPU_VIRTUAL_PAGE_FEEDBACK_CAPACITY,
 	)
 	feedback_count := demand_feedback_count + touch_feedback_count + prefetch_feedback_count
@@ -935,7 +935,7 @@ wgpu_process_virtual_page_feedback :: proc(
 	requests := make(
 		[dynamic]WGPU_Virtual_Group_Request,
 		0,
-		min(int(counters.virtual_page_request_count), feedback_count),
+		min(int(counters.summary.virtual_page_request_count), feedback_count),
 		context.temp_allocator,
 	)
 	feedback_lanes := [?][]WGPU_GPU_Virtual_Page_Feedback {
@@ -1316,30 +1316,32 @@ wgpu_visibility_consume_readbacks :: proc(
 			WGPU_GPU_Visibility_Counters,
 		)
 		if mapped != nil {
-			renderer.gpu_visibility_counters = mapped^
+			renderer.gpu_visibility_counters = mapped.summary
 			wgpu_update_virtual_geometry_error(
 				renderer,
-				mapped.virtual_page_request_count,
-				mapped.virtual_page_demand_feedback_overflow +
-				mapped.virtual_page_touch_feedback_overflow +
-				mapped.virtual_page_prefetch_feedback_overflow,
+				mapped.summary.virtual_page_request_count,
+				mapped.summary.virtual_page_demand_feedback_overflow +
+				mapped.summary.virtual_page_touch_feedback_overflow +
+				mapped.summary.virtual_page_prefetch_feedback_overflow,
 				readback.frame_index,
 			)
-			if renderer.gpu_occlusion_debug_evidence_valid && mapped.meshlet_debug_records > 0 {
-				renderer.gpu_occlusion_debug_record_count = mapped.meshlet_debug_records
+			if renderer.gpu_occlusion_debug_evidence_valid &&
+			   mapped.summary.meshlet_debug_records > 0 {
+				renderer.gpu_occlusion_debug_record_count = mapped.summary.meshlet_debug_records
+			}
+			if request_err := wgpu_process_virtual_page_feedback(
+				renderer,
+				registry,
+				mapped,
+				readback.frame_index,
+				&remaining_upload_bytes,
+				&remaining_upload_groups,
+			); request_err != "" {
+				wgpu.BufferUnmap(readback.buffer)
+				return request_err
 			}
 		}
 		wgpu.BufferUnmap(readback.buffer)
-		if request_err := wgpu_process_virtual_page_feedback(
-			renderer,
-			registry,
-			&renderer.gpu_visibility_counters,
-			readback.frame_index,
-			&remaining_upload_bytes,
-			&remaining_upload_groups,
-		); request_err != "" {
-			return request_err
-		}
 	}
 	return ""
 }
@@ -1440,7 +1442,7 @@ wgpu_publish_visibility :: proc(renderer: ^WGPU_Renderer, stats: ^Render_Stats) 
 	stats.virtual_geometry_prefetched_pages = renderer.virtual_geometry_prefetched_page_count
 	stats.virtual_geometry_page_requests = min(
 		renderer.gpu_visibility_counters.virtual_page_request_count,
-		u32(WGPU_VIRTUAL_PAGE_FEEDBACK_CAPACITY),
+		u32(WGPU_VIRTUAL_PAGE_DEMAND_FEEDBACK_CAPACITY),
 	)
 	stats.virtual_geometry_page_prefetches = min(
 		renderer.gpu_visibility_counters.virtual_page_prefetch_count,
@@ -1459,7 +1461,7 @@ wgpu_publish_visibility :: proc(renderer: ^WGPU_Renderer, stats: ^Render_Stats) 
 	stats.virtual_geometry_page_feedback =
 		min(
 			renderer.gpu_visibility_counters.virtual_page_demand_feedback_count,
-			u32(WGPU_VIRTUAL_PAGE_FEEDBACK_CAPACITY),
+			u32(WGPU_VIRTUAL_PAGE_DEMAND_FEEDBACK_CAPACITY),
 		) +
 		min(
 			renderer.gpu_visibility_counters.virtual_page_touch_feedback_count,

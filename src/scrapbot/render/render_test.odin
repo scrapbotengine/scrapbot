@@ -483,6 +483,49 @@ test_gpu_normal_model_can_reuse_the_model_matrix :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_gpu_meshlet_cone_culling_requires_a_positive_uniform_transform :: proc(t: ^testing.T) {
+	testing.expect(t, wgpu_transform_preserves_meshlet_cones({1, 1, 1}))
+	testing.expect(t, wgpu_transform_preserves_meshlet_cones({4, 4.003, 4}))
+	testing.expect(t, !wgpu_transform_preserves_meshlet_cones({0.92, 3.8, 0.82}))
+	testing.expect(t, !wgpu_transform_preserves_meshlet_cones({1, -1, 1}))
+	testing.expect(t, !wgpu_transform_preserves_meshlet_cones({1, 0, 1}))
+	testing.expect(
+		t,
+		strings.contains(
+			WGPU_GPU_TRANSFORM_SHADER,
+			"transform_preserves_meshlet_cones(transform.scale.xyz)",
+		),
+	)
+	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "instance.render_flags.z"))
+	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "meshlet_cone_culled"))
+}
+
+@(test)
+test_gpu_virtual_feedback_layout_preserves_lane_specific_capacity :: proc(t: ^testing.T) {
+	testing.expect_value(t, WGPU_VIRTUAL_PAGE_DEMAND_FEEDBACK_CAPACITY, 8_192)
+	testing.expect_value(t, WGPU_VIRTUAL_PAGE_FEEDBACK_CAPACITY, 4_096)
+	testing.expect_value(
+		t,
+		offset_of(WGPU_GPU_Visibility_Counters, virtual_page_demand_feedback),
+		size_of(WGPU_GPU_Visibility_Summary),
+	)
+	testing.expect(
+		t,
+		strings.contains(
+			WGPU_GPU_CULL_SHADER,
+			"virtual_page_demand_feedback: array<Virtual_Page_Feedback, 8192>",
+		),
+	)
+	testing.expect(
+		t,
+		strings.contains(
+			WGPU_GPU_CULL_SHADER,
+			"virtual_page_touch_feedback: array<Virtual_Page_Feedback, 4096>",
+		),
+	)
+}
+
+@(test)
 test_gpu_instance_transform_stream_is_compact_and_preserves_source :: proc(t: ^testing.T) {
 	transform := shared.Transform_Component {
 		position = {-4, 8, 11},
@@ -1659,7 +1702,7 @@ test_wgpu_frustum_planes_and_cpu_culling_reference :: proc(t: ^testing.T) {
 			bounds = {0, 0, 0.5, 0.1},
 			batch_indices = {1, 0, 0, 0},
 			active = 1,
-			shadow_flags = {1, 0, 0, 0},
+			render_flags = {1, 0, 0, 0},
 		},
 		{bounds = {0, 0, 0.5, 0.1}, batch_indices = {1, 0, 0, 0}, active = 0},
 	}

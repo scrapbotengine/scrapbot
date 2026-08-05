@@ -450,7 +450,7 @@ run = "node tools/runtime_soak.mjs"
 
 [tasks.test-gpu]
 description = "Verify WGPU visibility paths and deterministic material output"
-depends = ["build", "test-virtual-geometry-gpu"]
+depends = ["build", "test-virtual-geometry-gpu", "test-virtual-geometry-transforms-gpu"]
 run = '''
 COMPUTE_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-compute.png"
 CPU_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-cpu.png"
@@ -803,6 +803,38 @@ node tools/test_render_sequence.mjs \
   --warmup 0 --frames 80 --capture-range 31:56 \
   --resolution 960x540 --require-transition \
   --out "${TMPDIR:-/tmp}/scrapbot-virtual-geometry-transition"
+'''
+
+[tasks.test-virtual-geometry-transforms-gpu]
+description = "Reject meshlet holes under non-uniform instance transforms"
+depends = ["build"]
+run = '''
+GPU_FRAME="${TMPDIR:-/tmp}/scrapbot-virtual-geometry-transforms-gpu.png"
+CPU_FRAME="${TMPDIR:-/tmp}/scrapbot-virtual-geometry-transforms-cpu.png"
+SEQUENCE_DIR="${TMPDIR:-/tmp}/scrapbot-virtual-geometry-transforms-sequence"
+trap 'rm -f "$GPU_FRAME" "$CPU_FRAME"' EXIT
+GPU_JSON="$(bin/scrapbot run tests/fixtures/gpu-virtual-geometry-transforms --headless --no-hot-reload --frames 90 --framegrab "$GPU_FRAME" --json)"
+CPU_JSON="$(bin/scrapbot run tests/fixtures/gpu-virtual-geometry-transforms --headless --no-hot-reload --cpu-culling --frames 90 --framegrab "$CPU_FRAME" --json)"
+node -e '
+for (const [label, raw, expectedCompute] of [["gpu", process.argv[1], true], ["cpu", process.argv[2], false]]) {
+  const result = JSON.parse(raw);
+  const stats = result.result?.render_stats;
+  if (result.schema_version !== 1 || result.command !== "run" || result.ok !== true ||
+      result.result?.renderables !== 3 || stats?.compute_culling !== expectedCompute ||
+      (expectedCompute && (stats?.virtual_geometry_clusters < 3 ||
+        stats?.cone_culled_meshlets !== 0))) {
+    console.error(`unexpected ${label} virtual-geometry transform diagnostics`);
+    console.error(JSON.stringify(result, null, 2));
+    process.exit(1);
+  }
+}
+' "$GPU_JSON" "$CPU_JSON"
+node tools/assert_png_psnr.mjs "$GPU_FRAME" "$CPU_FRAME" 55
+node tools/test_render_sequence.mjs \
+  --project tests/fixtures/gpu-virtual-geometry-transforms \
+  --warmup 0 --frames 96 --capture-range 72:80 \
+  --resolution 960x540 --stable-frontier \
+  --out "$SEQUENCE_DIR"
 '''
 
 [tasks.test-sanitize]
