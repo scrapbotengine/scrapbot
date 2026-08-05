@@ -28,6 +28,8 @@ Capture_Status :: enum {
 
 Capture_Artifact :: enum {
 	Color,
+	Depth,
+	Visibility,
 }
 
 Capture_Artifacts :: bit_set[Capture_Artifact]
@@ -57,6 +59,8 @@ Renderer_Snapshot :: struct {
 	frame_index: u64,
 	output_width: u32,
 	output_height: u32,
+	render_width: u32,
+	render_height: u32,
 	pixel_density: f32,
 	viewport: Rect,
 	draw_batches: int,
@@ -161,6 +165,7 @@ Service :: struct {
 	capture_status: Capture_Status,
 	capture_first_frame_index: u64,
 	capture_artifacts: Capture_Artifacts,
+	capture_artifacts_ready: bool,
 }
 
 init_service :: proc(service: ^Service, root: string) -> string {
@@ -271,6 +276,10 @@ capture_published_snapshot :: proc(service: ^Service) -> string {
 		sync.mutex_unlock(&service.mutex)
 		return ""
 	}
+	if card(service.capture_artifacts) > 0 && !service.capture_artifacts_ready {
+		sync.mutex_unlock(&service.mutex)
+		return ""
+	}
 	if service.capture.frames_captured == 0 {
 		service.capture_first_frame_index = service.snapshot.frame_index
 	}
@@ -314,6 +323,7 @@ capture_published_snapshot :: proc(service: ^Service) -> string {
 		return ""
 	}
 	service.capture.frames_captured += 1
+	service.capture_artifacts_ready = false
 	complete := service.capture.frames_captured >= service.capture.frames_requested
 	manifest := Capture_Manifest {
 		schema_version = SCHEMA_VERSION,
@@ -462,6 +472,7 @@ enqueue_capture :: proc(
 		artifacts = capture_artifact_names(artifacts),
 	}
 	service.capture_artifacts = artifacts
+	service.capture_artifacts_ready = false
 	service.capture_status = .Pending
 	return service.capture, ""
 }
@@ -492,6 +503,20 @@ capture_artifact_requested :: proc "contextless" (
 	artifact: Capture_Artifact,
 ) -> bool {
 	return plan.active && artifact in plan.artifacts
+}
+
+capture_frame_artifacts_ready :: proc(service: ^Service, plan: Capture_Frame_Plan) {
+	if service == nil || !plan.active {
+		return
+	}
+	sync.mutex_lock(&service.mutex)
+	defer sync.mutex_unlock(&service.mutex)
+	if service.capture_status != .Capturing ||
+	   service.capture.id != plan.id ||
+	   service.capture.frames_captured != plan.frame_number {
+		return
+	}
+	service.capture_artifacts_ready = true
 }
 
 capture_artifact_path :: proc(
@@ -634,6 +659,10 @@ parse_capture_artifacts :: proc(values: []string) -> (Capture_Artifacts, string)
 		switch value {
 			case "color":
 				result |= {.Color}
+			case "depth":
+				result |= {.Depth}
+			case "visibility":
+				result |= {.Visibility}
 			case:
 				return {}, fmt.tprintf("unsupported capture artifact %q", value)
 		}
@@ -645,6 +674,10 @@ capture_artifact_name :: proc "contextless" (artifact: Capture_Artifact) -> stri
 	switch artifact {
 		case .Color:
 			return "color"
+		case .Depth:
+			return "depth"
+		case .Visibility:
+			return "visibility"
 	}
 	return "unknown"
 }
@@ -653,6 +686,10 @@ capture_artifact_extension :: proc "contextless" (artifact: Capture_Artifact) ->
 	switch artifact {
 		case .Color:
 			return ".png"
+		case .Depth:
+			return ".f32"
+		case .Visibility:
+			return ".cbor"
 	}
 	return ".bin"
 }
@@ -668,7 +705,11 @@ capture_artifact_names :: proc(artifacts: Capture_Artifacts) -> []string {
 }
 
 capture_artifact_manifest :: proc(artifacts: Capture_Artifacts) -> []Capture_Artifact_Manifest {
-	result := make([]Capture_Artifact_Manifest, card(artifacts))
+	manifest_count := card(artifacts)
+	if .Depth in artifacts {
+		manifest_count += 1
+	}
+	result := make([]Capture_Artifact_Manifest, manifest_count)
 	index := 0
 	for artifact in artifacts {
 		switch artifact {
@@ -679,9 +720,51 @@ capture_artifact_manifest :: proc(artifacts: Capture_Artifacts) -> []Capture_Art
 					pattern = "color-%04d.png",
 				}
 				index += 1
+			case .Depth:
+				result[index] = {
+					kind = "depth",
+					media_type = "application/octet-stream",
+					pattern = "depth-%04d.f32",
+				}
+				index += 1
+				result[index] = {
+					kind = "depth_preview",
+					media_type = "image/png",
+					pattern = "depth-preview-%04d.png",
+				}
+				index += 1
+			case .Visibility:
+				result[index] = {
+					kind = "visibility",
+					media_type = "application/cbor",
+					pattern = "visibility-%04d.cbor",
+				}
+				index += 1
 		}
 	}
 	return result
+}
+
+capture_companion_path :: proc(
+	plan: Capture_Frame_Plan,
+	name, extension: string,
+) -> (
+	string,
+	string,
+) {
+	if !plan.active {
+		return "", "capture frame is not active"
+	}
+	if make_err := ensure_directory(plan.directory); make_err != nil {
+		return "", fmt.tprintf("failed to create live debug capture directory: %v", make_err)
+	}
+	filename := fmt.aprintf("%s-%04d%s", name, plan.frame_number, extension)
+	defer delete(filename)
+	result, path_err := filepath.join({plan.directory, filename})
+	if path_err != nil {
+		return "", "failed to allocate capture companion path"
+	}
+	return result, ""
 }
 
 encode_error :: proc(code, message: string, codec: Codec) -> []byte {

@@ -1424,6 +1424,7 @@ struct Visibility_Counters {
 	cone_culled_meshlets: atomic<u32>,
 	occlusion_culled_meshlets: atomic<u32>,
 	meshlet_debug_records: atomic<u32>,
+	meshlet_debug_record_overflow: atomic<u32>,
 	visible_batches: atomic<u32>,
 	visible_meshlet_draws: atomic<u32>,
 	visible_virtual_clusters: atomic<u32>,
@@ -1944,25 +1945,61 @@ fn append_debug_record(
 		return;
 	}
 	let record_index = atomicAdd(&counters.meshlet_debug_records, 1u);
-	let base = cull.meshlet_debug_record_offset + record_index * 16u;
-	if (base + 15u < arrayLength(&visible_instances)) {
-		visible_instances[base] = bitcast<u32>(bounds.x);
-		visible_instances[base + 1u] = bitcast<u32>(bounds.y);
-		visible_instances[base + 2u] = bitcast<u32>(bounds.z);
-		visible_instances[base + 3u] = bitcast<u32>(bounds.w);
-		visible_instances[base + 4u] = bitcast<u32>(query_rect.x);
-		visible_instances[base + 5u] = bitcast<u32>(query_rect.y);
-		visible_instances[base + 6u] = bitcast<u32>(query_rect.z);
-		visible_instances[base + 7u] = bitcast<u32>(query_rect.w);
-		visible_instances[base + 8u] = bitcast<u32>(query_depths.x);
-		visible_instances[base + 9u] = bitcast<u32>(query_depths.y);
-		visible_instances[base + 10u] = bitcast<u32>(query_depths.z);
-		visible_instances[base + 11u] = bitcast<u32>(query_depths.w);
-		visible_instances[base + 12u] = classification;
-		visible_instances[base + 13u] = lod_level;
-		visible_instances[base + 14u] = meshlet_identity;
-		visible_instances[base + 15u] = 0u;
+	let base = record_index * 16u;
+	if (base + 15u >= arrayLength(&visible_instances)) {
+		atomicSub(&counters.meshlet_debug_records, 1u);
+		atomicAdd(&counters.meshlet_debug_record_overflow, 1u);
+		return;
 	}
+	visible_instances[base] = bitcast<u32>(bounds.x);
+	visible_instances[base + 1u] = bitcast<u32>(bounds.y);
+	visible_instances[base + 2u] = bitcast<u32>(bounds.z);
+	visible_instances[base + 3u] = bitcast<u32>(bounds.w);
+	visible_instances[base + 4u] = bitcast<u32>(query_rect.x);
+	visible_instances[base + 5u] = bitcast<u32>(query_rect.y);
+	visible_instances[base + 6u] = bitcast<u32>(query_rect.z);
+	visible_instances[base + 7u] = bitcast<u32>(query_rect.w);
+	visible_instances[base + 8u] = bitcast<u32>(query_depths.x);
+	visible_instances[base + 9u] = bitcast<u32>(query_depths.y);
+	visible_instances[base + 10u] = bitcast<u32>(query_depths.z);
+	visible_instances[base + 11u] = bitcast<u32>(query_depths.w);
+	visible_instances[base + 12u] = classification;
+	visible_instances[base + 13u] = lod_level;
+	visible_instances[base + 14u] = meshlet_identity;
+	visible_instances[base + 15u] = 0u;
+}
+
+fn append_captured_debug_record(
+	bounds: vec4<f32>,
+	query_rect: vec4<f32>,
+	query_depths: vec4<f32>,
+	classification: u32,
+	lod_level: u32,
+	meshlet_identity: u32,
+) {
+	let record_index = atomicAdd(&counters.meshlet_debug_records, 1u);
+	let base = record_index * 16u;
+	if (base + 15u >= arrayLength(&visible_instances)) {
+		atomicSub(&counters.meshlet_debug_records, 1u);
+		atomicAdd(&counters.meshlet_debug_record_overflow, 1u);
+		return;
+	}
+	visible_instances[base] = bitcast<u32>(bounds.x);
+	visible_instances[base + 1u] = bitcast<u32>(bounds.y);
+	visible_instances[base + 2u] = bitcast<u32>(bounds.z);
+	visible_instances[base + 3u] = bitcast<u32>(bounds.w);
+	visible_instances[base + 4u] = bitcast<u32>(query_rect.x);
+	visible_instances[base + 5u] = bitcast<u32>(query_rect.y);
+	visible_instances[base + 6u] = bitcast<u32>(query_rect.z);
+	visible_instances[base + 7u] = bitcast<u32>(query_rect.w);
+	visible_instances[base + 8u] = bitcast<u32>(query_depths.x);
+	visible_instances[base + 9u] = bitcast<u32>(query_depths.y);
+	visible_instances[base + 10u] = bitcast<u32>(query_depths.z);
+	visible_instances[base + 11u] = bitcast<u32>(query_depths.w);
+	visible_instances[base + 12u] = classification;
+	visible_instances[base + 13u] = lod_level;
+	visible_instances[base + 14u] = meshlet_identity;
+	visible_instances[base + 15u] = 0u;
 }
 
 fn append_meshlet_debug(
@@ -2058,7 +2095,7 @@ fn cull_compact_candidate(invocation: vec3<u32>) {
 			atomicAdd(&counters.occlusion_culled_instances, 1u);
 			if (render_debug_is_occlusion_queries()) {
 				append_occlusion_debug(instance.bounds, instance_occlusion, lod_level, 0u);
-			} else {
+			} else if (cull.debug_view != 0u) {
 				append_batch_meshlet_debug(instance, batch, 3u, lod_level);
 			}
 		} else {
@@ -2069,7 +2106,9 @@ fn cull_compact_candidate(invocation: vec3<u32>) {
 		}
 	} else {
 		atomicAdd(&counters.frustum_culled_instances, 1u);
-		append_batch_meshlet_debug(instance, batch, 2u, lod_level);
+		if (cull.debug_view != 0u) {
+			append_batch_meshlet_debug(instance, batch, 2u, lod_level);
+		}
 	}
 	if (predictive_visible) {
 		flags = flags | COMPACT_CANDIDATE_PREDICTIVE;
@@ -2106,6 +2145,15 @@ fn cull_compact_camera_meshlet(
 	if (!virtual_cluster_selected(instance, meshlet, true)) {
 		if (meshlet.virtual_geometry != 0u) {
 			atomicAdd(&counters.virtual_rejected_clusters, 1u);
+			let rejected_bounds = world_meshlet_bounds(instance, meshlet);
+			if (camera_sphere_visible(rejected_bounds)) {
+				append_meshlet_debug(
+					rejected_bounds,
+					9u,
+					lod_level,
+					meshlet_index + 1u,
+				);
+			}
 		}
 		return;
 	}
@@ -2356,6 +2404,15 @@ fn cull_instances(invocation: vec3<u32>, submission_mode: u32) {
 				if (!virtual_cluster_selected(instance, meshlet, true)) {
 					if (meshlet.virtual_geometry != 0u) {
 						atomicAdd(&counters.virtual_rejected_clusters, 1u);
+						let rejected_bounds = world_meshlet_bounds(instance, meshlet);
+						if (camera_sphere_visible(rejected_bounds)) {
+							append_meshlet_debug(
+								rejected_bounds,
+								9u,
+								lod_level,
+								meshlet_index + 1u,
+							);
+						}
 					}
 					continue;
 				}
@@ -2459,7 +2516,9 @@ fn cull_instances(invocation: vec3<u32>, submission_mode: u32) {
 		}
 	} else if (owns_camera && cascade_index == 0u) {
 		atomicAdd(&counters.frustum_culled_instances, 1u);
-		append_batch_meshlet_debug(instance, batch, 2u, lod_level);
+		if (cull.debug_view != 0u) {
+			append_batch_meshlet_debug(instance, batch, 2u, lod_level);
+		}
 	}
 	let owns_shadow = active_submission_mode != 2u || compact_shadow_fallback ||
 		(batch.compact_shadow_pages != 0u && active_submission_mode == 2u);
@@ -2522,9 +2581,117 @@ fn cull_instances(invocation: vec3<u32>, submission_mode: u32) {
 	}
 }
 
+fn capture_meshlet_debug(invocation: vec3<u32>) {
+	let slot = invocation.x;
+	if (slot >= cull.slot_count) {
+		return;
+	}
+	let instance = instances[slot];
+	let lod_level = select_lod(instance);
+	let batch_index = instance.batch_indices[lod_level];
+	if (instance.enabled == 0u || batch_index >= cull.batch_count) {
+		return;
+	}
+	let batch = batches[batch_index];
+	if (!batch_uses_meshlets(batch)) {
+		return;
+	}
+	let instance_visible = camera_sphere_visible(instance.bounds);
+	if (!instance_visible && cull.debug_view == 0u) {
+		return;
+	}
+	let instance_occlusion = camera_sphere_occlusion(instance.bounds);
+	for (
+		var local_meshlet = 0u;
+		local_meshlet < batch.meshlet_count;
+		local_meshlet = local_meshlet + 1u
+	) {
+		let meshlet_index = batch.meshlet_offset + local_meshlet;
+		let meshlet = meshlets[meshlet_index];
+		let bounds = world_meshlet_bounds(instance, meshlet);
+		if (!instance_visible) {
+			if (virtual_cluster_selected(instance, meshlet, false)) {
+				append_captured_debug_record(
+					bounds,
+					vec4<f32>(0.0),
+					vec4<f32>(0.0),
+					2u,
+					lod_level,
+					meshlet_index + 1u,
+				);
+			}
+			continue;
+		}
+		if (instance_occlusion.occluded != 0u) {
+			if (virtual_cluster_selected(instance, meshlet, false)) {
+				append_captured_debug_record(
+					bounds,
+					instance_occlusion.query_rect,
+					instance_occlusion.depths,
+					select(3u, 8u, render_debug_is_occlusion_queries()),
+					lod_level,
+					meshlet_index + 1u,
+				);
+			}
+			continue;
+		}
+		if (!virtual_cluster_selected(instance, meshlet, true)) {
+			if (meshlet.virtual_geometry != 0u && camera_sphere_visible(bounds)) {
+				append_captured_debug_record(
+					bounds,
+					vec4<f32>(0.0),
+					vec4<f32>(0.0),
+					9u,
+					lod_level,
+					meshlet_index + 1u,
+				);
+			}
+			continue;
+		}
+		if (!camera_sphere_visible(bounds)) {
+			append_captured_debug_record(
+				bounds,
+				vec4<f32>(0.0),
+				vec4<f32>(0.0),
+				4u,
+				lod_level,
+				meshlet_index + 1u,
+			);
+			continue;
+		}
+		if (meshlet_cone_culled(instance, meshlet, bounds)) {
+			append_captured_debug_record(
+				bounds,
+				vec4<f32>(0.0),
+				vec4<f32>(0.0),
+				5u,
+				lod_level,
+				meshlet_index + 1u,
+			);
+			continue;
+		}
+		let meshlet_occlusion = camera_sphere_occlusion(bounds);
+		if (render_debug_is_occlusion_queries() || meshlet_occlusion.occluded != 0u) {
+			append_captured_debug_record(
+				bounds,
+				meshlet_occlusion.query_rect,
+				meshlet_occlusion.depths,
+				select(6u, select(7u, 8u, meshlet_occlusion.occluded != 0u), render_debug_is_occlusion_queries()),
+				lod_level,
+				meshlet_index + 1u,
+			);
+		}
+	}
+}
+
 @compute @workgroup_size(64)
 fn cull_classic_instances(@builtin(global_invocation_id) invocation: vec3<u32>) {
 	cull_instances(invocation, 0u);
+}
+
+@compute @workgroup_size(64)
+fn capture_meshlet_debug_instances(@builtin(global_invocation_id) invocation: vec3<u32>) {
+	capture_meshlet_debug(invocation);
 }
 
 @compute @workgroup_size(64)

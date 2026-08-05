@@ -121,6 +121,7 @@ WGPU_GPU_Visibility_Summary :: struct {
 	cone_culled_meshlets: u32,
 	occlusion_culled_meshlets: u32,
 	meshlet_debug_records: u32,
+	meshlet_debug_record_overflow: u32,
 	visible_batches: u32,
 	visible_meshlet_draws: u32,
 	visible_virtual_clusters: u32,
@@ -820,6 +821,7 @@ WGPU_Renderer :: struct {
 	gpu_compact_cull_pipeline: wgpu.ComputePipeline,
 	gpu_compact_cluster_cull_pipeline: wgpu.ComputePipeline,
 	gpu_compact_shadow_cluster_cull_pipeline: wgpu.ComputePipeline,
+	gpu_meshlet_debug_cull_pipeline: wgpu.ComputePipeline,
 	gpu_cull_pipeline_layout: wgpu.PipelineLayout,
 	gpu_cull_bind_group_layout: wgpu.BindGroupLayout,
 	gpu_cull_bind_group: wgpu.BindGroup,
@@ -827,6 +829,7 @@ WGPU_Renderer :: struct {
 	gpu_compact_cull_bind_group: wgpu.BindGroup,
 	gpu_compact_camera_cull_bind_group: wgpu.BindGroup,
 	gpu_compact_shadow_cull_bind_group: wgpu.BindGroup,
+	gpu_meshlet_debug_cull_bind_group: wgpu.BindGroup,
 	gpu_meshlet_debug_shader: wgpu.ShaderModule,
 	gpu_meshlet_debug_pipeline: wgpu.RenderPipeline,
 	gpu_meshlet_debug_pipeline_layout: wgpu.PipelineLayout,
@@ -879,6 +882,8 @@ WGPU_Renderer :: struct {
 	gpu_meshlet_identity_buffer: wgpu.Buffer,
 	gpu_zero_identity_buffer: wgpu.Buffer,
 	gpu_meshlet_debug_indirect_buffer: wgpu.Buffer,
+	gpu_meshlet_debug_record_buffer: wgpu.Buffer,
+	live_debug_visibility_capture: bool,
 	gpu_occlusion_debug_evidence_valid: bool,
 	gpu_occlusion_debug_record_count: u32,
 	gpu_meshlet_shadow_visible_buffer: wgpu.Buffer,
@@ -4005,6 +4010,16 @@ wgpu_draw_frame :: proc(
 	}
 	camera.resolution_scale = wgpu_dynamic_resolution_scale(renderer, camera, policy_owner)
 	layout := wgpu_render_target_layout(renderer.width, renderer.height, viewport, camera)
+	live_debug_capture := wgpu_live_debug_prepare_capture(
+		renderer,
+		config,
+		u32(renderer.width),
+		u32(renderer.height),
+		layout.render_width,
+		layout.render_height,
+		renderer.surface_copy_src_supported,
+	)
+	defer wgpu_live_debug_destroy_capture(&live_debug_capture)
 	render_depth_view, render_depth_err := wgpu_render_depth_view(
 		renderer,
 		renderer.depth_view,
@@ -4082,15 +4097,6 @@ wgpu_draw_frame :: proc(
 	}
 	record_system_profile_phase(config, .Render_Prepare, render_prepare_start)
 	finish_runtime_frame(config, world, frame_start)
-	live_debug_capture := wgpu_live_debug_prepare_capture(
-		renderer,
-		config,
-		u32(renderer.width),
-		u32(renderer.height),
-		renderer.surface_copy_src_supported,
-	)
-	defer wgpu_live_debug_destroy_capture(&live_debug_capture)
-
 	cull_start := time.tick_now()
 	encoder := wgpu.DeviceCreateCommandEncoder(
 		renderer.device,
@@ -4165,7 +4171,7 @@ wgpu_draw_frame :: proc(
 	if !config.cpu_culling {
 		wgpu_visibility_resolve(renderer, encoder)
 	}
-	wgpu_live_debug_encode_capture(&live_debug_capture, encoder, texture)
+	wgpu_live_debug_encode_capture(renderer, &live_debug_capture, encoder, texture)
 	wgpu_gpu_timing_resolve(renderer, encoder)
 	finish_start := time.tick_now()
 	command_buffer := wgpu.CommandEncoderFinish(
@@ -4251,6 +4257,8 @@ wgpu_draw_frame :: proc(
 		profile_frame_index,
 		u32(renderer.width),
 		u32(renderer.height),
+		layout.render_width,
+		layout.render_height,
 		platform.runtime_window_pixel_density(),
 		viewport,
 	)
@@ -4299,6 +4307,15 @@ wgpu_render_offscreen_frame :: proc(
 	}
 	camera.resolution_scale = wgpu_dynamic_resolution_scale(renderer, camera, policy_owner)
 	layout := wgpu_render_target_layout(width, height, viewport, camera)
+	live_debug_capture := wgpu_live_debug_prepare_capture(
+		renderer,
+		config,
+		width,
+		height,
+		layout.render_width,
+		layout.render_height,
+	)
+	defer wgpu_live_debug_destroy_capture(&live_debug_capture)
 	render_depth_view, render_depth_err := wgpu_render_depth_view(
 		renderer,
 		depth_view,
@@ -4376,9 +4393,6 @@ wgpu_render_offscreen_frame :: proc(
 	}
 	record_system_profile_phase(config, .Render_Prepare, render_prepare_start)
 	finish_runtime_frame(config, world, frame_start)
-	live_debug_capture := wgpu_live_debug_prepare_capture(renderer, config, width, height)
-	defer wgpu_live_debug_destroy_capture(&live_debug_capture)
-
 	cull_start := time.tick_now()
 	encoder := wgpu.DeviceCreateCommandEncoder(
 		renderer.device,
@@ -4468,7 +4482,7 @@ wgpu_render_offscreen_frame :: proc(
 			&wgpu.Extent3D{width = width, height = height, depthOrArrayLayers = 1},
 		)
 	}
-	wgpu_live_debug_encode_capture(&live_debug_capture, encoder, texture)
+	wgpu_live_debug_encode_capture(renderer, &live_debug_capture, encoder, texture)
 	wgpu_gpu_timing_resolve(renderer, encoder)
 	finish_start := time.tick_now()
 	command_buffer := wgpu.CommandEncoderFinish(
@@ -4549,6 +4563,8 @@ wgpu_render_offscreen_frame :: proc(
 		profile_frame_index,
 		width,
 		height,
+		layout.render_width,
+		layout.render_height,
 		1,
 		viewport,
 	)

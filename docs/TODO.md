@@ -47,7 +47,8 @@ This file tracks current actionable engineering work. The broad product roadmap 
 
 ## Testing And Diagnostics
 
-- [ ] Add live-debug depth, meshlet-identity, and visibility-buffer capture providers beside the shipped composited-color provider ([ADR-053](adr/ADR-053-expose-live-debugging-through-a-transport-independent-service.md)).
+- [ ] Add scoped screen-space regions and a per-pixel geometry-identity image to live-debug captures when visibility records alone cannot isolate overlapping clusters ([ADR-053](adr/ADR-053-expose-live-debugging-through-a-transport-independent-service.md)).
+- [ ] Replace map-per-record visibility CBOR with a versioned compact record-array schema; preserve the summary decoder and measure multi-frame artifact size before changing the transport contract ([ADR-053](adr/ADR-053-expose-live-debugging-through-a-transport-independent-service.md)).
 - [ ] Add a generated Connect/protobuf transport when Odin schema tooling can preserve presence, oneofs, unknown fields, and deterministic evolution ([ADR-053](adr/ADR-053-expose-live-debugging-through-a-transport-independent-service.md)).
 - [ ] Extend offscreen WGPU CI coverage from Metal to representative Vulkan and D3D12 adapters.
 - [ ] Add reusable named camera-path and depth/meshlet-debug matrices for external example render regressions.

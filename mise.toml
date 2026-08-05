@@ -232,6 +232,10 @@ run = "node tools/benchmark_native_queries.mjs \"$@\""
 description = "Summarize or compare Scrapbot render profile reports"
 run = "node tools/analyze_render_profile.mjs \"$@\""
 
+[tasks.cbor-diagnostic]
+description = "Decode a CBOR artifact into RFC 8949 diagnostic notation"
+run = "odin run tools/cbor_diagnostic.odin -file -- \"$@\""
+
 [tasks.frame-sequence-sheet]
 description = "Build contact and difference sheets from a profile capture-range directory"
 run = 'node tools/make_frame_sequence_sheet.mjs "$@"'

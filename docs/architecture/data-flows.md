@@ -269,6 +269,22 @@ visibility and from repeated API work across depth, shadow, and world passes.
 
 Hi-Z state is an explicit enum: unavailable, below threshold, scene changed, camera changed, warming up, or active. Object and meshlet occlusion counts remain separate so a zero can be interpreted without guessing which eligibility or safety gate applied.
 
+### Live renderer evidence
+
+```text
+loopback request ──> synchronized capture plan ──> WGPU cull/render encoding
+                                                        │
+                 frame-matched snapshot <── barrier <───┼── color PNG
+                                                        ├── raw depth + preview
+                                                        └── visibility CBOR
+```
+
+The network worker owns only authentication, codecs, and the pending request. The engine thread consumes the plan before GPU culling. WGPU then owns all texture/buffer copies, mapping, and artifact encoding.
+
+The capture barrier advances a numbered snapshot only after all requested artifacts for that number finish. A request arriving after render preparation waits for the next complete frame instead of pairing new telemetry with absent or stale GPU evidence.
+
+Visibility capture enables the existing meshlet debug-record lane independently of the visible camera debug mode. Camera-irrelevant rejected clusters and whole off-frustum instance expansions are excluded. Each retained record is enriched from the renderer's canonical meshlet table before deterministic CBOR encoding.
+
 ### Bounded render profiles
 
 ```text
@@ -402,7 +418,7 @@ ECS extraction + renderer stats + active camera
  authenticated client request ──> bounded capture plan
                                       │ engine thread
                                       ▼
-                  renderer-owned optional readbacks
+                  isolated diagnostic pass + renderer-owned optional readbacks
                               + snapshots
                               + manifest
 ```

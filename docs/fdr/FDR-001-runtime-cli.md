@@ -26,7 +26,7 @@ The runtime CLI is the entry point for creating, validating, running, and openin
 - Users can pass `--scheduler-trace` to report native worker count, parallel stage count, and maximum parallel width after a run.
 - Users can pass `--runtime-stats` to collect early/late engine-frame cost through render preparation, engine-allocator bytes, and detailed ECS storage checkpoints for bounded runs.
 - Windowed editor runs expose a token-authenticated loopback live debug API automatically. Other source and packaged runs may opt in with `--live-debug` and choose a port with `--live-debug-port`.
-- Live debug clients can read schema-versioned JSON or CBOR camera/renderer snapshots and request a bounded one-to-16-frame evidence sequence. WGPU captures may include the final composited color output as a frame-matched PNG. One capture may run at a time.
+- Live debug clients can read schema-versioned JSON or CBOR camera/renderer snapshots and request a bounded one-to-16-frame evidence sequence. WGPU captures may combine composited-color PNGs, raw internal-resolution depth with PNG previews, and CBOR meshlet/virtual-geometry visibility records. Every requested artifact passes a frame barrier before its matching snapshot advances. One capture may run at a time.
 - Windowed runtime-stat runs require a nonzero `--frames` limit; unbounded sessions are rejected because they have no deterministic late sample window.
 - Users can ask for top-level help or command-specific help.
 - `init`, `check`, `build`, `run`, and `profile` accept `--json` and emit one versioned JSON document with structured diagnostics and command result data.

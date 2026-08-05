@@ -385,6 +385,9 @@ wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
 	if renderer.gpu_compact_shadow_cull_bind_group != nil {
 		wgpu.BindGroupRelease(renderer.gpu_compact_shadow_cull_bind_group)
 	}
+	if renderer.gpu_meshlet_debug_cull_bind_group != nil {
+		wgpu.BindGroupRelease(renderer.gpu_meshlet_debug_cull_bind_group)
+	}
 	if renderer.gpu_cull_pipeline != nil {
 		wgpu.ComputePipelineRelease(renderer.gpu_cull_pipeline)
 	}
@@ -399,6 +402,9 @@ wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
 	}
 	if renderer.gpu_compact_shadow_cluster_cull_pipeline != nil {
 		wgpu.ComputePipelineRelease(renderer.gpu_compact_shadow_cluster_cull_pipeline)
+	}
+	if renderer.gpu_meshlet_debug_cull_pipeline != nil {
+		wgpu.ComputePipelineRelease(renderer.gpu_meshlet_debug_cull_pipeline)
 	}
 	if renderer.gpu_cull_pipeline_layout != nil {
 		wgpu.PipelineLayoutRelease(renderer.gpu_cull_pipeline_layout)
@@ -553,6 +559,7 @@ wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
 		renderer.gpu_meshlet_identity_buffer,
 		renderer.gpu_zero_identity_buffer,
 		renderer.gpu_meshlet_debug_indirect_buffer,
+		renderer.gpu_meshlet_debug_record_buffer,
 		renderer.gpu_meshlet_shadow_visible_buffer,
 		renderer.gpu_compact_visible_buffer,
 		renderer.gpu_compact_shadow_visible_buffer,

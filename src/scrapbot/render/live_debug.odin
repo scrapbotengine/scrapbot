@@ -10,6 +10,7 @@ publish_live_debug_snapshot :: proc(
 	render_list: ^shared.Render_List,
 	frame_index: u64,
 	output_width, output_height: u32,
+	render_width, render_height: u32,
 	pixel_density: f32,
 	viewport: ui.Rect,
 ) {
@@ -26,6 +27,8 @@ publish_live_debug_snapshot :: proc(
 			frame_index = frame_index,
 			output_width = output_width,
 			output_height = output_height,
+			render_width = render_width,
+			render_height = render_height,
 			pixel_density = pixel_density,
 			viewport = {
 				x = viewport.x,
@@ -64,10 +67,10 @@ publish_live_debug_snapshot :: proc(
 	publish_live_debug_render_stats(&snapshot.renderer, config.stats)
 	live_debug.publish_snapshot(config.live_debug, snapshot)
 	plan := live_debug.begin_capture_frame(config.live_debug)
-	if live_debug.capture_artifact_requested(plan, .Color) && config.backend != .WGPU {
+	if plan.active && card(plan.artifacts) > 0 && config.backend != .WGPU {
 		live_debug.capture_fail(
 			config.live_debug,
-			"the active renderer does not provide live color capture",
+			"the active renderer does not provide live render-artifact capture",
 		)
 		return
 	}

@@ -1413,7 +1413,7 @@ wgpu_ensure_post_targets :: proc(
 				width,
 				height,
 				.R32Float,
-				{.TextureBinding, .StorageBinding},
+				{.TextureBinding, .StorageBinding, .CopySrc},
 			)
 		if err != "" {
 			return err

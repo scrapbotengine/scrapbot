@@ -2010,7 +2010,22 @@ test_wgpu_meshlet_visibility_capacity_is_exact_and_bounded :: proc(t: ^testing.T
 	testing.expect_value(
 		t,
 		wgpu_meshlet_visible_buffer_bytes(int(capacity)),
-		u64(capacity) * (u64(size_of(u32)) + u64(size_of(WGPU_GPU_Meshlet_Debug_Record))),
+		u64(capacity) * u64(size_of(u32)),
+	)
+	testing.expect_value(
+		t,
+		wgpu_compact_visible_buffer_bytes(int(capacity)),
+		u64(capacity) * u64(size_of(WGPU_GPU_Compact_Record)),
+	)
+	testing.expect_value(
+		t,
+		wgpu_meshlet_debug_buffer_bytes(int(capacity)),
+		u64(capacity) * u64(size_of(WGPU_GPU_Meshlet_Debug_Record)),
+	)
+	testing.expect_value(
+		t,
+		wgpu_meshlet_debug_buffer_bytes(WGPU_MESHLET_DEBUG_RECORD_CAPACITY),
+		u64(4 * 1024 * 1024),
 	)
 
 	_, ok = wgpu_meshlet_batch_visible_capacity(u32(WGPU_MAX_MESHLET_VISIBLE_ENTRIES), 2)
@@ -2020,12 +2035,22 @@ test_wgpu_meshlet_visibility_capacity_is_exact_and_bounded :: proc(t: ^testing.T
 	testing.expect_value(t, wgpu_meshlet_debug_record_offset(camera, true, 4096, false), u32(0))
 	camera.debug_view = .Meshlet_Visibility
 	testing.expect_value(t, wgpu_meshlet_debug_record_offset(camera, false, 4096, false), u32(0))
-	testing.expect_value(t, wgpu_meshlet_debug_record_offset(camera, true, 4096, false), u32(4096))
+	testing.expect_value(t, wgpu_meshlet_debug_record_offset(camera, true, 4096, false), u32(1))
 	camera.debug_view = .Occlusion_Queries
-	testing.expect_value(t, wgpu_meshlet_debug_record_offset(camera, true, 4096, false), u32(4096))
+	testing.expect_value(t, wgpu_meshlet_debug_record_offset(camera, true, 4096, false), u32(1))
 	camera.debug_occlusion_freeze = true
-	testing.expect_value(t, wgpu_meshlet_debug_record_offset(camera, true, 4096, false), u32(4096))
+	testing.expect_value(t, wgpu_meshlet_debug_record_offset(camera, true, 4096, false), u32(1))
 	testing.expect_value(t, wgpu_meshlet_debug_record_offset(camera, true, 4096, true), u32(0))
+	testing.expect_value(
+		t,
+		wgpu_meshlet_debug_record_offset(camera, true, 4096, true, true),
+		u32(1),
+	)
+	testing.expect_value(
+		t,
+		wgpu_live_debug_visibility_classification(9),
+		"virtual_cluster_rejected",
+	)
 }
 
 @(test)

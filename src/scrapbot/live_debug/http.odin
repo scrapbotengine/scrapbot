@@ -406,6 +406,8 @@ read_current_capture_artifact :: proc(
 	media_type := "application/octet-stream"
 	if strings.has_suffix(file_name, ".png") {
 		media_type = "image/png"
+	} else if strings.has_suffix(file_name, ".cbor") {
+		media_type = "application/cbor"
 	}
 	return data, media_type, ""
 }

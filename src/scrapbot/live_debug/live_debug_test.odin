@@ -145,6 +145,9 @@ test_live_debug_color_artifact_uses_the_same_capture_frame :: proc(t: ^testing.T
 	testing.expect(t, write_private_file(artifact_path, png_bytes) == nil)
 	publish_snapshot(&service, Snapshot{phase = "running", frame_index = 27})
 	testing.expect_value(t, capture_published_snapshot(&service), "")
+	testing.expect_value(t, service.capture.frames_captured, u32(0))
+	capture_frame_artifacts_ready(&service, plan)
+	testing.expect_value(t, capture_published_snapshot(&service), "")
 	testing.expect_value(t, service.capture.status, "complete")
 
 	manifest_data, manifest_err := os.read_entire_file(service.capture.manifest, context.allocator)
@@ -182,7 +185,7 @@ test_live_debug_color_artifact_uses_the_same_capture_frame :: proc(t: ^testing.T
 @(test)
 test_live_debug_capture_request_rejects_unknown_artifacts :: proc(t: ^testing.T) {
 	request, request_err := decode_capture_request(
-		transmute([]byte)(string(`{"frames":5,"artifacts":["color"]}`)),
+		transmute([]byte)(string(`{"frames":5,"artifacts":["color","depth","visibility"]}`)),
 		.JSON,
 	)
 	defer destroy_capture_request(&request)
@@ -190,9 +193,24 @@ test_live_debug_capture_request_rejects_unknown_artifacts :: proc(t: ^testing.T)
 	artifacts, artifact_err := parse_capture_artifacts(request.artifacts)
 	testing.expect_value(t, artifact_err, "")
 	testing.expect(t, .Color in artifacts)
+	testing.expect(t, .Depth in artifacts)
+	testing.expect(t, .Visibility in artifacts)
 	_, invalid_err := decode_capture_request(
-		transmute([]byte)(string(`{"frames":5,"artifacts":["depth"]}`)),
+		transmute([]byte)(string(`{"frames":5,"artifacts":["unknown"]}`)),
 		.JSON,
 	)
 	testing.expect(t, invalid_err != "")
+}
+
+@(test)
+test_live_debug_depth_and_visibility_artifact_manifest_is_self_describing :: proc(t: ^testing.T) {
+	manifest := capture_artifact_manifest({.Depth, .Visibility})
+	defer delete(manifest)
+	testing.expect_value(t, len(manifest), 3)
+	testing.expect_value(t, manifest[0].kind, "depth")
+	testing.expect_value(t, manifest[0].pattern, "depth-%04d.f32")
+	testing.expect_value(t, manifest[1].kind, "depth_preview")
+	testing.expect_value(t, manifest[1].pattern, "depth-preview-%04d.png")
+	testing.expect_value(t, manifest[2].kind, "visibility")
+	testing.expect_value(t, manifest[2].media_type, "application/cbor")
 }

@@ -830,6 +830,8 @@ run_renderer :: proc(config: Run_Config, world: ^World) -> (frame: Render_Frame,
 					u64(i),
 					u32(max(run_config.window_width, 0)),
 					u32(max(run_config.window_height, 0)),
+					u32(max(run_config.window_width, 0)),
+					u32(max(run_config.window_height, 0)),
 					1,
 					{},
 				)
