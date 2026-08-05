@@ -837,6 +837,17 @@ node tools/test_render_sequence.mjs \
   --out "$SEQUENCE_DIR"
 '''
 
+[tasks.test-virtual-geometry-coverage-gpu]
+description = "Compare near-camera virtual geometry coverage with full-index rendering"
+depends = ["build"]
+run = '''
+node tools/test_render_sequence.mjs \
+  --project examples/virtual-geometry-lab \
+  --warmup 0 --frames 180 --capture-range 145:153 \
+  --resolution 960x540 --cpu-reference --minimum-psnr 48 \
+  --out "${TMPDIR:-/tmp}/scrapbot-virtual-geometry-coverage"
+'''
+
 [tasks.test-sanitize]
 description = "Run Odin tests with AddressSanitizer on Linux"
 depends = ["luau", "cgltf", "meshoptimizer"]

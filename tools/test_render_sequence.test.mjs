@@ -69,6 +69,21 @@ test("render sequence arguments describe sustained transition activity", () => {
   assert.equal(options.stableFrontier, false);
 });
 
+test("render sequence arguments describe a CPU-reference comparison", () => {
+  const options = parseArguments([
+    "--project",
+    "examples/virtual-geometry-lab",
+    "--capture-range",
+    "40:48",
+    "--cpu-reference",
+    "--minimum-psnr",
+    "48",
+  ]);
+
+  assert.equal(options.cpuReference, true);
+  assert.equal(options.minimumPsnr, 48);
+});
+
 test("render sequence arguments keep settled and transitioning gates distinct", () => {
   assert.throws(
     () =>

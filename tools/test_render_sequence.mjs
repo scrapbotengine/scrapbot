@@ -19,6 +19,7 @@ export function parseArguments(arguments_) {
     stableFrontier: false,
     requireTransition: false,
     requireTransitionActivity: false,
+    cpuReference: false,
     goldenDirectory: undefined,
     minimumPsnr: 32,
   };
@@ -34,6 +35,10 @@ export function parseArguments(arguments_) {
     }
     if (argument === "--require-transition-activity") {
       options.requireTransitionActivity = true;
+      continue;
+    }
+    if (argument === "--cpu-reference") {
+      options.cpuReference = true;
       continue;
     }
     const names = new Map([
@@ -244,6 +249,56 @@ function main() {
   }
   const profile = JSON.parse(fs.readFileSync(path.join(options.out, "profile.json"), "utf8"));
   const captures = validateProfile(options, profile, path.join(options.out, "frames"));
+  let cpuReferenceDirectory = null;
+  if (options.cpuReference) {
+    cpuReferenceDirectory = `${options.out}-cpu-reference`;
+    fs.rmSync(cpuReferenceDirectory, { recursive: true, force: true });
+    const referenceRaw = run(path.resolve(root, options.binary), [
+      "profile",
+      options.project,
+      "--cpu-culling",
+      "--warmup",
+      String(options.warmup),
+      "--frames",
+      String(options.frames),
+      "--resolution",
+      options.resolution,
+      "--capture-range",
+      options.captureRange,
+      "--out",
+      cpuReferenceDirectory,
+      "--json",
+    ]);
+    const referenceEnvelope = JSON.parse(referenceRaw);
+    if (
+      referenceEnvelope.schema_version !== 1 ||
+      referenceEnvelope.command !== "profile" ||
+      referenceEnvelope.ok !== true
+    ) {
+      throw new Error("Scrapbot CPU-reference profile did not succeed");
+    }
+    const referenceProfile = JSON.parse(
+      fs.readFileSync(path.join(cpuReferenceDirectory, "profile.json"), "utf8"),
+    );
+    validateProfile(
+      { ...options, goldenDirectory: undefined, stableFrontier: false },
+      referenceProfile,
+      path.join(cpuReferenceDirectory, "frames"),
+    );
+    for (const capture of captures) {
+      const gpuPath = path.join(options.out, "frames", capture.image);
+      const cpuPath = path.join(cpuReferenceDirectory, "frames", capture.image);
+      const score = psnr(cpuPath, gpuPath);
+      if (score < options.minimumPsnr) {
+        throw new Error(
+          `${capture.image} GPU/CPU PSNR ${score.toFixed(3)} dB is below ` +
+            `${options.minimumPsnr.toFixed(3)} dB`,
+        );
+      }
+      capture.cpu_reference_psnr_db = Number.isFinite(score) ? score : null;
+      capture.cpu_reference_exact = !Number.isFinite(score);
+    }
+  }
   const manifest = {
     schema_version: 1,
     status: "passed",
@@ -254,6 +309,8 @@ function main() {
     capture_range: options.captureRange,
     stable_frontier: options.stableFrontier,
     required_transition: options.requireTransition,
+    cpu_reference: options.cpuReference,
+    cpu_reference_directory: cpuReferenceDirectory,
     golden_directory: options.goldenDirectory ?? null,
     captures,
   };

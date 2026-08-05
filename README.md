@@ -82,6 +82,7 @@ Example projects live in [`examples/`](examples/):
 - `sponza` — the Khronos Sponza atrium as 103 ECS renderables with 25 PBR materials, directional shadows, and clustered point lights.
 - `impossible-archive` — a deterministically generated carved megastructure for virtual-geometry residency, predictive streaming, and cluster-frontier debug views.
 - `virtual-wilds` — five full-detail CC0 scans and 460 public-API scatter renderables arranged as a moving coastal route, with 3.14 million source triangles competing for a 192 MiB virtual-geometry residency budget.
+- `virtual-geometry-lab` — a deterministic, synthetic close-approach scene for inspecting virtual-geometry hierarchy coverage and comparing GPU-selected clusters with full-index rendering.
 
 ### Testing
 

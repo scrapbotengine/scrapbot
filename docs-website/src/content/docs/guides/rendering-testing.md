@@ -370,6 +370,19 @@ node tools/test_render_sequence.mjs --project examples/virtual-wilds \
   --stable-frontier --out /tmp/virtual-wilds-sequence
 ```
 
+`examples/virtual-geometry-lab` isolates near-camera hierarchy coverage from imported assets,
+streaming-world composition, and postprocessing. Its dense warped wall fills the viewport while a
+deterministic camera moves toward it. The dedicated gate renders each captured frame through both
+GPU virtual geometry and full-index CPU submission, then rejects per-frame image mismatches:
+
+```sh
+mise test-virtual-geometry-coverage-gpu
+```
+
+Projects can opt into the same reference comparison with `--cpu-reference`. Use
+`--minimum-psnr <dB>` to select the tolerated image difference; exact matches are accepted without
+special casing.
+
 `--stable-frontier` rejects active admission transitions as well as uploads, evictions, policy changes,
 feedback overflow, and page-read failures. Use `--require-transition` on a transition-focused
 capture; it requires an active handoff, a visible blended cluster somewhere in the range, and a
