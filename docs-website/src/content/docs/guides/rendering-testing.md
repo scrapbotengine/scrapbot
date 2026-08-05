@@ -328,8 +328,8 @@ Choose **Virtual Geometry** in the Game debug-view selector to inspect the resid
 frontier. Use `mise archive-profile` for a bounded 1600×900 profile of the showcase preset.
 
 Use `examples/virtual-wilds` when virtual geometry needs real photogrammetry rather than generated
-geometry. It imports five pinned CC0 Poly Haven scans containing 3.14 million source triangles,
-generates their LOD and cluster hierarchies, and flies along a coastal route while 8,440 imported
+geometry. It imports twelve pinned CC0 Poly Haven models containing 3.54 million source triangles,
+generates their LOD and cluster hierarchies, and flies along a coastal route while 9,112 imported
 pages compete for a 192 MiB residency budget:
 
 ```sh
@@ -338,13 +338,17 @@ mise scrapbot -- run examples/virtual-wilds --editor
 ```
 
 The example is an ordinary project. Its glTF resources, scene components, Luau camera system, and
-render settings use the same public paths available to games. A deterministic Luau scatter system
-adds 220 procedural rocks and 80 three-part conifers through public Geometry, Material, ECS spawn,
-and Transform APIs. The stable scene contains 515 renderables and 24 WGPU material/LOD batches.
+render settings use the same public paths available to games.
+
+A deterministic Luau scatter system adds 220 procedural rocks through public Geometry, Material,
+ECS spawn, and Transform APIs. Authored shared-model foliage and landscape instances bring the scene
+to 1,425 renderables while WGPU submits 40 material/LOD batches.
 
 `mise test-virtual-wilds` rebuilds and validates the pinned import products.
-`mise test-virtual-wilds-gpu` profiles a deterministic camera segment, preserves consecutive PNGs,
-and rejects feedback overflow, page-read failure, or unstable settled-frontier behavior.
+`mise test-virtual-wilds-gpu` profiles deterministic fixed-camera coverage and moving-camera
+refinement segments, preserves consecutive PNGs, and rejects feedback overflow, page-read failure,
+or an unbounded GPU workload. Import-level tests separately prove that every hierarchy region owns a
+resident terminal fallback and that source boundary loops survive into that fallback frontier.
 
 The GPU virtual-geometry pressure test also captures an active refinement. Its sequence gate
 requires at least one transitioning group, visible clusters using blended coverage, and a settled
@@ -353,7 +357,7 @@ endpoint, preserving the complete handoff for inspection:
 ```sh
 node tools/test_render_sequence.mjs \
   --project tests/fixtures/gpu-virtual-geometry-pressure \
-  --warmup 0 --frames 80 --capture-range 31:56 \
+  --warmup 0 --frames 80 --capture-range 36:52 \
   --resolution 960x540 --require-transition \
   --out /tmp/scrapbot-virtual-geometry-transition
 ```
@@ -369,7 +373,8 @@ node tools/test_render_sequence.mjs --project examples/virtual-wilds \
 `--stable-frontier` rejects active admission transitions as well as uploads, evictions, policy changes,
 feedback overflow, and page-read failures. Use `--require-transition` on a transition-focused
 capture; it requires an active handoff, a visible blended cluster somewhere in the range, and a
-zero-transition final frame.
+zero-transition final frame. Use `--require-transition-activity` for a streaming-world capture that
+must exercise healthy blended handoffs but is not expected to settle the entire visible working set.
 
 Add `--golden-dir <directory> --minimum-psnr <dB>` for platform-qualified golden images. Prefer a
 tolerant PSNR baseline per adapter family over byte equality across different GPU implementations.

@@ -55,6 +55,20 @@ test("render sequence arguments describe a transition capture", () => {
   assert.equal(options.captureEnd, 56);
 });
 
+test("render sequence arguments describe sustained transition activity", () => {
+  const options = parseArguments([
+    "--project",
+    "examples/virtual-wilds",
+    "--capture-range",
+    "200:224",
+    "--require-transition-activity",
+  ]);
+
+  assert.equal(options.requireTransitionActivity, true);
+  assert.equal(options.requireTransition, false);
+  assert.equal(options.stableFrontier, false);
+});
+
 test("render sequence arguments keep settled and transitioning gates distinct", () => {
   assert.throws(
     () =>

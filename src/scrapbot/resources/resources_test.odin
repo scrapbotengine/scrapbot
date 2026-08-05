@@ -1,6 +1,7 @@
 package resources
 
 import asset_import "../asset_import"
+import geometry_package "../geometry"
 import project "../project"
 import shared "../shared"
 import "core:os"
@@ -485,7 +486,14 @@ test_nonresident_geometry_reconstructs_every_exact_leaf_page :: proc(t: ^testing
 	indices := [6]u32{0, 1, 2, 1, 3, 2}
 	groups := [2]Geometry_Cluster_Group {
 		{depth = 0, cluster_offset = 0, cluster_count = 1, page_offset = 0, page_count = 1},
-		{depth = 1, cluster_offset = 1, cluster_count = 1, page_offset = 1, page_count = 1},
+		{
+			depth = 1,
+			cluster_offset = 1,
+			cluster_count = 1,
+			page_offset = 1,
+			page_count = 1,
+			error = 3.4028235e38,
+		},
 	}
 	clusters := [2]Geometry_Cluster {
 		{
@@ -648,7 +656,7 @@ test_registered_geometry_builds_bounded_meshlets :: proc(t: ^testing.T) {
 		page_start := int(group.page_offset)
 		page_end := int(group.page_offset + group.page_count)
 		for page in geometry.cluster_pages[page_start:page_end] {
-			testing.expect_value(t, page.pinned, group.depth == geometry.cluster_max_depth)
+			testing.expect_value(t, page.pinned, geometry_package.cluster_group_is_terminal(group))
 			testing.expect(t, page.index_count > 0)
 			testing.expect(t, page.index_count <= 64 * 1024 / size_of(u32))
 		}

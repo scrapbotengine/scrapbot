@@ -18,6 +18,7 @@ export function parseArguments(arguments_) {
     out: path.join(os.tmpdir(), "scrapbot-render-sequence"),
     stableFrontier: false,
     requireTransition: false,
+    requireTransitionActivity: false,
     goldenDirectory: undefined,
     minimumPsnr: 32,
   };
@@ -29,6 +30,10 @@ export function parseArguments(arguments_) {
     }
     if (argument === "--require-transition") {
       options.requireTransition = true;
+      continue;
+    }
+    if (argument === "--require-transition-activity") {
+      options.requireTransitionActivity = true;
       continue;
     }
     const names = new Map([
@@ -61,8 +66,13 @@ export function parseArguments(arguments_) {
   }
   options.captureStart = Number(match[1]);
   options.captureEnd = Number(match[2]);
-  if (options.stableFrontier && options.requireTransition) {
-    throw new Error("--stable-frontier and --require-transition are mutually exclusive");
+  const temporalGates = [
+    options.stableFrontier,
+    options.requireTransition,
+    options.requireTransitionActivity,
+  ].filter(Boolean).length;
+  if (temporalGates > 1) {
+    throw new Error("temporal sequence gates are mutually exclusive");
   }
   return options;
 }
@@ -178,7 +188,7 @@ export function validateProfile(options, profile, framesDirectory) {
       throw new Error("virtual-geometry projected-error policy changed during capture");
     }
   }
-  if (options.requireTransition) {
+  if (options.requireTransition || options.requireTransitionActivity) {
     const transitionCounts = capturedRows.map(
       (frame) => frame.render?.virtual_geometry_transitioning_groups ?? 0,
     );
@@ -192,7 +202,7 @@ export function validateProfile(options, profile, framesDirectory) {
     ) {
       throw new Error("captured transition does not exercise visible blended clusters");
     }
-    if (transitionCounts.at(-1) !== 0) {
+    if (options.requireTransition && transitionCounts.at(-1) !== 0) {
       throw new Error("captured virtual-geometry transition does not reach a settled endpoint");
     }
     for (const frame of capturedRows) {

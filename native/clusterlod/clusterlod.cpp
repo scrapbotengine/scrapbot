@@ -129,6 +129,43 @@ static T* scrapbot_clod_copy(const std::vector<T>& source)
 		memcpy(result, source.data(), source.size() * sizeof(T));
 	return result;
 }
+
+static std::vector<unsigned char> scrapbot_clod_boundary_locks(
+    const uint32_t* indices,
+    size_t index_count,
+    const float* vertices,
+    size_t vertex_count,
+    size_t vertex_stride)
+{
+	std::vector<unsigned int> remap(vertex_count);
+	meshopt_generatePositionRemap(remap.data(), vertices, vertex_count, vertex_stride);
+
+	std::vector<unsigned int> adjacency(index_count * 2);
+	meshopt_generateAdjacencyIndexBuffer(
+	    adjacency.data(), indices, index_count, vertices, vertex_count, vertex_stride);
+
+	std::vector<unsigned char> canonical_boundary(vertex_count);
+	for (size_t triangle = 0; triangle < index_count; triangle += 3)
+	{
+		for (size_t edge = 0; edge < 3; ++edge)
+		{
+			const unsigned int first = indices[triangle + edge];
+			const unsigned int second = indices[triangle + (edge + 1) % 3];
+			const unsigned int opposite = adjacency[triangle * 2 + edge * 2 + 1];
+			if (opposite == first)
+			{
+				canonical_boundary[remap[first]] = 1;
+				canonical_boundary[remap[second]] = 1;
+			}
+		}
+	}
+
+	std::vector<unsigned char> result(vertex_count);
+	for (size_t vertex = 0; vertex < vertex_count; ++vertex)
+		if (canonical_boundary[remap[vertex]])
+			result[vertex] = meshopt_SimplifyVertex_Lock;
+	return result;
+}
 }
 
 extern "C" scrapbot_clod_result scrapbot_clod_build(
@@ -143,6 +180,8 @@ extern "C" scrapbot_clod_result scrapbot_clod_build(
 		return result;
 
 	const float attribute_weights[] = {0.5f, 0.5f, 0.5f, 1.f, 1.f};
+	std::vector<unsigned char> boundary_locks = scrapbot_clod_boundary_locks(
+	    indices, index_count, vertices, vertex_count, vertex_stride);
 	clodMesh mesh = {};
 	mesh.indices = indices;
 	mesh.index_count = index_count;
@@ -154,6 +193,7 @@ extern "C" scrapbot_clod_result scrapbot_clod_build(
 	mesh.attribute_weights = attribute_weights;
 	mesh.attribute_count = sizeof(attribute_weights) / sizeof(attribute_weights[0]);
 	mesh.attribute_protect_mask = (1u << 3) | (1u << 4);
+	mesh.vertex_lock = boundary_locks.data();
 
 	scrapbot_clod_output output = {};
 	output.positions = vertices;

@@ -8,6 +8,7 @@ CLUSTER_MAX_VERTICES :: 64
 CLUSTER_MAX_TRIANGLES :: 124
 CLUSTER_PAGE_TARGET_BYTES :: 64 * 1024
 CLUSTER_PAGE_TARGET_INDICES :: CLUSTER_PAGE_TARGET_BYTES / size_of(u32)
+CLUSTER_TERMINAL_ERROR_THRESHOLD :: f32(1.0e30)
 
 Page_Payload_Record :: struct {
 	offset: u64,
@@ -58,6 +59,13 @@ Hierarchy :: struct {
 	vertices: []u32,
 	triangles: []u8,
 	max_depth: u32,
+}
+
+cluster_group_is_terminal :: proc "contextless" (group: Cluster_Group) -> bool {
+	// clusterlod writes FLT_MAX when a region cannot be simplified any
+	// further. Terminal groups are roots of their local refinement DAG even
+	// when another region reaches a greater global depth.
+	return group.error > CLUSTER_TERMINAL_ERROR_THRESHOLD
 }
 
 @(private)
@@ -191,7 +199,7 @@ build_cluster_pages :: proc(hierarchy: ^Hierarchy, allocator := context.allocato
 		for cluster_cursor < cluster_end {
 			page := Cluster_Page {
 				cluster_offset = u32(cluster_cursor),
-				pinned = group.depth == hierarchy.max_depth,
+				pinned = cluster_group_is_terminal(group),
 			}
 			for cluster_cursor < cluster_end {
 				cluster := &hierarchy.clusters[cluster_cursor]
@@ -305,7 +313,7 @@ validate_hierarchy :: proc(hierarchy: ^Hierarchy, canonical_vertex_count: int) -
 	}
 	for group in hierarchy.groups {
 		for page in hierarchy.pages[int(group.page_offset):int(group.page_offset + group.page_count)] {
-			if page.pinned != (group.depth == hierarchy.max_depth) {
+			if page.pinned != cluster_group_is_terminal(group) {
 				return "cluster hierarchy pinned page is invalid"
 			}
 		}

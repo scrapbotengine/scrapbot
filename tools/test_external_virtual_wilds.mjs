@@ -25,16 +25,16 @@ const models = [
     source: "assets/coastal_cliff_04/coastal_cliff_04_1k.gltf",
     vertices: 789032,
     indices: 4613778,
-    clusters: 64678,
-    groups: 3972,
+    clusters: 64935,
+    groups: 3996,
   },
   {
     id: "7b000000-0000-4000-8000-000000000004",
     source: "assets/coast_rocks_01/coast_rocks_01_1k.gltf",
     vertices: 348785,
     indices: 2039808,
-    clusters: 28536,
-    groups: 1755,
+    clusters: 28607,
+    groups: 1758,
   },
   {
     id: "7b000000-0000-4000-8000-000000000006",
@@ -49,8 +49,8 @@ const models = [
     source: "assets/coast_rocks_05/coast_rocks_05_1k.gltf",
     vertices: 401298,
     indices: 2315172,
-    clusters: 33056,
-    groups: 2024,
+    clusters: 33098,
+    groups: 2027,
   },
   {
     id: "7b000000-0000-4000-8000-00000000000c",
@@ -72,8 +72,8 @@ const models = [
     vertices: 406356,
     indices: 1194432,
     lods: 0,
-    clusters: 14390,
-    groups: 995,
+    clusters: 9560,
+    groups: 642,
   },
   {
     id: "7b000000-0000-4000-8000-00000000000e",
@@ -255,7 +255,7 @@ function main() {
     );
     const expectedLods = expected.lods ?? 3;
     if (
-      metadata.schema !== "scrapbot.model.v16.attribute-hierarchy" ||
+      metadata.schema !== "scrapbot.model.v17.coverage-frontier" ||
       metadata.source !== expected.source ||
       metadata.node_count !== (expected.nodes ?? 1) ||
       metadata.mesh_count !== (expected.meshes ?? 1) ||
@@ -329,7 +329,7 @@ function main() {
   if (sequenceOut) {
     const sequences = [
       {
-        name: "stable",
+        name: "coverage",
         arguments: [
           "--warmup",
           "180",
@@ -337,7 +337,6 @@ function main() {
           "120",
           "--capture-range",
           "44:50",
-          "--stable-frontier",
         ],
       },
       {
@@ -349,7 +348,7 @@ function main() {
           "300",
           "--capture-range",
           "200:224",
-          "--require-transition",
+          "--require-transition-activity",
         ],
       },
     ];

@@ -13,11 +13,11 @@ import "core:path/filepath"
 import "core:strings"
 import cgltf "vendor:cgltf"
 
-MODEL_IMPORTER_SCHEMA :: "scrapbot.model.v16.attribute-hierarchy"
-MODEL_CATALOG_MAGIC :: [8]u8{'S', 'B', 'M', 'C', 'A', 'T', '1', '6'}
-MODEL_IMAGE_CHUNK_MAGIC :: [8]u8{'S', 'B', 'M', 'I', 'M', 'G', '1', '6'}
-MODEL_COARSE_CHUNK_MAGIC :: [8]u8{'S', 'B', 'M', 'C', 'R', 'S', '1', '6'}
-MODEL_DETAIL_CHUNK_MAGIC :: [8]u8{'S', 'B', 'M', 'D', 'T', 'L', '1', '6'}
+MODEL_IMPORTER_SCHEMA :: "scrapbot.model.v17.coverage-frontier"
+MODEL_CATALOG_MAGIC :: [8]u8{'S', 'B', 'M', 'C', 'A', 'T', '1', '7'}
+MODEL_IMAGE_CHUNK_MAGIC :: [8]u8{'S', 'B', 'M', 'I', 'M', 'G', '1', '7'}
+MODEL_COARSE_CHUNK_MAGIC :: [8]u8{'S', 'B', 'M', 'C', 'R', 'S', '1', '7'}
+MODEL_DETAIL_CHUNK_MAGIC :: [8]u8{'S', 'B', 'M', 'D', 'T', 'L', '1', '7'}
 MODEL_PRODUCT_CHUNK_COUNT :: 4
 MODEL_READER_BUFFER_SIZE :: 64 * 1024
 

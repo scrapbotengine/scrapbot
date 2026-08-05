@@ -80,7 +80,7 @@ function main() {
     readFileSync(join(importedDirectory, metadataName), "utf8"),
   );
   if (
-    metadata.schema !== "scrapbot.model.v16.attribute-hierarchy" ||
+    metadata.schema !== "scrapbot.model.v17.coverage-frontier" ||
     metadata.node_count !== 1 ||
     metadata.mesh_count !== 1 ||
     metadata.primitive_count !== 103 ||

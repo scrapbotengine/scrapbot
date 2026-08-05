@@ -1,7 +1,7 @@
 # FDR-011: Asset imports
 
 **Status:** In Progress
-**Last reviewed:** 2026-08-02
+**Last reviewed:** 2026-08-05
 
 ## Overview
 
@@ -140,12 +140,19 @@ own chunk relationships.
 
 ### 15. Split and stream large Model products
 
-**Decision:** Model v16 separates material images, pinned coarse pages, evictable detail pages, and
+**Decision:** Model v17 separates material images, pinned coarse pages, evictable detail pages, and
 the runtime catalog into four product chunks. Build the product with the common sequential writer;
 spool detail pages temporarily and emit the descriptor catalog only after exact ranges are known.
 
-The v16 fingerprint also identifies the attribute-preserving hierarchy contract, so caches built
-with attribute-blind fallback cannot survive the importer upgrade.
+The pinned chunk contains every terminal refinement-DAG group, not merely groups at the global
+maximum hierarchy depth. Different regions may stop simplifying at different depths; evicting any
+such terminal group would remove that region's last drawable fallback.
+
+Hierarchy simplification also locks every topological boundary loop by canonical position. Coarser
+frontiers may reduce interior detail but cannot enlarge source openings by moving their borders.
+
+The v17 fingerprint invalidates products whose early terminal groups were incorrectly placed in
+the evictable detail chunk.
 
 **Why:** Runtime startup should not walk gigabytes of payload bytes to discover a catalog. Import
 should not require enough spare memory for both the decoded source model and a second complete
