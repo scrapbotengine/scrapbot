@@ -1,6 +1,6 @@
 # Engine Systems
 
-**Last verified:** 2026-08-03
+**Last verified:** 2026-08-05
 **Canonical names:** `engine_system_profile_name` in `src/scrapbot/scrapbot.odin`  
 **Execution boundaries:** `run_frame_system` in `src/scrapbot/render/render.odin` and WGPU frame encoding in `src/scrapbot/render/wgpu.odin`
 
@@ -88,7 +88,7 @@ These are the engine-owned rows published to the editor's Systems panel. They ar
 
 - **Phase/order:** First WGPU render-encoding phase after preparation.
 - **Inputs:** GPU instance/draw database, camera frustum/projection, retained hierarchy groups and cluster commands, previous valid Hi-Z state, LOD/visibility configuration.
-- **Outputs:** A geometric-error camera frontier with adjacent-level overlap, compact visibility streams, indirect arguments, rejection and LOD counters, asynchronous page feedback, admission state, blended-cluster counts, and next-pass state.
+- **Outputs:** A geometric-error camera frontier with adjacent-level overlap, compact visibility streams, indirect arguments, rejection and LOD counters, explicit candidate/camera/shadow record-overflow counters, asynchronous page feedback, admission state, blended-cluster counts, and next-pass state.
 - **Feedback bound:** Demand, visible-touch, and predictive-prefetch feedback are independently bounded. Completed requests admit complete page groups with a fresh current-frame grace window before sampled visible-use touches govern eviction.
 - **Stable-frame behavior:** Does not rebuild membership, hierarchy products, shared geometry arenas, or submission policy; it encodes bounded GPU work over retained draw capacity. A compact queue advances only live admission handoffs, and completed start tokens do not keep obsolete parents selected.
 - **Submission:** Native multi-draw adapters share arena-global command ranges. Other indirect-first-instance adapters append selected camera records into compatible material spans and increment one retained command per span. Shadows use canonical indexed geometry when resident or a pinned-root coarse proxy; compact and classic culling own disjoint commands.

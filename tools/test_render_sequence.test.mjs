@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseArguments } from "./test_render_sequence.mjs";
+import {
+  parseArguments,
+  validateRecordCapacity,
+  validateResidencyPressure,
+} from "./test_render_sequence.mjs";
 
 test("render sequence arguments describe a bounded temporal capture", () => {
   const options = parseArguments([
@@ -84,6 +88,18 @@ test("render sequence arguments describe a CPU-reference comparison", () => {
   assert.equal(options.minimumPsnr, 48);
 });
 
+test("render sequence arguments describe bounded residency pressure", () => {
+  const options = parseArguments([
+    "--project",
+    "examples/virtual-geometry-lab",
+    "--capture-range",
+    "40:48",
+    "--require-residency-pressure",
+  ]);
+
+  assert.equal(options.requireResidencyPressure, true);
+});
+
 test("render sequence arguments keep settled and transitioning gates distinct", () => {
   assert.throws(
     () =>
@@ -94,5 +110,40 @@ test("render sequence arguments keep settled and transitioning gates distinct", 
         "--require-transition",
       ]),
     /mutually exclusive/,
+  );
+});
+
+test("record capacity validation rejects silent GPU record loss", () => {
+  assert.throws(
+    () =>
+      validateRecordCapacity({
+        frames: [{ index: 7, render: { visible_record_overflow: 1 } }],
+      }),
+    /visible_record_overflow is nonzero at frame 7/,
+  );
+});
+
+test("residency validation requires bounded pressure and healthy admission", () => {
+  const frame = {
+    index: 8,
+    render: {
+      virtual_geometry: true,
+      virtual_geometry_pages: 16,
+      virtual_geometry_resident_pages: 8,
+      virtual_geometry_page_budget_bytes: 100,
+      virtual_geometry_page_resident_bytes: 95,
+      virtual_geometry_deferred_groups: 3,
+      virtual_geometry_page_request_overflow: 0,
+      virtual_geometry_page_read_failures: 0,
+    },
+    counter_deltas: {},
+  };
+  assert.doesNotThrow(() => validateResidencyPressure({ frames: [frame] }));
+  assert.throws(
+    () =>
+      validateResidencyPressure({
+        frames: [{ ...frame, render: { ...frame.render, virtual_geometry_pages: 8 } }],
+      }),
+    /does not exercise bounded/,
   );
 });

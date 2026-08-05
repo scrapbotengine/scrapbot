@@ -48,7 +48,6 @@ This file tracks current actionable engineering work. The broad product roadmap 
 
 - [ ] Extend offscreen WGPU CI coverage from Metal to representative Vulkan and D3D12 adapters.
 - [ ] Add reusable named camera-path and depth/meshlet-debug matrices for external example render regressions.
-- [ ] Add bounded residency pressure and explicit selected-record overflow diagnostics to `virtual-geometry-lab`, then gate its moving GPU/CPU coverage sequence in CI.
 - [ ] Apply a baseline `odinfmt` pass and promote formatting audit into the default test gate.
 - [ ] Add OS resident-memory sampling for foreign-library and GPU allocations.
 - [ ] Define an opt-in same-adapter GPU regression policy after benchmark history establishes normal variance.

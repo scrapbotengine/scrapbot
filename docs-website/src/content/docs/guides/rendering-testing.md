@@ -371,9 +371,14 @@ node tools/test_render_sequence.mjs --project examples/virtual-wilds \
 ```
 
 `examples/virtual-geometry-lab` isolates near-camera hierarchy coverage from imported assets,
-streaming-world composition, and postprocessing. Its dense warped wall fills the viewport while a
-deterministic camera moves toward it. The dedicated gate renders each captured frame through both
-GPU virtual geometry and full-index CPU submission, then rejects per-frame image mismatches:
+streaming-world composition, and postprocessing. Its roughly 197,000-triangle warped wall uses a
+strongly nonuniform world transform and fills the viewport while a deterministic camera moves
+toward it. A deliberately small residency budget keeps most hierarchy pages nonresident and forces
+deferred admission under pressure.
+
+The dedicated gate renders each captured frame through both GPU virtual geometry and full-index CPU
+submission. It rejects per-frame image mismatches, unhealthy residency, missing pressure, and any
+candidate, camera, or shadow visibility record overflow:
 
 ```sh
 mise test-virtual-geometry-coverage-gpu
@@ -381,7 +386,9 @@ mise test-virtual-geometry-coverage-gpu
 
 Projects can opt into the same reference comparison with `--cpu-reference`. Use
 `--minimum-psnr <dB>` to select the tolerated image difference; exact matches are accepted without
-special casing.
+special casing. Add `--require-residency-pressure` when the project must prove that its bounded
+working set reaches at least 90% of budget, leaves pages nonresident, and exercises eviction or
+deferred admission.
 
 `--stable-frontier` rejects active admission transitions as well as uploads, evictions, policy changes,
 feedback overflow, and page-read failures. Use `--require-transition` on a transition-focused

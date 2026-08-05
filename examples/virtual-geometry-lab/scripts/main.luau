@@ -1,5 +1,5 @@
-local GRID_CELLS_X = 192
-local GRID_CELLS_Y = 128
+local GRID_CELLS_X = 384
+local GRID_CELLS_Y = 256
 local GRID_WIDTH = 18
 local GRID_HEIGHT = 11
 
@@ -98,7 +98,7 @@ scrapbot.system({
 			["scrapbot.transform"] = {
 				position = { x = 0, y = 0, z = 0 },
 				rotation = { x = 0, y = 0, z = 0 },
-				scale = { x = 1, y = 1, z = 1 },
+				scale = { x = 5, y = 7, z = 4 },
 			},
 			["scrapbot.geometry"] = geometry,
 			["scrapbot.material"] = material,

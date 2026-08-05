@@ -3,7 +3,7 @@ id = "97000000-0000-4000-8000-000000000001"
 name = "Coverage Camera"
 
 [entities.transform]
-position = [0, 0, 12]
+position = [0, 0, 42]
 rotation = [0, 0, 0]
 scale = [1, 1, 1]
 
@@ -20,8 +20,8 @@ screen_space_reflections = false
 bloom = false
 
 [entities.components.virtual_geometry_lab_camera]
-start_distance = 12
-end_distance = 1.2
+start_distance = 42
+end_distance = 4.2
 approach_frames = 180
 
 [[entities]]

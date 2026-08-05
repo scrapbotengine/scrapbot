@@ -6,5 +6,5 @@ width = 1280
 height = 720
 
 [render]
-virtual_geometry_budget_mb = 64
+virtual_geometry_budget_mb = 0.5
 virtual_geometry_prefetch = true

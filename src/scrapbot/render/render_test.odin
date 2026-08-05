@@ -498,6 +498,9 @@ test_gpu_meshlet_cone_culling_requires_a_positive_uniform_transform :: proc(t: ^
 	)
 	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "instance.render_flags.z"))
 	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "meshlet_cone_culled"))
+	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "candidate_record_overflow"))
+	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "visible_record_overflow"))
+	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "shadow_record_overflow"))
 }
 
 @(test)

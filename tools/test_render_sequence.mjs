@@ -19,6 +19,7 @@ export function parseArguments(arguments_) {
     stableFrontier: false,
     requireTransition: false,
     requireTransitionActivity: false,
+    requireResidencyPressure: false,
     cpuReference: false,
     goldenDirectory: undefined,
     minimumPsnr: 32,
@@ -39,6 +40,10 @@ export function parseArguments(arguments_) {
     }
     if (argument === "--cpu-reference") {
       options.cpuReference = true;
+      continue;
+    }
+    if (argument === "--require-residency-pressure") {
+      options.requireResidencyPressure = true;
       continue;
     }
     const names = new Map([
@@ -142,6 +147,53 @@ function assertVisibleImage(image, filename) {
   }
 }
 
+export function validateRecordCapacity(profile) {
+  for (const frame of profile.frames) {
+    for (const field of [
+      "candidate_record_overflow",
+      "visible_record_overflow",
+      "shadow_record_overflow",
+    ]) {
+      if ((frame.render?.[field] ?? 0) !== 0) {
+        throw new Error(`${field} is nonzero at frame ${frame.index}`);
+      }
+    }
+  }
+}
+
+export function validateResidencyPressure(profile) {
+  const pressuredRows = profile.frames.filter((frame) => {
+    const render = frame.render;
+    return (
+      render?.virtual_geometry === true &&
+      render.virtual_geometry_pages > render.virtual_geometry_resident_pages &&
+      render.virtual_geometry_page_budget_bytes > 0 &&
+      render.virtual_geometry_page_resident_bytes * 10 >=
+        render.virtual_geometry_page_budget_bytes * 9
+    );
+  });
+  if (pressuredRows.length === 0) {
+    throw new Error("profile does not exercise bounded virtual-geometry residency pressure");
+  }
+  if (
+    !profile.frames.some(
+      (frame) =>
+        (frame.counter_deltas?.virtual_geometry_group_evictions ?? 0) > 0 ||
+        (frame.render?.virtual_geometry_deferred_groups ?? 0) > 0,
+    )
+  ) {
+    throw new Error("residency pressure does not exercise eviction or deferred admission");
+  }
+  for (const frame of profile.frames) {
+    if (
+      frame.render?.virtual_geometry_page_request_overflow !== 0 ||
+      frame.render?.virtual_geometry_page_read_failures !== 0
+    ) {
+      throw new Error(`virtual-geometry residency became unhealthy at frame ${frame.index}`);
+    }
+  }
+}
+
 export function validateProfile(options, profile, framesDirectory) {
   if (profile.schema_version !== 2 || profile.frames?.length !== options.frames) {
     throw new Error("profile does not match the requested bounded run");
@@ -153,6 +205,7 @@ export function validateProfile(options, profile, framesDirectory) {
     throw new Error("profile is missing captured frame rows");
   }
   const captures = [];
+  validateRecordCapacity(profile);
   for (const frame of capturedRows) {
     const filename = `frame-${String(frame.index).padStart(6, "0")}.png`;
     const imagePath = path.join(framesDirectory, filename);
@@ -220,6 +273,9 @@ export function validateProfile(options, profile, framesDirectory) {
       }
     }
   }
+  if (options.requireResidencyPressure) {
+    validateResidencyPressure(profile);
+  }
   return captures;
 }
 
@@ -281,7 +337,12 @@ function main() {
       fs.readFileSync(path.join(cpuReferenceDirectory, "profile.json"), "utf8"),
     );
     validateProfile(
-      { ...options, goldenDirectory: undefined, stableFrontier: false },
+      {
+        ...options,
+        goldenDirectory: undefined,
+        stableFrontier: false,
+        requireResidencyPressure: false,
+      },
       referenceProfile,
       path.join(cpuReferenceDirectory, "frames"),
     );
@@ -309,6 +370,7 @@ function main() {
     capture_range: options.captureRange,
     stable_frontier: options.stableFrontier,
     required_transition: options.requireTransition,
+    required_residency_pressure: options.requireResidencyPressure,
     cpu_reference: options.cpuReference,
     cpu_reference_directory: cpuReferenceDirectory,
     golden_directory: options.goldenDirectory ?? null,

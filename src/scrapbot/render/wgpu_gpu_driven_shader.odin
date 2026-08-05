@@ -1417,6 +1417,9 @@ struct Visibility_Counters {
 	lod_visible_instances: array<atomic<u32>, 4>,
 	visible_meshlets: atomic<u32>,
 	shadow_visible_meshlets: atomic<u32>,
+	candidate_record_overflow: atomic<u32>,
+	visible_record_overflow: atomic<u32>,
+	shadow_record_overflow: atomic<u32>,
 	frustum_culled_meshlets: atomic<u32>,
 	cone_culled_meshlets: atomic<u32>,
 	occlusion_culled_meshlets: atomic<u32>,
@@ -2086,6 +2089,8 @@ fn cull_compact_candidate(invocation: vec3<u32>) {
 	if (candidate_index < batch.visible_capacity) {
 		visible_instances[batch.visible_offset + candidate_index] =
 			(slot & 0x00ffffffu) | (flags << 24u);
+	} else {
+		atomicAdd(&counters.candidate_record_overflow, 1u);
 	}
 }
 
@@ -2158,6 +2163,8 @@ fn cull_compact_camera_meshlet(
 		visible_instances[record_offset * 2u] = slot;
 		visible_instances[record_offset * 2u + 1u] = meshlet_index;
 		atomicAdd(&counters.visible_meshlets, 1u);
+	} else {
+		atomicAdd(&counters.visible_record_overflow, 1u);
 	}
 }
 
@@ -2185,6 +2192,8 @@ fn cull_compact_shadow_meshlet(
 		visible_instances[record_offset * 2u] = slot;
 		visible_instances[record_offset * 2u + 1u] = meshlet_index;
 		atomicAdd(&counters.shadow_visible_meshlets, 1u);
+	} else {
+		atomicAdd(&counters.shadow_record_overflow, 1u);
 	}
 }
 
@@ -2425,10 +2434,14 @@ fn cull_instances(invocation: vec3<u32>, submission_mode: u32) {
 						visible_instances[record_offset * 2u] = slot;
 						visible_instances[record_offset * 2u + 1u] = meshlet_index;
 						atomicAdd(&counters.visible_meshlets, 1u);
+					} else {
+						atomicAdd(&counters.visible_record_overflow, 1u);
 					}
 				} else if (local_index < meshlet.visible_capacity) {
 					visible_instances[meshlet.visible_offset + local_index] = slot;
 					atomicAdd(&counters.visible_meshlets, 1u);
+				} else {
+					atomicAdd(&counters.visible_record_overflow, 1u);
 				}
 			}
 			atomicAdd(&counters.visible_instances, 1u);
@@ -2440,6 +2453,8 @@ fn cull_instances(invocation: vec3<u32>, submission_mode: u32) {
 				visible_instances[batch.visible_offset + local_index] = slot;
 				atomicAdd(&counters.visible_instances, 1u);
 				atomicAdd(&counters.lod_visible_instances[lod_level], 1u);
+			} else {
+				atomicAdd(&counters.visible_record_overflow, 1u);
 			}
 		}
 	} else if (owns_camera && cascade_index == 0u) {
@@ -2478,6 +2493,8 @@ fn cull_instances(invocation: vec3<u32>, submission_mode: u32) {
 						shadow_visible_instances[record_offset * 2u] = slot;
 						shadow_visible_instances[record_offset * 2u + 1u] = meshlet_index;
 						atomicAdd(&counters.shadow_visible_meshlets, 1u);
+					} else {
+						atomicAdd(&counters.shadow_record_overflow, 1u);
 					}
 				} else if (local_index < meshlet.visible_capacity) {
 					shadow_visible_instances[
@@ -2485,6 +2502,8 @@ fn cull_instances(invocation: vec3<u32>, submission_mode: u32) {
 						meshlet.visible_offset + local_index
 					] = slot;
 					atomicAdd(&counters.shadow_visible_meshlets, 1u);
+				} else {
+					atomicAdd(&counters.shadow_record_overflow, 1u);
 				}
 			}
 			atomicAdd(&counters.shadow_visible_instances, 1u);
@@ -2496,6 +2515,8 @@ fn cull_instances(invocation: vec3<u32>, submission_mode: u32) {
 					cascade_index * cull.shadow_visible_stride + batch.visible_offset + local_index
 				] = slot;
 				atomicAdd(&counters.shadow_visible_instances, 1u);
+			} else {
+				atomicAdd(&counters.shadow_record_overflow, 1u);
 			}
 		}
 	}
