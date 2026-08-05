@@ -1691,6 +1691,25 @@ test_wgpu_hiz_rejects_unsafe_large_sphere_projections :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_wgpu_hiz_cluster_query_projects_a_conservative_enclosing_cube :: proc(t: ^testing.T) {
+	// A center-plus-radius rectangle and a camera-radial nearest point both
+	// under-bound large off-axis clusters. Those false-positive occlusion
+	// queries manifested as camera-dependent holes in scaled virtual geometry.
+	testing.expect(
+		t,
+		strings.contains(
+			WGPU_GPU_CULL_SHADER,
+			"corner_index = 0u; corner_index < 8u; corner_index = corner_index + 1u",
+		),
+	)
+	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "ndc_low = min(ndc_low"))
+	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "ndc_high = max(ndc_high"))
+	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "nearest_depth = min(nearest_depth"))
+	testing.expect(t, !strings.contains(WGPU_GPU_CULL_SHADER, "let radius_ndc"))
+	testing.expect(t, !strings.contains(WGPU_GPU_CULL_SHADER, "let toward_camera"))
+}
+
+@(test)
 test_wgpu_frustum_planes_and_cpu_culling_reference :: proc(t: ^testing.T) {
 	planes := wgpu_extract_frustum_planes(mat4_identity())
 	testing.expect(t, wgpu_sphere_visible({0, 0, 0.5, 0.1}, planes))

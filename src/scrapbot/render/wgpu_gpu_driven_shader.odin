@@ -1858,40 +1858,49 @@ fn camera_sphere_occlusion(bounds: vec4<f32>) -> Occlusion_Result {
 	if (dot(camera_offset, camera_offset) <= conservative_distance * conservative_distance) {
 		return result;
 	}
-	let clip = cull.hiz_view_projection * vec4<f32>(bounds.xyz, 1.0);
-	if (clip.w <= 0.0001) {
-		return result;
+	// Project the eight corners of a cube containing the sphere. Center-plus-
+	// radius projection is not conservative for large off-axis bounds: its
+	// screen rectangle can miss a visible part of a cluster while sampling an
+	// occluder near the center. The enclosing cube is deliberately a little
+	// wider, but it guarantees that Hi-Z can only reject the complete sphere.
+	var ndc_low = vec2<f32>(1.0e30);
+	var ndc_high = vec2<f32>(-1.0e30);
+	var nearest_depth = 1.0;
+	var nearest_view_depth = 1.0e30;
+	for (var corner_index = 0u; corner_index < 8u; corner_index = corner_index + 1u) {
+		let corner = bounds.xyz + vec3<f32>(
+			select(-bounds.w, bounds.w, (corner_index & 1u) != 0u),
+			select(-bounds.w, bounds.w, (corner_index & 2u) != 0u),
+			select(-bounds.w, bounds.w, (corner_index & 4u) != 0u),
+		);
+		let corner_clip = cull.hiz_view_projection * vec4<f32>(corner, 1.0);
+		if (corner_clip.w <= 0.0001) {
+			return result;
+		}
+		let corner_ndc = corner_clip.xyz / corner_clip.w;
+		ndc_low = min(ndc_low, corner_ndc.xy);
+		ndc_high = max(ndc_high, corner_ndc.xy);
+		nearest_depth = min(nearest_depth, corner_ndc.z);
+		nearest_view_depth = min(nearest_view_depth, corner_clip.w);
 	}
-	let ndc = clip.xyz / clip.w;
-	let radius_ndc = vec2<f32>(
-		abs(bounds.w * cull.hiz_view_projection[0][0] / clip.w),
-		abs(bounds.w * cull.hiz_view_projection[1][1] / clip.w)
-	) * 1.05;
-	let center_px = cull.viewport.xy + vec2<f32>(
-		(ndc.x * 0.5 + 0.5) * cull.viewport.z,
-		(0.5 - ndc.y * 0.5) * cull.viewport.w
-	);
-	let radius_px =
-		radius_ndc * cull.viewport.zw * 0.5 +
-		vec2<f32>(1.0);
-	let extent = max(max(radius_px.x * 2.0, radius_px.y * 2.0), 1.0);
+	let low_px_full = cull.viewport.xy + vec2<f32>(
+		(ndc_low.x * 0.5 + 0.5) * cull.viewport.z,
+		(0.5 - ndc_high.y * 0.5) * cull.viewport.w,
+	) - vec2<f32>(1.0);
+	let high_px_full = cull.viewport.xy + vec2<f32>(
+		(ndc_high.x * 0.5 + 0.5) * cull.viewport.z,
+		(0.5 - ndc_low.y * 0.5) * cull.viewport.w,
+	) + vec2<f32>(1.0);
+	let extent = max(max(high_px_full.x - low_px_full.x, high_px_full.y - low_px_full.y), 1.0);
 	let mip = min(u32(max(ceil(log2(extent)), 0.0)), cull.hiz_mip_count - 1u);
 	let mip_size = vec2<i32>(textureDimensions(hiz_depth, i32(mip)));
 	let scale = exp2(f32(mip));
-	let low = clamp(vec2<i32>(floor((center_px - radius_px) / scale)), vec2<i32>(0), mip_size - vec2<i32>(1));
-	let high = clamp(vec2<i32>(floor((center_px + radius_px) / scale)), vec2<i32>(0), mip_size - vec2<i32>(1));
+	let low = clamp(vec2<i32>(floor(low_px_full / scale)), vec2<i32>(0), mip_size - vec2<i32>(1));
+	let high = clamp(vec2<i32>(floor(high_px_full / scale)), vec2<i32>(0), mip_size - vec2<i32>(1));
 	var farthest_occluder = textureLoad(hiz_depth, low, i32(mip)).x;
 	farthest_occluder = max(farthest_occluder, textureLoad(hiz_depth, vec2<i32>(high.x, low.y), i32(mip)).x);
 	farthest_occluder = max(farthest_occluder, textureLoad(hiz_depth, vec2<i32>(low.x, high.y), i32(mip)).x);
 	farthest_occluder = max(farthest_occluder, textureLoad(hiz_depth, high, i32(mip)).x);
-	let toward_camera = normalize(cull.camera_position.xyz - bounds.xyz);
-	let nearest_clip =
-		cull.hiz_view_projection *
-		vec4<f32>(bounds.xyz + toward_camera * bounds.w, 1.0);
-	if (nearest_clip.w <= 0.0001) {
-		return result;
-	}
-	let nearest_depth = nearest_clip.z / nearest_clip.w;
 	let low_px = vec2<f32>(low) * scale;
 	let high_px = (vec2<f32>(high) + vec2<f32>(1.0)) * scale;
 	result.tested = 1u;
@@ -1907,7 +1916,7 @@ fn camera_sphere_occlusion(bounds: vec4<f32>) -> Occlusion_Result {
 	// A fixed nonlinear-depth epsilon changes meaning with the camera near plane and
 	// previously disabled useful occlusion when the editor camera used a 0.01 near plane.
 	let world_bias = max(cull.occlusion_world_bias, bounds.w * 0.01);
-	let view_depth = max(nearest_clip.w, 0.0001);
+	let view_depth = max(nearest_view_depth, 0.0001);
 	let projected_bias =
 		cull.occlusion_depth_scale * world_bias / (view_depth * view_depth);
 	let depth_bias = max(projected_bias, OCCLUSION_FLOATING_POINT_BIAS);
