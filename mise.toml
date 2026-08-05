@@ -152,6 +152,11 @@ description = "Import and validate the pinned Poly Haven virtual-geometry fixtur
 depends = ["build"]
 run = "node tools/test_external_virtual_wilds.mjs"
 
+[tasks.test-virtual-geometry-cliff]
+description = "Import and validate the isolated Poly Haven cliff fixture"
+depends = ["build"]
+run = "node tools/test_external_virtual_geometry_cliff.mjs"
+
 [tasks.test-virtual-wilds-gpu]
 description = "Import and verify Virtual Wilds coverage and refinement sequences"
 depends = ["build"]

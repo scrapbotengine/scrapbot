@@ -38,12 +38,13 @@
       ]
     },
     {
-      "id": "poly-haven-virtual-wilds",
+      "id": "poly-haven-coastal-cliff-04",
       "path": "gltf/VirtualWilds",
-      "source": "https://polyhaven.com/models",
+      "source": "https://polyhaven.com/a/coastal_cliff_04",
       "license": "CC0",
       "placements": [
-        "examples/virtual-wilds/assets"
+        "examples/virtual-wilds/assets",
+        "examples/virtual-geometry-cliff/assets"
       ],
       "files": [
         {
@@ -75,7 +76,18 @@
           "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/coastal_cliff_04/coastal_cliff_04_nor_gl_1k.jpg",
           "bytes": 1190406,
           "sha256": "6b1937ab6c8e8084ef69a492272c2d6aadc11b667bb5278c58d00a360c9c7d9b"
-        },
+        }
+      ]
+    },
+    {
+      "id": "poly-haven-virtual-wilds",
+      "path": "gltf/VirtualWilds",
+      "source": "https://polyhaven.com/models",
+      "license": "CC0",
+      "placements": [
+        "examples/virtual-wilds/assets"
+      ],
+      "files": [
         {
           "path": "coast_rocks_01/coast_rocks_01_1k.gltf",
           "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/coast_rocks_01/coast_rocks_01_1k.gltf",

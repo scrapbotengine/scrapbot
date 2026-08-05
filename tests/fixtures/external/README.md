@@ -41,7 +41,7 @@ The ordinary test suite must remain independent of external downloads. Tests tha
 
 Sponza is a manifest bundle: every file has an individual byte count and SHA-256, while setup downloads up to six files concurrently. The verified files are copied into ignored `examples/sponza/assets/` state. Neither the bundle nor its 393 MiB uncompressed Scrapbot import product belongs in Git or engine distributions.
 
-## Poly Haven Virtual Wilds
+## Poly Haven Coastal Cliff 04 and Virtual Wilds
 
 - Local path: `downloads/gltf/VirtualWilds/`
 - Upstream: [Poly Haven models](https://polyhaven.com/models)
@@ -64,9 +64,11 @@ variations for the example's hero groves.
 Its official CC0 archive is pinned as a whole, then six glTF members are checksum-verified after a
 length-preserving repair of the archive's invalid duplicated scene-root reference.
 
-`mise setup-assets` copies the verified bundle into ignored `examples/virtual-wilds/assets/` state.
-The example compiles these ordinary glTF inputs into Scrapbot's versioned split model products.
-Neither source nor imported products belong in Git or Scrapbot distributions.
+`mise setup-assets` copies the complete verified bundle into ignored `examples/virtual-wilds/assets/`
+state. It also copies only Coastal Cliff 04 into `examples/virtual-geometry-cliff/assets/` for the
+single-instance streaming regression project. Both examples compile these ordinary glTF inputs
+into Scrapbot's versioned split model products. Neither source nor imported products belong in Git
+or Scrapbot distributions.
 
 Run `mise test-gltf` to validate the real-world import product. `mise test-gltf-gpu` additionally
 imports it and produces a bounded headless WGPU framegrab in the platform temporary directory.
@@ -81,3 +83,7 @@ Run `mise test-virtual-wilds` for the pinned twelve-model import contract.
 `mise test-virtual-wilds-gpu` additionally drives the camera long enough to require detail-page
 reads, checks the 192 MiB residency bound, and captures a WGPU frame. Launch the interactive tour
 with `mise scrapbot -- run examples/virtual-wilds --editor`.
+
+Run `mise test-virtual-geometry-cliff` for the isolated Coastal Cliff 04 import contract. Launch
+the focused interactive reproduction with
+`mise scrapbot run examples/virtual-geometry-cliff --live-debug`.

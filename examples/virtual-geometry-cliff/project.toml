@@ -1,0 +1,10 @@
+name = "Virtual Geometry Cliff"
+default_scene = "scenes/main.scene.toml"
+
+[window]
+width = 1280
+height = 720
+
+[render]
+virtual_geometry_budget_mb = 32
+virtual_geometry_prefetch = false

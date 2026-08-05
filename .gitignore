@@ -7,4 +7,5 @@ examples/*/build/
 /examples/sponza/assets/
 /examples/impossible-archive/assets/
 /examples/virtual-wilds/assets/
+/examples/virtual-geometry-cliff/assets/
 .vscode/settings.json

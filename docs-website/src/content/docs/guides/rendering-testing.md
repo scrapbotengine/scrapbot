@@ -375,6 +375,22 @@ node tools/test_render_sequence.mjs --project examples/virtual-wilds \
   --stable-frontier --out /tmp/virtual-wilds-sequence
 ```
 
+`examples/virtual-geometry-cliff` removes Wilds' water, foliage, scatter, scripts,
+post-processing, and competing geometry while preserving one real Coastal Cliff 04 instance at the
+captured near-cliff transform and camera pose. Its 32 MiB budget cannot retain the complete
+3,996-page product, so the renderer must preserve a complete coarse fallback while streaming
+detail:
+
+```sh
+mise setup-assets
+mise test-virtual-geometry-cliff
+mise scrapbot run examples/virtual-geometry-cliff --live-debug
+```
+
+Use this project to reproduce imported hierarchy or residency defects before returning to the
+integrated Wilds workload. Approaching, crossing, or orbiting the cliff may change geometric detail;
+it must not expose the background through missing clusters.
+
 `examples/virtual-geometry-lab` isolates near-camera hierarchy coverage from imported assets,
 streaming-world composition, and postprocessing. Its roughly 197,000-triangle warped wall uses a
 strongly nonuniform world transform and fills the viewport while a deterministic camera moves

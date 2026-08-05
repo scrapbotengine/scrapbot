@@ -1,0 +1,52 @@
+[[entities]]
+id = "97200000-0000-4000-8000-000000000001"
+name = "Cliff Camera"
+
+[entities.transform]
+position = [0, 4.2, 9]
+rotation = [0.13088866, 1.04888666, 0]
+scale = [1, 1, 1]
+
+[entities.camera]
+fov = 62
+near = 0.01
+far = 360
+resolution_scale = 1
+dynamic_resolution = false
+temporal_antialiasing = false
+fast_antialiasing = false
+ambient_occlusion = false
+screen_space_reflections = false
+bloom = false
+debug_view = "lit"
+
+[[entities]]
+id = "97200000-0000-4000-8000-000000000002"
+name = "Neutral Fill"
+
+[entities.ambient_light]
+color = [0.72, 0.78, 0.9]
+intensity = 0.85
+
+[[entities]]
+id = "97200000-0000-4000-8000-000000000003"
+name = "Key Light"
+
+[entities.directional_light]
+direction = [-0.42, -0.76, -0.5]
+color = [1, 0.91, 0.78]
+intensity = 2.4
+
+[[entities]]
+id = "97200000-0000-4000-8000-000000000004"
+name = "Scaled Coastal Cliff"
+
+[entities.transform]
+position = [20, -4.2, -24]
+rotation = [0, -1.5708, 0]
+scale = [0.82, 3.5, 0.9]
+
+[entities.model]
+resource = "7b000000-0000-4000-8000-000000000003"
+
+[entities.shadow_receiver]
