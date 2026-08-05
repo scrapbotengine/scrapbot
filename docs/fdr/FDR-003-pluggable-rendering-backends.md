@@ -1,7 +1,7 @@
 # FDR-003: Pluggable rendering backends
 
 **Status:** Active
-**Last reviewed:** 2026-08-04
+**Last reviewed:** 2026-08-05
 
 ## Overview
 
@@ -350,9 +350,12 @@ its fixed handoff ends. A newly uploaded group begins its visible-use grace wind
 admission frame, rather than spending that protection while its older GPU request is still crossing
 the asynchronous readback boundary.
 
-At capacity, any continuing visible demand raises a renderer-owned projected-error threshold after
-a 32-frame cooldown, up to a bounded ceiling. The policy only coarsens during a run; it does not
-oscillate between quality levels. Per-frame byte and group limits bound streaming work. One admitted group or complete-resource
+Residency pressure does not modify the one-pixel camera error target. Missing refinements retain
+their resident parent, while group-atomic eviction releases lower-priority detail without breaking
+the fallback chain. Coordinated render-scale changes remain the owner of frame-budget scaling and
+naturally change the physical viewport height used by projected-error selection.
+
+Per-frame byte and group limits bound streaming work. One admitted group or complete-resource
 preload becomes one combined arena transfer. Residency mutations use persistent group-to-cluster
 and refinement-to-parent indices to patch only changed clusters and their direct dependents.
 Adjacent changes coalesce into bounded GPU writes; stable frames do no page work.

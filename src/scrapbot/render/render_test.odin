@@ -505,7 +505,7 @@ test_gpu_meshlet_cone_culling_requires_a_positive_uniform_transform :: proc(t: ^
 
 @(test)
 test_gpu_virtual_feedback_layout_preserves_lane_specific_capacity :: proc(t: ^testing.T) {
-	testing.expect_value(t, WGPU_VIRTUAL_PAGE_DEMAND_FEEDBACK_CAPACITY, 8_192)
+	testing.expect_value(t, WGPU_VIRTUAL_PAGE_DEMAND_FEEDBACK_CAPACITY, 32_768)
 	testing.expect_value(t, WGPU_VIRTUAL_PAGE_FEEDBACK_CAPACITY, 4_096)
 	testing.expect_value(
 		t,
@@ -516,7 +516,7 @@ test_gpu_virtual_feedback_layout_preserves_lane_specific_capacity :: proc(t: ^te
 		t,
 		strings.contains(
 			WGPU_GPU_CULL_SHADER,
-			"virtual_page_demand_feedback: array<Virtual_Page_Feedback, 8192>",
+			"virtual_page_demand_feedback: array<Virtual_Page_Feedback, 32768>",
 		),
 	)
 	testing.expect(
@@ -2456,33 +2456,6 @@ test_wgpu_virtual_geometry_serializes_nested_transitions :: proc(t: ^testing.T) 
 	wgpu_activate_stable_virtual_groups(&renderer, &changes)
 	testing.expect(t, cache.cluster_groups[1].active)
 	testing.expect(t, !cache.cluster_groups[1].transition_complete)
-}
-
-@(test)
-test_wgpu_virtual_geometry_pressure_selects_a_stable_fitting_error :: proc(t: ^testing.T) {
-	renderer := WGPU_Renderer {
-		virtual_geometry_budget_bytes = 100,
-		virtual_geometry_resident_bytes = 98,
-	}
-	testing.expect(t, !wgpu_update_virtual_geometry_error(&renderer, 1_000, 0, 31))
-	testing.expect_value(
-		t,
-		renderer.virtual_geometry_error_pixels,
-		WGPU_VIRTUAL_GEOMETRY_MIN_ERROR_PIXELS,
-	)
-	testing.expect(t, wgpu_update_virtual_geometry_error(&renderer, 1_000, 0, 32))
-	testing.expect_value(t, renderer.virtual_geometry_error_pixels, f32(2))
-	testing.expect(t, !wgpu_update_virtual_geometry_error(&renderer, 1_000, 0, 63))
-	testing.expect(t, wgpu_update_virtual_geometry_error(&renderer, 1_000, 0, 64))
-	testing.expect_value(t, renderer.virtual_geometry_error_pixels, f32(4))
-
-	renderer.virtual_geometry_resident_bytes = 97
-	testing.expect(t, !wgpu_update_virtual_geometry_error(&renderer, 1_000, 0, 96))
-	testing.expect_value(t, renderer.virtual_geometry_error_pixels, f32(4))
-	renderer.virtual_geometry_resident_bytes = 98
-	testing.expect(t, !wgpu_update_virtual_geometry_error(&renderer, 0, 0, 96))
-	testing.expect(t, wgpu_update_virtual_geometry_error(&renderer, 0, 1, 96))
-	testing.expect_value(t, renderer.virtual_geometry_error_pixels, f32(8))
 }
 
 @(test)

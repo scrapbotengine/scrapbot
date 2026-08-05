@@ -80,10 +80,10 @@ geometric spare capacity would not; a topology whose live records do not fit ret
 whole-primitive fallback.
 
 The compute culler projects monotonic hierarchy-group errors into pixels. It selects one complete
-camera frontier outside a narrow 90%-to-110% threshold overlap and adjacent levels inside it.
-Complementary fragment coverage prevents double shading within the overlap. Shadow selection uses
-the same hierarchy with cascade-scaled error thresholds, preserving near detail while bounding
-distant-cascade work.
+camera frontier outside a narrow 98%-to-102% overlap around a fixed one-pixel target and adjacent
+levels inside it. Both complete opaque levels depth-test normally within the overlap. Shadow
+selection uses the same hierarchy with cascade-scaled error thresholds, preserving near detail
+while bounding distant-cascade work.
 
 Stable frames copy separate active camera and shadow templates, run object-first compute culling,
 and submit matching command ranges. Portable compact submission first appends bounded batch-local
@@ -145,6 +145,11 @@ transition reactive marker, and temporal history encodes that marker alongside t
 bloom-enable bit. The temporal resolver owns its depth-tolerance adjustment. Completion is the
 point at which the child becomes the logical refinement. Active
 refinements retain their direct coarse parents until release.
+
+Residency owns which complete groups fit in the payload budget, not geometric quality. Pressure may
+defer refinement or evict lower-priority detail, but it cannot raise the camera error target. The
+coordinated render-quality controller owns render scale; the resulting physical viewport height is
+an explicit input to projected-error selection.
 
 WGPU owns a compact active-transition queue. It advances only those groups and patches their
 persistent group-to-cluster and refinement-to-parent dependents at transition boundaries. Stable

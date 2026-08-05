@@ -192,6 +192,14 @@ export function validateResidencyPressure(profile) {
       throw new Error(`virtual-geometry residency became unhealthy at frame ${frame.index}`);
     }
   }
+  const projectedErrors = new Set(
+    profile.frames.map((frame) => frame.render?.virtual_geometry_error_pixels),
+  );
+  if (projectedErrors.size !== 1 || !projectedErrors.has(1)) {
+    throw new Error(
+      "residency pressure changed the one-pixel virtual-geometry error target",
+    );
+  }
 }
 
 export function validateProfile(options, profile, framesDirectory) {

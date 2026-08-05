@@ -1,0 +1,43 @@
+[[entities]]
+id = "97100000-0000-4000-8000-000000000001"
+name = "Cliff Lab Camera"
+
+[entities.transform]
+position = [0, 17, -20]
+rotation = [0, 3.14159, 0]
+scale = [1, 1, 1]
+
+[entities.camera]
+fov = 50
+near = 0.05
+far = 120
+resolution_scale = 1
+dynamic_resolution = false
+temporal_antialiasing = false
+fast_antialiasing = false
+ambient_occlusion = false
+screen_space_reflections = false
+bloom = false
+debug_view = "virtual_geometry"
+
+[[entities]]
+id = "97100000-0000-4000-8000-000000000002"
+name = "Cliff Lab Ambient"
+
+[entities.ambient_light]
+color = [1, 1, 1]
+intensity = 1
+
+[[entities]]
+id = "97100000-0000-4000-8000-000000000003"
+name = "Scaled Imported Cliff"
+
+[entities.transform]
+position = [0, 0, 0]
+rotation = [0, 0, 0]
+scale = [1, 3.5, 1]
+
+[entities.model]
+resource = "7b000000-0000-4000-8000-000000000003"
+
+[entities.shadow_receiver]

@@ -408,39 +408,6 @@ WGPU_VIRTUAL_PAGE_FEEDBACK_GRACE_FRAMES ::
 WGPU_VIRTUAL_PAGE_PRIORITY_HYSTERESIS :: f32(1.2)
 WGPU_VIRTUAL_PAGE_MAX_HOLD_FRAMES :: WGPU_VIRTUAL_PAGE_FEEDBACK_GRACE_FRAMES * 3
 
-wgpu_update_virtual_geometry_error :: proc "contextless" (
-	renderer: ^WGPU_Renderer,
-	request_count, feedback_overflow: u32,
-	feedback_frame: u64,
-) -> bool {
-	if renderer == nil {
-		return false
-	}
-	if renderer.virtual_geometry_error_pixels < WGPU_VIRTUAL_GEOMETRY_MIN_ERROR_PIXELS {
-		renderer.virtual_geometry_error_pixels = WGPU_VIRTUAL_GEOMETRY_MIN_ERROR_PIXELS
-	}
-	at_capacity :=
-		renderer.virtual_geometry_budget_bytes > 0 &&
-		renderer.virtual_geometry_resident_bytes * 100 >=
-			renderer.virtual_geometry_budget_bytes * WGPU_VIRTUAL_GEOMETRY_PRESSURE_PERCENT
-	pressure :=
-		feedback_overflow > 0 ||
-		(at_capacity && request_count > WGPU_VIRTUAL_GEOMETRY_PRESSURE_REQUESTS)
-	if !pressure ||
-	   renderer.virtual_geometry_error_pixels >= WGPU_VIRTUAL_GEOMETRY_MAX_ERROR_PIXELS ||
-	   feedback_frame <
-		   renderer.virtual_geometry_error_last_adjustment_frame +
-			   WGPU_VIRTUAL_GEOMETRY_ERROR_ADJUSTMENT_FRAMES {
-		return false
-	}
-	renderer.virtual_geometry_error_pixels = min(
-		renderer.virtual_geometry_error_pixels * 2,
-		WGPU_VIRTUAL_GEOMETRY_MAX_ERROR_PIXELS,
-	)
-	renderer.virtual_geometry_error_last_adjustment_frame = feedback_frame
-	return true
-}
-
 wgpu_virtual_page_admission_frame :: proc "contextless" (
 	current_frame, feedback_frame: u64,
 ) -> u64 {
@@ -1317,14 +1284,6 @@ wgpu_visibility_consume_readbacks :: proc(
 		)
 		if mapped != nil {
 			renderer.gpu_visibility_counters = mapped.summary
-			wgpu_update_virtual_geometry_error(
-				renderer,
-				mapped.summary.virtual_page_request_count,
-				mapped.summary.virtual_page_demand_feedback_overflow +
-				mapped.summary.virtual_page_touch_feedback_overflow +
-				mapped.summary.virtual_page_prefetch_feedback_overflow,
-				readback.frame_index,
-			)
 			if renderer.gpu_occlusion_debug_evidence_valid &&
 			   mapped.summary.meshlet_debug_records > 0 {
 				renderer.gpu_occlusion_debug_record_count = mapped.summary.meshlet_debug_records
@@ -1432,10 +1391,7 @@ wgpu_publish_visibility :: proc(renderer: ^WGPU_Renderer, stats: ^Render_Stats) 
 	stats.virtual_rejected_clusters = renderer.gpu_visibility_counters.virtual_rejected_clusters
 	stats.virtual_geometry_page_budget_bytes = renderer.virtual_geometry_budget_bytes
 	stats.virtual_geometry_page_resident_bytes = renderer.virtual_geometry_resident_bytes
-	stats.virtual_geometry_error_pixels = max(
-		renderer.virtual_geometry_error_pixels,
-		WGPU_VIRTUAL_GEOMETRY_MIN_ERROR_PIXELS,
-	)
+	stats.virtual_geometry_error_pixels = WGPU_VIRTUAL_GEOMETRY_MIN_ERROR_PIXELS
 	stats.virtual_geometry_pages = renderer.virtual_geometry_page_count
 	stats.virtual_geometry_resident_pages = renderer.virtual_geometry_resident_page_count
 	stats.virtual_geometry_pinned_pages = renderer.virtual_geometry_pinned_page_count

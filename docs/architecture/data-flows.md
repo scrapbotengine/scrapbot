@@ -1,6 +1,6 @@
 # Major Data Flows
 
-**Last verified:** 2026-08-03
+**Last verified:** 2026-08-05
 
 ## Project load and world bootstrap
 
@@ -69,6 +69,10 @@ reactive transition marker. Nested
 admission handoffs serialize. An active child protects its direct parent fallback, and
 release orders child before parent eligibility. Persistent dependency indices patch only affected
 cluster ranges rather than regenerating a Geometry's complete GPU residency table.
+
+Page pressure does not mutate the camera's one-pixel projected-error target. Deferred detail keeps
+its resident parent drawable. The coordinated render-quality controller owns render-scale changes,
+whose physical viewport height feeds the same fixed frontier calculation.
 
 Capable adapters retain cluster metadata and arena-global indirect templates. They select the
 desired resident frontier and draw a coarse fallback while refinement is missing. Native

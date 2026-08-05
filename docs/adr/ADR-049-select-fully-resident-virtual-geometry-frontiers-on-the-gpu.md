@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-31
 
-**Updated:** 2026-08-03
+**Updated:** 2026-08-05
 
 ## Context
 
@@ -74,6 +74,15 @@ shadow selection keep the parent submitted throughout the bounded admission tran
 the child's projected error would otherwise select the child alone. Both complete opaque surfaces
 remain depth-testable until the handoff completes; residency and transition coverage cannot expose
 cluster-shaped gaps by removing or discarding the only surface at a pixel.
+
+Residency pressure never changes the one-pixel camera error target. Page admission may defer a
+requested refinement, but the compute culler continues to submit its resident parent. Eviction may
+release lower-priority detail only while preserving that drawable fallback chain. This keeps memory
+policy from making geometry coarser merely because the camera approaches a dense surface.
+
+Frame-budget scaling belongs to the coordinated quality controller in ADR-052. Its render-scale
+changes alter the physical viewport height used by projected-error selection, so virtual Geometry
+tracks actual output resolution without owning a second, hidden quality controller.
 
 Native multi-draw adapters also use the hierarchy for shadows before applying cascade sphere and
 normal-cone tests. The portable path uses the camera-selected object LOD for conservative cascade

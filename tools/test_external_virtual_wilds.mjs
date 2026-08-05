@@ -387,6 +387,7 @@ function main() {
           (frame) =>
             frame.render?.draw_batches !== 40 ||
             frame.render?.virtual_geometry_compacted !== true ||
+            frame.render?.virtual_geometry_error_pixels !== 1 ||
             frame.render?.meshlet_visible_capacity > 1048576 ||
             frame.render?.virtual_geometry_page_request_overflow !== 0,
         ) ||

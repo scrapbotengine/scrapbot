@@ -4151,7 +4151,7 @@ wgpu_prepare_gpu_draw_batches :: proc(
 	}
 	uniform.camera_clip = {camera.near, camera.far, 0, 0}
 	uniform.virtual_geometry = {
-		max(renderer.virtual_geometry_error_pixels, WGPU_VIRTUAL_GEOMETRY_MIN_ERROR_PIXELS),
+		WGPU_VIRTUAL_GEOMETRY_MIN_ERROR_PIXELS,
 		f32(max(viewport.height, 1)),
 		WGPU_VIRTUAL_GEOMETRY_BLEND_LOW_SCALE,
 		WGPU_VIRTUAL_GEOMETRY_BLEND_HIGH_SCALE,
@@ -4432,10 +4432,7 @@ wgpu_prepare_gpu_draw_batches :: proc(
 		),
 		debug_view = u32(camera.debug_view),
 		meshlet_force_enabled = 1 if renderer.gpu_meshlet_force_enabled else 0,
-		virtual_error_pixels = max(
-			renderer.virtual_geometry_error_pixels,
-			WGPU_VIRTUAL_GEOMETRY_MIN_ERROR_PIXELS,
-		),
+		virtual_error_pixels = WGPU_VIRTUAL_GEOMETRY_MIN_ERROR_PIXELS,
 		projection_y = projection[5],
 		virtual_feedback_epoch = u32(renderer.profile_frame_index),
 		virtual_transition_frames = u32(WGPU_VIRTUAL_GROUP_TRANSITION_FRAMES),

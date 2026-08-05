@@ -135,6 +135,7 @@ test("residency validation requires bounded pressure and healthy admission", () 
       virtual_geometry_deferred_groups: 3,
       virtual_geometry_page_request_overflow: 0,
       virtual_geometry_page_read_failures: 0,
+      virtual_geometry_error_pixels: 1,
     },
     counter_deltas: {},
   };
@@ -145,5 +146,19 @@ test("residency validation requires bounded pressure and healthy admission", () 
         frames: [{ ...frame, render: { ...frame.render, virtual_geometry_pages: 8 } }],
       }),
     /does not exercise bounded/,
+  );
+  assert.throws(
+    () =>
+      validateResidencyPressure({
+        frames: [
+          frame,
+          {
+            ...frame,
+            index: 9,
+            render: { ...frame.render, virtual_geometry_error_pixels: 2 },
+          },
+        ],
+      }),
+    /changed the one-pixel/,
   );
 });

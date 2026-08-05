@@ -63,10 +63,15 @@ keeps its direct parent fallback available until the child is released. Residenc
 only affected cluster ranges. The budget counts both vertex and index residency.
 
 A resident hierarchy does not switch levels at one exact projected-error boundary. Adjacent levels
-overlap from 90% through 110% of the active threshold, and world, depth, and cascade shadow passes
-retain complementary parent and child coverage. TAA integrates a low-discrepancy camera mask into a
-soft fade, with transition-aware history for bounded depth and silhouette changes. Non-temporal
-views and shadows retain a stable spatial partition.
+overlap from 98% through 102% around the one-pixel camera target. World, depth, and cascade shadow
+passes submit both complete opaque levels and let ordinary depth testing retain the nearest
+surface. TAA receives a transition marker so it can reject incompatible history around bounded
+depth and silhouette changes.
+
+Residency pressure never raises that one-pixel target. If requested detail does not fit, Scrapbot
+keeps the resident parent drawable and prioritizes or evicts complete groups. Dynamic resolution is
+the scalable quality control: its physical viewport height feeds the same projected-error formula,
+so detail follows the actual output resolution without a hidden streaming-quality override.
 
 A newly streamed child also does not replace its parent in one frame. It first passes a bounded
 demand-aware settling window. After any direct-parent handoff settles, both levels are submitted for

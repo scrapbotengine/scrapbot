@@ -45,10 +45,6 @@ WGPU_VIRTUAL_GEOMETRY_BUDGET_BYTES :: u64(64 * 1024 * 1024)
 WGPU_VIRTUAL_GEOMETRY_UPLOAD_BUDGET_BYTES :: u64(512 * 1024)
 WGPU_VIRTUAL_GEOMETRY_UPLOAD_GROUP_BUDGET :: 16
 WGPU_VIRTUAL_GEOMETRY_MIN_ERROR_PIXELS :: f32(1)
-WGPU_VIRTUAL_GEOMETRY_MAX_ERROR_PIXELS :: f32(16)
-WGPU_VIRTUAL_GEOMETRY_PRESSURE_REQUESTS :: u32(0)
-WGPU_VIRTUAL_GEOMETRY_PRESSURE_PERCENT :: u64(98)
-WGPU_VIRTUAL_GEOMETRY_ERROR_ADJUSTMENT_FRAMES :: u64(32)
 WGPU_VIRTUAL_GROUP_ACTIVATION_GRACE_FRAMES :: u64(8)
 WGPU_VIRTUAL_GROUP_ACTIVATION_MAX_HOLD_FRAMES :: u64(32)
 WGPU_VIRTUAL_GROUP_TRANSITION_FRAMES :: u64(16)
@@ -150,7 +146,11 @@ WGPU_GPU_Visibility_Counters :: struct {
 	offset_of(WGPU_GPU_Visibility_Counters, virtual_page_demand_feedback) ==
 	size_of(WGPU_GPU_Visibility_Summary),
 )
-WGPU_VIRTUAL_PAGE_DEMAND_FEEDBACK_CAPACITY :: 8_192
+// Demand feedback is intentionally larger than the sampled touch and prefetch
+// lanes. A high-detail frontier can expose many missing child groups at once;
+// dropping the tail would repeatedly starve groups that occur later in the
+// stable GPU traversal order. This remains a bounded 640 KiB lane.
+WGPU_VIRTUAL_PAGE_DEMAND_FEEDBACK_CAPACITY :: 32_768
 WGPU_VIRTUAL_PAGE_FEEDBACK_CAPACITY :: 4_096
 WGPU_GPU_Virtual_Page_Feedback :: struct {
 	geometry_index: u32,
@@ -1102,8 +1102,6 @@ WGPU_Renderer :: struct {
 	virtual_geometry_pending_activations: [dynamic]WGPU_Virtual_Group_Change,
 	virtual_geometry_transitions: [dynamic]WGPU_Virtual_Group_Change,
 	virtual_geometry_prefetch_enabled: bool,
-	virtual_geometry_error_pixels: f32,
-	virtual_geometry_error_last_adjustment_frame: u64,
 	virtual_geometry_camera_position: Vec3,
 	virtual_geometry_camera_forward: Vec3,
 	virtual_geometry_camera_velocity: Vec3,
