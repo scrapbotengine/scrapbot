@@ -243,6 +243,17 @@ wgpu_compact_shadow_pages_active :: proc "contextless" (renderer: ^WGPU_Renderer
 	return renderer != nil && renderer.gpu_compact_shadow_pages
 }
 
+wgpu_geometry_uses_compact_shadow_pages :: proc "contextless" (
+	geometry: ^WGPU_Geometry_Cache,
+) -> bool {
+	return(
+		geometry != nil &&
+		geometry.valid &&
+		geometry.virtual_geometry &&
+		geometry.vertex_range.size == 0 \
+	)
+}
+
 wgpu_batch_uses_compact_shadow_pages :: proc "contextless" (
 	renderer: ^WGPU_Renderer,
 	batch: WGPU_Draw_Batch,
@@ -253,10 +264,7 @@ wgpu_batch_uses_compact_shadow_pages :: proc "contextless" (
 	cache_index := wgpu_geometry_cache_slot(renderer.geometry_cache[:], batch.geometry)
 	return(
 		cache_index >= 0 &&
-		renderer.geometry_cache[cache_index].valid &&
-		renderer.geometry_cache[cache_index].virtual_geometry &&
-		renderer.geometry_cache[cache_index].vertex_range.size == 0 &&
-		renderer.geometry_cache[cache_index].shadow_index_count == 0 \
+		wgpu_geometry_uses_compact_shadow_pages(&renderer.geometry_cache[cache_index]) \
 	)
 }
 
@@ -2976,7 +2984,7 @@ wgpu_refresh_gpu_batch_layout :: proc(
 			compact_command_index = batch.compact_command_index,
 			compact_visible_offset = batch.compact_visible_offset,
 			compact_visible_capacity = batch.compact_visible_capacity,
-			compact_shadow_pages = 1 if batch.compact_submission && geometry.vertex_range.size == 0 && geometry.shadow_index_count == 0 else 0,
+			compact_shadow_pages = 1 if batch.compact_submission && wgpu_geometry_uses_compact_shadow_pages(geometry) else 0,
 		}
 		if !renderer.gpu_meshlet_supported {
 			batch.world_bind_group = wgpu_make_batch_bind_group(

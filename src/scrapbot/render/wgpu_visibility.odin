@@ -202,11 +202,11 @@ wgpu_recount_virtual_page_residency :: proc(renderer: ^WGPU_Renderer) {
 	renderer.virtual_geometry_pinned_page_count = 0
 	renderer.virtual_geometry_prefetched_page_count = 0
 	renderer.gpu_compact_shadow_pages = false
-	for cache in renderer.geometry_cache {
+	for &cache in renderer.geometry_cache {
 		if cache.virtual_geometry {
 			renderer.virtual_geometry_resident_bytes +=
 				cache.vertex_range.size + cache.index_range.size + cache.shadow_index_range.size
-			if cache.valid && cache.vertex_range.size == 0 && cache.shadow_index_count == 0 {
+			if wgpu_geometry_uses_compact_shadow_pages(&cache) {
 				renderer.gpu_compact_shadow_pages = true
 			}
 		}

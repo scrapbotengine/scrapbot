@@ -9,6 +9,7 @@ This file tracks current actionable engineering work. The broad product roadmap 
 - [ ] Deduplicate virtual-Geometry page feedback by group before bounded GPU readback, then shrink the temporary 32,768-record demand lane while preserving zero-overflow moving high-detail views.
 - [ ] Gate foreground and depth completeness in both the synthetic virtual-geometry lab and the external single-cliff regression across compact GPU and full-index reference captures.
 - [ ] Maintain a repeatable 60 Hz adaptive-quality baseline matrix across representative integrated/discrete GPUs; record settled world, shadow, and post tiers. See [ADR-052](adr/ADR-052-coordinate-adaptive-render-quality-from-one-frame-budget.md).
+- [ ] Profile and reduce compact virtual-shadow cascade cost in dense photogrammetry scenes; preserve the indexed root proxy only as capability and capacity fallback.
 - [ ] Compress Model v17 catalogs, material images, and virtual-Geometry pages with independently decodable page records; measure import time, product size, startup, and streaming cost on `impossible-archive` unhinged.
 - [ ] Strip source assets from exported games and package the same validated runtime products used by development runs.
 - [ ] Re-evaluate Metal multi-draw and benchmark virtual geometry after wgpu's native ICB paths land ([issue #61](https://github.com/scrapbotengine/scrapbot/issues/61)).

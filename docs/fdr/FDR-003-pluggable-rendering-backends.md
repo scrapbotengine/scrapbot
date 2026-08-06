@@ -373,14 +373,16 @@ each stage within WebGPU's guaranteed eight-storage-buffer compute limit. Compat
 batches share one record span and one non-indexed indirect command; the vertex shader pulls cluster
 indices and attributes from the shared geometry arenas.
 
-Fully resident portable resources reuse canonical indexed-indirect shadows. For streamed portable
-resources, cache creation rebases the already-pinned root-page indices into one coarse indexed
-compatibility proxy. It aliases the pinned vertex allocation and owns only its compact index range.
+Fully resident portable resources reuse canonical indexed-indirect shadows. Streamed portable
+resources prefer page-local compact shadows, using the same resident hierarchy frontier as camera
+submission. This avoids redrawing a coarse photogrammetry proxy through every shadow cascade.
 
-Portable shadows use that proxy whenever page-local compact shadows are unavailable. World and
-depth submission also use it when capability, policy, or visibility-table capacity disables the
-detailed path. Streamed Geometry therefore remains drawable at coarse detail without reconstructing
-or retaining its complete canonical payload.
+Cache creation still rebases the already-pinned root-page indices into one coarse indexed
+compatibility proxy. It aliases the pinned vertex allocation and owns only its compact index range.
+Portable shadows use that proxy when page-local compact shadows are unavailable. World and depth
+submission also use it when capability, policy, or visibility-table capacity disables the detailed
+path. Streamed Geometry therefore remains drawable at coarse detail without reconstructing or
+retaining its complete canonical payload.
 
 Classic and compact shadow culling have exclusive ownership of each batch's indirect command.
 Compact cluster expansion is skipped globally when no batch needs it and rejected per batch when a

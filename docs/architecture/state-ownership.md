@@ -149,8 +149,9 @@ Newly complete groups pass a bounded demand-aware settling window and require ev
 to remain resident, active, and transition-complete before entering a 16-frame admission handoff.
 The GPU combines that temporal
 progress with its steady projected-error overlap and depth-tests complete child/parent surfaces in
-world and depth passes. Native cluster shadows select their hierarchy directly; streamed portable
-shadows use a pinned-root indexed proxy. The internal HDR alpha channel carries a
+world and depth passes. Native and portable compact shadows select their resident hierarchy
+frontier directly. Streamed portable resources retain a pinned-root indexed proxy for capability
+or capacity fallback. The internal HDR alpha channel carries a
 transition reactive marker, and temporal history encodes that marker alongside the existing
 bloom-enable bit. The temporal resolver owns its depth-tolerance adjustment. Completion is the
 point at which the child becomes the logical refinement. Active

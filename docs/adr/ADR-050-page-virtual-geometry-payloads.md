@@ -65,6 +65,8 @@ When one Geometry's complete canonical vertex/index streams and expanded page in
 remaining budget, WGPU admits that representation as a fast path. It avoids page-local vertex
 duplication and retains classic indexed shadow submission. Under actual streaming pressure,
 portable compact submission uses page-local vertices and indices for both camera and shadow work.
+The retained root-page proxy remains a fallback; its presence does not force streamed resources
+back onto classic cascade submission.
 
 Cache creation also rebases the pinned coarse pages into one indexed compatibility proxy. It is
 used by shadows where applicable and by world/depth classic submission whenever the detailed

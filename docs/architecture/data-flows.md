@@ -90,10 +90,11 @@ multi-draw consumes cluster commands directly. Other indirect-first-instance ada
 batch-local instance candidates, then test hierarchy clusters in parallel into bounded camera
 records before vertex-pulling from the arenas.
 
-Fully resident portable resources retain classic indexed shadows. Streamed resources build one
-coarse indexed shadow proxy from their already-pinned root pages; its rebased index range aliases
-the pinned vertex allocation. Classic and compact culling never write the same shadow indirect
-command.
+Fully resident portable resources retain classic indexed shadows. Streamed resources prefer
+page-local compact shadows so camera and cascade submission select from the same resident hierarchy.
+They also build one coarse indexed shadow proxy from their already-pinned root pages; its rebased
+index range aliases the pinned vertex allocation and remains available for capability or capacity
+fallback. Classic and compact culling never write the same shadow indirect command.
 Adapters without indirect-first-instance keep whole-primitive submission.
 
 Hot reload stages the resource registry, world, script/native runtime, source set, and playback baseline independently. Failure destroys the staged bundle; success swaps it atomically.

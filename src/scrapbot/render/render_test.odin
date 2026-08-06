@@ -3229,11 +3229,11 @@ test_wgpu_compact_shadows_use_pages_only_for_streamed_geometry :: proc(t: ^testi
 
 	renderer.geometry_cache[0].shadow_index_count = 3
 	wgpu_recount_virtual_page_residency(&renderer)
-	testing.expect(t, !wgpu_compact_shadow_pages_active(&renderer))
+	testing.expect(t, wgpu_compact_shadow_pages_active(&renderer))
 	testing.expect_value(
 		t,
 		wgpu_shadow_batch_submission_mode(&renderer, batch),
-		WGPU_Submission_Mode.Classic,
+		WGPU_Submission_Mode.Compact,
 	)
 	renderer.geometry_cache[0].shadow_index_count = 0
 
