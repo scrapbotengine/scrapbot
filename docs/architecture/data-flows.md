@@ -1,6 +1,6 @@
 # Major Data Flows
 
-**Last verified:** 2026-08-05
+**Last verified:** 2026-08-06
 
 ## Project load and world bootstrap
 
@@ -74,6 +74,11 @@ Logical group eviction retires its vertex/index ranges against the last submitte
 mapped visibility copy, encoded after the geometry passes, proves arena-read completion through its
 tagged frame and returns eligible ranges to the free lists. Uploads cannot reuse retired addresses
 while older depth, world, or shadow commands remain in flight.
+
+Portable compact page admission also requires both new ranges to fit wholly inside the adapter's
+storage-binding window. Address-space or fragmentation pressure defers the detail group before any
+upload or residency mutation, leaving its current coarse parent drawable. Indexed paths may still
+use shared-buffer capacity outside that window.
 
 Page pressure does not mutate the camera's one-pixel projected-error target. Deferred detail keeps
 its resident parent drawable. The coordinated render-quality controller owns render-scale changes,

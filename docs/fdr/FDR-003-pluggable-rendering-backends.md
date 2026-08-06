@@ -1,7 +1,7 @@
 # FDR-003: Pluggable rendering backends
 
 **Status:** Active
-**Last reviewed:** 2026-08-05
+**Last reviewed:** 2026-08-06
 
 ## Overview
 
@@ -410,8 +410,13 @@ coarse proxy while complete resources keep their canonical or imported-LOD fallb
 
 Shared geometry buffers may grow beyond one device storage-binding range because indexed and
 vertex-buffer submission can still address them. WGPU caps every storage binding at the reported
-device limit. Portable vertex pulling across multiple such ranges still requires partitioned
-bindings or page-relative offsets and remains tracked separately.
+device limit and confines every portable compact page range to that addressable prefix. If
+fragmentation prevents a legal admission, detail remains deferred and the resident coarse proxy
+continues drawing; an unaddressable page is never exposed as resident.
+
+Portable vertex pulling across multiple storage ranges still requires partitioned bindings or
+page-relative offsets and remains tracked separately. Until then, the device binding limit is a
+quality/residency ceiling for portable compact submission, not a correctness boundary.
 
 ### 24. Compose project shader hooks into an engine-owned render contract
 

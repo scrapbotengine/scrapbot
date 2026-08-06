@@ -2687,16 +2687,36 @@ wgpu_geometry_cache :: proc(
 		index_bytes = 0
 	}
 	vertex_range := cached.vertex_range
-	vertex_range_reused := vertex_range.size >= vertex_bytes && vertex_range.size > 0
+	vertex_range_reused :=
+		vertex_range.size >= vertex_bytes &&
+		vertex_range.size > 0 &&
+		(!wgpu_virtual_geometry_uses_compaction(renderer, geometry) ||
+				wgpu_arena_range_within_limit(
+					vertex_range,
+					renderer.max_storage_buffer_binding_size,
+				))
 	if vertex_bytes == 0 {
 		vertex_range = {}
 		vertex_range_reused = false
 	} else if !vertex_range_reused {
-		vertex_range = wgpu_arena_allocate(
-			&renderer.geometry_vertex_arena.allocator,
-			wgpu_align_arena_offset(vertex_bytes, u64(size_of(resources.Vertex))),
-			u64(size_of(resources.Vertex)),
-		)
+		if wgpu_virtual_geometry_uses_compaction(renderer, geometry) {
+			addressable: bool
+			vertex_range, addressable = wgpu_arena_allocate_bounded(
+				&renderer.geometry_vertex_arena.allocator,
+				wgpu_align_arena_offset(vertex_bytes, u64(size_of(resources.Vertex))),
+				u64(size_of(resources.Vertex)),
+				renderer.max_storage_buffer_binding_size,
+			)
+			if !addressable {
+				return nil, "compact geometry vertices exceed the device storage-binding window"
+			}
+		} else {
+			vertex_range = wgpu_arena_allocate(
+				&renderer.geometry_vertex_arena.allocator,
+				wgpu_align_arena_offset(vertex_bytes, u64(size_of(resources.Vertex))),
+				u64(size_of(resources.Vertex)),
+			)
+		}
 	}
 	index_range := cached.index_range
 	index_range_reused := index_range.size >= index_bytes && index_range.size > 0
@@ -2793,11 +2813,15 @@ wgpu_geometry_cache :: proc(
 					return nil, page_err
 				}
 				page_index_bytes = u64(len(page_indices)) * u64(size_of(u32))
-				page_index_range := wgpu_arena_allocate(
+				page_index_range, page_indices_addressable := wgpu_arena_allocate_bounded(
 					&renderer.geometry_index_arena.allocator,
 					wgpu_align_arena_offset(page_index_bytes, u64(size_of(u32))),
 					u64(size_of(u32)),
+					renderer.max_storage_buffer_binding_size,
 				)
+				if !page_indices_addressable {
+					return nil, "compact geometry indices exceed the device storage-binding window"
+				}
 				for page_index, selection_index in selected_pages {
 					page_start := u64(page_offsets[selection_index]) * u64(size_of(u32))
 					page_end := u64(page_offsets[selection_index + 1]) * u64(size_of(u32))
@@ -2825,16 +2849,30 @@ wgpu_geometry_cache :: proc(
 				}
 				page_vertex_bytes = u64(len(page_upload.vertices))
 				page_index_bytes = u64(len(page_upload.indices)) * u64(size_of(u32))
-				page_vertex_range := wgpu_arena_allocate(
+				page_vertex_range, page_vertices_addressable := wgpu_arena_allocate_bounded(
 					&renderer.geometry_vertex_arena.allocator,
 					wgpu_align_arena_offset(page_vertex_bytes, u64(size_of(resources.Vertex))),
 					u64(size_of(resources.Vertex)),
+					renderer.max_storage_buffer_binding_size,
 				)
-				page_index_range := wgpu_arena_allocate(
+				if !page_vertices_addressable {
+					return nil,
+						"pinned virtual-geometry vertices exceed the device storage-binding window"
+				}
+				page_index_range, page_indices_addressable := wgpu_arena_allocate_bounded(
 					&renderer.geometry_index_arena.allocator,
 					wgpu_align_arena_offset(page_index_bytes, u64(size_of(u32))),
 					u64(size_of(u32)),
+					renderer.max_storage_buffer_binding_size,
 				)
+				if !page_indices_addressable {
+					wgpu_arena_release(
+						&renderer.geometry_vertex_arena.allocator,
+						page_vertex_range,
+					)
+					return nil,
+						"pinned virtual-geometry indices exceed the device storage-binding window"
+				}
 				shadow_indices := wgpu_rebase_virtual_page_indices(
 					page_upload.indices,
 					page_upload.vertex_offsets,

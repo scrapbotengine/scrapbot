@@ -1,6 +1,6 @@
 # State Ownership and Invalidation
 
-**Last verified:** 2026-08-05
+**Last verified:** 2026-08-06
 
 Scrapbot separates authoritative project/runtime state from derived indexes, caches, render data, and editor views. A derived owner must update from explicit lifecycle or revision signals where feasible; stable frames must not rediscover unchanged state.
 
@@ -116,8 +116,10 @@ mutation counters. Exact version hits do no allocator or upload work. Replacemen
 ranges only after all uploads succeed; stale handles are reclaimed when the registry's geometry
 topology revision changes. Growth is geometric and copies retained bytes before replacing the
 backing buffer. Vertex-pulling bind groups advertise no more than the device's maximum storage
-binding range even when the shared vertex/index buffers have grown beyond it. Stable frames never
-scan, compact, hash, or upload the arenas.
+binding range even when the shared vertex/index buffers have grown beyond it. Compact virtual-page
+allocations are hard-bounded to that advertised prefix; a failed fit defers refinement instead of
+publishing shader-inaccessible arena offsets. Stable frames never scan, compact, hash, or upload
+the arenas.
 
 Logical eviction transfers page and cache ranges into arena-owned retirement queues. The ranges
 remain allocator-owned and unavailable for reuse until a mapped post-geometry visibility copy

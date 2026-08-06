@@ -26,7 +26,15 @@ Both arenas use an aligned first-fit free-range allocator. They:
 - release replaced ranges only after all replacement uploads succeed;
 - retire submitted ranges until asynchronous visibility completion proves their last referencing
   frame has finished on the GPU;
-- coalesce released ranges and reclaim stale handles at geometry-topology invalidation boundaries.
+- coalesce released ranges, trim a fully released arena tail back from the high-water mark, and
+  reclaim stale handles at geometry-topology invalidation boundaries.
+
+The allocator also supports a hard address ceiling. Portable compact virtual Geometry uses that
+form for every vertex and index range because its vertex shader reads through storage bindings.
+No logically resident compact page may extend beyond the adapter's
+`maxStorageBufferBindingSize`, even when fragmentation would otherwise grow the shared backing
+buffer past that limit. An allocation that cannot fit remains deferred and keeps its coarse
+fallback drawable.
 
 Unchanged Geometry versions return from the cache without allocation, scanning, or upload. Stable
 frames do not compact arenas. Fragmentation is accepted until a future explicit maintenance or
@@ -57,6 +65,6 @@ Compatible retained LOD commands collapse into fewer CPU-visible submissions wit
 selection or indirect command counts. A backing-buffer growth copies retained data at an explicit
 invalidation boundary; ordinary frames continue to bind the current arena buffers.
 
-The allocator does not yet provide sparse pages, hierarchical cluster selection, streaming, an
-eviction budget, or defragmentation. Those are follow-up virtual-geometry policies layered over this
-arena ownership rather than reasons to introduce an importer-specific buffer path.
+The allocator does not yet provide storage-binding partitions or defragmentation. Those are
+follow-up virtual-geometry policies layered over this arena ownership rather than reasons to
+introduce an importer-specific buffer path.

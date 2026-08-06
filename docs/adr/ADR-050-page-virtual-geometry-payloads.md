@@ -1,7 +1,7 @@
 # ADR-050: Page virtual Geometry payloads
 
 **Date:** 2026-07-31
-**Updated:** 2026-08-04
+**Updated:** 2026-08-06
 
 ## Context
 
@@ -54,6 +54,12 @@ not runtime topology authority, because hierarchy construction may remove degene
 WGPU gives every streamed resident page an aligned vertex-arena range and index-arena range.
 Cluster draw metadata uses that page-local base vertex and first index. Streamed Virtual Geometry
 retains no complete canonical allocation in the WGPU arenas.
+
+Portable compact submission allocates those ranges only inside the adapter's addressable storage
+binding window. Fragmentation may leave free bytes outside that prefix or prevent one contiguous
+admission even while the combined payload budget has room. In that case the refinement stays
+deferred and the already-resident coarse frontier remains authoritative. WGPU never marks an
+unaddressable page resident or publishes its offsets to cluster draw metadata.
 
 When one Geometry's complete canonical vertex/index streams and expanded page indices fit the
 remaining budget, WGPU admits that representation as a fast path. It avoids page-local vertex

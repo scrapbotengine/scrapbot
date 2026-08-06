@@ -815,13 +815,77 @@ test_wgpu_geometry_arena_reuses_aligned_ranges_and_coalesces_releases :: proc(t:
 	wgpu_arena_release(&allocator, first)
 	wgpu_arena_release(&allocator, second)
 	testing.expect_value(t, allocator.resident_bytes, u64(0))
-	testing.expect_value(t, len(allocator.free_ranges), 1)
-	testing.expect_value(t, allocator.free_ranges[0], WGPU_Arena_Range{offset = 0, size = 84})
+	testing.expect_value(t, len(allocator.free_ranges), 0)
+	testing.expect_value(t, allocator.high_water, u64(0))
 
 	reused := wgpu_arena_allocate(&allocator, 80, 16)
 	testing.expect_value(t, reused, WGPU_Arena_Range{offset = 0, size = 80})
-	testing.expect_value(t, allocator.high_water, u64(84))
+	testing.expect_value(t, allocator.high_water, u64(80))
 	testing.expect_value(t, allocator.resident_bytes, u64(80))
+}
+
+@(test)
+test_wgpu_geometry_arena_bounded_allocation_never_publishes_an_unaddressable_range :: proc(
+	t: ^testing.T,
+) {
+	allocator: WGPU_Arena_Allocator
+	defer delete(allocator.free_ranges)
+	first, ok := wgpu_arena_allocate_bounded(&allocator, 60, 16, 96)
+	testing.expect(t, ok)
+	testing.expect_value(t, first, WGPU_Arena_Range{offset = 0, size = 60})
+	_, ok = wgpu_arena_allocate_bounded(&allocator, 40, 16, 96)
+	testing.expect(t, !ok)
+	testing.expect_value(t, allocator.high_water, u64(60))
+	testing.expect_value(t, allocator.resident_bytes, u64(60))
+
+	wgpu_arena_release(&allocator, first)
+	reused: WGPU_Arena_Range
+	reused, ok = wgpu_arena_allocate_bounded(&allocator, 80, 16, 96)
+	testing.expect(t, ok)
+	testing.expect_value(t, reused, WGPU_Arena_Range{offset = 0, size = 80})
+}
+
+@(test)
+test_wgpu_virtual_geometry_residency_rejects_compact_pages_outside_the_binding_window :: proc(
+	t: ^testing.T,
+) {
+	renderer := WGPU_Renderer {
+		max_storage_buffer_binding_size = 128,
+		geometry_cache = make([dynamic]WGPU_Geometry_Cache, 0, 1),
+	}
+	defer delete(renderer.geometry_cache)
+	cache := WGPU_Geometry_Cache {
+		valid = true,
+		virtual_geometry = true,
+		cluster_pages = make([dynamic]WGPU_Cluster_Page_Cache, 1),
+		cluster_groups = make([dynamic]WGPU_Cluster_Group_Cache, 1),
+		refined_group_parent_offsets = make([dynamic]u32, 2),
+	}
+	cache.cluster_pages[0] = {
+		vertex_range = {offset = 96, size = 48},
+		range = {offset = 0, size = 16},
+		resident = true,
+	}
+	cache.cluster_groups[0] = {
+		resident = true,
+		active = true,
+		pinned = true,
+	}
+	append(&renderer.geometry_cache, cache)
+	defer delete(renderer.geometry_cache[0].cluster_pages)
+	defer delete(renderer.geometry_cache[0].cluster_groups)
+	defer delete(renderer.geometry_cache[0].refined_group_parent_offsets)
+
+	testing.expect_value(
+		t,
+		wgpu_validate_virtual_geometry_residency(&renderer),
+		"resident virtual-geometry page exceeds the compact storage-binding window",
+	)
+	renderer.geometry_cache[0].cluster_pages[0].vertex_range = {
+		offset = 80,
+		size = 48,
+	}
+	testing.expect_value(t, wgpu_validate_virtual_geometry_residency(&renderer), "")
 }
 
 @(test)

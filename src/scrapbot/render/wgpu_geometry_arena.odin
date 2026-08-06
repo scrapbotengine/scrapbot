@@ -35,6 +35,13 @@ WGPU_Geometry_Arena :: struct {
 	upload_bytes: u64,
 }
 
+wgpu_arena_range_within_limit :: proc "contextless" (
+	allocation: WGPU_Arena_Range,
+	limit: u64,
+) -> bool {
+	return allocation.size <= limit && allocation.offset <= limit - allocation.size
+}
+
 wgpu_geometry_arena_retire :: proc(
 	arena: ^WGPU_Geometry_Arena,
 	allocation: WGPU_Arena_Range,
@@ -85,11 +92,28 @@ wgpu_arena_allocate :: proc(
 	allocator: ^WGPU_Arena_Allocator,
 	size, alignment: u64,
 ) -> WGPU_Arena_Range {
+	allocation, _ := wgpu_arena_allocate_bounded(allocator, size, alignment, ~u64(0))
+	return allocation
+}
+
+wgpu_arena_allocate_bounded :: proc(
+	allocator: ^WGPU_Arena_Allocator,
+	size, alignment, limit: u64,
+) -> (
+	allocation: WGPU_Arena_Range,
+	ok: bool,
+) {
 	if allocator == nil || size == 0 {
-		return {}
+		return {}, false
+	}
+	if size > limit {
+		return {}, false
 	}
 	for free_range, index in allocator.free_ranges {
 		offset := wgpu_align_arena_offset(free_range.offset, alignment)
+		if offset > limit - size {
+			continue
+		}
 		end := offset + size
 		free_end := free_range.offset + free_range.size
 		if end > free_end {
@@ -112,9 +136,12 @@ wgpu_arena_allocate :: proc(
 			ordered_remove(&allocator.free_ranges, index)
 		}
 		allocator.resident_bytes += size
-		return {offset = offset, size = size}
+		return WGPU_Arena_Range{offset = offset, size = size}, true
 	}
 	offset := wgpu_align_arena_offset(allocator.high_water, alignment)
+	if offset > limit - size {
+		return {}, false
+	}
 	if offset > allocator.high_water {
 		append(
 			&allocator.free_ranges,
@@ -124,7 +151,7 @@ wgpu_arena_allocate :: proc(
 	}
 	allocator.high_water = offset + size
 	allocator.resident_bytes += size
-	return {offset = offset, size = size}
+	return WGPU_Arena_Range{offset = offset, size = size}, true
 }
 
 wgpu_arena_release :: proc(allocator: ^WGPU_Arena_Allocator, allocation: WGPU_Arena_Range) {
@@ -135,6 +162,7 @@ wgpu_arena_release :: proc(allocator: ^WGPU_Arena_Allocator, allocation: WGPU_Ar
 	allocator.resident_bytes -= min(allocator.resident_bytes, allocation.size)
 	wgpu_sort_arena_free_ranges(allocator)
 	wgpu_coalesce_arena_free_ranges(allocator)
+	wgpu_trim_arena_high_water(allocator)
 }
 
 wgpu_sort_arena_free_ranges :: proc(allocator: ^WGPU_Arena_Allocator) {
@@ -167,6 +195,21 @@ wgpu_coalesce_arena_free_ranges :: proc(allocator: ^WGPU_Arena_Allocator) {
 		}
 		current.size = max(current_end, next.offset + next.size) - current.offset
 		ordered_remove(&allocator.free_ranges, index + 1)
+	}
+}
+
+wgpu_trim_arena_high_water :: proc(allocator: ^WGPU_Arena_Allocator) {
+	if allocator == nil {
+		return
+	}
+	for len(allocator.free_ranges) > 0 {
+		last_index := len(allocator.free_ranges) - 1
+		last := allocator.free_ranges[last_index]
+		if last.offset + last.size != allocator.high_water {
+			return
+		}
+		allocator.high_water = last.offset
+		ordered_remove(&allocator.free_ranges, last_index)
 	}
 }
 

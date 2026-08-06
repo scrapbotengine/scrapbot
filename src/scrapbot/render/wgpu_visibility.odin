@@ -124,6 +124,19 @@ wgpu_validate_virtual_geometry_residency :: proc(renderer: ^WGPU_Renderer) -> st
 				}
 				page_count += 1
 				if page.resident {
+					if !renderer.gpu_meshlet_native_multi_draw &&
+					   (!wgpu_arena_range_within_limit(
+								   page.vertex_range,
+								   renderer.max_storage_buffer_binding_size,
+							   ) ||
+							   !wgpu_arena_range_within_limit(
+									   page.range,
+									   renderer.max_storage_buffer_binding_size,
+								   )) {
+						return(
+							"resident virtual-geometry page exceeds the compact storage-binding window" \
+						)
+					}
 					resident_page_count += 1
 				}
 			}
@@ -1366,16 +1379,27 @@ wgpu_process_virtual_page_feedback :: proc(
 		}
 		vertex_bytes := u64(len(upload.vertices))
 		index_bytes := u64(len(upload.indices)) * u64(size_of(u32))
-		vertex_allocation := wgpu_arena_allocate(
+		vertex_allocation, vertex_addressable := wgpu_arena_allocate_bounded(
 			&renderer.geometry_vertex_arena.allocator,
 			vertex_allocation_bytes,
 			u64(size_of(resources.Vertex)),
+			renderer.max_storage_buffer_binding_size,
 		)
-		index_allocation := wgpu_arena_allocate(
+		if !vertex_addressable {
+			renderer.virtual_geometry_deferred_group_count += 1
+			continue
+		}
+		index_allocation, index_addressable := wgpu_arena_allocate_bounded(
 			&renderer.geometry_index_arena.allocator,
 			index_allocation_bytes,
 			u64(size_of(u32)),
+			renderer.max_storage_buffer_binding_size,
 		)
+		if !index_addressable {
+			wgpu_arena_release(&renderer.geometry_vertex_arena.allocator, vertex_allocation)
+			renderer.virtual_geometry_deferred_group_count += 1
+			continue
+		}
 		previous_vertex_buffer := renderer.geometry_vertex_arena.buffer
 		previous_index_buffer := renderer.geometry_index_arena.buffer
 		if upload_err := wgpu_geometry_arena_upload(

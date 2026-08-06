@@ -62,6 +62,11 @@ stronger recent working set, prefetch never displaces demand residency, and each
 keeps its direct parent fallback available until the child is released. Residency changes patch
 only affected cluster ranges. The budget counts both vertex and index residency.
 
+On portable compact paths, page vertices and indices must also fit inside the adapter's storage
+binding window. Scrapbot defers a refinement that cannot receive legal ranges and keeps its coarse
+fallback visible. A large configured payload budget can therefore improve native indexed paths
+without allowing portable vertex pulling to address beyond the device limit.
+
 A resident hierarchy does not switch levels at one exact projected-error boundary. Adjacent levels
 overlap from 98% through 102% around the one-pixel camera target. World, depth, and cascade shadow
 passes submit both complete opaque levels and let ordinary depth testing retain the nearest
