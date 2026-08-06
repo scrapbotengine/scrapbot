@@ -118,6 +118,30 @@ test("render sequence arguments preserve an independent editor camera script", (
   );
 });
 
+test("render sequence arguments preserve the long compact address-window replay", () => {
+  const options = parseArguments([
+    "--project",
+    "examples/virtual-wilds",
+    "--frames",
+    "7000",
+    "--capture-range",
+    "6950:6957",
+    "--require-residency-pressure",
+    "--editor",
+    "--ui-script",
+    "tests/fixtures/ui/virtual-wilds-address-window.json",
+  ]);
+
+  assert.equal(options.frames, 7000);
+  assert.equal(options.captureStart, 6950);
+  assert.equal(options.captureEnd, 6957);
+  assert.equal(options.requireResidencyPressure, true);
+  assert.equal(
+    options.uiScript,
+    "tests/fixtures/ui/virtual-wilds-address-window.json",
+  );
+});
+
 test("render sequence arguments keep settled and transitioning gates distinct", () => {
   assert.throws(
     () =>

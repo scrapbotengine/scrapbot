@@ -380,6 +380,21 @@ function main() {
           "--require-residency-pressure",
         ],
       },
+      {
+        name: "compact-address-window",
+        arguments: [
+          "--warmup",
+          "0",
+          "--frames",
+          "7000",
+          "--capture-range",
+          "6950:6957",
+          "--editor",
+          "--ui-script",
+          "tests/fixtures/ui/virtual-wilds-address-window.json",
+          "--require-residency-pressure",
+        ],
+      },
     ];
     for (const sequenceConfig of sequences) {
       const sequence = spawnSync(
