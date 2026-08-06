@@ -267,7 +267,7 @@ World-environment and active-camera exposure apply to the complete HDR world.
 
 **Why:** The renderer should optimize resource geometry without knowing whether a level came from glTF simplification, a procedural generator, Luau, native Odin, or a future authoring tool.
 
-**Tradeoff:** Every alternate Geometry/material combination becomes retained batch topology. Empty GPU-selected commands avoid triangle work but still have bounded encoding and memory cost, so import recipes can tune or disable their generated chain.
+**Tradeoff:** Classic GPU and CPU-reference submission retain every alternate Geometry/material combination as batch topology. A capable continuous virtual-geometry submission uses only the base Geometry's hierarchy: its own geometric-error frontier replaces object-level discrete LOD selection, so alternate hierarchies do not consume batches or pinned page residency. Import recipes can still tune or disable the generated chain used by fallback paths.
 
 ### 18. Suballocate Geometry versions from shared WGPU arenas
 

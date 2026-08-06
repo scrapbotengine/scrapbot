@@ -49,6 +49,16 @@ wgpu_virtual_geometry_submission :: proc "contextless" (
 	)
 }
 
+wgpu_geometry_draw_lod_count :: proc "contextless" (
+	renderer: ^WGPU_Renderer,
+	geometry: ^resources.Geometry,
+) -> int {
+	if geometry == nil || wgpu_virtual_geometry_submission(renderer, geometry) {
+		return 0
+	}
+	return geometry.lod_count
+}
+
 wgpu_virtual_geometry_uses_compaction :: proc "contextless" (
 	renderer: ^WGPU_Renderer,
 	geometry: ^resources.Geometry,
@@ -3388,6 +3398,7 @@ wgpu_build_gpu_instance :: proc(
 	geometry: ^resources.Geometry,
 	material: ^resources.Material,
 	batch_indices: [shared.MAX_GEOMETRY_LODS]u32,
+	lod_count: u32,
 ) -> WGPU_GPU_Instance {
 	color := material.desc.base_color
 	emissive := material.desc.emissive
@@ -3411,7 +3422,7 @@ wgpu_build_gpu_instance :: proc(
 			geometry.lod_screen_radii[2],
 			0,
 		},
-		lod_count = u32(geometry.lod_count),
+		lod_count = lod_count,
 		active = 1,
 	}
 }
@@ -3475,6 +3486,7 @@ wgpu_render_instance_pointer_by_slot :: proc(
 }
 
 wgpu_batch_indices_for_instance :: proc(
+	renderer: ^WGPU_Renderer,
 	cache: ^WGPU_Draw_Batch_Cache,
 	instance: Render_Instance,
 	registry: ^resources.Registry,
@@ -3491,7 +3503,8 @@ wgpu_batch_indices_for_instance :: proc(
 		return {}, false
 	}
 	indices[0] = u32(base_batch)
-	for handle, lod_index in geometry.lod_handles[:geometry.lod_count] {
+	lod_count := wgpu_geometry_draw_lod_count(renderer, geometry)
+	for handle, lod_index in geometry.lod_handles[:lod_count] {
 		lod_batch := wgpu_find_draw_batch(cache, handle, instance.material.handle)
 		if lod_batch < 0 {
 			return {}, false
@@ -3634,11 +3647,17 @@ wgpu_sync_dirty_instance_slot :: proc(
 	batch_indices := previous_source.batch_indices
 	if !previous_active || !wgpu_instance_batch_key_matches(previous_source, instance) {
 		batches_ok: bool
-		batch_indices, batches_ok = wgpu_batch_indices_for_instance(cache, instance, registry)
+		batch_indices, batches_ok = wgpu_batch_indices_for_instance(
+			renderer,
+			cache,
+			instance,
+			registry,
+		)
 		if !batches_ok {
 			return false, "GPU instance is missing its draw batch"
 		}
 	}
+	lod_count := u32(wgpu_geometry_draw_lod_count(renderer, geometry))
 	source := WGPU_Instance_Source_State {
 		geometry = instance.geometry.handle,
 		material = instance.material.handle,
@@ -3653,11 +3672,11 @@ wgpu_sync_dirty_instance_slot :: proc(
 			geometry.lod_screen_radii[2],
 			0,
 		},
-		lod_count = u32(geometry.lod_count),
+		lod_count = lod_count,
 	}
 	membership_changed :=
 		!previous_active ||
-		!wgpu_instance_membership_matches(previous_source, batch_indices, u32(geometry.lod_count))
+		!wgpu_instance_membership_matches(previous_source, batch_indices, lod_count)
 	if membership_changed && previous_active {
 		_ = wgpu_adjust_batch_membership(
 			cache,
@@ -3667,12 +3686,7 @@ wgpu_sync_dirty_instance_slot :: proc(
 		)
 	}
 	if membership_changed {
-		batch_layout_changed = wgpu_adjust_batch_membership(
-			cache,
-			batch_indices,
-			u32(geometry.lod_count),
-			1,
-		)
+		batch_layout_changed = wgpu_adjust_batch_membership(cache, batch_indices, lod_count, 1)
 	}
 	if wgpu_instance_source_changed(
 		previous_active,
@@ -3694,6 +3708,7 @@ wgpu_sync_dirty_instance_slot :: proc(
 				geometry,
 				material,
 				batch_indices,
+				lod_count,
 			)
 		}
 		if static_changed {
@@ -3741,7 +3756,8 @@ wgpu_rebuild_instance_batch_cache :: proc(
 			return "GPU instance is missing its draw batch"
 		}
 		batch_indices[0] = u32(base_batch)
-		for handle, lod_index in geometry.lod_handles[:geometry.lod_count] {
+		lod_count := wgpu_geometry_draw_lod_count(renderer, geometry)
+		for handle, lod_index in geometry.lod_handles[:lod_count] {
 			lod_batch := wgpu_find_draw_batch(cache, handle, instance.material.handle)
 			if lod_batch < 0 {
 				return "GPU LOD geometry is missing its draw batch"
@@ -4021,6 +4037,7 @@ wgpu_prepare_gpu_draw_batches :: proc(
 					continue
 				}
 				if _, found := wgpu_batch_indices_for_instance(
+					renderer,
 					&renderer.draw_batch_cache,
 					instance,
 					registry,
@@ -4298,6 +4315,7 @@ wgpu_prepare_gpu_draw_batches :: proc(
 		}
 		slot := instance.slot
 		batch_indices := renderer.gpu_batch_indices_by_slot[slot]
+		lod_count := u32(wgpu_geometry_draw_lod_count(renderer, geometry))
 		source := WGPU_Instance_Source_State {
 			geometry = instance.geometry.handle,
 			material = instance.material.handle,
@@ -4312,10 +4330,16 @@ wgpu_prepare_gpu_draw_batches :: proc(
 				geometry.lod_screen_radii[2],
 				0,
 			},
-			lod_count = u32(geometry.lod_count),
+			lod_count = lod_count,
 		}
 		if !renderer.gpu_active_slots[slot] || renderer.gpu_instance_sources[slot] != source {
-			record := wgpu_build_gpu_instance(instance, geometry, material, batch_indices)
+			record := wgpu_build_gpu_instance(
+				instance,
+				geometry,
+				material,
+				batch_indices,
+				lod_count,
+			)
 			renderer.gpu_instance_records[slot] = record
 			renderer.gpu_instance_transform_records[slot] = wgpu_build_gpu_instance_transform(
 				instance,
@@ -4425,6 +4449,7 @@ wgpu_prepare_gpu_draw_batches :: proc(
 					geometry,
 					material,
 					previous.batch_indices,
+					previous.lod_count,
 				)
 				append(&renderer.gpu_dirty_indices, slot)
 			} else {

@@ -44,7 +44,7 @@ pages when that Geometry version enters the WGPU cache. The upload consumes and 
 stable frames do not repeat reconstruction or file reads. Procedural/runtime Geometry retains its
 canonical arrays because its fallback source exists only in memory.
 
-Imported models compile eligible primitives into up to three deterministic compact LOD Geometry resources before runtime bootstrap. Their semantic handles survive harmless source reordering and reimport. The base resource publishes the same thresholds and alternate handles as procedural LOD resources, so CPU/GPU selection and debug views have no importer-specific path.
+Imported models compile eligible primitives into up to three deterministic compact LOD Geometry resources before runtime bootstrap. Their semantic handles survive harmless source reordering and reimport. The base resource publishes the same thresholds and alternate handles as procedural LOD resources, so classic GPU and CPU-reference selection have no importer-specific path. When WGPU can submit the base Geometry's continuous virtual hierarchy, that hierarchy performs the detail selection and the renderer omits the redundant discrete LOD batches.
 
 When an adapter exposes indirect-first-instance, WGPU projects each hierarchy group's monotonic
 geometric error into pixels. A Geometry's complete page set is admitted immediately when it fits
@@ -347,7 +347,7 @@ render settings use the same public paths available to games.
 
 A deterministic Luau scatter system adds 220 procedural rocks through public Geometry, Material,
 ECS spawn, and Transform APIs. Authored shared-model foliage and landscape instances bring the scene
-to 1,425 renderables while WGPU submits 40 material/LOD batches.
+to 1,425 renderables while continuous virtual geometry submits 26 retained material batches.
 
 `mise test-virtual-wilds` rebuilds and validates the pinned import products.
 `mise test-virtual-wilds-gpu` profiles deterministic fixed-camera coverage and moving-camera

@@ -2448,6 +2448,7 @@ WGPU_SHADOW_MAP_SIZE :: u32(2048)
 WGPU_SHADOW_MAP_MIN_SIZE :: u32(512)
 
 wgpu_rebuild_draw_batch_cache :: proc(
+	renderer: ^WGPU_Renderer,
 	cache: ^WGPU_Draw_Batch_Cache,
 	render_list: ^Render_List,
 	registry: ^resources.Registry = nil,
@@ -2475,7 +2476,8 @@ wgpu_rebuild_draw_batch_cache :: proc(
 		handles[0] = candidate.geometry.handle
 		handle_count := 1
 		if geometry, alive := resources.get_geometry(registry, candidate.geometry.handle); alive {
-			for handle in geometry.lod_handles[:geometry.lod_count] {
+			lod_count := wgpu_geometry_draw_lod_count(renderer, geometry)
+			for handle in geometry.lod_handles[:lod_count] {
 				handles[handle_count] = handle
 				handle_count += 1
 			}
@@ -2510,7 +2512,8 @@ wgpu_rebuild_draw_batch_cache :: proc(
 			if !matches {
 				if geometry, alive := resources.get_geometry(registry, candidate.geometry.handle);
 				   alive {
-					for handle in geometry.lod_handles[:geometry.lod_count] {
+					lod_count := wgpu_geometry_draw_lod_count(renderer, geometry)
+					for handle in geometry.lod_handles[:lod_count] {
 						if handle == batch.geometry {
 							matches = true
 							break
@@ -2545,7 +2548,7 @@ wgpu_ensure_draw_batch_cache :: proc(
 	   cache.topology_revision != render_list.topology_revision ||
 	   (registry != nil &&
 			   cache.geometry_topology_revision != registry.geometry_topology_revision) {
-		wgpu_rebuild_draw_batch_cache(cache, render_list, registry)
+		wgpu_rebuild_draw_batch_cache(renderer, cache, render_list, registry)
 	}
 	return cache
 }

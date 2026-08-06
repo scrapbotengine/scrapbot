@@ -1512,7 +1512,7 @@ test_wgpu_draw_database_has_no_legacy_64_batch_ceiling :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_wgpu_draw_database_materializes_all_geometry_lod_batches :: proc(t: ^testing.T) {
+test_wgpu_draw_database_materializes_only_effective_geometry_lod_batches :: proc(t: ^testing.T) {
 	registry: resources.Registry
 	defer resources.destroy_registry(&registry)
 	desc, desc_err := resources.cube(1)
@@ -1561,6 +1561,24 @@ test_wgpu_draw_database_materializes_all_geometry_lod_batches :: proc(t: ^testin
 		wgpu_rebuild_instance_batch_cache(&renderer, cache, &list, &registry, 1) == "",
 	)
 	testing.expect_value(t, renderer.gpu_batch_indices_by_slot[0], [4]u32{0, 1, 2, 0})
+
+	base_geometry, base_alive := resources.get_geometry(&registry, base)
+	testing.expect(t, base_alive)
+	delete(base_geometry.cluster_groups, registry.allocator)
+	base_geometry.cluster_groups = make([]resources.Geometry_Cluster_Group, 2, registry.allocator)
+	base_geometry.cluster_max_depth = 1
+	registry.geometry_topology_revision += 1
+	renderer.gpu_meshlet_supported = true
+	cache = wgpu_ensure_draw_batch_cache(&renderer, &list, &registry)
+	testing.expect_value(t, cache.batch_count, 1)
+	testing.expect(
+		t,
+		wgpu_rebuild_instance_batch_cache(&renderer, cache, &list, &registry, 1) == "",
+	)
+	testing.expect_value(t, renderer.gpu_batch_indices_by_slot[0], [4]u32{0, 0, 0, 0})
+	testing.expect_value(t, wgpu_geometry_draw_lod_count(&renderer, base_geometry), 0)
+	renderer.cpu_culling = true
+	testing.expect_value(t, wgpu_geometry_draw_lod_count(&renderer, base_geometry), 2)
 }
 
 @(test)

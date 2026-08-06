@@ -267,6 +267,11 @@ object surviving object-level visibility. Visible meshlet draws count indirect m
 with at least one surviving instance. These camera counters remain separate from shadow-cascade
 visibility and from repeated API work across depth, shadow, and world passes.
 
+Continuous virtual-geometry submission retains one base Geometry/material batch and selects detail
+inside that Geometry's cluster hierarchy. It does not also retain the base Geometry's generated
+discrete LOD handles. Classic GPU submission and the CPU-reference path retain those alternates and
+perform whole-object LOD selection instead.
+
 Hi-Z state is an explicit enum: unavailable, below threshold, scene changed, camera changed, warming up, or active. Object and meshlet occlusion counts remain separate so a zero can be interpreted without guessing which eligibility or safety gate applied.
 
 ### Live renderer evidence

@@ -304,7 +304,7 @@ function main() {
     const stats = rendered.result?.render_stats;
     if (
       rendered.result?.renderables !== 1425 ||
-      rendered.result?.draw_batches !== 40 ||
+      rendered.result?.draw_batches !== 26 ||
       stats?.virtual_geometry !== true ||
       stats?.virtual_geometry_compacted !== true ||
       stats?.meshlet_visible_capacity > 1048576 ||
@@ -399,10 +399,12 @@ function main() {
       if (
         profile.frames?.some(
           (frame) =>
-            frame.render?.draw_batches !== 40 ||
+            frame.render?.draw_batches !== 26 ||
             frame.render?.virtual_geometry_compacted !== true ||
             frame.render?.virtual_geometry_error_pixels !== 1 ||
             frame.render?.meshlet_visible_capacity > 1048576 ||
+            frame.render?.virtual_geometry_page_resident_bytes >
+              frame.render?.virtual_geometry_page_budget_bytes ||
             frame.render?.virtual_geometry_page_request_overflow !== 0,
         ) ||
         !profile.frames?.some(
