@@ -68,15 +68,16 @@ fallback visible. A large configured payload budget can therefore improve native
 without allowing portable vertex pulling to address beyond the device limit.
 
 A resident hierarchy does not switch levels at one exact projected-error boundary. Adjacent levels
-overlap from 98% through 102% around the one-pixel camera target. World, depth, and cascade shadow
+overlap from 98% through 102% around the active camera target. World, depth, and cascade shadow
 passes submit both complete opaque levels and let ordinary depth testing retain the nearest
 surface. TAA receives a transition marker so it can reject incompatible history around bounded
 depth and silhouette changes.
 
-Residency pressure never raises that one-pixel target. If requested detail does not fit, Scrapbot
-keeps the resident parent drawable and prioritizes or evicts complete groups. Dynamic resolution is
-the scalable quality control: its physical viewport height feeds the same projected-error formula,
-so detail follows the actual output resolution without a hidden streaming-quality override.
+Residency pressure never changes that target. If requested detail does not fit, Scrapbot keeps the
+resident parent drawable and prioritizes or evicts complete groups. At maximum quality, the target
+is one pixel. Dynamic resolution first reduces the viewport-local render grid; after reaching its
+authored scale floor, the same frame-budget controller may select 2, 4, 8, or 16 pixels. The
+camera's adaptive-quality floor bounds the coarsest permitted tier.
 
 A newly streamed child also does not replace its parent in one frame. It first passes a bounded
 demand-aware settling window. After any direct-parent handoff settles, both levels are submitted for
@@ -557,7 +558,7 @@ The output directory contains:
 - `overview.png` from the final measured frame.
 - An optional `frames/` sequence for the inclusive range passed to `--capture-range`.
 
-Each row includes active CPU time, exact per-pass GPU time, their summed GPU frame duration, logical and physical dimensions, pixel density, viewport, shaded pixels, and a raw renderer snapshot. The snapshot includes effective `render_scale`, `shadow_resolution`, `adaptive_post_quality`, whether adaptation is active, and its filtered scalable-GPU signal.
+Each row includes active CPU time, exact per-pass GPU time, their summed GPU frame duration, logical and physical dimensions, pixel density, viewport, shaded pixels, and a raw renderer snapshot. The snapshot includes effective `render_scale`, `shadow_resolution`, `virtual_geometry_error_pixels`, `adaptive_post_quality`, whether adaptation is active, and its filtered scalable-GPU signal.
 
 The `workload` object records the dispatch size, render extent, encoded draw-submission spans,
 instances, or sample count behind each pass. Shadow workload dimensions report the active raster

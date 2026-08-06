@@ -3593,14 +3593,10 @@ test_render_target_layout_scales_world_grid_but_preserves_output_viewport :: pro
 	layout := wgpu_render_target_layout(1920, 1080, output_viewport, camera)
 	testing.expect_value(t, layout.output_width, u32(1920))
 	testing.expect_value(t, layout.output_height, u32(1080))
-	testing.expect_value(t, layout.render_width, u32(960))
-	testing.expect_value(t, layout.render_height, u32(540))
+	testing.expect_value(t, layout.render_width, u32(660))
+	testing.expect_value(t, layout.render_height, u32(470))
 	testing.expect_value(t, layout.output_viewport, output_viewport)
-	testing.expect_value(
-		t,
-		layout.render_viewport,
-		ui.Rect{x = 150, y = 40, width = 660, height = 470},
-	)
+	testing.expect_value(t, layout.render_viewport, ui.Rect{width = 660, height = 470})
 }
 
 @(test)
@@ -3613,10 +3609,32 @@ test_render_target_layout_defaults_to_native_resolution :: proc(t: ^testing.T) {
 		height = 359.25,
 	}
 	layout := wgpu_render_target_layout(800, 450, output_viewport, camera)
-	testing.expect_value(t, layout.render_width, u32(800))
-	testing.expect_value(t, layout.render_height, u32(450))
-	testing.expect_value(t, layout.render_viewport, output_viewport)
+	testing.expect_value(t, layout.render_width, u32(640))
+	testing.expect_value(t, layout.render_height, u32(359))
+	testing.expect_value(t, layout.render_viewport, ui.Rect{width = 640, height = 359})
 	testing.expect_value(t, layout.resolution_scale, f32(1))
+}
+
+@(test)
+test_output_viewport_scissor_covers_fractional_pixels_and_clamps_to_target :: proc(t: ^testing.T) {
+	testing.expect_value(
+		t,
+		wgpu_output_viewport_scissor(
+			800,
+			450,
+			ui.Rect{x = 16.25, y = 24.5, width = 639.5, height = 359.25},
+		),
+		WGPU_Scissor_Rect{x = 16, y = 24, width = 640, height = 360},
+	)
+	testing.expect_value(
+		t,
+		wgpu_output_viewport_scissor(
+			800,
+			450,
+			ui.Rect{x = 760, y = 420, width = 100, height = 100},
+		),
+		WGPU_Scissor_Rect{x = 760, y = 420, width = 40, height = 30},
+	)
 }
 
 @(test)
@@ -3789,6 +3807,7 @@ test_frame_budget_degrades_one_ordered_quality_axis_at_a_time :: proc(t: ^testin
 		minimum_quality = 0.25,
 		effective_scale = 1,
 		effective_shadow_resolution = FRAME_BUDGET_SHADOW_MAXIMUM,
+		effective_virtual_error_pixels = FRAME_BUDGET_VIRTUAL_ERROR_MINIMUM,
 		effective_post_quality = 1,
 	}
 	for _ in 0 ..< 4 {
@@ -3801,6 +3820,14 @@ test_frame_budget_degrades_one_ordered_quality_axis_at_a_time :: proc(t: ^testin
 		testing.expect(t, frame_budget_change(&state, true))
 	}
 	testing.expect_value(t, state.effective_scale, f32(0.6))
+	testing.expect(t, frame_budget_change(&state, true))
+	testing.expect_value(t, state.effective_virtual_error_pixels, f32(2))
+	testing.expect(t, frame_budget_change(&state, true))
+	testing.expect_value(t, state.effective_virtual_error_pixels, f32(4))
+	testing.expect(t, frame_budget_change(&state, true))
+	testing.expect_value(t, state.effective_virtual_error_pixels, f32(8))
+	testing.expect(t, frame_budget_change(&state, true))
+	testing.expect_value(t, state.effective_virtual_error_pixels, f32(16))
 	testing.expect(t, frame_budget_change(&state, true))
 	testing.expect_value(t, state.effective_post_quality, f32(0.75))
 	testing.expect(t, frame_budget_change(&state, true))
@@ -3817,12 +3844,15 @@ test_frame_budget_respects_authored_quality_floor_and_restores_in_reverse :: pro
 		minimum_quality = 0.5,
 		effective_scale = 0.6,
 		effective_shadow_resolution = 1024,
+		effective_virtual_error_pixels = 2,
 		effective_post_quality = 0.5,
 	}
 	testing.expect(t, frame_budget_change(&state, false))
 	testing.expect_value(t, state.effective_post_quality, f32(0.75))
 	testing.expect(t, frame_budget_change(&state, false))
 	testing.expect_value(t, state.effective_post_quality, f32(1))
+	testing.expect(t, frame_budget_change(&state, false))
+	testing.expect_value(t, state.effective_virtual_error_pixels, f32(1))
 	for _ in 0 ..< 4 {
 		testing.expect(t, frame_budget_change(&state, false))
 	}
@@ -3832,9 +3862,11 @@ test_frame_budget_respects_authored_quality_floor_and_restores_in_reverse :: pro
 
 	state.effective_scale = state.minimum_scale
 	state.effective_shadow_resolution = 1024
+	state.effective_virtual_error_pixels = 2
 	state.effective_post_quality = 0.5
 	for frame_budget_change(&state, true) {  }
 	testing.expect_value(t, state.effective_shadow_resolution, u32(1024))
+	testing.expect_value(t, state.effective_virtual_error_pixels, f32(2))
 	testing.expect_value(t, state.effective_post_quality, f32(0.5))
 }
 
@@ -3860,4 +3892,12 @@ test_adaptive_quality_floor_bounds_shadow_tiers :: proc(t: ^testing.T) {
 	testing.expect_value(t, frame_budget_minimum_shadow_resolution(0.5), u32(1024))
 	testing.expect_value(t, frame_budget_minimum_shadow_resolution(0.75), u32(2048))
 	testing.expect_value(t, frame_budget_minimum_shadow_resolution(1), u32(2048))
+}
+
+@(test)
+test_adaptive_quality_floor_bounds_virtual_geometry_error :: proc(t: ^testing.T) {
+	testing.expect_value(t, frame_budget_maximum_virtual_error_pixels(0.25), f32(16))
+	testing.expect_value(t, frame_budget_maximum_virtual_error_pixels(0.5), f32(2))
+	testing.expect_value(t, frame_budget_maximum_virtual_error_pixels(0.75), f32(1))
+	testing.expect_value(t, frame_budget_maximum_virtual_error_pixels(1), f32(1))
 }

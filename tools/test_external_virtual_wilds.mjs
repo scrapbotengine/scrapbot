@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isVirtualGeometryErrorTier } from "./test_render_sequence.mjs";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const project = join(repositoryRoot, "examples/virtual-wilds");
@@ -431,7 +432,9 @@ function main() {
           (frame) =>
             frame.render?.draw_batches !== 26 ||
             frame.render?.virtual_geometry_compacted !== true ||
-            frame.render?.virtual_geometry_error_pixels !== 1 ||
+            !isVirtualGeometryErrorTier(
+              frame.render?.virtual_geometry_error_pixels,
+            ) ||
             frame.render?.meshlet_visible_capacity > 1048576 ||
             frame.render?.virtual_geometry_page_resident_bytes >
               frame.render?.virtual_geometry_page_budget_bytes ||

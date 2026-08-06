@@ -1,6 +1,7 @@
 package render
 
 import shared "../shared"
+import ui "../ui"
 import "core:math"
 import "vendor:wgpu"
 
@@ -1710,6 +1711,7 @@ wgpu_encode_fullscreen_pass :: proc(
 	label: string,
 	timestamp_phase: WGPU_GPU_Timestamp_Phase,
 	output_width, output_height: u32,
+	output_viewport: ui.Rect,
 ) -> string {
 	attachment := wgpu.RenderPassColorAttachment {
 		view = view,
@@ -1735,8 +1737,17 @@ wgpu_encode_fullscreen_pass :: proc(
 	if pass == nil {
 		return "failed to begin post-process pass"
 	}
-	wgpu.RenderPassEncoderSetViewport(pass, 0, 0, f32(output_width), f32(output_height), 0, 1)
-	wgpu.RenderPassEncoderSetScissorRect(pass, 0, 0, output_width, output_height)
+	scissor := wgpu_output_viewport_scissor(output_width, output_height, output_viewport)
+	wgpu.RenderPassEncoderSetViewport(
+		pass,
+		output_viewport.x,
+		output_viewport.y,
+		output_viewport.width,
+		output_viewport.height,
+		0,
+		1,
+	)
+	wgpu.RenderPassEncoderSetScissorRect(pass, scissor.x, scissor.y, scissor.width, scissor.height)
 	wgpu.RenderPassEncoderSetPipeline(pass, pipeline)
 	wgpu.RenderPassEncoderSetBindGroup(pass, 0, bind_group)
 	wgpu.RenderPassEncoderDraw(pass, 3, 1, 0, 0)
@@ -1752,6 +1763,7 @@ wgpu_encode_bloom_and_composite :: proc(
 	depth_view: wgpu.TextureView,
 	width, height: u32,
 	output_width, output_height: u32,
+	output_viewport: ui.Rect,
 	camera: shared.Camera_Component,
 	has_camera: bool,
 	world: ^shared.World,
@@ -2199,6 +2211,7 @@ wgpu_encode_bloom_and_composite :: proc(
 		.Composite,
 		output_width,
 		output_height,
+		output_viewport,
 	)
 	if err != "" {
 		return err

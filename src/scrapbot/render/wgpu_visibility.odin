@@ -1658,7 +1658,8 @@ wgpu_publish_visibility :: proc(renderer: ^WGPU_Renderer, stats: ^Render_Stats) 
 	stats.virtual_rejected_clusters = renderer.gpu_visibility_counters.virtual_rejected_clusters
 	stats.virtual_geometry_page_budget_bytes = renderer.virtual_geometry_budget_bytes
 	stats.virtual_geometry_page_resident_bytes = renderer.virtual_geometry_resident_bytes
-	stats.virtual_geometry_error_pixels = WGPU_VIRTUAL_GEOMETRY_MIN_ERROR_PIXELS
+	stats.virtual_geometry_error_pixels =
+		renderer.dynamic_resolution.effective_virtual_error_pixels
 	stats.virtual_geometry_pages = renderer.virtual_geometry_page_count
 	stats.virtual_geometry_resident_pages = renderer.virtual_geometry_resident_page_count
 	stats.virtual_geometry_pinned_pages = renderer.virtual_geometry_pinned_page_count

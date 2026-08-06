@@ -193,6 +193,7 @@ Frame_Budget_State :: struct {
 	minimum_quality: f32,
 	effective_scale: f32,
 	effective_shadow_resolution: u32,
+	effective_virtual_error_pixels: f32,
 	effective_post_quality: f32,
 	filtered_gpu_ms: f64,
 	has_filtered_sample: bool,
@@ -215,6 +216,9 @@ FRAME_BUDGET_SHADOW_MIDDLE :: u32(1024)
 FRAME_BUDGET_SHADOW_MINIMUM :: u32(512)
 FRAME_BUDGET_FIRST_SCALE_RATIO :: f32(0.8)
 FRAME_BUDGET_QUALITY_STEP :: f32(0.25)
+FRAME_BUDGET_VIRTUAL_ERROR_MINIMUM :: f32(1)
+FRAME_BUDGET_VIRTUAL_ERROR_MIDDLE :: f32(2)
+FRAME_BUDGET_VIRTUAL_ERROR_MAXIMUM :: f32(16)
 
 dynamic_resolution_quantize :: proc "contextless" (scale, minimum, maximum: f32) -> f32 {
 	steps := math.round(scale / DYNAMIC_RESOLUTION_SCALE_STEP)
@@ -229,6 +233,16 @@ frame_budget_minimum_shadow_resolution :: proc "contextless" (minimum_quality: f
 		return FRAME_BUDGET_SHADOW_MIDDLE
 	}
 	return FRAME_BUDGET_SHADOW_MINIMUM
+}
+
+frame_budget_maximum_virtual_error_pixels :: proc "contextless" (minimum_quality: f32) -> f32 {
+	if minimum_quality >= 0.75 {
+		return FRAME_BUDGET_VIRTUAL_ERROR_MINIMUM
+	}
+	if minimum_quality >= 0.5 {
+		return FRAME_BUDGET_VIRTUAL_ERROR_MIDDLE
+	}
+	return FRAME_BUDGET_VIRTUAL_ERROR_MAXIMUM
 }
 
 camera_apply_adaptive_post_quality :: proc "contextless" (
@@ -258,6 +272,7 @@ frame_budget_change :: proc "contextless" (state: ^Frame_Budget_State, degrade: 
 		state.maximum_scale,
 	)
 	minimum_shadow := frame_budget_minimum_shadow_resolution(state.minimum_quality)
+	maximum_virtual_error := frame_budget_maximum_virtual_error_pixels(state.minimum_quality)
 	if degrade {
 		if state.effective_scale > first_scale {
 			state.effective_scale = dynamic_resolution_quantize(
@@ -279,6 +294,13 @@ frame_budget_change :: proc "contextless" (state: ^Frame_Budget_State, degrade: 
 				state.effective_scale - DYNAMIC_RESOLUTION_SCALE_STEP,
 				state.minimum_scale,
 				state.maximum_scale,
+			)
+			return true
+		}
+		if state.effective_virtual_error_pixels < maximum_virtual_error {
+			state.effective_virtual_error_pixels = min(
+				state.effective_virtual_error_pixels * 2,
+				maximum_virtual_error,
 			)
 			return true
 		}
@@ -323,6 +345,13 @@ frame_budget_change :: proc "contextless" (state: ^Frame_Budget_State, degrade: 
 		state.effective_post_quality = min(
 			state.effective_post_quality + FRAME_BUDGET_QUALITY_STEP,
 			f32(1),
+		)
+		return true
+	}
+	if state.effective_virtual_error_pixels > FRAME_BUDGET_VIRTUAL_ERROR_MINIMUM {
+		state.effective_virtual_error_pixels = max(
+			state.effective_virtual_error_pixels / 2,
+			FRAME_BUDGET_VIRTUAL_ERROR_MINIMUM,
 		)
 		return true
 	}
@@ -382,6 +411,7 @@ dynamic_resolution_scale :: proc "contextless" (
 		if !was_enabled || !enabled || owner_changed {
 			state.effective_scale = maximum
 			state.effective_shadow_resolution = FRAME_BUDGET_SHADOW_MAXIMUM
+			state.effective_virtual_error_pixels = FRAME_BUDGET_VIRTUAL_ERROR_MINIMUM
 			state.effective_post_quality = 1
 		} else {
 			state.effective_scale = dynamic_resolution_quantize(
@@ -402,6 +432,11 @@ dynamic_resolution_scale :: proc "contextless" (
 			state.effective_shadow_resolution,
 			frame_budget_minimum_shadow_resolution(minimum_quality),
 			FRAME_BUDGET_SHADOW_MAXIMUM,
+		)
+		state.effective_virtual_error_pixels = clamp(
+			state.effective_virtual_error_pixels,
+			FRAME_BUDGET_VIRTUAL_ERROR_MINIMUM,
+			frame_budget_maximum_virtual_error_pixels(minimum_quality),
 		)
 		state.effective_post_quality = clamp(state.effective_post_quality, minimum_quality, 1)
 		state.filtered_gpu_ms = 0

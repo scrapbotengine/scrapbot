@@ -477,6 +477,23 @@ fn transform_vertex(
 	return output;
 }
 
+fn discarded_vertex_output() -> Vertex_Output {
+	var output: Vertex_Output;
+	output.position = vec4<f32>(2.0, 2.0, 2.0, 1.0);
+	output.color = vec4<f32>(0.0);
+	output.world_position = vec3<f32>(0.0);
+	output.world_normal = vec3<f32>(0.0);
+	output.view_depth = 0.0;
+	output.shadow_receiver = 0.0;
+	output.uv = vec2<f32>(0.0);
+	output.emissive = vec3<f32>(0.0);
+	output.world_tangent = vec4<f32>(0.0);
+	output.meshlet_identity = 0u;
+	output.lod_level = 0u;
+	output.virtual_transition = vec2<f32>(0.0, 1.0);
+	return output;
+}
+
 @vertex
 fn vs_main(input: Vertex_Input, @builtin(instance_index) visible_index: u32) -> Vertex_Output {
 	let instance = instances[visible_instances[visible_index]];
@@ -497,6 +514,9 @@ fn vs_main(input: Vertex_Input, @builtin(instance_index) visible_index: u32) -> 
 fn compact_vs(record: Compact_Input, @builtin(vertex_index) vertex_index: u32) -> Vertex_Output {
 	let instance = instances[record.instance_slot];
 	let meshlet = meshlets[record.meshlet_index];
+	if (vertex_index >= meshlet.triangle_count * 3u) {
+		return discarded_vertex_output();
+	}
 	return transform_vertex(
 		load_compact_vertex(record, vertex_index),
 		instance,
@@ -1170,6 +1190,16 @@ struct Mask_Output {
 	@location(3) @interpolate(flat) virtual_transition_epoch: u32,
 };
 
+fn discarded_mask_output() -> Mask_Output {
+	var output: Mask_Output;
+	output.position = vec4<f32>(2.0, 2.0, 2.0, 1.0);
+	output.uv = vec2<f32>(0.0);
+	output.alpha = 0.0;
+	output.virtual_transition = vec2<f32>(0.0, 1.0);
+	output.virtual_transition_epoch = 0u;
+	return output;
+}
+
 fn visible_virtual_transition(instance: GPU_Instance, visible_index: u32) -> vec2<f32> {
 	let meshlet_token = meshlet_identities[visible_index] & 0x003fffffu;
 	if (meshlet_token == 0u) {
@@ -1215,6 +1245,9 @@ fn compact_shadow_vs(
 	@builtin(vertex_index) vertex_index: u32,
 ) -> Mask_Output {
 	let instance = instances[record.instance_slot];
+	if (vertex_index >= meshlets[record.meshlet_index].triangle_count * 3u) {
+		return discarded_mask_output();
+	}
 	let input = load_compact_vertex(record, vertex_index);
 	var output: Mask_Output;
 	output.position = render.shadow_view_projections[shadow_cascade.index] * instance.model * vec4<f32>(input.position, 1.0);
@@ -1235,6 +1268,9 @@ fn compact_shadow_depth_only_vs(
 	@builtin(vertex_index) vertex_index: u32,
 ) -> Compact_Depth_Only_Output {
 	let instance = instances[record.instance_slot];
+	if (vertex_index >= meshlets[record.meshlet_index].triangle_count * 3u) {
+		return Compact_Depth_Only_Output(vec4<f32>(2.0, 2.0, 2.0, 1.0));
+	}
 	let position = load_compact_position(record, vertex_index);
 	return Compact_Depth_Only_Output(
 		render.shadow_view_projections[shadow_cascade.index] *
@@ -1264,6 +1300,9 @@ fn compact_depth_vs(
 	@builtin(vertex_index) vertex_index: u32,
 ) -> Mask_Output {
 	let instance = instances[record.instance_slot];
+	if (vertex_index >= meshlets[record.meshlet_index].triangle_count * 3u) {
+		return discarded_mask_output();
+	}
 	let input = load_compact_vertex(record, vertex_index);
 	var output: Mask_Output;
 	output.position = render.view_projection * instance.model * vec4<f32>(input.position, 1.0);
@@ -1284,6 +1323,9 @@ fn compact_depth_only_vs(
 	@builtin(vertex_index) vertex_index: u32,
 ) -> Compact_Depth_Only_Output {
 	let instance = instances[record.instance_slot];
+	if (vertex_index >= meshlets[record.meshlet_index].triangle_count * 3u) {
+		return Compact_Depth_Only_Output(vec4<f32>(2.0, 2.0, 2.0, 1.0));
+	}
 	let position = load_compact_position(record, vertex_index);
 	return Compact_Depth_Only_Output(render.view_projection * instance.model * vec4<f32>(position, 1.0));
 }

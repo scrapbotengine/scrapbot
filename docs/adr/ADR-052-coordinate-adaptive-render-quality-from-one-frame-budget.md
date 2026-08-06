@@ -13,13 +13,14 @@ Projects also need a clear distinction between authored intent and runtime adapt
 
 WGPU owns one backend-local frame-budget controller per active render-policy camera. It consumes the ordered GPU scene span, filters each accepted sample exactly once, and advances at most one step on a deterministic quality ladder.
 
-The ladder coordinates three derived outputs:
+The ladder coordinates four derived outputs:
 
 - world render-grid scale, bounded by `resolution_scale` and `dynamic_resolution_min_scale`;
 - directional-shadow raster resolution, selected from 2048², 1024², and 512²;
+- virtual-geometry projected-error tolerance, selected from 1, 2, 4, 8, and 16 pixels;
 - a normalized post-quality factor applied to authored AO and SSR tiers and volumetric-fog ray steps.
 
-Degradation first makes modest world-resolution concessions, then lowers the dominant shadow cost, uses the remaining authored scale range, and finally reduces post quality and the lowest shadow tier. Recovery walks the exact reverse order and requires sustained headroom. `adaptive_quality_minimum` bounds both post quality and the permitted shadow tier.
+Degradation first makes modest world-resolution concessions, then lowers the dominant shadow cost and uses the remaining authored scale range. At the minimum scale, it relaxes virtual-geometry detail before reducing post quality and the lowest shadow tier. Recovery walks the exact reverse order and requires sustained headroom. `adaptive_quality_minimum` bounds post quality, the permitted shadow tier, and the maximum virtual-geometry error.
 
 Every output change increments one policy generation, clears filtered evidence, starts one cooldown, and rejects delayed timestamp samples from the previous configuration. A camera-policy or stable owner change resets all outputs together. Unsupported timestamp queries and disabled adaptation select authored maxima.
 

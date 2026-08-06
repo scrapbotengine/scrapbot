@@ -168,6 +168,15 @@ export function validateRecordCapacity(profile) {
   }
 }
 
+export function isVirtualGeometryErrorTier(value, maximum = 16) {
+  return (
+    Number.isFinite(value) &&
+    value >= 1 &&
+    value <= maximum &&
+    Number.isInteger(Math.log2(value))
+  );
+}
+
 export function validateResidencyPressure(profile) {
   const pressuredRows = profile.frames.filter((frame) => {
     const render = frame.render;
@@ -199,13 +208,21 @@ export function validateResidencyPressure(profile) {
       throw new Error(`virtual-geometry residency became unhealthy at frame ${frame.index}`);
     }
   }
-  const projectedErrors = new Set(
-    profile.frames.map((frame) => frame.render?.virtual_geometry_error_pixels),
+  const adaptive = profile.frames.some(
+    (frame) => frame.render?.dynamic_resolution === true,
   );
-  if (projectedErrors.size !== 1 || !projectedErrors.has(1)) {
-    throw new Error(
-      "residency pressure changed the one-pixel virtual-geometry error target",
-    );
+  for (const frame of profile.frames) {
+    const error = frame.render?.virtual_geometry_error_pixels;
+    if (
+      (adaptive && !isVirtualGeometryErrorTier(error)) ||
+      (!adaptive && error !== 1)
+    ) {
+      throw new Error(
+        adaptive
+          ? `adaptive virtual-geometry error left its bounded tiers at frame ${frame.index}`
+          : "residency pressure changed the one-pixel virtual-geometry error target",
+      );
+    }
   }
 }
 

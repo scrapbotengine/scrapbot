@@ -80,9 +80,10 @@ storage-binding window. Address-space or fragmentation pressure defers the detai
 upload or residency mutation, leaving its current coarse parent drawable. Indexed paths may still
 use shared-buffer capacity outside that window.
 
-Page pressure does not mutate the camera's one-pixel projected-error target. Deferred detail keeps
-its resident parent drawable. The coordinated render-quality controller owns render-scale changes,
-whose physical viewport height feeds the same fixed frontier calculation.
+Page pressure does not mutate the camera's projected-error target. Deferred detail keeps its
+resident parent drawable. The coordinated render-quality controller owns both render-scale and
+bounded projected-error changes. The active viewport height feeds that frontier calculation, while
+the authored adaptive-quality floor limits how far its one-pixel maximum-quality target may relax.
 
 Capable adapters retain cluster metadata and arena-global indirect templates. They select the
 desired resident frontier and draw a coarse fallback while refinement is missing. Native

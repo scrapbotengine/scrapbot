@@ -1,10 +1,21 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  isVirtualGeometryErrorTier,
   parseArguments,
   validateRecordCapacity,
   validateResidencyPressure,
 } from "./test_render_sequence.mjs";
+
+test("virtual-geometry error validation accepts only bounded power-of-two tiers", () => {
+  for (const tier of [1, 2, 4, 8, 16]) {
+    assert.equal(isVirtualGeometryErrorTier(tier), true);
+  }
+  for (const invalid of [0, 3, 32, Number.NaN, Number.POSITIVE_INFINITY]) {
+    assert.equal(isVirtualGeometryErrorTier(invalid), false);
+  }
+  assert.equal(isVirtualGeometryErrorTier(4, 2), false);
+});
 
 test("render sequence arguments describe a bounded temporal capture", () => {
   const options = parseArguments([
@@ -202,5 +213,35 @@ test("residency validation requires bounded pressure and healthy admission", () 
         ],
       }),
     /changed the one-pixel/,
+  );
+  assert.doesNotThrow(() =>
+    validateResidencyPressure({
+      frames: [
+        {
+          ...frame,
+          render: {
+            ...frame.render,
+            dynamic_resolution: true,
+            virtual_geometry_error_pixels: 8,
+          },
+        },
+      ],
+    }),
+  );
+  assert.throws(
+    () =>
+      validateResidencyPressure({
+        frames: [
+          {
+            ...frame,
+            render: {
+              ...frame.render,
+              dynamic_resolution: true,
+              virtual_geometry_error_pixels: 3,
+            },
+          },
+        ],
+      }),
+    /left its bounded tiers/,
   );
 });

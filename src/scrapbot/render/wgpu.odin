@@ -1189,6 +1189,13 @@ WGPU_Render_Target_Layout :: struct {
 	resolution_scale: f32,
 }
 
+WGPU_Scissor_Rect :: struct {
+	x: u32,
+	y: u32,
+	width: u32,
+	height: u32,
+}
+
 wgpu_apply_render_debug_override :: proc(render_list: ^Render_List, ui_state: ^ui.State) {
 	if render_list == nil || !render_list.has_camera {
 		return
@@ -1288,42 +1295,30 @@ wgpu_render_target_layout :: proc(
 	camera: shared.Camera_Component,
 ) -> WGPU_Render_Target_Layout {
 	scale := shared.camera_resolution_scale(camera)
-	render_width := max(u32(1), u32(math.round(f32(output_width) * scale)))
-	render_height := max(u32(1), u32(math.round(f32(output_height) * scale)))
-	if render_width == output_width && render_height == output_height {
-		return {
-			output_width = output_width,
-			output_height = output_height,
-			render_width = render_width,
-			render_height = render_height,
-			output_viewport = output_viewport,
-			render_viewport = output_viewport,
-			resolution_scale = scale,
-		}
-	}
-	scale_x := f32(render_width) / f32(max(output_width, u32(1)))
-	scale_y := f32(render_height) / f32(max(output_height, u32(1)))
-	x0 := clamp(math.floor(output_viewport.x * scale_x), 0, f32(render_width - 1))
-	y0 := clamp(math.floor(output_viewport.y * scale_y), 0, f32(render_height - 1))
-	x1 := clamp(
-		math.ceil((output_viewport.x + output_viewport.width) * scale_x),
-		x0 + 1,
-		f32(render_width),
-	)
-	y1 := clamp(
-		math.ceil((output_viewport.y + output_viewport.height) * scale_y),
-		y0 + 1,
-		f32(render_height),
-	)
+	render_width := max(u32(1), u32(math.round(max(output_viewport.width, 1) * scale)))
+	render_height := max(u32(1), u32(math.round(max(output_viewport.height, 1) * scale)))
 	return {
 		output_width = output_width,
 		output_height = output_height,
 		render_width = render_width,
 		render_height = render_height,
 		output_viewport = output_viewport,
-		render_viewport = {x = x0, y = y0, width = x1 - x0, height = y1 - y0},
+		render_viewport = {width = f32(render_width), height = f32(render_height)},
 		resolution_scale = scale,
 	}
+}
+
+wgpu_output_viewport_scissor :: proc(
+	output_width, output_height: u32,
+	viewport: ui.Rect,
+) -> WGPU_Scissor_Rect {
+	width := max(output_width, u32(1))
+	height := max(output_height, u32(1))
+	x0 := u32(clamp(math.floor(viewport.x), 0, f32(width - 1)))
+	y0 := u32(clamp(math.floor(viewport.y), 0, f32(height - 1)))
+	x1 := u32(clamp(math.ceil(viewport.x + viewport.width), f32(x0 + 1), f32(width)))
+	y1 := u32(clamp(math.ceil(viewport.y + viewport.height), f32(y0 + 1), f32(height)))
+	return {x = x0, y = y0, width = x1 - x0, height = y1 - y0}
 }
 
 wgpu_release_render_depth :: proc(renderer: ^WGPU_Renderer) {
@@ -3359,6 +3354,7 @@ wgpu_encode_render_pass :: proc(
 		layout.render_height,
 		layout.output_width,
 		layout.output_height,
+		layout.output_viewport,
 		renderer.render_list.camera.camera,
 		renderer.render_list.has_camera,
 		world,

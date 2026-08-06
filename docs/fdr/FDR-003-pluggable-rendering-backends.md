@@ -133,7 +133,7 @@ The built-in indexed primitive generators cover cubes, planes, icospheres, UV sp
 
 **Decision:** Render the world into floating-point color, compact surface data, and a separate indirect-diffuse contribution.
 
-The active camera controls a `0.5`–`1` world render-grid ceiling/floor, optional GPU target, adaptive post-quality floor, fixed or automatic exposure, TAA, current-frame fast AA, half-resolution AO, SSR, and five-level bloom. Native scale is the default. Lower scales reduce world, depth, Hi-Z, and post-processing work; final composition upscales into the native output before project UI and editor chrome. AO maps an authored `0.25`–`1` ceiling to four bounded 8/16/24/36-sample tiers, with balanced `0.5` as the default.
+The active camera controls a `0.5`–`1` world render-grid ceiling/floor, optional GPU target, adaptive post-quality floor, fixed or automatic exposure, TAA, current-frame fast AA, half-resolution AO, SSR, and five-level bloom. Native scale is the default. World, depth, Hi-Z, and post targets are sized from the physical game viewport, excluding editor chrome. Lower scales reduce those viewport-local targets further; final composition maps the result into the native game viewport before project UI and editor chrome. AO maps an authored `0.25`–`1` ceiling to four bounded 8/16/24/36-sample tiers, with balanced `0.5` as the default.
 
 One optional authored `scrapbot.volumetric_fog` component supplies a global exponential height medium. A separately timestamped half-resolution compute pass integrates 4–16 low-discrepancy sub-step samples, rotated across the eight-frame temporal sequence and kept within a centered fraction of each ray interval, up to scene depth or the authored distance bound. The bounded span preserves temporal coverage without exposing the half-resolution fog grid during ordinary camera motion. The coordinated frame-budget policy selects the step count. The full-resolution temporal pass depth-aware upsamples scattering and transmittance before history accumulation. Ambient scattering is unshadowed; anisotropic primary-directional scattering uses a 2×2 UV-space filter and the same cascade transition bands as opaque geometry. Projects may independently opt clustered point lights into the medium. Absence or zero density skips the ray-march dispatch.
 
@@ -147,7 +147,7 @@ Automatic exposure uses one 256-thread GPU workgroup to reduce viewport-stratifi
 
 Three optional singleton ECS components independently author vignette, ghost lens flares, and procedural lens dirt. Flares sample the bloom bright-pass into bounded chromatically separated ghosts plus a halo. Dirt modulates only bloom and flare energy, never the base scene. Adaptive post quality reduces the authored ghost count, and non-lit debug views bypass all three effects. Vignette is applied after tone mapping so its authored display-space framing remains independent of exposure.
 
-The editor fly view inherits the project camera's render policy. WGPU consumes an asynchronous ordered pass-boundary span that ends after final composition and before native UI. One hysteretic controller selects world scale, directional-shadow resolution, and a normalized AO/SSR/fog quality factor from a deterministic reversible ladder. All changes share one measurement generation and cooldown. Adapters without timestamp queries use authored maxima. Scale changes replace only size-dependent retained targets and reject temporal history. Disabled features skip their compute or history work. Tone map once into native output, then draw UI at native resolution. See ADR-052.
+The editor fly view inherits the project camera's render policy. WGPU consumes an asynchronous ordered pass-boundary span that ends after final composition and before native UI. One hysteretic controller selects world scale, directional-shadow resolution, virtual-geometry projected-error tolerance, and a normalized AO/SSR/fog quality factor from a deterministic reversible ladder. All changes share one measurement generation and cooldown. Adapters without timestamp queries use authored maxima. Target-size changes replace only size-dependent retained targets and reject temporal history. Disabled features skip their compute or history work. Tone map once into the native game viewport, then draw UI at native resolution. See ADR-052.
 **Why:** Architectural contacts and crevices need indirect-light grounding, participating media needs depth-aware and shadow-aware scattering, smooth materials need local reflections, bloom requires values above display white, broad halos need multiple spatial scales, subpixel geometry and texture detail need temporal supersampling, and text must remain crisp. Reusing depth supports fog bounds, AO, reflection ray intersection, and camera reprojection without another geometry pass or velocity target. See ADR-029.
 **Tradeoff:** These techniques deliberately exchange completeness, precision, latency, memory, and configurability for bounded real-time work:
 
@@ -303,7 +303,7 @@ only for backend cache creation. Retain
 canonical GPU vertex/index streams plus expanded page indices when the complete Geometry fits the
 remaining combined payload budget; otherwise pin its coarsest page frontier. On WGPU adapters
 with indirect-first-instance, project group error into pixels. Submit adjacent hierarchy levels
-inside a narrow 98%-to-102% overlap around the one-pixel threshold and the unique cluster frontier
+inside a narrow 98%-to-102% overlap around the active error threshold and the unique cluster frontier
 outside it, before ordinary cluster culling.
 
 When finer detail is wanted but missing, submit the resident coarse cluster and append its group
@@ -355,10 +355,11 @@ its fixed handoff ends. A newly uploaded group begins its visible-use grace wind
 admission frame, rather than spending that protection while its older GPU request is still crossing
 the asynchronous readback boundary.
 
-Residency pressure does not modify the one-pixel camera error target. Missing refinements retain
-their resident parent, while group-atomic eviction releases lower-priority detail without breaking
-the fallback chain. Coordinated render-scale changes remain the owner of frame-budget scaling and
-naturally change the physical viewport height used by projected-error selection.
+Residency pressure does not modify the camera error target. Missing refinements retain their
+resident parent, while group-atomic eviction releases lower-priority detail without breaking the
+fallback chain. The coordinated frame-budget controller owns both render-scale and bounded
+projected-error changes. Maximum quality uses one pixel; lower authored adaptive-quality floors
+permit progressively coarser power-of-two tiers after render scale reaches its floor.
 
 Per-frame byte and group limits bound streaming work. One admitted group or complete-resource
 preload becomes one combined arena transfer. Residency mutations use persistent group-to-cluster
