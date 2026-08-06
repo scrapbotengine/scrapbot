@@ -100,6 +100,24 @@ test("render sequence arguments describe bounded residency pressure", () => {
   assert.equal(options.requireResidencyPressure, true);
 });
 
+test("render sequence arguments preserve an independent editor camera script", () => {
+  const options = parseArguments([
+    "--project",
+    "examples/virtual-wilds",
+    "--capture-range",
+    "850:857",
+    "--editor",
+    "--ui-script",
+    "tests/fixtures/ui/virtual-wilds-editor-camera-history.json",
+  ]);
+
+  assert.equal(options.editor, true);
+  assert.equal(
+    options.uiScript,
+    "tests/fixtures/ui/virtual-wilds-editor-camera-history.json",
+  );
+});
+
 test("render sequence arguments keep settled and transitioning gates distinct", () => {
   assert.throws(
     () =>

@@ -351,6 +351,20 @@ function main() {
           "--require-transition-activity",
         ],
       },
+      {
+        name: "editor-camera-history",
+        arguments: [
+          "--warmup",
+          "0",
+          "--frames",
+          "902",
+          "--capture-range",
+          "850:857",
+          "--editor",
+          "--ui-script",
+          "tests/fixtures/ui/virtual-wilds-editor-camera-history.json",
+        ],
+      },
     ];
     for (const sequenceConfig of sequences) {
       const sequence = spawnSync(

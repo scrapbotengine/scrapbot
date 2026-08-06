@@ -22,6 +22,8 @@ Diagnostic_Action :: struct {
 	action: string,
 	target: Diagnostic_Target,
 	destination: Diagnostic_Target,
+	position: shared.Vec3,
+	rotation: shared.Vec3,
 	destination_anchor: string,
 	expect: string,
 	text: string,
@@ -54,6 +56,9 @@ Diagnostic_Driver :: struct {
 	capture_padding: f32,
 	drawable_width: f32,
 	drawable_height: f32,
+	has_editor_camera_pose: bool,
+	editor_camera_position: shared.Vec3,
+	editor_camera_rotation: shared.Vec3,
 }
 
 Diagnostic_Rect :: struct {
@@ -202,6 +207,8 @@ diagnostic_action_is_valid :: proc(action: Diagnostic_Action) -> bool {
 			)
 		case "wait":
 			return action.frames > 0
+		case "set_editor_camera":
+			return true
 		case "key":
 			return diagnostic_key_is_valid(action.key)
 	}
@@ -298,6 +305,12 @@ diagnostic_driver_input :: proc(
 	keyboard: Keyboard_Input
 
 	switch action.action {
+		case "set_editor_camera":
+			driver.editor_camera_position = action.position
+			driver.editor_camera_rotation = action.rotation
+			driver.has_editor_camera_pose = true
+			diagnostic_driver_advance(driver)
+			return pointer, keyboard, ""
 		case "wait":
 			if driver.wait_remaining <= 0 {
 				driver.wait_remaining = action.frames
@@ -471,6 +484,20 @@ diagnostic_driver_input :: proc(
 	}
 	driver.last_pointer = pointer
 	return pointer, keyboard, ""
+}
+
+diagnostic_driver_consume_editor_camera_pose :: proc(
+	driver: ^Diagnostic_Driver,
+) -> (
+	position: shared.Vec3,
+	rotation: shared.Vec3,
+	ok: bool,
+) {
+	if driver == nil || !driver.has_editor_camera_pose {
+		return {}, {}, false
+	}
+	driver.has_editor_camera_pose = false
+	return driver.editor_camera_position, driver.editor_camera_rotation, true
 }
 
 diagnostic_driver_missing_target :: proc(

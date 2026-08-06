@@ -21,6 +21,50 @@ DIAGNOSTIC_DRIVER_TEST_SCRIPT :: `{
   ]
 }`
 
+DIAGNOSTIC_DRIVER_CAMERA_SCRIPT :: `{
+  "schema_version": 1,
+  "actions": [
+    {
+      "action": "set_editor_camera",
+      "position": {"x": -18.897524, "y": 6.966067, "z": -9.967772},
+      "rotation": {"x": 0.079736, "y": -0.776758, "z": 0.0}
+    }
+  ]
+}`
+
+@(test)
+test_diagnostic_driver_emits_editor_camera_pose_command :: proc(t: ^testing.T) {
+	directory, directory_err := os.make_directory_temp(
+		"",
+		"scrapbot-camera-driver-*",
+		context.temp_allocator,
+	)
+	testing.expect(t, directory_err == nil)
+	if directory_err != nil {
+		return
+	}
+	defer os.remove_all(directory)
+	script_path, path_err := filepath.join({directory, "camera.json"})
+	testing.expect(t, path_err == nil)
+	if path_err != nil {
+		return
+	}
+	defer delete(script_path)
+	testing.expect(t, os.write_entire_file(script_path, DIAGNOSTIC_DRIVER_CAMERA_SCRIPT) == nil)
+
+	driver: Diagnostic_Driver
+	testing.expect(t, diagnostic_driver_load(&driver, script_path) == "")
+	defer diagnostic_driver_destroy(&driver)
+	_, _, driver_err := diagnostic_driver_input(&driver, nil, nil, 1280, 720)
+	testing.expect(t, driver_err == "")
+	position, rotation, ok := diagnostic_driver_consume_editor_camera_pose(&driver)
+	testing.expect(t, ok)
+	testing.expect_value(t, position, shared.Vec3{-18.897524, 6.966067, -9.967772})
+	testing.expect_value(t, rotation, shared.Vec3{0.079736, -0.776758, 0})
+	_, _, ok = diagnostic_driver_consume_editor_camera_pose(&driver)
+	testing.expect(t, !ok)
+}
+
 @(test)
 test_diagnostic_driver_replays_semantic_actions_and_dumps_the_ui_tree :: proc(t: ^testing.T) {
 	directory, directory_err := os.make_directory_temp(

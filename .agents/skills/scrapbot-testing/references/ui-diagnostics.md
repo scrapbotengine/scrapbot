@@ -51,6 +51,7 @@ Example script:
 - `wait`: supply a positive `frames` count.
 - `expect`: target a node and supply an expectation. A `text` expectation compares the action's `text` field.
 - `capture`: target a node and optionally supply pixel `padding`. This defines the framegrab crop unless `--framegrab-region` is explicit.
+- `set_editor_camera`: supply `position` and `rotation` objects with `x`, `y`, and `z` fields. This requires `--editor`, changes only the transient fly-camera ECS entity, and leaves the project's camera and simulation independent.
 
 Every non-key target may combine `uuid`, `name`, `text`, `origin`, and `occurrence`. Prefer the least brittle selector that expresses the behavior.
 

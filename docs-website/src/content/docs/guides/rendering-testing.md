@@ -472,10 +472,12 @@ Scripts use schema version 1 and execute actions sequentially:
 
 Available actions are:
 
-- `click`, `hover`, `scroll`, `type`, `drag`, `key`, `wait`, `expect`, and `capture`;
+- `click`, `hover`, `scroll`, `type`, `drag`, `key`, `wait`, `expect`, `capture`, and `set_editor_camera`;
 - `scroll` takes `wheel_y`;
 - `type` takes `text`;
 - `wait` takes a frame count.
+
+`set_editor_camera` takes `position` and `rotation` Vec3 objects. It requires `--editor` and sets the transient fly camera without moving or replacing the project's camera entity. Use it before a multi-frame wait or profile capture to reproduce viewpoint-dependent rendering behavior while project simulation continues independently.
 
 A drag starts at the target center. It moves by `delta_x`/`delta_y` or towards a semantic `destination`, then releases.
 

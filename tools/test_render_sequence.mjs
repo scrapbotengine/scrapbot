@@ -21,6 +21,8 @@ export function parseArguments(arguments_) {
     requireTransitionActivity: false,
     requireResidencyPressure: false,
     cpuReference: false,
+    editor: false,
+    uiScript: undefined,
     goldenDirectory: undefined,
     minimumPsnr: 32,
   };
@@ -46,6 +48,10 @@ export function parseArguments(arguments_) {
       options.requireResidencyPressure = true;
       continue;
     }
+    if (argument === "--editor") {
+      options.editor = true;
+      continue;
+    }
     const names = new Map([
       ["--binary", "binary"],
       ["--project", "project"],
@@ -56,6 +62,7 @@ export function parseArguments(arguments_) {
       ["--out", "out"],
       ["--golden-dir", "goldenDirectory"],
       ["--minimum-psnr", "minimumPsnr"],
+      ["--ui-script", "uiScript"],
     ]);
     const name = names.get(argument);
     if (!name || !arguments_[index + 1]) {
@@ -292,7 +299,7 @@ function main() {
   options.out = path.resolve(root, options.out);
   fs.rmSync(options.out, { recursive: true, force: true });
   fs.mkdirSync(path.dirname(options.out), { recursive: true });
-  const raw = run(path.resolve(root, options.binary), [
+  const profileArguments = [
     "profile",
     options.project,
     "--warmup",
@@ -305,8 +312,11 @@ function main() {
     options.captureRange,
     "--out",
     options.out,
+    ...(options.editor ? ["--editor"] : []),
+    ...(options.uiScript ? ["--ui-script", options.uiScript] : []),
     "--json",
-  ]);
+  ];
+  const raw = run(path.resolve(root, options.binary), profileArguments);
   const envelope = JSON.parse(raw);
   if (envelope.schema_version !== 1 || envelope.command !== "profile" || envelope.ok !== true) {
     throw new Error("Scrapbot profile did not succeed");
@@ -331,6 +341,8 @@ function main() {
       options.captureRange,
       "--out",
       cpuReferenceDirectory,
+      ...(options.editor ? ["--editor"] : []),
+      ...(options.uiScript ? ["--ui-script", options.uiScript] : []),
       "--json",
     ]);
     const referenceEnvelope = JSON.parse(referenceRaw);
@@ -380,6 +392,8 @@ function main() {
     required_transition: options.requireTransition,
     required_residency_pressure: options.requireResidencyPressure,
     cpu_reference: options.cpuReference,
+    editor: options.editor,
+    ui_script: options.uiScript ?? null,
     cpu_reference_directory: cpuReferenceDirectory,
     golden_directory: options.goldenDirectory ?? null,
     captures,

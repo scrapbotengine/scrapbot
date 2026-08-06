@@ -129,6 +129,32 @@ editor_scene_camera_system :: proc(
 	)
 }
 
+set_editor_scene_camera_pose :: proc(
+	world: ^World,
+	position: shared.Vec3,
+	rotation: shared.Vec3,
+) -> bool {
+	entity_index, _, ok := reconcile_editor_scene_camera(world, true)
+	if !ok || entity_index < 0 || entity_index >= len(world.entities) {
+		return false
+	}
+	entity := &world.entities[entity_index]
+	if entity.transform_index < 0 || entity.transform_index >= len(world.transforms) {
+		return false
+	}
+	transform := world.transforms[entity.transform_index]
+	transform.position = position
+	transform.rotation = rotation
+	transform.rotation.x = clamp(
+		transform.rotation.x,
+		-math.to_radians(f32(89)),
+		math.to_radians(f32(89)),
+	)
+	transform.rotation.z = 0
+	add_transform(world, entity_index, transform)
+	return true
+}
+
 reconcile_editor_transform_gizmo :: proc(
 	world: ^World,
 	selected: shared.Entity,

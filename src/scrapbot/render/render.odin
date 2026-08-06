@@ -1117,6 +1117,13 @@ run_frame_system_unmeasured :: proc(
 			}
 			pointer = driver_pointer
 			keyboard = driver_keyboard
+			if camera_position, camera_rotation, requested :=
+				ui.diagnostic_driver_consume_editor_camera_pose(config.ui_driver); requested {
+				if !config.ui_state.editor_visible ||
+				   !ecs.set_editor_scene_camera_pose(world, camera_position, camera_rotation) {
+					return "UI diagnostic editor-camera action requires the visible editor"
+				}
+			}
 		}
 		camera, has_camera := ecs.active_camera_instance(world, config.ui_state.editor_visible)
 		gizmo_system_start := time.tick_now()

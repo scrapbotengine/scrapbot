@@ -127,9 +127,11 @@ Tree mode is an opt-in extension of the same list rather than a second widget. D
 
 ### 11. Drive diagnostics through semantic retained state
 
-**Decision:** Let bounded renderer runs inspect and drive the reconciled ECS UI tree by entity identity and visible control data, while preserving ordinary input, layout, scrolling, state, and paint paths.
-**Why:** Automated agents and tests need to reproduce interaction bugs without OS automation, coordinate guessing, or editor-only fixtures, and need structured geometry alongside pixels when a visual assertion fails.
-**Tradeoff:** Text-only targets can be ambiguous and therefore support an occurrence selector; scripts that depend on internal editor names remain diagnostic contracts rather than public project APIs.
+**Decision:** Let bounded renderer runs inspect and drive the reconciled ECS UI tree by entity identity and visible control data, while preserving ordinary input, layout, scrolling, state, and paint paths. Diagnostic scripts may also request an exact editor-camera pose; renderer orchestration consumes that command through the ordinary transient editor-camera ECS entity before selecting the active render camera.
+
+**Why:** Automated agents and tests need to reproduce interaction and viewpoint-dependent rendering bugs without OS automation, coordinate guessing, editor-only fixtures, or conflating the project camera with the editor fly camera. They also need structured geometry alongside pixels when a visual assertion fails.
+
+**Tradeoff:** Text-only targets can be ambiguous and therefore support an occurrence selector. Scripts that depend on internal editor names or editor-camera poses remain diagnostic contracts rather than public project APIs.
 
 ### 12. Keep HDR color direct and linear
 

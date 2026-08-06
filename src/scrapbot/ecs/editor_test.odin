@@ -114,3 +114,17 @@ test_editor_scene_camera_is_an_ecs_entity_and_fly_system_moves_it :: proc(t: ^te
 	testing.expect(t, after.transform.rotation.y > camera.transform.rotation.y)
 	testing.expect(t, after.transform.rotation.x > camera.transform.rotation.x)
 }
+
+@(test)
+test_editor_scene_camera_pose_can_be_set_for_semantic_diagnostics :: proc(t: ^testing.T) {
+	world: World
+	defer destroy_world(&world)
+
+	position := shared.Vec3{-18.897524, 6.966067, -9.967772}
+	rotation := shared.Vec3{0.079736, -0.776758, 0.4}
+	testing.expect(t, set_editor_scene_camera_pose(&world, position, rotation))
+	camera, ok := active_camera_instance(&world, true)
+	testing.expect(t, ok)
+	testing.expect_value(t, camera.transform.position, position)
+	testing.expect_value(t, camera.transform.rotation, shared.Vec3{rotation.x, rotation.y, 0})
+}
