@@ -34,6 +34,10 @@ Profile_Workload :: struct {
 	clustered_lighting: Profile_Pass_Workload,
 	spectral_surface: Profile_Pass_Workload,
 	shadow: Profile_Pass_Workload,
+	shadow_cascade_0: Profile_Pass_Workload,
+	shadow_cascade_1: Profile_Pass_Workload,
+	shadow_cascade_2: Profile_Pass_Workload,
+	shadow_cascade_3: Profile_Pass_Workload,
 	depth: Profile_Pass_Workload,
 	world: Profile_Pass_Workload,
 	hiz: Profile_Pass_Workload,
@@ -107,6 +111,10 @@ Profile_Summary :: struct {
 	gpu_clustered_lighting: Profile_Distribution,
 	gpu_cull: Profile_Distribution,
 	gpu_shadow: Profile_Distribution,
+	gpu_shadow_cascade_0: Profile_Distribution,
+	gpu_shadow_cascade_1: Profile_Distribution,
+	gpu_shadow_cascade_2: Profile_Distribution,
+	gpu_shadow_cascade_3: Profile_Distribution,
 	gpu_depth: Profile_Distribution,
 	gpu_world: Profile_Distribution,
 	gpu_hiz: Profile_Distribution,
@@ -450,6 +458,7 @@ profile_counter_deltas :: proc(current, previous: Render_Stats) -> Profile_Count
 
 Profile_GPU_Stats :: struct {
 	frame, scene, instance_expansion, clustered_lighting, cull, shadow, depth, world, hiz: f64,
+	shadow_cascades: [WGPU_SHADOW_CASCADE_COUNT]f64,
 	temporal_aa, ambient_occlusion, screen_space_reflections: f64,
 	volumetric_fog, bloom, automatic_exposure, composite, ui: f64,
 }
@@ -462,6 +471,7 @@ profile_gpu_stats :: proc(stats: Render_Stats) -> Profile_GPU_Stats {
 		clustered_lighting = stats.gpu_clustered_lighting_ms,
 		cull = stats.gpu_cull_ms,
 		shadow = stats.gpu_shadow_ms,
+		shadow_cascades = stats.gpu_shadow_cascade_ms,
 		depth = stats.gpu_depth_ms,
 		world = stats.gpu_world_ms,
 		hiz = stats.gpu_hiz_ms,
@@ -484,6 +494,7 @@ profile_apply_gpu_stats :: proc(stats: ^Render_Stats, gpu: Profile_GPU_Stats) {
 	stats.gpu_clustered_lighting_ms = gpu.clustered_lighting
 	stats.gpu_cull_ms = gpu.cull
 	stats.gpu_shadow_ms = gpu.shadow
+	stats.gpu_shadow_cascade_ms = gpu.shadow_cascades
 	stats.gpu_depth_ms = gpu.depth
 	stats.gpu_world_ms = gpu.world
 	stats.gpu_hiz_ms = gpu.hiz
@@ -560,6 +571,10 @@ finish_profile_collector :: proc(collector: ^Profile_Collector) {
 	gpu_clustered_lighting := make([dynamic]f64, 0, len(collector.frames))
 	gpu_cull := make([dynamic]f64, 0, len(collector.frames))
 	gpu_shadow := make([dynamic]f64, 0, len(collector.frames))
+	gpu_shadow_cascade_0 := make([dynamic]f64, 0, len(collector.frames))
+	gpu_shadow_cascade_1 := make([dynamic]f64, 0, len(collector.frames))
+	gpu_shadow_cascade_2 := make([dynamic]f64, 0, len(collector.frames))
+	gpu_shadow_cascade_3 := make([dynamic]f64, 0, len(collector.frames))
 	gpu_depth := make([dynamic]f64, 0, len(collector.frames))
 	gpu_world := make([dynamic]f64, 0, len(collector.frames))
 	gpu_hiz := make([dynamic]f64, 0, len(collector.frames))
@@ -579,6 +594,10 @@ finish_profile_collector :: proc(collector: ^Profile_Collector) {
 		delete(gpu_clustered_lighting)
 		delete(gpu_cull)
 		delete(gpu_shadow)
+		delete(gpu_shadow_cascade_0)
+		delete(gpu_shadow_cascade_1)
+		delete(gpu_shadow_cascade_2)
+		delete(gpu_shadow_cascade_3)
 		delete(gpu_depth)
 		delete(gpu_world)
 		delete(gpu_hiz)
@@ -603,6 +622,10 @@ finish_profile_collector :: proc(collector: ^Profile_Collector) {
 		append(&gpu_clustered_lighting, stats.gpu_clustered_lighting_ms)
 		append(&gpu_cull, stats.gpu_cull_ms)
 		append(&gpu_shadow, stats.gpu_shadow_ms)
+		append(&gpu_shadow_cascade_0, stats.gpu_shadow_cascade_ms[0])
+		append(&gpu_shadow_cascade_1, stats.gpu_shadow_cascade_ms[1])
+		append(&gpu_shadow_cascade_2, stats.gpu_shadow_cascade_ms[2])
+		append(&gpu_shadow_cascade_3, stats.gpu_shadow_cascade_ms[3])
 		append(&gpu_depth, stats.gpu_depth_ms)
 		append(&gpu_world, stats.gpu_world_ms)
 		append(&gpu_hiz, stats.gpu_hiz_ms)
@@ -626,6 +649,10 @@ finish_profile_collector :: proc(collector: ^Profile_Collector) {
 		gpu_clustered_lighting = profile_distribution(gpu_clustered_lighting[:]),
 		gpu_cull = profile_distribution(gpu_cull[:]),
 		gpu_shadow = profile_distribution(gpu_shadow[:]),
+		gpu_shadow_cascade_0 = profile_distribution(gpu_shadow_cascade_0[:]),
+		gpu_shadow_cascade_1 = profile_distribution(gpu_shadow_cascade_1[:]),
+		gpu_shadow_cascade_2 = profile_distribution(gpu_shadow_cascade_2[:]),
+		gpu_shadow_cascade_3 = profile_distribution(gpu_shadow_cascade_3[:]),
 		gpu_depth = profile_distribution(gpu_depth[:]),
 		gpu_world = profile_distribution(gpu_world[:]),
 		gpu_hiz = profile_distribution(gpu_hiz[:]),

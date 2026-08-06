@@ -170,13 +170,13 @@ JSON run results also include `render_stats`. For WGPU, the object groups togeth
 - Virtual-geometry topology and residency: page budget, resident bytes, total/resident/pinned pages, request/feedback counts, overflow, cumulative page/group uploads, evictions, upload bytes, and deferred group admissions.
 - Virtual-geometry selection and handoff: the active drawable frontier, projected-error overlap, drawable-group activations, `virtual_geometry_transitioning_groups`, and `visible_virtual_blend_clusters`.
 - Visibility capacity: `candidate_record_overflow`, `visible_record_overflow`, and `shadow_record_overflow` count GPU records rejected because their retained slice was full. Healthy frames report zero. On the portable compact path, `shadow_visible_meshlets` remains zero while `shadow_visible_instances` reports conservative indexed object-LOD cascade visibility.
-- Shadow-cascade, cluster-count, per-cluster light-capacity, clustered-point-light, and cluster-dispatch values.
+- Shadow refresh mask, per-cascade visible meshlet counts, cluster count, per-cluster light capacity, clustered-point-light count, and cluster-dispatch values.
 - Draw-database, instance-slot, and visibility-buffer capacities, database rebuilds, and cumulative instance uploads.
 - Shared vertex/index arena capacity and resident bytes plus cumulative geometry uploads, upload bytes, and backing-buffer growths.
 - Frustum candidates, explicit frustum rejections, visible instances, per-LOD visible counts, and Hi-Z validity, status, mip count, and adaptive instance threshold.
 - Retained-UI vertex rebuild and upload counters for project UI, editor UI, and editor-world overlays.
 
-When the adapter supports timestamp queries, `gpu_timestamps_supported` and `gpu_timestamps_valid` qualify asynchronous `gpu_frame_ms` and `gpu_scene_ms` ordered pass-boundary spans. Separate `gpu_cull_ms`, `gpu_shadow_ms`, `gpu_depth_ms`, `gpu_world_ms`, `gpu_hiz_ms`, `gpu_bloom_ms`, `gpu_composite_ms`, and `gpu_ui_ms` values attribute individual passes and are not summed into frame duration.
+When the adapter supports timestamp queries, `gpu_timestamps_supported` and `gpu_timestamps_valid` qualify asynchronous `gpu_frame_ms` and `gpu_scene_ms` ordered pass-boundary spans. Separate `gpu_cull_ms`, aggregate `gpu_shadow_ms`, `gpu_shadow_cascade_ms`, `gpu_depth_ms`, `gpu_world_ms`, `gpu_hiz_ms`, `gpu_bloom_ms`, `gpu_composite_ms`, and `gpu_ui_ms` values attribute individual passes and are not summed into frame duration. A zero far-cascade value can represent a deliberately retained layer; inspect `shadow_cascade_render_mask` before treating it as absent work.
 
 Visibility counters and timestamps use multi-frame readback rings. The renderer never waits synchronously and retains the latest completed sample when a frame has no new result.
 

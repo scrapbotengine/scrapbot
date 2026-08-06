@@ -19,6 +19,56 @@ WGPU_MESHLET_DEBUG_VERTEX_COUNT ::
 	WGPU_MESHLET_DEBUG_SPHERE_VERTEX_COUNT + WGPU_OCCLUSION_DEBUG_RECT_VERTEX_COUNT
 WGPU_MESHLET_MIN_BATCH_INSTANCES :: u32(2)
 WGPU_COMPACT_CLUSTER_VERTEX_COUNT :: u32(124 * 3)
+WGPU_SHADOW_CASCADE_UPDATE_CADENCE :: [WGPU_SHADOW_CASCADE_COUNT]u64{1, 2, 4, 8}
+WGPU_SHADOW_CASCADE_UPDATE_OFFSET :: [WGPU_SHADOW_CASCADE_COUNT]u64{0, 0, 3, 5}
+
+wgpu_shadow_cascade_update_mask :: proc "contextless" (frame_index: u64, force: bool) -> u32 {
+	if force {
+		return (u32(1) << WGPU_SHADOW_CASCADE_COUNT) - 1
+	}
+	mask: u32
+	cadences := WGPU_SHADOW_CASCADE_UPDATE_CADENCE
+	offsets := WGPU_SHADOW_CASCADE_UPDATE_OFFSET
+	for cascade_index in 0 ..< WGPU_SHADOW_CASCADE_COUNT {
+		cadence := cadences[cascade_index]
+		if (frame_index + offsets[cascade_index]) % cadence == 0 {
+			mask |= u32(1) << u32(cascade_index)
+		}
+	}
+	return mask
+}
+
+wgpu_retain_shadow_cascades :: proc(
+	renderer: ^WGPU_Renderer,
+	desired: WGPU_Shadow_Cascades,
+	active: bool,
+	force: bool,
+) -> WGPU_Shadow_Cascades {
+	if renderer == nil || !active {
+		if renderer != nil {
+			renderer.shadow_cascades_valid = false
+			renderer.shadow_cascade_render_mask = 0
+		}
+		return desired
+	}
+	force_refresh :=
+		force ||
+		!renderer.shadow_cascades_valid ||
+		renderer.shadow_cascade_resolution != renderer.shadow_map_resolution
+	mask := wgpu_shadow_cascade_update_mask(renderer.profile_frame_index, force_refresh)
+	for cascade_index in 0 ..< WGPU_SHADOW_CASCADE_COUNT {
+		if mask & (u32(1) << u32(cascade_index)) == 0 {
+			continue
+		}
+		renderer.shadow_cascades.matrices[cascade_index] = desired.matrices[cascade_index]
+		renderer.shadow_cascades.splits[cascade_index] = desired.splits[cascade_index]
+		renderer.shadow_cascades.texel_sizes[cascade_index] = desired.texel_sizes[cascade_index]
+	}
+	renderer.shadow_cascades_valid = true
+	renderer.shadow_cascade_resolution = renderer.shadow_map_resolution
+	renderer.shadow_cascade_render_mask = mask
+	return renderer.shadow_cascades
+}
 
 WGPU_Submission_Mode :: enum u32 {
 	Classic,
@@ -4123,9 +4173,10 @@ wgpu_prepare_gpu_draw_batches :: proc(
 	)
 	view_projection := mat4_mul(projection, view)
 	temporal_camera := wgpu_temporal_camera_state(render_list.camera, render_list.has_camera)
-	if temporal_world_changed ||
-	   (renderer.temporal_camera_valid &&
-			   !wgpu_temporal_camera_continuous(renderer.temporal_camera, temporal_camera)) {
+	shadow_camera_discontinuous :=
+		renderer.temporal_camera_valid &&
+		!wgpu_temporal_camera_continuous(renderer.temporal_camera, temporal_camera)
+	if temporal_world_changed || shadow_camera_discontinuous {
 		renderer.temporal_history_valid = false
 		renderer.temporal_sample_index = 0
 	}
@@ -4171,6 +4222,15 @@ wgpu_prepare_gpu_draw_batches :: proc(
 			max(renderer.shadow_map_resolution, WGPU_SHADOW_MAP_MIN_SIZE),
 		)
 	}
+	shadow_cascades = wgpu_retain_shadow_cascades(
+		renderer,
+		shadow_cascades,
+		render_list.directional_light_count > 0,
+		temporal_world_changed ||
+		topology_changed ||
+		shadow_camera_discontinuous ||
+		len(render_list.dirty_instance_slots) > 0,
+	)
 	uniform.view_projection = jittered_view_projection
 	uniform.view = view
 	uniform.shadow_view_projections = shadow_cascades.matrices

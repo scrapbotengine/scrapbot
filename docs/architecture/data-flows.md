@@ -214,7 +214,9 @@ Explicit ECS lights remain additive. Only the first directional render light own
 
 Scenes that need one coherent sun should use either the procedural environment sun or one authored directional light, not both.
 
-WGPU retains active point lights in a geometrically growing buffer and rebuilds 16×9×24 cluster membership only after point-light, camera, viewport, or capacity changes. Four stabilized camera-relative projections feed independent shadow-cull lanes and depth-array layers.
+WGPU retains active point lights in a geometrically growing buffer and rebuilds 16×9×24 cluster membership only after point-light, camera, viewport, or capacity changes.
+
+Four stabilized camera-relative projections feed independent shadow-cull lanes and depth-array layers. The near layer refreshes each frame. Far layers retain their projection and depth between staggered 2/4/8-frame updates, so an ordinary frame rasterizes no more than two cascades. Light activation, world/topology/Transform changes, camera cuts, and shadow-resolution changes force all four layers to refresh.
 
 One optional `scrapbot.volumetric_fog` component supplies a global exponential height medium. Postprocessing reads only that component storage's compact active set and clamps the reflected payload. A separately timed half-resolution compute pass folds 16 temporally rotated low-discrepancy ray samples into scattering/transmittance; the full-resolution temporal pass depth-aware upsamples that result before history accumulation.
 
@@ -319,7 +321,9 @@ optional fresh deterministic replay ──> lossless 1:1 frame sequence
 
 A requested capture range starts from a fresh project world and writes images during a second replay. Those readback stalls cannot contaminate the telemetry report.
 
-Post-run tools consume the artifact without engine access. The analyzer ranks GPU-pass p95 values, prints representative target/dispatch/draw/sample workloads, totals frame-local counters, and rejects comparisons with different adapters or render dimensions. The sweep driver orchestrates independent profile bundles at each requested resolution and writes a compact scaling report.
+Post-run tools consume the artifact without engine access. The analyzer ranks GPU-pass p95 values, including each directional-shadow cascade, and prints representative target/dispatch/draw/sample workloads. It totals frame-local counters and rejects comparisons with different adapters or render dimensions.
+
+Each row's raw renderer snapshot records the cascade refresh mask and per-cascade visible cluster counts. Matching per-cascade workload entries carry their enabled state, so a retained layer is distinguishable from an empty or unsupported pass. The sweep driver orchestrates independent profile bundles at each requested resolution and writes a compact scaling report.
 
 ## ECS UI and editor
 

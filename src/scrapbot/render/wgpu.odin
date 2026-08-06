@@ -81,7 +81,8 @@ WGPU_GPU_SHADOW_EXTRA_QUERY_BASE :: WGPU_GPU_HIZ_EXTRA_QUERY_BASE + (WGPU_MAX_HI
 WGPU_GPU_TIMESTAMP_QUERY_COUNT ::
 	WGPU_GPU_SHADOW_EXTRA_QUERY_BASE + (WGPU_SHADOW_CASCADE_COUNT - 1) * 2
 WGPU_GPU_TIMESTAMP_RESOLVE_ALIGNMENT :: u64(256)
-WGPU_GPU_TIMESTAMP_RESOLVE_RANGE_COUNT :: WGPU_GPU_TIMESTAMP_PHASE_COUNT + 2
+WGPU_GPU_TIMESTAMP_RESOLVE_RANGE_COUNT ::
+	WGPU_GPU_TIMESTAMP_PHASE_COUNT + WGPU_SHADOW_CASCADE_COUNT + 1
 #assert((WGPU_MAX_HIZ_LEVELS - 1) * 2 * size_of(u64) <= WGPU_GPU_TIMESTAMP_RESOLVE_ALIGNMENT)
 
 WGPU_GPU_Timestamp_Resolve_Range :: struct {
@@ -97,6 +98,7 @@ WGPU_GPU_Timestamp_Readback :: struct {
 	dynamic_resolution_generation: u64,
 	hiz_mip_count: int,
 	phase_mask: u32,
+	shadow_cascade_mask: u32,
 }
 
 WGPU_Dynamic_Resolution_Sample :: struct {
@@ -136,6 +138,7 @@ WGPU_GPU_Visibility_Summary :: struct {
 	virtual_page_demand_feedback_overflow: u32,
 	virtual_page_touch_feedback_overflow: u32,
 	virtual_page_prefetch_feedback_overflow: u32,
+	shadow_visible_meshlets_by_cascade: [WGPU_SHADOW_CASCADE_COUNT]u32,
 }
 
 WGPU_GPU_Visibility_Counters :: struct {
@@ -986,10 +989,15 @@ WGPU_Renderer :: struct {
 	gpu_timestamp_resolution_samples: [WGPU_GPU_TIMESTAMP_FRAMES]WGPU_Dynamic_Resolution_Sample,
 	gpu_timestamp_resolution_sample_count: int,
 	gpu_timestamp_phase_ms: [WGPU_GPU_TIMESTAMP_PHASE_COUNT]f64,
+	gpu_timestamp_shadow_cascade_ms: [WGPU_SHADOW_CASCADE_COUNT]f64,
 	gpu_timestamp_frame_ms: f64,
 	gpu_timestamp_scene_ms: f64,
 	dynamic_resolution: Frame_Budget_State,
 	shadow_map_resolution: u32,
+	shadow_cascades: WGPU_Shadow_Cascades,
+	shadow_cascades_valid: bool,
+	shadow_cascade_resolution: u32,
+	shadow_cascade_render_mask: u32,
 	profile: ^Profile_Collector,
 	profile_frame_index: u64,
 	shadow_bind_group_layout: wgpu.BindGroupLayout,
@@ -1474,17 +1482,39 @@ wgpu_profile_workload :: proc(
 		}
 	}
 	shadow := Profile_Pass_Workload{}
+	shadow_cascade_workloads: [WGPU_SHADOW_CASCADE_COUNT]Profile_Pass_Workload
 	shadow_cascades := u32(0)
 	if renderer.render_list.directional_light_count > 0 {
-		shadow_cascades = WGPU_SHADOW_CASCADE_COUNT
+		shadow_mask := renderer.shadow_cascade_render_mask
 		shadow = {
 			enabled = true,
 			width = max(renderer.shadow_map_resolution, WGPU_SHADOW_MAP_MIN_SIZE),
 			height = max(renderer.shadow_map_resolution, WGPU_SHADOW_MAP_MIN_SIZE),
-			passes = shadow_cascades,
-			draws = shadow_draws * u64(shadow_cascades),
 			instances = shadow_instances,
 		}
+		for cascade_index in 0 ..< WGPU_SHADOW_CASCADE_COUNT {
+			cascade_enabled := shadow_mask & (u32(1) << u32(cascade_index)) != 0
+			if cascade_enabled {
+				shadow_cascades += 1
+			}
+			cascade_draws := shadow_draws
+			cascade_instances := shadow_instances
+			if stats != nil && stats.shadow_visible_meshlets_by_cascade[cascade_index] > 0 {
+				cascade_instances = u64(stats.shadow_visible_meshlets_by_cascade[cascade_index])
+			}
+			shadow_cascade_workloads[cascade_index] = {
+				enabled = cascade_enabled,
+				width = shadow.width,
+				height = shadow.height,
+				passes = 1 if cascade_enabled else 0,
+				draws = cascade_draws if cascade_enabled else 0,
+				instances = cascade_instances,
+			}
+			if cascade_enabled {
+				shadow.draws += cascade_draws
+			}
+		}
+		shadow.passes = shadow_cascades
 	}
 	hiz_workgroups: u64
 	hiz_invocations: u64
@@ -1557,6 +1587,10 @@ wgpu_profile_workload :: proc(
 			1,
 		),
 		shadow = shadow,
+		shadow_cascade_0 = shadow_cascade_workloads[0],
+		shadow_cascade_1 = shadow_cascade_workloads[1],
+		shadow_cascade_2 = shadow_cascade_workloads[2],
+		shadow_cascade_3 = shadow_cascade_workloads[3],
 		depth = {
 			enabled = geometry_draws > 0,
 			width = viewport_width,
@@ -3826,6 +3860,9 @@ wgpu_encode_shadow_pass :: proc(
 	registry: ^resources.Registry,
 ) -> string {
 	for cascade_index in 0 ..< WGPU_SHADOW_CASCADE_COUNT {
+		if renderer.shadow_cascade_render_mask & (u32(1) << u32(cascade_index)) == 0 {
+			continue
+		}
 		if err := wgpu_encode_shadow_cascade_pass(
 			renderer,
 			encoder,
@@ -4183,6 +4220,7 @@ wgpu_draw_frame :: proc(
 			WGPU_SHADOW_CASCADE_COUNT if renderer.render_list.directional_light_count > 0 else 0
 		config.stats.shadow_resolution =
 			renderer.shadow_map_resolution if renderer.render_list.directional_light_count > 0 else 0
+		config.stats.shadow_cascade_render_mask = renderer.shadow_cascade_render_mask
 		config.stats.cluster_count = WGPU_CLUSTER_COUNT
 		config.stats.cluster_max_lights = renderer.gpu_cluster_light_capacity
 		config.stats.clustered_point_lights = renderer.gpu_clustered_light_count
@@ -4479,6 +4517,7 @@ wgpu_render_offscreen_frame :: proc(
 			WGPU_SHADOW_CASCADE_COUNT if renderer.render_list.directional_light_count > 0 else 0
 		config.stats.shadow_resolution =
 			renderer.shadow_map_resolution if renderer.render_list.directional_light_count > 0 else 0
+		config.stats.shadow_cascade_render_mask = renderer.shadow_cascade_render_mask
 		config.stats.cluster_count = WGPU_CLUSTER_COUNT
 		config.stats.cluster_max_lights = renderer.gpu_cluster_light_capacity
 		config.stats.clustered_point_lights = renderer.gpu_clustered_light_count

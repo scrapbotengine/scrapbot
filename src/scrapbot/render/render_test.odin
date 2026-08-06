@@ -501,6 +501,7 @@ test_gpu_meshlet_cone_culling_requires_a_positive_uniform_transform :: proc(t: ^
 	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "candidate_record_overflow"))
 	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "visible_record_overflow"))
 	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "shadow_record_overflow"))
+	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "shadow_visible_meshlets_by_cascade"))
 }
 
 @(test)
@@ -2883,8 +2884,8 @@ test_wgpu_gpu_timing_resolves_only_queries_written_by_the_frame :: proc(t: ^test
 	phase_mask :=
 		u32(1) << u32(WGPU_GPU_Timestamp_Phase.Shadow) |
 		u32(1) << u32(WGPU_GPU_Timestamp_Phase.World)
-	ranges, count := wgpu_gpu_timestamp_resolve_ranges(phase_mask, 3)
-	testing.expect_value(t, count, 4)
+	ranges, count := wgpu_gpu_timestamp_resolve_ranges(phase_mask, 3, 0b1011)
+	testing.expect_value(t, count, 5)
 	testing.expect_value(t, ranges[0].first, u32(WGPU_GPU_Timestamp_Phase.Shadow) * 2)
 	testing.expect_value(t, ranges[0].count, 2)
 	testing.expect_value(t, ranges[1].first, u32(WGPU_GPU_Timestamp_Phase.World) * 2)
@@ -2892,7 +2893,9 @@ test_wgpu_gpu_timing_resolves_only_queries_written_by_the_frame :: proc(t: ^test
 	testing.expect_value(t, ranges[2].first, u32(WGPU_GPU_HIZ_EXTRA_QUERY_BASE))
 	testing.expect_value(t, ranges[2].count, 4)
 	testing.expect_value(t, ranges[3].first, u32(WGPU_GPU_SHADOW_EXTRA_QUERY_BASE))
-	testing.expect_value(t, ranges[3].count, u32((WGPU_SHADOW_CASCADE_COUNT - 1) * 2))
+	testing.expect_value(t, ranges[3].count, u32(2))
+	testing.expect_value(t, ranges[4].first, u32(WGPU_GPU_SHADOW_EXTRA_QUERY_BASE + 4))
+	testing.expect_value(t, ranges[4].count, u32(2))
 	_, empty_count := wgpu_gpu_timestamp_resolve_ranges(0, 0)
 	testing.expect_value(t, empty_count, 0)
 }
@@ -3104,6 +3107,23 @@ test_wgpu_post_timing_includes_camera_post_effects :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_wgpu_gpu_timing_publishes_each_shadow_cascade :: proc(t: ^testing.T) {
+	renderer: WGPU_Renderer
+	renderer.gpu_timestamp_valid = true
+	renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Shadow)] = 10
+	renderer.gpu_timestamp_shadow_cascade_ms = {1, 2, 3, 4}
+	stats: Render_Stats
+	wgpu_publish_gpu_timing(&renderer, &stats)
+	testing.expect_value(t, stats.gpu_shadow_ms, 10)
+	testing.expect_value(t, stats.gpu_shadow_cascade_ms, [4]f64{1, 2, 3, 4})
+	gpu := profile_gpu_stats(stats)
+	testing.expect_value(t, gpu.shadow_cascades, [4]f64{1, 2, 3, 4})
+	replayed: Render_Stats
+	profile_apply_gpu_stats(&replayed, gpu)
+	testing.expect_value(t, replayed.gpu_shadow_cascade_ms, [4]f64{1, 2, 3, 4})
+}
+
+@(test)
 test_wgpu_gpu_shadow_timing_uses_distinct_queries_for_every_cascade :: proc(t: ^testing.T) {
 	renderer: WGPU_Renderer
 	renderer.gpu_timestamp_supported = true
@@ -3126,6 +3146,59 @@ test_wgpu_gpu_shadow_timing_uses_distinct_queries_for_every_cascade :: proc(t: ^
 		u32(WGPU_GPU_SHADOW_EXTRA_QUERY_BASE),
 	)
 	testing.expect_value(t, last.endOfPassWriteIndex, u32(WGPU_GPU_TIMESTAMP_QUERY_COUNT - 1))
+	testing.expect_value(t, renderer.gpu_timestamp_readbacks[1].shadow_cascade_mask, u32(0b1011))
+}
+
+@(test)
+test_shadow_cascade_updates_keep_the_near_layer_live_and_stagger_far_layers :: proc(
+	t: ^testing.T,
+) {
+	testing.expect_value(t, wgpu_shadow_cascade_update_mask(0, false), u32(0b0011))
+	testing.expect_value(t, wgpu_shadow_cascade_update_mask(1, false), u32(0b0101))
+	testing.expect_value(t, wgpu_shadow_cascade_update_mask(2, false), u32(0b0011))
+	testing.expect_value(t, wgpu_shadow_cascade_update_mask(3, false), u32(0b1001))
+	testing.expect_value(t, wgpu_shadow_cascade_update_mask(7, false), u32(0b0001))
+	testing.expect_value(t, wgpu_shadow_cascade_update_mask(99, true), u32(0b1111))
+}
+
+@(test)
+test_shadow_cascade_retention_updates_only_scheduled_layers_and_forces_invalidations :: proc(
+	t: ^testing.T,
+) {
+	renderer := WGPU_Renderer {
+		shadow_map_resolution = 1024,
+		profile_frame_index = 0,
+	}
+	initial: WGPU_Shadow_Cascades
+	changed: WGPU_Shadow_Cascades
+	for cascade_index in 0 ..< WGPU_SHADOW_CASCADE_COUNT {
+		initial.splits[cascade_index] = f32(cascade_index + 1)
+		initial.texel_sizes[cascade_index] = f32(cascade_index + 10)
+		changed.splits[cascade_index] = f32(cascade_index + 101)
+		changed.texel_sizes[cascade_index] = f32(cascade_index + 110)
+	}
+
+	retained := wgpu_retain_shadow_cascades(&renderer, initial, true, false)
+	testing.expect(t, renderer.shadow_cascades_valid)
+	testing.expect_value(t, renderer.shadow_cascade_render_mask, u32(0b1111))
+	testing.expect_value(t, retained.splits, initial.splits)
+
+	renderer.profile_frame_index = 7
+	retained = wgpu_retain_shadow_cascades(&renderer, changed, true, false)
+	testing.expect_value(t, renderer.shadow_cascade_render_mask, u32(0b0001))
+	testing.expect_value(t, retained.splits[0], changed.splits[0])
+	for cascade_index in 1 ..< WGPU_SHADOW_CASCADE_COUNT {
+		testing.expect_value(t, retained.splits[cascade_index], initial.splits[cascade_index])
+	}
+
+	renderer.shadow_map_resolution = 512
+	retained = wgpu_retain_shadow_cascades(&renderer, changed, true, false)
+	testing.expect_value(t, renderer.shadow_cascade_render_mask, u32(0b1111))
+	testing.expect_value(t, retained.splits, changed.splits)
+
+	_ = wgpu_retain_shadow_cascades(&renderer, changed, false, false)
+	testing.expect(t, !renderer.shadow_cascades_valid)
+	testing.expect_value(t, renderer.shadow_cascade_render_mask, u32(0))
 }
 
 @(test)

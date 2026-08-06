@@ -97,6 +97,7 @@ wgpu_gpu_timestamp_span_include :: proc(
 wgpu_gpu_timestamp_resolve_ranges :: proc(
 	phase_mask: u32,
 	hiz_mip_count: int,
+	shadow_cascade_mask: u32 = 0,
 ) -> (
 	ranges: [WGPU_GPU_TIMESTAMP_RESOLVE_RANGE_COUNT]WGPU_GPU_Timestamp_Resolve_Range,
 	count: int,
@@ -118,10 +119,13 @@ wgpu_gpu_timestamp_resolve_ranges :: proc(
 		}
 		count += 1
 	}
-	if phase_mask & (u32(1) << u32(WGPU_GPU_Timestamp_Phase.Shadow)) != 0 {
+	for cascade_index in 1 ..< WGPU_SHADOW_CASCADE_COUNT {
+		if shadow_cascade_mask & (u32(1) << u32(cascade_index)) == 0 {
+			continue
+		}
 		ranges[count] = {
-			first = u32(WGPU_GPU_SHADOW_EXTRA_QUERY_BASE),
-			count = u32((WGPU_SHADOW_CASCADE_COUNT - 1) * 2),
+			first = u32(WGPU_GPU_SHADOW_EXTRA_QUERY_BASE + (cascade_index - 1) * 2),
+			count = 2,
 		}
 		count += 1
 	}
@@ -257,6 +261,11 @@ wgpu_gpu_timing_consume_readbacks :: proc(renderer: ^WGPU_Renderer) {
 			}
 			renderer.gpu_timestamp_phase_ms[phase_index] = duration_ms
 		}
+		renderer.gpu_timestamp_shadow_cascade_ms = {}
+		if readback.shadow_cascade_mask & 1 != 0 {
+			renderer.gpu_timestamp_shadow_cascade_ms[0] =
+				renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Shadow)]
+		}
 		for mip_index in 1 ..< readback.hiz_mip_count {
 			query_index := WGPU_GPU_HIZ_EXTRA_QUERY_BASE + (mip_index - 1) * 2
 			begin := values[query_index]
@@ -269,12 +278,16 @@ wgpu_gpu_timing_consume_readbacks :: proc(renderer: ^WGPU_Renderer) {
 		}
 		if readback.phase_mask & (u32(1) << u32(WGPU_GPU_Timestamp_Phase.Shadow)) != 0 {
 			for cascade_index in 1 ..< WGPU_SHADOW_CASCADE_COUNT {
+				if readback.shadow_cascade_mask & (u32(1) << u32(cascade_index)) == 0 {
+					continue
+				}
 				query_index := WGPU_GPU_SHADOW_EXTRA_QUERY_BASE + (cascade_index - 1) * 2
 				begin := values[query_index]
 				end := values[query_index + 1]
 				if end >= begin {
 					duration_ms :=
 						f64(end - begin) * renderer.gpu_timestamp_period_ns / 1_000_000.0
+					renderer.gpu_timestamp_shadow_cascade_ms[cascade_index] = duration_ms
 					renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Shadow)] +=
 						duration_ms
 					wgpu_gpu_timestamp_span_include(&timestamp_span, begin, end, true)
@@ -312,6 +325,7 @@ wgpu_gpu_timing_consume_readbacks :: proc(renderer: ^WGPU_Renderer) {
 				clustered_lighting = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Clustered_Lighting)],
 				cull = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Cull)],
 				shadow = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Shadow)],
+				shadow_cascades = renderer.gpu_timestamp_shadow_cascade_ms,
 				depth = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Depth)],
 				world = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.World)],
 				hiz = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.HiZ)],
@@ -343,6 +357,7 @@ wgpu_gpu_timing_begin_frame :: proc(renderer: ^WGPU_Renderer, frame_index: u64 =
 		readback := &renderer.gpu_timestamp_readbacks[index]
 		if !readback.pending {
 			readback.phase_mask = 0
+			readback.shadow_cascade_mask = 0
 			readback.frame_index = frame_index
 			renderer.gpu_timestamp_active_slot = index
 			renderer.gpu_timestamp_next_slot = (index + 1) % WGPU_GPU_TIMESTAMP_FRAMES
@@ -400,13 +415,15 @@ wgpu_gpu_shadow_pass_timestamps :: proc(
 	wgpu.PassTimestampWrites,
 	bool,
 ) {
-	if cascade_index == 0 {
-		return wgpu_gpu_pass_timestamps(renderer, .Shadow)
-	}
 	if !wgpu_gpu_timing_active(renderer) ||
 	   cascade_index < 0 ||
 	   cascade_index >= WGPU_SHADOW_CASCADE_COUNT {
 		return {}, false
+	}
+	readback := &renderer.gpu_timestamp_readbacks[renderer.gpu_timestamp_active_slot]
+	readback.shadow_cascade_mask |= u32(1) << u32(cascade_index)
+	if cascade_index == 0 {
+		return wgpu_gpu_pass_timestamps(renderer, .Shadow)
 	}
 	query_index := u32(WGPU_GPU_SHADOW_EXTRA_QUERY_BASE + (cascade_index - 1) * 2)
 	return wgpu.PassTimestampWrites {
@@ -453,6 +470,7 @@ wgpu_gpu_timing_resolve :: proc(renderer: ^WGPU_Renderer, encoder: wgpu.CommandE
 	ranges, range_count := wgpu_gpu_timestamp_resolve_ranges(
 		readback.phase_mask,
 		readback.hiz_mip_count,
+		readback.shadow_cascade_mask,
 	)
 	for resolve_range, range_index in ranges[:range_count] {
 		resolve_offset := u64(range_index) * WGPU_GPU_TIMESTAMP_RESOLVE_ALIGNMENT
@@ -511,6 +529,7 @@ wgpu_publish_gpu_timing :: proc(renderer: ^WGPU_Renderer, stats: ^Render_Stats) 
 		renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Clustered_Lighting)]
 	stats.gpu_cull_ms = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Cull)]
 	stats.gpu_shadow_ms = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Shadow)]
+	stats.gpu_shadow_cascade_ms = renderer.gpu_timestamp_shadow_cascade_ms
 	stats.gpu_depth_ms = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Depth)]
 	stats.gpu_world_ms = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.World)]
 	stats.gpu_hiz_ms = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.HiZ)]

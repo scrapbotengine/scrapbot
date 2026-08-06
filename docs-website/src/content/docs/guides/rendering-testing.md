@@ -514,6 +514,8 @@ The active size also controls cascade stabilization, bias, filtering, and virtua
 
 The cascades use practical logarithmic/uniform camera-depth splits out to 80 world units, texel-stabilized light projections, per-cascade GPU caster culling, slope-scaled caster depth bias, cascade-texel-scaled receiver-normal offset, and a tent-weighted nine-comparison PCF kernel. The final 10% of each slice blends into its successor. The final slice fades to unshadowed beyond the shadow distance.
 
+The near cascade refreshes every frame. Farther cascades retain their stabilized projection and depth between staggered 2/4/8-frame refreshes, so ordinary frames update at most one far layer alongside the near layer. Scene or Transform changes, camera cuts, light activation, and shadow-resolution changes refresh all four layers immediately.
+
 Point-light shadows, multiple shadowed directional lights, and authored shadow-quality bounds are not yet provided.
 
 ## Null renderer
@@ -562,8 +564,12 @@ Each row includes active CPU time, exact per-pass GPU time, their summed GPU fra
 
 The `workload` object records the dispatch size, render extent, encoded draw-submission spans,
 instances, or sample count behind each pass. Shadow workload dimensions report the active raster
-resolution rather than retained capacity. Spectral-surface workload reports its fixed field
-dimensions, both inverse-FFT axes, and spatial finalization pass for every active Shader resource.
+resolution rather than retained capacity. The raw renderer snapshot's
+`shadow_cascade_render_mask` and the `shadow_cascade_0` through `shadow_cascade_3` workload entries
+report exactly which retained layers rendered and how many clusters they processed. A zero timing
+on a skipped far cascade means its prior depth layer was retained; it does not mean shadows were
+unsupported. Spectral-surface workload reports its fixed field dimensions,
+both inverse-FFT axes, and spatial finalization pass for every active Shader resource.
 
 This makes a timing actionable. It distinguishes an expensive shader at a modest resolution from
 expected cost at a HiDPI physical resolution.

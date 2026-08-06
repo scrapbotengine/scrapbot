@@ -390,6 +390,13 @@ Compact cluster expansion is skipped globally when no batch needs it and rejecte
 canonical or root-page indexed path is active. Stable frames perform no CPU readback, per-cluster
 command generation, or geometry upload.
 
+The nearest directional-shadow cascade refreshes every frame. The three farther layers retain their
+stabilized projection and depth contents between staggered 2/4/8-frame updates, with no more than
+one far layer updating alongside the near layer on an ordinary frame. A light activation, world or
+batch-topology replacement, Transform mutation, camera discontinuity, or active-resolution change
+forces all four layers current. Profile rows expose the refresh mask, per-cascade visibility
+workload, and separate GPU timings so retained work is not mistaken for an empty pass.
+
 The `virtual_geometry` camera view colors selected clusters by identity and hierarchy depth. Amber
 marks a branch whose finer group is not completely resident; cyan marks a selected page that
 arrived speculatively. Structured results report payload budget and residency, demand/prefetch

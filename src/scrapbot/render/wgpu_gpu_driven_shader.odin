@@ -1480,6 +1480,7 @@ struct Visibility_Counters {
 	virtual_page_demand_feedback_overflow: atomic<u32>,
 	virtual_page_touch_feedback_overflow: atomic<u32>,
 	virtual_page_prefetch_feedback_overflow: atomic<u32>,
+	shadow_visible_meshlets_by_cascade: array<atomic<u32>, 4>,
 	virtual_page_demand_feedback: array<Virtual_Page_Feedback, 32768>,
 	virtual_page_touch_feedback: array<Virtual_Page_Feedback, 4096>,
 	virtual_page_prefetch_feedback: array<Virtual_Page_Feedback, 4096>,
@@ -2291,6 +2292,7 @@ fn cull_compact_shadow_meshlet(
 		visible_instances[record_offset * 2u] = slot;
 		visible_instances[record_offset * 2u + 1u] = meshlet_index;
 		atomicAdd(&counters.shadow_visible_meshlets, 1u);
+		atomicAdd(&counters.shadow_visible_meshlets_by_cascade[cascade_index], 1u);
 	} else {
 		atomicAdd(&counters.shadow_record_overflow, 1u);
 	}
@@ -2603,6 +2605,7 @@ fn cull_instances(invocation: vec3<u32>, submission_mode: u32) {
 						shadow_visible_instances[record_offset * 2u] = slot;
 						shadow_visible_instances[record_offset * 2u + 1u] = meshlet_index;
 						atomicAdd(&counters.shadow_visible_meshlets, 1u);
+						atomicAdd(&counters.shadow_visible_meshlets_by_cascade[cascade_index], 1u);
 					} else {
 						atomicAdd(&counters.shadow_record_overflow, 1u);
 					}
@@ -2612,6 +2615,7 @@ fn cull_instances(invocation: vec3<u32>, submission_mode: u32) {
 						meshlet.visible_offset + local_index
 					] = slot;
 					atomicAdd(&counters.shadow_visible_meshlets, 1u);
+					atomicAdd(&counters.shadow_visible_meshlets_by_cascade[cascade_index], 1u);
 				} else {
 					atomicAdd(&counters.shadow_record_overflow, 1u);
 				}

@@ -1714,6 +1714,8 @@ wgpu_publish_visibility :: proc(renderer: ^WGPU_Renderer, stats: ^Render_Stats) 
 	stats.lod3_visible_instances = renderer.gpu_visibility_counters.lod_visible_instances[3]
 	stats.visible_meshlets = renderer.gpu_visibility_counters.visible_meshlets
 	stats.shadow_visible_meshlets = renderer.gpu_visibility_counters.shadow_visible_meshlets
+	stats.shadow_visible_meshlets_by_cascade =
+		renderer.gpu_visibility_counters.shadow_visible_meshlets_by_cascade
 	stats.candidate_record_overflow = renderer.gpu_visibility_counters.candidate_record_overflow
 	stats.visible_record_overflow = renderer.gpu_visibility_counters.visible_record_overflow
 	stats.shadow_record_overflow = renderer.gpu_visibility_counters.shadow_record_overflow
