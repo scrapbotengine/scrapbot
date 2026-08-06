@@ -336,12 +336,16 @@ through child-shaped discard pixels. Native cluster shadows may select the hiera
 portable streamed shadows use the pinned coarse proxy described below.
 
 Only completion makes the child logically replace its parent. Nested hierarchy transitions are
-serialized, and a transitioning child keeps its direct parent protected. This makes refinement
+serialized. Activation requires every direct parent to be resident, active, and transition-complete,
+and a transitioning child keeps its direct parent protected. This makes refinement
 monotonic and prevents simultaneous hierarchy-level handoffs from exposing a missing surface.
 
 Asynchronous CPU processing applies touches, deduplicates and prioritizes group requests. Imported
-misses read exact Model-product byte ranges on a dedicated worker. Versioned completions admit or
-evict complete non-pinned groups under the project vertex-and-index payload budget. Each feedback
+misses read exact Model-product byte ranges on a dedicated worker. Fixed outstanding-job and byte
+ceilings prevent old camera demand from building an unbounded read queue. Completed payloads wait
+inside a separate bounded staging budget, and stale unowned payloads are discarded. Versioned
+completions admit or evict complete non-pinned groups under the project vertex-and-index payload
+budget. Each feedback
 batch builds one priority-ordered eviction plan. Lower-priority detail cannot displace a stronger
 recent working set, and an admitted refinement protects every direct parent group that can replace
 it. Eviction releases the child before its parents become eligible, so the exact resident coarse

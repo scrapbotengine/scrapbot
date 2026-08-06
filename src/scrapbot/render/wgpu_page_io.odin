@@ -9,7 +9,12 @@ import "core:thread"
 WGPU_Virtual_Page_IO :: struct {
 	pool: thread.Pool,
 	initialized: bool,
+	outstanding_jobs: u32,
+	outstanding_bytes: u64,
 }
+
+WGPU_VIRTUAL_PAGE_IO_MAX_OUTSTANDING_JOBS :: u32(64)
+WGPU_VIRTUAL_PAGE_IO_MAX_OUTSTANDING_BYTES :: u64(8 * 1024 * 1024)
 
 WGPU_Virtual_Page_IO_Job :: struct {
 	handle: shared.Geometry_Handle,
@@ -17,6 +22,7 @@ WGPU_Virtual_Page_IO_Job :: struct {
 	page_index: u32,
 	path: string,
 	offset: u64,
+	requested_size: u64,
 	bytes: []u8,
 	err: bool,
 }
@@ -37,7 +43,12 @@ wgpu_virtual_page_io_schedule :: proc(
 	path: string,
 	offset, size: u64,
 ) -> bool {
-	if io == nil || path == "" || size == 0 || size > u64(max(int)) {
+	if io == nil ||
+	   path == "" ||
+	   size == 0 ||
+	   size > u64(max(int)) ||
+	   io.outstanding_jobs >= WGPU_VIRTUAL_PAGE_IO_MAX_OUTSTANDING_JOBS ||
+	   size > WGPU_VIRTUAL_PAGE_IO_MAX_OUTSTANDING_BYTES - io.outstanding_bytes {
 		return false
 	}
 	wgpu_virtual_page_io_init(io)
@@ -46,6 +57,7 @@ wgpu_virtual_page_io_schedule :: proc(
 	job.geometry_version = geometry_version
 	job.page_index = page_index
 	job.offset = offset
+	job.requested_size = size
 	job.path, _ = strings.clone(path, os.heap_allocator())
 	job.bytes = make([]u8, int(size), os.heap_allocator())
 	if job.path == "" {
@@ -53,6 +65,8 @@ wgpu_virtual_page_io_schedule :: proc(
 		return false
 	}
 	thread.pool_add_task(&io.pool, os.heap_allocator(), wgpu_virtual_page_io_read, job)
+	io.outstanding_jobs += 1
+	io.outstanding_bytes += size
 	return true
 }
 
@@ -76,7 +90,10 @@ wgpu_virtual_page_io_pop :: proc(io: ^WGPU_Virtual_Page_IO) -> (^WGPU_Virtual_Pa
 	if !ok {
 		return nil, false
 	}
-	return cast(^WGPU_Virtual_Page_IO_Job)task.data, true
+	job := cast(^WGPU_Virtual_Page_IO_Job)task.data
+	io.outstanding_jobs -= min(io.outstanding_jobs, 1)
+	io.outstanding_bytes -= min(io.outstanding_bytes, job.requested_size)
+	return job, true
 }
 
 wgpu_virtual_page_io_destroy_job :: proc(job: ^WGPU_Virtual_Page_IO_Job) {
@@ -98,7 +115,10 @@ wgpu_virtual_page_io_destroy :: proc(io: ^WGPU_Virtual_Page_IO) {
 		if !ok {
 			break
 		}
-		wgpu_virtual_page_io_destroy_job(cast(^WGPU_Virtual_Page_IO_Job)task.data)
+		job := cast(^WGPU_Virtual_Page_IO_Job)task.data
+		io.outstanding_jobs -= min(io.outstanding_jobs, 1)
+		io.outstanding_bytes -= min(io.outstanding_bytes, job.requested_size)
+		wgpu_virtual_page_io_destroy_job(job)
 	}
 	for {
 		job, ok := wgpu_virtual_page_io_pop(io)

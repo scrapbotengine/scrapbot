@@ -44,6 +44,7 @@ WGPU_CLUSTER_INITIAL_LIGHT_CAPACITY :: 256
 WGPU_VIRTUAL_GEOMETRY_BUDGET_BYTES :: u64(64 * 1024 * 1024)
 WGPU_VIRTUAL_GEOMETRY_UPLOAD_BUDGET_BYTES :: u64(512 * 1024)
 WGPU_VIRTUAL_GEOMETRY_UPLOAD_GROUP_BUDGET :: 16
+WGPU_VIRTUAL_GEOMETRY_STAGED_PAYLOAD_BUDGET_BYTES :: u64(16 * 1024 * 1024)
 WGPU_VIRTUAL_GEOMETRY_MIN_ERROR_PIXELS :: f32(1)
 WGPU_VIRTUAL_GROUP_ACTIVATION_GRACE_FRAMES :: u64(8)
 WGPU_VIRTUAL_GROUP_ACTIVATION_MAX_HOLD_FRAMES :: u64(32)
@@ -1095,6 +1096,7 @@ WGPU_Renderer :: struct {
 	virtual_geometry_page_read_count: u64,
 	virtual_geometry_page_read_bytes: u64,
 	virtual_geometry_page_read_failure_count: u64,
+	virtual_geometry_staged_payload_bytes: u64,
 	virtual_geometry_page_eviction_count: u64,
 	virtual_geometry_group_upload_count: u64,
 	virtual_geometry_group_activation_count: u64,
@@ -2560,6 +2562,10 @@ wgpu_release_geometry_cache_ranges :: proc(
 	wgpu_arena_release(&renderer.geometry_index_arena.allocator, cached.shadow_index_range)
 	wgpu_arena_release(&renderer.geometry_index_arena.allocator, cached.meshlet_index_range)
 	for page in cached.cluster_pages {
+		renderer.virtual_geometry_staged_payload_bytes -= min(
+			renderer.virtual_geometry_staged_payload_bytes,
+			u64(len(page.loaded_payload)),
+		)
 		delete(page.loaded_payload, os.heap_allocator())
 		if page.resident {
 			wgpu_arena_release(&renderer.geometry_index_arena.allocator, page.range)
@@ -2953,6 +2959,10 @@ wgpu_geometry_cache :: proc(
 		wgpu_arena_release(&renderer.geometry_index_arena.allocator, cached.meshlet_index_range)
 	}
 	for page in cached.cluster_pages {
+		renderer.virtual_geometry_staged_payload_bytes -= min(
+			renderer.virtual_geometry_staged_payload_bytes,
+			u64(len(page.loaded_payload)),
+		)
 		delete(page.loaded_payload, os.heap_allocator())
 		if page.resident {
 			wgpu_arena_release(&renderer.geometry_index_arena.allocator, page.range)

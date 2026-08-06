@@ -2493,6 +2493,16 @@ test_wgpu_virtual_geometry_serializes_nested_transitions :: proc(t: ^testing.T) 
 	)
 	changes: [dynamic]WGPU_Virtual_Group_Change
 	defer delete(changes)
+	cache.cluster_groups[0].resident = false
+	wgpu_activate_stable_virtual_groups(&renderer, &changes)
+	testing.expect(t, !cache.cluster_groups[1].active)
+
+	cache.cluster_groups[0].resident = true
+	cache.cluster_groups[0].active = false
+	wgpu_activate_stable_virtual_groups(&renderer, &changes)
+	testing.expect(t, !cache.cluster_groups[1].active)
+
+	cache.cluster_groups[0].active = true
 	wgpu_activate_stable_virtual_groups(&renderer, &changes)
 	testing.expect(t, !cache.cluster_groups[1].active)
 
@@ -2619,6 +2629,80 @@ test_wgpu_virtual_geometry_preloads_only_complete_resources_that_fit :: proc(t: 
 }
 
 @(test)
+test_wgpu_virtual_geometry_discards_only_stale_unowned_page_payloads :: proc(t: ^testing.T) {
+	renderer := WGPU_Renderer {
+		profile_frame_index = WGPU_VIRTUAL_PAGE_STAGED_PAYLOAD_GRACE_FRAMES + 20,
+		virtual_geometry_staged_payload_bytes = 64,
+	}
+	resize(&renderer.geometry_cache, 1)
+	defer delete(renderer.geometry_cache)
+	cache := &renderer.geometry_cache[0]
+	resize(&cache.cluster_pages, 4)
+	defer {
+		for &page in cache.cluster_pages {
+			delete(page.loaded_payload, os.heap_allocator())
+		}
+		delete(cache.cluster_pages)
+	}
+	for &page in cache.cluster_pages {
+		page.loaded_payload = make([]u8, 16, os.heap_allocator())
+	}
+	cache.cluster_pages[0].last_used_frame = 1
+	cache.cluster_pages[1].last_used_frame = renderer.profile_frame_index
+	cache.cluster_pages[2].last_used_frame = 1
+	cache.cluster_pages[2].loading = true
+	cache.cluster_pages[3].last_used_frame = 1
+	cache.cluster_pages[3].resident = true
+
+	discarded_pages, discarded_bytes := wgpu_discard_stale_virtual_page_payloads(&renderer)
+	testing.expect_value(t, discarded_pages, u64(1))
+	testing.expect_value(t, discarded_bytes, u64(16))
+	testing.expect_value(t, renderer.virtual_geometry_staged_payload_bytes, u64(48))
+	testing.expect_value(t, len(cache.cluster_pages[0].loaded_payload), 0)
+	testing.expect_value(t, len(cache.cluster_pages[1].loaded_payload), 16)
+	testing.expect_value(t, len(cache.cluster_pages[2].loaded_payload), 16)
+	testing.expect_value(t, len(cache.cluster_pages[3].loaded_payload), 16)
+}
+
+@(test)
+test_wgpu_virtual_geometry_staged_payload_budget_evicts_oldest_page :: proc(t: ^testing.T) {
+	renderer: WGPU_Renderer
+	resize(&renderer.geometry_cache, 1)
+	defer delete(renderer.geometry_cache)
+	cache := &renderer.geometry_cache[0]
+	resize(&cache.cluster_pages, 2)
+	defer {
+		for &page in cache.cluster_pages {
+			delete(page.loaded_payload, os.heap_allocator())
+		}
+		delete(cache.cluster_pages)
+	}
+	cache.cluster_pages[0].last_used_frame = 2
+	cache.cluster_pages[0].loaded_payload = make(
+		[]u8,
+		int(WGPU_VIRTUAL_GEOMETRY_STAGED_PAYLOAD_BUDGET_BYTES / 2),
+		os.heap_allocator(),
+	)
+	cache.cluster_pages[1].last_used_frame = 7
+	cache.cluster_pages[1].loaded_payload = make(
+		[]u8,
+		int(WGPU_VIRTUAL_GEOMETRY_STAGED_PAYLOAD_BUDGET_BYTES / 2),
+		os.heap_allocator(),
+	)
+	renderer.virtual_geometry_staged_payload_bytes =
+		WGPU_VIRTUAL_GEOMETRY_STAGED_PAYLOAD_BUDGET_BYTES
+
+	testing.expect(t, wgpu_reserve_virtual_staged_payload(&renderer, 16))
+	testing.expect_value(t, len(cache.cluster_pages[0].loaded_payload), 0)
+	testing.expect(t, len(cache.cluster_pages[1].loaded_payload) > 0)
+	testing.expect(
+		t,
+		renderer.virtual_geometry_staged_payload_bytes + 16 <=
+		WGPU_VIRTUAL_GEOMETRY_STAGED_PAYLOAD_BUDGET_BYTES,
+	)
+}
+
+@(test)
 test_wgpu_virtual_page_io_reads_bounded_product_ranges :: proc(t: ^testing.T) {
 	root, root_err := os.make_directory_temp("", "scrapbot-page-io-*", context.allocator)
 	testing.expect(t, root_err == nil)
@@ -2648,6 +2732,8 @@ test_wgpu_virtual_page_io_reads_bounded_product_ranges :: proc(t: ^testing.T) {
 	}
 	testing.expect(t, job != nil)
 	if job != nil {
+		testing.expect_value(t, io.outstanding_jobs, u32(0))
+		testing.expect_value(t, io.outstanding_bytes, u64(0))
 		testing.expect(t, !job.err)
 		testing.expect_value(t, job.handle, handle)
 		testing.expect_value(t, job.geometry_version, u32(11))
@@ -2658,6 +2744,17 @@ test_wgpu_virtual_page_io_reads_bounded_product_ranges :: proc(t: ^testing.T) {
 		}
 		wgpu_virtual_page_io_destroy_job(job)
 	}
+}
+
+@(test)
+test_wgpu_virtual_page_io_rejects_work_beyond_its_staging_budget :: proc(t: ^testing.T) {
+	io := WGPU_Virtual_Page_IO {
+		outstanding_jobs = WGPU_VIRTUAL_PAGE_IO_MAX_OUTSTANDING_JOBS,
+	}
+	testing.expect(t, !wgpu_virtual_page_io_schedule(&io, {}, 1, 0, "unused", 0, 1))
+	io.outstanding_jobs = 0
+	io.outstanding_bytes = WGPU_VIRTUAL_PAGE_IO_MAX_OUTSTANDING_BYTES
+	testing.expect(t, !wgpu_virtual_page_io_schedule(&io, {}, 1, 0, "unused", 0, 1))
 }
 
 @(test)

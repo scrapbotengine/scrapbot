@@ -6,6 +6,135 @@ import "core:os"
 import "core:slice"
 import "vendor:wgpu"
 
+wgpu_validate_arena_ownership :: proc(
+	allocator: ^WGPU_Arena_Allocator,
+	owned: [dynamic]WGPU_Arena_Range,
+) -> string {
+	if allocator == nil {
+		return "geometry arena allocator is unavailable"
+	}
+	slice.sort_by(owned[:], proc(a, b: WGPU_Arena_Range) -> bool {
+		return a.offset < b.offset
+	})
+	owned_bytes: u64
+	previous_end: u64
+	for allocation, index in owned {
+		if allocation.size == 0 {
+			continue
+		}
+		allocation_end := allocation.offset + allocation.size
+		if allocation_end < allocation.offset || allocation_end > allocator.high_water {
+			return "geometry arena ownership exceeds the allocated address space"
+		}
+		if index > 0 && allocation.offset < previous_end {
+			return "geometry arena ownership overlaps"
+		}
+		previous_end = allocation_end
+		owned_bytes += allocation.size
+	}
+	if owned_bytes != allocator.resident_bytes {
+		return "geometry arena resident-byte accounting disagrees with ownership"
+	}
+	for free_range in allocator.free_ranges {
+		free_end := free_range.offset + free_range.size
+		for allocation in owned {
+			allocation_end := allocation.offset + allocation.size
+			if allocation.offset < free_end && free_range.offset < allocation_end {
+				return "geometry arena free space overlaps live ownership"
+			}
+		}
+	}
+	return ""
+}
+
+wgpu_validate_virtual_geometry_arena_ownership :: proc(renderer: ^WGPU_Renderer) -> string {
+	if renderer == nil {
+		return ""
+	}
+	vertex_ranges := make([dynamic]WGPU_Arena_Range, 0, 0, context.temp_allocator)
+	index_ranges := make([dynamic]WGPU_Arena_Range, 0, 0, context.temp_allocator)
+	for cache in renderer.geometry_cache {
+		if cache.vertex_range.size > 0 {
+			append(&vertex_ranges, cache.vertex_range)
+		}
+		if cache.index_range.size > 0 {
+			append(&index_ranges, cache.index_range)
+		}
+		if cache.shadow_index_range.size > 0 {
+			append(&index_ranges, cache.shadow_index_range)
+		}
+		if cache.meshlet_index_range.size > 0 {
+			append(&index_ranges, cache.meshlet_index_range)
+		}
+		for page in cache.cluster_pages {
+			if !page.resident {
+				continue
+			}
+			append(&vertex_ranges, page.vertex_range)
+			append(&index_ranges, page.range)
+		}
+	}
+	if err := wgpu_validate_arena_ownership(
+		&renderer.geometry_vertex_arena.allocator,
+		vertex_ranges,
+	); err != "" {
+		return err
+	}
+	return wgpu_validate_arena_ownership(&renderer.geometry_index_arena.allocator, index_ranges)
+}
+
+wgpu_validate_virtual_geometry_residency :: proc(renderer: ^WGPU_Renderer) -> string {
+	if renderer == nil {
+		return ""
+	}
+	for &cache in renderer.geometry_cache {
+		expected_parent_refs := make([]u32, len(cache.cluster_groups), context.temp_allocator)
+		for group, group_index in cache.cluster_groups {
+			if group.active && !group.resident {
+				return "active virtual-geometry group is not resident"
+			}
+			if !group.active {
+				continue
+			}
+			if group_index + 1 >= len(cache.refined_group_parent_offsets) {
+				continue
+			}
+			for parent_index in cache.refined_group_parent_offsets[group_index] ..< cache.refined_group_parent_offsets[group_index + 1] {
+				parent_group := cache.refined_group_parents[parent_index]
+				if int(parent_group) < len(expected_parent_refs) {
+					expected_parent_refs[parent_group] += 1
+				}
+			}
+		}
+		for group, group_index in cache.cluster_groups {
+			if group.resident_refinement_count != expected_parent_refs[group_index] {
+				return "virtual-geometry fallback reference count is stale"
+			}
+			page_count: int
+			resident_page_count: int
+			for page in cache.cluster_pages {
+				if page.group_index != u32(group_index) {
+					continue
+				}
+				page_count += 1
+				if page.resident {
+					resident_page_count += 1
+				}
+			}
+			if group.resident && (page_count == 0 || resident_page_count != page_count) {
+				return "resident virtual-geometry group has missing pages"
+			}
+			if !group.resident && resident_page_count > 0 {
+				return "nonresident virtual-geometry group owns resident pages"
+			}
+			if group.pinned && !group.resident {
+				return "pinned virtual-geometry group is not resident"
+			}
+		}
+	}
+	return ""
+}
+
 wgpu_visible_batch_word_count :: proc "contextless" (batch_count: int) -> int {
 	return (clamp(batch_count, 0, WGPU_GPU_VISIBLE_BATCH_WORD_COUNT * 32) + 31) / 32
 }
@@ -407,6 +536,7 @@ WGPU_VIRTUAL_PAGE_FEEDBACK_GRACE_FRAMES ::
 	WGPU_VIRTUAL_PAGE_TOUCH_CADENCE + u64(WGPU_GPU_TIMESTAMP_FRAMES * 2)
 WGPU_VIRTUAL_PAGE_PRIORITY_HYSTERESIS :: f32(1.2)
 WGPU_VIRTUAL_PAGE_MAX_HOLD_FRAMES :: WGPU_VIRTUAL_PAGE_FEEDBACK_GRACE_FRAMES * 3
+WGPU_VIRTUAL_PAGE_STAGED_PAYLOAD_GRACE_FRAMES :: WGPU_VIRTUAL_PAGE_MAX_HOLD_FRAMES
 
 wgpu_virtual_page_admission_frame :: proc "contextless" (
 	current_frame, feedback_frame: u64,
@@ -500,17 +630,93 @@ wgpu_consume_virtual_page_io :: proc(renderer: ^WGPU_Renderer, registry: ^resour
 			page := &renderer.geometry_cache[cache_index].cluster_pages[job.page_index]
 			page.loading = false
 			if !job.err {
+				renderer.virtual_geometry_staged_payload_bytes -= min(
+					renderer.virtual_geometry_staged_payload_bytes,
+					u64(len(page.loaded_payload)),
+				)
 				delete(page.loaded_payload, os.heap_allocator())
-				page.loaded_payload = job.bytes
-				renderer.virtual_geometry_page_read_count += 1
-				renderer.virtual_geometry_page_read_bytes += u64(len(job.bytes))
-				job.bytes = nil
+				page.loaded_payload = nil
+				if wgpu_reserve_virtual_staged_payload(renderer, u64(len(job.bytes))) {
+					page.loaded_payload = job.bytes
+					renderer.virtual_geometry_staged_payload_bytes += u64(len(job.bytes))
+					renderer.virtual_geometry_page_read_count += 1
+					renderer.virtual_geometry_page_read_bytes += u64(len(job.bytes))
+					job.bytes = nil
+				}
 			} else {
 				renderer.virtual_geometry_page_read_failure_count += 1
 			}
 		}
 		wgpu_virtual_page_io_destroy_job(job)
 	}
+}
+
+wgpu_reserve_virtual_staged_payload :: proc(renderer: ^WGPU_Renderer, incoming: u64) -> bool {
+	if renderer == nil || incoming > WGPU_VIRTUAL_GEOMETRY_STAGED_PAYLOAD_BUDGET_BYTES {
+		return false
+	}
+	for renderer.virtual_geometry_staged_payload_bytes + incoming >
+	    WGPU_VIRTUAL_GEOMETRY_STAGED_PAYLOAD_BUDGET_BYTES {
+		oldest_cache := -1
+		oldest_page := -1
+		oldest_frame := ~u64(0)
+		for &cache, cache_index in renderer.geometry_cache {
+			for page, page_index in cache.cluster_pages {
+				if page.resident ||
+				   page.loading ||
+				   len(page.loaded_payload) == 0 ||
+				   page.last_used_frame >= oldest_frame {
+					continue
+				}
+				oldest_cache = cache_index
+				oldest_page = page_index
+				oldest_frame = page.last_used_frame
+			}
+		}
+		if oldest_cache < 0 {
+			return false
+		}
+		page := &renderer.geometry_cache[oldest_cache].cluster_pages[oldest_page]
+		renderer.virtual_geometry_staged_payload_bytes -= min(
+			renderer.virtual_geometry_staged_payload_bytes,
+			u64(len(page.loaded_payload)),
+		)
+		delete(page.loaded_payload, os.heap_allocator())
+		page.loaded_payload = nil
+	}
+	return true
+}
+
+wgpu_discard_stale_virtual_page_payloads :: proc(
+	renderer: ^WGPU_Renderer,
+) -> (
+	discarded_pages: u64,
+	discarded_bytes: u64,
+) {
+	if renderer == nil ||
+	   renderer.profile_frame_index <= WGPU_VIRTUAL_PAGE_STAGED_PAYLOAD_GRACE_FRAMES {
+		return
+	}
+	stale_before := renderer.profile_frame_index - WGPU_VIRTUAL_PAGE_STAGED_PAYLOAD_GRACE_FRAMES
+	for &cache in renderer.geometry_cache {
+		for &page in cache.cluster_pages {
+			if page.resident ||
+			   page.loading ||
+			   len(page.loaded_payload) == 0 ||
+			   page.last_used_frame >= stale_before {
+				continue
+			}
+			discarded_pages += 1
+			discarded_bytes += u64(len(page.loaded_payload))
+			renderer.virtual_geometry_staged_payload_bytes -= min(
+				renderer.virtual_geometry_staged_payload_bytes,
+				u64(len(page.loaded_payload)),
+			)
+			delete(page.loaded_payload, os.heap_allocator())
+			page.loaded_payload = nil
+		}
+	}
+	return
 }
 
 wgpu_virtual_group_page_range :: proc "contextless" (
@@ -566,10 +772,10 @@ wgpu_virtual_group_parents_settled :: proc "contextless" (
 	for parent_index in cache.refined_group_parent_offsets[group_index] ..< cache.refined_group_parent_offsets[group_index + 1] {
 		parent_group := cache.refined_group_parents[parent_index]
 		if int(parent_group) >= len(cache.cluster_groups) {
-			continue
+			return false
 		}
 		parent := cache.cluster_groups[parent_group]
-		if parent.active && !parent.transition_complete {
+		if !parent.resident || !parent.active || !parent.transition_complete {
 			return false
 		}
 	}
@@ -1071,6 +1277,7 @@ wgpu_process_virtual_page_feedback :: proc(
 			if cache.cluster_pages[page_index].resident {
 				continue
 			}
+			cache.cluster_pages[page_index].last_used_frame = renderer.profile_frame_index
 			append(&missing_pages, page_index)
 			record := geometry.page_payload_records[page_index]
 			vertex_bytes := u64(record.vertex_count) * u64(size_of(resources.Vertex))
@@ -1199,6 +1406,10 @@ wgpu_process_virtual_page_feedback :: proc(
 				renderer.profile_frame_index,
 				feedback_frame,
 			)
+			renderer.virtual_geometry_staged_payload_bytes -= min(
+				renderer.virtual_geometry_staged_payload_bytes,
+				u64(len(page.loaded_payload)),
+			)
 			delete(page.loaded_payload, os.heap_allocator())
 			page.loaded_payload = nil
 		}
@@ -1266,6 +1477,7 @@ wgpu_visibility_consume_readbacks :: proc(
 		return transition_err
 	}
 	wgpu_consume_virtual_page_io(renderer, registry)
+	wgpu_discard_stale_virtual_page_payloads(renderer)
 	wgpu.DevicePoll(renderer.device, false)
 	remaining_upload_bytes := WGPU_VIRTUAL_GEOMETRY_UPLOAD_BUDGET_BYTES
 	remaining_upload_groups := WGPU_VIRTUAL_GEOMETRY_UPLOAD_GROUP_BUDGET
@@ -1311,6 +1523,18 @@ wgpu_visibility_begin_frame :: proc(
 ) -> string {
 	if renderer == nil {
 		return ""
+	}
+	if renderer.render_list.has_camera &&
+	   renderer.render_list.camera.camera.debug_view == .Virtual_Geometry &&
+	   renderer.profile_frame_index % 256 == 0 {
+		if ownership_err := wgpu_validate_virtual_geometry_arena_ownership(renderer);
+		   ownership_err != "" {
+			return ownership_err
+		}
+		if residency_err := wgpu_validate_virtual_geometry_residency(renderer);
+		   residency_err != "" {
+			return residency_err
+		}
 	}
 	if consume_err := wgpu_visibility_consume_readbacks(renderer, registry); consume_err != "" {
 		return consume_err

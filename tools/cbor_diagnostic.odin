@@ -23,6 +23,9 @@ Visibility_Artifact :: struct {
 	frustum_culled_meshlets: u32,
 	cone_culled_meshlets: u32,
 	occlusion_culled_meshlets: u32,
+	candidate_record_overflow: u32,
+	visible_record_overflow: u32,
+	shadow_record_overflow: u32,
 	records: []Visibility_Record,
 }
 
@@ -40,6 +43,9 @@ Visibility_Summary :: struct {
 	frustum_culled_meshlets: u32,
 	cone_culled_meshlets: u32,
 	occlusion_culled_meshlets: u32,
+	candidate_record_overflow: u32,
+	visible_record_overflow: u32,
+	shadow_record_overflow: u32,
 	classifications: map[string]int,
 }
 
@@ -102,6 +108,9 @@ write_visibility_summary :: proc(data: []byte, path: string) {
 		frustum_culled_meshlets = artifact.frustum_culled_meshlets,
 		cone_culled_meshlets = artifact.cone_culled_meshlets,
 		occlusion_culled_meshlets = artifact.occlusion_culled_meshlets,
+		candidate_record_overflow = artifact.candidate_record_overflow,
+		visible_record_overflow = artifact.visible_record_overflow,
+		shadow_record_overflow = artifact.shadow_record_overflow,
 		classifications = make(map[string]int),
 	}
 	defer delete(summary.classifications)

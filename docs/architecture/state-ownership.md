@@ -121,8 +121,9 @@ scan, compact, hash, or upload the arenas.
 
 Hierarchy metadata and each Geometry's file-or-memory page source are resource-owned. WGPU owns
 canonical fast-path or page-local vertex/index arena ranges, residency, visible-use age, pending
-immutable product-range reads, and the configured combined payload budget. Coarsest streamed pages
-are pinned.
+immutable product-range reads, and the configured combined payload budget. Outstanding reads have
+fixed job and byte ceilings. Completed-but-unadmitted payloads have a separate bounded staging
+budget and age out when demand no longer owns them. Coarsest streamed pages are pinned.
 
 Imported Geometry query positions and exact leaf topology remain resource-owned. Picking borrows
 them without allocation. A WGPU cache miss may request an owned canonical view reconstructed from
@@ -137,8 +138,9 @@ file-backed refinement on one renderer-owned I/O worker; handle/generation/versi
 completions are discarded when stale. Demand-first, group-atomic admission uses one ordered eviction
 plan per feedback batch, protects stronger recent demand, and never lets speculative prefetch evict
 demand residency. Geometry cache groups distinguish memory residency from drawable activation.
-Newly complete groups pass a bounded demand-aware settling window and wait for direct-parent
-transitions to settle, then enter a 16-frame admission handoff. The GPU combines that temporal
+Newly complete groups pass a bounded demand-aware settling window and require every direct parent
+to remain resident, active, and transition-complete before entering a 16-frame admission handoff.
+The GPU combines that temporal
 progress with its steady projected-error overlap and depth-tests complete child/parent surfaces in
 world and depth passes. Native cluster shadows select their hierarchy directly; streamed portable
 shadows use a pinned-root indexed proxy. The internal HDR alpha channel carries a
