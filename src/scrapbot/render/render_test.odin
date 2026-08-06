@@ -825,10 +825,37 @@ test_wgpu_geometry_arena_reuses_aligned_ranges_and_coalesces_releases :: proc(t:
 }
 
 @(test)
+test_wgpu_geometry_arena_does_not_reuse_retired_ranges_before_gpu_completion :: proc(
+	t: ^testing.T,
+) {
+	arena: WGPU_Geometry_Arena
+	defer delete(arena.retirements)
+	defer delete(arena.allocator.free_ranges)
+	first := wgpu_arena_allocate(&arena.allocator, 64, 16)
+	wgpu_geometry_arena_retire(&arena, first, 8)
+
+	second := wgpu_arena_allocate(&arena.allocator, 64, 16)
+	testing.expect_value(t, second, WGPU_Arena_Range{offset = 64, size = 64})
+	count, bytes := wgpu_geometry_arena_reclaim(&arena, 7)
+	testing.expect_value(t, count, 0)
+	testing.expect_value(t, bytes, u64(0))
+	testing.expect_value(t, arena.allocator.resident_bytes, u64(128))
+
+	count, bytes = wgpu_geometry_arena_reclaim(&arena, 8)
+	testing.expect_value(t, count, 1)
+	testing.expect_value(t, bytes, u64(64))
+	testing.expect_value(t, arena.allocator.resident_bytes, u64(64))
+	reused := wgpu_arena_allocate(&arena.allocator, 64, 16)
+	testing.expect_value(t, reused, first)
+}
+
+@(test)
 test_wgpu_geometry_cache_release_returns_all_arena_ranges :: proc(t: ^testing.T) {
 	renderer: WGPU_Renderer
 	defer delete(renderer.geometry_vertex_arena.allocator.free_ranges)
 	defer delete(renderer.geometry_index_arena.allocator.free_ranges)
+	defer delete(renderer.geometry_vertex_arena.retirements)
+	defer delete(renderer.geometry_index_arena.retirements)
 	vertex_range := wgpu_arena_allocate(&renderer.geometry_vertex_arena.allocator, 96, 16)
 	index_range := wgpu_arena_allocate(&renderer.geometry_index_arena.allocator, 48, 4)
 	meshlet_range := wgpu_arena_allocate(&renderer.geometry_index_arena.allocator, 64, 4)
@@ -843,10 +870,14 @@ test_wgpu_geometry_cache_release_returns_all_arena_ranges :: proc(t: ^testing.T)
 	wgpu_release_geometry_cache_ranges(&renderer, &cached)
 
 	testing.expect(t, !cached.valid)
+	testing.expect_value(t, renderer.geometry_vertex_arena.allocator.resident_bytes, u64(96))
+	testing.expect_value(t, renderer.geometry_index_arena.allocator.resident_bytes, u64(112))
+	testing.expect_value(t, len(renderer.geometry_vertex_arena.retirements), 1)
+	testing.expect_value(t, len(renderer.geometry_index_arena.retirements), 2)
+	wgpu_geometry_arena_reclaim(&renderer.geometry_vertex_arena, 0)
+	wgpu_geometry_arena_reclaim(&renderer.geometry_index_arena, 0)
 	testing.expect_value(t, renderer.geometry_vertex_arena.allocator.resident_bytes, u64(0))
 	testing.expect_value(t, renderer.geometry_index_arena.allocator.resident_bytes, u64(0))
-	testing.expect_value(t, len(renderer.geometry_vertex_arena.allocator.free_ranges), 1)
-	testing.expect_value(t, len(renderer.geometry_index_arena.allocator.free_ranges), 1)
 }
 
 @(test)
@@ -2287,6 +2318,7 @@ test_wgpu_virtual_geometry_touches_and_evicts_complete_groups :: proc(t: ^testin
 	}
 	defer delete(renderer.geometry_cache)
 	defer delete(renderer.geometry_index_arena.allocator.free_ranges)
+	defer delete(renderer.geometry_index_arena.retirements)
 	append(&renderer.geometry_cache, cache)
 	handle, group_index, evicted := wgpu_evict_virtual_group(&renderer, 40, false)
 	testing.expect(t, evicted)
@@ -2311,6 +2343,8 @@ test_wgpu_virtual_geometry_demand_reclaims_prefetch_before_visible_residency :: 
 	defer delete(renderer.geometry_cache)
 	defer delete(renderer.geometry_index_arena.allocator.free_ranges)
 	defer delete(renderer.geometry_vertex_arena.allocator.free_ranges)
+	defer delete(renderer.geometry_index_arena.retirements)
+	defer delete(renderer.geometry_vertex_arena.retirements)
 	cache := &renderer.geometry_cache[0]
 	cache.handle = {
 		index = 7,

@@ -274,8 +274,9 @@ World-environment and active-camera exposure apply to the complete HDR world.
 **Decision:** Store every cached Geometry version in aligned ranges of one shared vertex arena and
 one shared index arena. Canonical and meshlet-expanded indices share the latter. Grow backing
 buffers geometrically, reuse fitting ranges, coalesce released ranges, and reclaim stale handles
-only at geometry-topology invalidation boundaries. Use arena-global indirect offsets so adjacent
-same-material commands can form one fixed multi-draw submission span. See ADR-048.
+only at geometry-topology invalidation boundaries. Retire submitted ranges until a tagged
+visibility readback proves their final GPU use complete. Use arena-global indirect offsets so
+adjacent same-material commands can form one fixed multi-draw submission span. See ADR-048.
 
 **Why:** GPU-selected LODs and meshlets should not force one backend buffer set and one CPU-encoded
 call per logical alternate. The same allocation layer is also the required physical foundation for

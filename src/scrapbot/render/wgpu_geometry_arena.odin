@@ -17,9 +17,15 @@ WGPU_Arena_Allocator :: struct {
 	resident_bytes: u64,
 }
 
+WGPU_Arena_Retirement :: struct {
+	range: WGPU_Arena_Range,
+	after_frame: u64,
+}
+
 WGPU_Geometry_Arena :: struct {
 	buffer: wgpu.Buffer,
 	allocator: WGPU_Arena_Allocator,
+	retirements: [dynamic]WGPU_Arena_Retirement,
 	capacity: u64,
 	initial_size: u64,
 	usage: wgpu.BufferUsageFlags,
@@ -27,6 +33,45 @@ WGPU_Geometry_Arena :: struct {
 	growth_count: u64,
 	upload_count: u64,
 	upload_bytes: u64,
+}
+
+wgpu_geometry_arena_retire :: proc(
+	arena: ^WGPU_Geometry_Arena,
+	allocation: WGPU_Arena_Range,
+	after_frame: u64,
+) {
+	if arena == nil || allocation.size == 0 {
+		return
+	}
+	append(
+		&arena.retirements,
+		WGPU_Arena_Retirement{range = allocation, after_frame = after_frame},
+	)
+}
+
+wgpu_geometry_arena_reclaim :: proc(
+	arena: ^WGPU_Geometry_Arena,
+	completed_frame: u64,
+) -> (
+	reclaimed_count: int,
+	reclaimed_bytes: u64,
+) {
+	if arena == nil {
+		return
+	}
+	write_index := 0
+	for retirement in arena.retirements {
+		if retirement.after_frame > completed_frame {
+			arena.retirements[write_index] = retirement
+			write_index += 1
+			continue
+		}
+		wgpu_arena_release(&arena.allocator, retirement.range)
+		reclaimed_count += 1
+		reclaimed_bytes += retirement.range.size
+	}
+	resize(&arena.retirements, write_index)
+	return
 }
 
 wgpu_align_arena_offset :: proc "contextless" (value, alignment: u64) -> u64 {
@@ -132,6 +177,7 @@ wgpu_destroy_geometry_arena :: proc(arena: ^WGPU_Geometry_Arena) {
 	if arena.buffer != nil {
 		wgpu.BufferRelease(arena.buffer)
 	}
+	delete(arena.retirements)
 	delete(arena.allocator.free_ranges)
 	arena^ = {}
 }

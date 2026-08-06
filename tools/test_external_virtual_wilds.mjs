@@ -365,6 +365,21 @@ function main() {
           "tests/fixtures/ui/virtual-wilds-editor-camera-history.json",
         ],
       },
+      {
+        name: "residency-churn",
+        arguments: [
+          "--warmup",
+          "0",
+          "--frames",
+          "1230",
+          "--capture-range",
+          "700:707",
+          "--editor",
+          "--ui-script",
+          "tests/fixtures/ui/virtual-wilds-residency-tour.json",
+          "--require-residency-pressure",
+        ],
+      },
     ];
     for (const sequenceConfig of sequences) {
       const sequence = spawnSync(

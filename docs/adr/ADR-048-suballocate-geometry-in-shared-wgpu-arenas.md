@@ -24,11 +24,18 @@ Both arenas use an aligned first-fit free-range allocator. They:
 - preserve existing bytes with a GPU buffer copy when growth replaces the backing buffer;
 - reuse a range when a changed Geometry version still fits;
 - release replaced ranges only after all replacement uploads succeed;
+- retire submitted ranges until asynchronous visibility completion proves their last referencing
+  frame has finished on the GPU;
 - coalesce released ranges and reclaim stale handles at geometry-topology invalidation boundaries.
 
 Unchanged Geometry versions return from the cache without allocation, scanning, or upload. Stable
 frames do not compact arenas. Fragmentation is accepted until a future explicit maintenance or
 residency boundary can relocate data safely.
+
+Logical residency ends when a cache entry or virtual page is evicted. Physical allocator ownership
+continues while the range is retired. The visibility copy is encoded after all geometry passes, so
+its mapped frame proves that every earlier arena read has finished. Eligible retired ranges can
+then return to the free list. CPU frame age alone is not a GPU-lifetime guarantee.
 
 Indirect templates store arena-global `first_index` and `base_vertex` values. On adapters with
 indirect-first-instance, visibility offsets are global too. Adjacent commands with the same material

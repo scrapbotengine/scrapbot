@@ -81,8 +81,10 @@ additionally imports it and captures a bounded WGPU frame. Launch the persistent
 
 Run `mise test-virtual-wilds` for the pinned twelve-model import contract.
 `mise test-virtual-wilds-gpu` additionally drives the camera long enough to require detail-page
-reads, checks the 192 MiB residency bound, and captures a WGPU frame. Launch the interactive tour
-with `mise scrapbot -- run examples/virtual-wilds --editor`.
+reads, checks the 192 MiB residency bound, and captures consecutive WGPU frames. Its editor-camera
+residency tour crosses several high-detail regions, returns to the cliff, and preserves frames both
+during and after heavy eviction churn. Launch the interactive tour with
+`mise scrapbot -- run examples/virtual-wilds --editor`.
 
 Run `mise test-virtual-geometry-cliff` for the isolated Coastal Cliff 04 import contract. Launch
 the focused interactive reproduction with

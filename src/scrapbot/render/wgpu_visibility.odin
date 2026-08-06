@@ -74,6 +74,12 @@ wgpu_validate_virtual_geometry_arena_ownership :: proc(renderer: ^WGPU_Renderer)
 			append(&index_ranges, page.range)
 		}
 	}
+	for retirement in renderer.geometry_vertex_arena.retirements {
+		append(&vertex_ranges, retirement.range)
+	}
+	for retirement in renderer.geometry_index_arena.retirements {
+		append(&index_ranges, retirement.range)
+	}
 	if err := wgpu_validate_arena_ownership(
 		&renderer.geometry_vertex_arena.allocator,
 		vertex_ranges,
@@ -931,6 +937,10 @@ wgpu_evict_virtual_group_at :: proc(
 		)
 	}
 	oldest_prefetched := group.prefetched
+	retire_after_frame := u64(0)
+	if renderer.profile_frame_index > 0 {
+		retire_after_frame = renderer.profile_frame_index - 1
+	}
 	for &page in cache.cluster_pages {
 		if page.group_index != group_index || !page.resident {
 			continue
@@ -939,8 +949,12 @@ wgpu_evict_virtual_group_at :: proc(
 			renderer.virtual_geometry_resident_bytes,
 			page.range.size + page.vertex_range.size,
 		)
-		wgpu_arena_release(&renderer.geometry_index_arena.allocator, page.range)
-		wgpu_arena_release(&renderer.geometry_vertex_arena.allocator, page.vertex_range)
+		wgpu_geometry_arena_retire(&renderer.geometry_index_arena, page.range, retire_after_frame)
+		wgpu_geometry_arena_retire(
+			&renderer.geometry_vertex_arena,
+			page.vertex_range,
+			retire_after_frame,
+		)
 		page.range = {}
 		page.vertex_range = {}
 		page.resident = false
@@ -1489,6 +1503,11 @@ wgpu_visibility_consume_readbacks :: proc(
 		if readback.map_state.status != .Success {
 			continue
 		}
+		// The visibility copy is encoded after every geometry pass. Mapping it proves
+		// that all arena reads through this frame have completed, so retired ranges
+		// may now re-enter the free lists.
+		wgpu_geometry_arena_reclaim(&renderer.geometry_vertex_arena, readback.frame_index)
+		wgpu_geometry_arena_reclaim(&renderer.geometry_index_arena, readback.frame_index)
 		mapped := wgpu.BufferGetConstMappedRangeTyped(
 			readback.buffer,
 			0,

@@ -80,6 +80,11 @@ Requests are deduplicated and prioritized by projected error. Admission and evic
 atomic. Ordinary frames admit at most 512 KiB and 16 groups. The configured budget counts both
 aligned vertex and index residency; pinned fallback data may raise effective residency above it.
 
+Eviction removes a group from logical residency immediately, but its page ranges remain physically
+retired until a completed visibility readback fences their last submitted use. Streaming cannot
+overwrite vertex or index bytes that an in-flight depth, world, or shadow command may still read.
+Retirement may temporarily make physical arena residency exceed the logical page budget.
+
 When `[render].virtual_geometry_prefetch` is enabled, WGPU derives a bounded future camera from
 smoothed frame-to-frame position and view-direction motion. A widened future frustum emits
 speculative refinement requests through the same feedback channel. Visible demand always sorts

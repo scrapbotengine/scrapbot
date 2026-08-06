@@ -119,6 +119,11 @@ backing buffer. Vertex-pulling bind groups advertise no more than the device's m
 binding range even when the shared vertex/index buffers have grown beyond it. Stable frames never
 scan, compact, hash, or upload the arenas.
 
+Logical eviction transfers page and cache ranges into arena-owned retirement queues. The ranges
+remain allocator-owned and unavailable for reuse until a mapped post-geometry visibility copy
+proves their last arena read complete. Completion-driven reclamation is change-driven; stable
+frames with no retired ranges perform no retirement work.
+
 Hierarchy metadata and each Geometry's file-or-memory page source are resource-owned. WGPU owns
 canonical fast-path or page-local vertex/index arena ranges, residency, visible-use age, pending
 immutable product-range reads, and the configured combined payload budget. Outstanding reads have

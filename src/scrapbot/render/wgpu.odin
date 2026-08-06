@@ -2560,10 +2560,30 @@ wgpu_release_geometry_cache_ranges :: proc(
 	if renderer == nil || cached == nil || !cached.valid {
 		return
 	}
-	wgpu_arena_release(&renderer.geometry_vertex_arena.allocator, cached.vertex_range)
-	wgpu_arena_release(&renderer.geometry_index_arena.allocator, cached.index_range)
-	wgpu_arena_release(&renderer.geometry_index_arena.allocator, cached.shadow_index_range)
-	wgpu_arena_release(&renderer.geometry_index_arena.allocator, cached.meshlet_index_range)
+	retire_after_frame := u64(0)
+	if renderer.profile_frame_index > 0 {
+		retire_after_frame = renderer.profile_frame_index - 1
+	}
+	wgpu_geometry_arena_retire(
+		&renderer.geometry_vertex_arena,
+		cached.vertex_range,
+		retire_after_frame,
+	)
+	wgpu_geometry_arena_retire(
+		&renderer.geometry_index_arena,
+		cached.index_range,
+		retire_after_frame,
+	)
+	wgpu_geometry_arena_retire(
+		&renderer.geometry_index_arena,
+		cached.shadow_index_range,
+		retire_after_frame,
+	)
+	wgpu_geometry_arena_retire(
+		&renderer.geometry_index_arena,
+		cached.meshlet_index_range,
+		retire_after_frame,
+	)
 	for page in cached.cluster_pages {
 		renderer.virtual_geometry_staged_payload_bytes -= min(
 			renderer.virtual_geometry_staged_payload_bytes,
@@ -2571,8 +2591,16 @@ wgpu_release_geometry_cache_ranges :: proc(
 		)
 		delete(page.loaded_payload, os.heap_allocator())
 		if page.resident {
-			wgpu_arena_release(&renderer.geometry_index_arena.allocator, page.range)
-			wgpu_arena_release(&renderer.geometry_vertex_arena.allocator, page.vertex_range)
+			wgpu_geometry_arena_retire(
+				&renderer.geometry_index_arena,
+				page.range,
+				retire_after_frame,
+			)
+			wgpu_geometry_arena_retire(
+				&renderer.geometry_vertex_arena,
+				page.vertex_range,
+				retire_after_frame,
+			)
 		}
 	}
 	delete(cached.cluster_pages)
@@ -2951,15 +2979,35 @@ wgpu_geometry_cache :: proc(
 			return nil, upload_err
 		}
 	}
+	retire_after_frame := u64(0)
+	if renderer.profile_frame_index > 0 {
+		retire_after_frame = renderer.profile_frame_index - 1
+	}
 	if !vertex_range_reused {
-		wgpu_arena_release(&renderer.geometry_vertex_arena.allocator, cached.vertex_range)
+		wgpu_geometry_arena_retire(
+			&renderer.geometry_vertex_arena,
+			cached.vertex_range,
+			retire_after_frame,
+		)
 	}
 	if !index_range_reused {
-		wgpu_arena_release(&renderer.geometry_index_arena.allocator, cached.index_range)
+		wgpu_geometry_arena_retire(
+			&renderer.geometry_index_arena,
+			cached.index_range,
+			retire_after_frame,
+		)
 	}
-	wgpu_arena_release(&renderer.geometry_index_arena.allocator, cached.shadow_index_range)
+	wgpu_geometry_arena_retire(
+		&renderer.geometry_index_arena,
+		cached.shadow_index_range,
+		retire_after_frame,
+	)
 	if !meshlet_range_reused {
-		wgpu_arena_release(&renderer.geometry_index_arena.allocator, cached.meshlet_index_range)
+		wgpu_geometry_arena_retire(
+			&renderer.geometry_index_arena,
+			cached.meshlet_index_range,
+			retire_after_frame,
+		)
 	}
 	for page in cached.cluster_pages {
 		renderer.virtual_geometry_staged_payload_bytes -= min(
@@ -2968,8 +3016,16 @@ wgpu_geometry_cache :: proc(
 		)
 		delete(page.loaded_payload, os.heap_allocator())
 		if page.resident {
-			wgpu_arena_release(&renderer.geometry_index_arena.allocator, page.range)
-			wgpu_arena_release(&renderer.geometry_vertex_arena.allocator, page.vertex_range)
+			wgpu_geometry_arena_retire(
+				&renderer.geometry_index_arena,
+				page.range,
+				retire_after_frame,
+			)
+			wgpu_geometry_arena_retire(
+				&renderer.geometry_vertex_arena,
+				page.vertex_range,
+				retire_after_frame,
+			)
 		}
 	}
 	delete(cached.cluster_pages)

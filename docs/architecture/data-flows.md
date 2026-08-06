@@ -70,6 +70,11 @@ admission handoffs serialize. An active child protects its direct parent fallbac
 release orders child before parent eligibility. Persistent dependency indices patch only affected
 cluster ranges rather than regenerating a Geometry's complete GPU residency table.
 
+Logical group eviction retires its vertex/index ranges against the last submitted frame. A later
+mapped visibility copy, encoded after the geometry passes, proves arena-read completion through its
+tagged frame and returns eligible ranges to the free lists. Uploads cannot reuse retired addresses
+while older depth, world, or shadow commands remain in flight.
+
 Page pressure does not mutate the camera's one-pixel projected-error target. Deferred detail keeps
 its resident parent drawable. The coordinated render-quality controller owns render-scale changes,
 whose physical viewport height feeds the same fixed frontier calculation.

@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "timeout_frames": 120,
+  "actions": [
+    {
+      "action": "set_editor_camera",
+      "position": { "x": -18.897524, "y": 6.966067, "z": -9.967772 },
+      "rotation": { "x": 0.079736, "y": -0.776758, "z": 0.0 }
+    },
+    { "action": "wait", "frames": 120 },
+    {
+      "action": "set_editor_camera",
+      "position": { "x": -25.712, "y": 4.2, "z": -21.642 },
+      "rotation": { "x": -0.08, "y": -0.698132, "z": 0.0 }
+    },
+    { "action": "wait", "frames": 120 },
+    {
+      "action": "set_editor_camera",
+      "position": { "x": -18.0, "y": 5.0, "z": -49.0 },
+      "rotation": { "x": -0.02, "y": -1.570796, "z": 0.0 }
+    },
+    { "action": "wait", "frames": 120 },
+    {
+      "action": "set_editor_camera",
+      "position": { "x": -10.0, "y": 5.0, "z": -100.0 },
+      "rotation": { "x": -0.02, "y": -0.698132, "z": 0.0 }
+    },
+    { "action": "wait", "frames": 120 },
+    {
+      "action": "set_editor_camera",
+      "position": { "x": -10.0, "y": 5.0, "z": -120.0 },
+      "rotation": { "x": -0.02, "y": -0.698132, "z": 0.0 }
+    },
+    { "action": "wait", "frames": 120 },
+    {
+      "action": "set_editor_camera",
+      "position": { "x": 24.0, "y": 7.0, "z": -88.0 },
+      "rotation": { "x": -0.04, "y": 0.82, "z": 0.0 }
+    },
+    { "action": "wait", "frames": 120 },
+    {
+      "action": "set_editor_camera",
+      "position": { "x": 38.0, "y": 9.0, "z": -42.0 },
+      "rotation": { "x": 0.02, "y": 1.42, "z": 0.0 }
+    },
+    { "action": "wait", "frames": 120 },
+    {
+      "action": "set_editor_camera",
+      "position": { "x": 20.0, "y": 12.0, "z": -8.0 },
+      "rotation": { "x": 0.12, "y": 2.3, "z": 0.0 }
+    },
+    { "action": "wait", "frames": 120 },
+    {
+      "action": "set_editor_camera",
+      "position": { "x": -18.897524, "y": 6.966067, "z": -9.967772 },
+      "rotation": { "x": 0.079736, "y": -0.776758, "z": 0.0 }
+    },
+    { "action": "wait", "frames": 240 }
+  ]
+}
