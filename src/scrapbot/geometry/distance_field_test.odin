@@ -1,5 +1,6 @@
 package geometry
 
+import "core:math"
 import "core:testing"
 
 Distance_Field_Test_Vertex :: struct {
@@ -100,6 +101,30 @@ test_distance_field_keeps_open_geometry_unsigned :: proc(t: ^testing.T) {
 	for sample in field.samples {
 		testing.expect(t, sample >= 0)
 	}
+}
+
+@(test)
+test_distance_field_quantization_is_bounded_and_preserves_sign :: proc(t: ^testing.T) {
+	field := Distance_Field {
+		samples = []f32{-10, -1.25, 0, 2.5, 9},
+		dimensions = {5, 1, 1},
+		bounds_min = {-10, -1, -1},
+		bounds_max = {10, 1, 1},
+		voxel_size = 1,
+		signed = true,
+	}
+	quantized, err := quantize_distance_field(&field)
+	defer destroy_quantized_distance_field(&quantized)
+	testing.expect_value(t, err, "")
+	testing.expect(t, quantized.signed)
+	testing.expect_value(t, len(quantized.samples), len(field.samples))
+	for source, index in field.samples {
+		decoded := dequantize_distance_sample(&quantized, quantized.samples[index])
+		testing.expect(t, math.abs(decoded - source) <= quantized.value_scale * 0.51)
+	}
+	testing.expect(t, quantized.samples[0] < 0)
+	testing.expect_value(t, quantized.samples[2], i16(0))
+	testing.expect(t, quantized.samples[4] > 0)
 }
 
 @(test)

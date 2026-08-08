@@ -1,5 +1,6 @@
 package asset_import
 
+import geometry "../geometry"
 import shared "../shared"
 import "core:math"
 import "core:os"
@@ -142,19 +143,44 @@ test_model_offline_lods_are_deterministic_compact_and_round_trip :: proc(t: ^tes
 		&product_directory,
 		.Model_Detail_Geometry,
 	)
+	distance_field_chunk, distance_field_found := asset_product_find_chunk(
+		&product_directory,
+		.Model_Distance_Fields,
+	)
 	catalog_chunk, catalog_found := asset_product_find_chunk(&product_directory, .Model_Catalog)
 	testing.expect(t, image_found)
 	testing.expect(t, coarse_found)
 	testing.expect(t, detail_found)
+	testing.expect(t, distance_field_found)
 	testing.expect(t, catalog_found)
 	testing.expect(t, image_chunk.offset < coarse_chunk.offset)
 	testing.expect(t, coarse_chunk.offset < detail_chunk.offset)
-	testing.expect(t, detail_chunk.offset < catalog_chunk.offset)
+	testing.expect(t, detail_chunk.offset < distance_field_chunk.offset)
+	testing.expect(t, distance_field_chunk.offset < catalog_chunk.offset)
 	decoded, decode_err := read_model_product(path)
 	defer destroy_model_product(&decoded)
 	testing.expectf(t, decode_err == "", "LOD product round trip failed: %s", decode_err)
 	if decode_err == "" {
 		decoded_primitive := decoded.meshes[0].primitives[0]
+		field := decoded_primitive.distance_field
+		testing.expect_value(t, len(field.samples), 0)
+		testing.expect(t, field.product_size > 0)
+		testing.expect(
+			t,
+			model_chunk_contains(distance_field_chunk, field.product_offset, field.product_size),
+		)
+		loaded_field, field_err := read_model_distance_field_samples(path, field)
+		defer geometry.destroy_quantized_distance_field(&loaded_field)
+		testing.expectf(t, field_err == "", "distance-field sample read failed: %s", field_err)
+		testing.expect_value(t, len(loaded_field.samples), int(field.product_size / 2))
+		invalid_field := field
+		invalid_field.product_offset = catalog_chunk.offset
+		_, invalid_err := read_model_distance_field_samples(path, invalid_field)
+		testing.expect(t, invalid_err != "")
+		invalid_field = field
+		invalid_field.value_scale = 0
+		_, invalid_scale_err := read_model_distance_field_samples(path, invalid_field)
+		testing.expect(t, invalid_scale_err != "")
 		testing.expect_value(
 			t,
 			len(decoded_primitive.page_payloads),
@@ -432,6 +458,14 @@ test_static_gltf_import_is_incremental_and_round_trips_product :: proc(t: ^testi
 	testing.expect_value(t, product.cluster_count, 1)
 	testing.expect_value(t, product.cluster_group_count, 1)
 	testing.expect_value(t, product.cluster_page_count, 1)
+	testing.expect_value(t, product.distance_field_count, 1)
+	testing.expect_value(t, product.signed_distance_field_count, 0)
+	testing.expect(t, product.distance_field_sample_count > 0)
+	testing.expect_value(
+		t,
+		product.distance_field_byte_count,
+		product.distance_field_sample_count * 2,
+	)
 	model, read_err := read_model_product(product.artifact_path)
 	defer destroy_model_product(&model)
 	testing.expectf(t, read_err == "", "model product read failed: %s", read_err)

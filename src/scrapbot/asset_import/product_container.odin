@@ -15,6 +15,7 @@ Asset_Product_Chunk_Kind :: enum u32 {
 	Model_Material_Images,
 	Model_Coarse_Geometry,
 	Model_Detail_Geometry,
+	Model_Distance_Fields,
 	Model_Catalog,
 }
 

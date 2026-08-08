@@ -17,6 +17,16 @@ Distance_Field :: struct {
 	signed: bool,
 }
 
+Quantized_Distance_Field :: struct {
+	samples: []i16,
+	dimensions: [3]u32,
+	bounds_min: [3]f32,
+	bounds_max: [3]f32,
+	voxel_size: f32,
+	value_scale: f32,
+	signed: bool,
+}
+
 @(private)
 Native_Distance_Field :: struct {
 	samples: [^]f32,
@@ -119,6 +129,64 @@ destroy_distance_field :: proc(field: ^Distance_Field, allocator := context.allo
 	}
 	delete(field.samples, allocator)
 	field^ = {}
+}
+
+quantize_distance_field :: proc(
+	field: ^Distance_Field,
+	allocator := context.allocator,
+) -> (
+	Quantized_Distance_Field,
+	string,
+) {
+	if field == nil || len(field.samples) == 0 || field.voxel_size <= 0 {
+		return {}, "distance field is unavailable for quantization"
+	}
+	maximum := f32(0)
+	for sample in field.samples {
+		if math.is_nan(sample) || math.is_inf(sample) {
+			return {}, "distance field contains a non-finite sample"
+		}
+		maximum = max(maximum, math.abs(sample))
+	}
+	if maximum <= 0 {
+		return {}, "distance field has no representable range"
+	}
+	value_scale := maximum / f32(max(i16))
+	result := Quantized_Distance_Field {
+		samples = make([]i16, len(field.samples), allocator),
+		dimensions = field.dimensions,
+		bounds_min = field.bounds_min,
+		bounds_max = field.bounds_max,
+		voxel_size = field.voxel_size,
+		value_scale = value_scale,
+		signed = field.signed,
+	}
+	for sample, index in field.samples {
+		quantized := math.round(sample / value_scale)
+		result.samples[index] = i16(clamp(quantized, f32(min(i16)), f32(max(i16))))
+	}
+	return result, ""
+}
+
+destroy_quantized_distance_field :: proc(
+	field: ^Quantized_Distance_Field,
+	allocator := context.allocator,
+) {
+	if field == nil {
+		return
+	}
+	delete(field.samples, allocator)
+	field^ = {}
+}
+
+dequantize_distance_sample :: proc "contextless" (
+	field: ^Quantized_Distance_Field,
+	value: i16,
+) -> f32 {
+	if field == nil {
+		return 0
+	}
+	return f32(value) * field.value_scale
 }
 
 distance_field_sample :: proc "contextless" (field: ^Distance_Field, x, y, z: u32) -> (f32, bool) {

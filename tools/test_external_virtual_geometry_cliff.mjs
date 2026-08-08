@@ -63,6 +63,7 @@ function main() {
 
   const metadata = JSON.parse(readFileSync(modelMetadata, "utf8"));
   const expected = {
+    schema: "scrapbot.model.v18.distance-fields",
     source: "assets/coastal_cliff_04/coastal_cliff_04_1k.gltf",
     node_count: 1,
     mesh_count: 1,
@@ -82,6 +83,13 @@ function main() {
         `unexpected cliff metadata ${field}: ${metadata[field]} (expected ${value})`,
       );
     }
+  }
+  if (
+    metadata.distance_field_count !== 1 ||
+    metadata.distance_field_sample_count <= 0 ||
+    metadata.distance_field_byte_count !== metadata.distance_field_sample_count * 2
+  ) {
+    throw new Error("cliff distance-field product metadata is invalid");
   }
 
   console.log(

@@ -1,7 +1,7 @@
 # FDR-011: Asset imports
 
 **Status:** In Progress
-**Last reviewed:** 2026-08-05
+**Last reviewed:** 2026-08-08
 
 ## Overview
 
@@ -16,6 +16,7 @@ Asset imports turn artist-authored texture, model, HDR environment, and SVG icon
 - Model resources import the selected glTF 2.0 `.gltf` or `.glb` scene and only its reachable nodes, meshes, materials, and images. Supported data includes triangle geometry, TRS node transforms, metallic-roughness material factors, normal and occlusion strengths, emissive factors, opaque and alpha-cutout materials, double-sided surfaces, and base-color, metallic-roughness, normal, occlusion, and emissive images. Images may be embedded in GLB buffer views, encoded as base64 data URIs, or stored at safe relative paths beside the model.
 - Model import generates up to three deterministic meshoptimizer LODs per eligible primitive by default. Project recipes control descending triangle ratios and projected screen-radius thresholds or disable generation. Small and topology-constrained primitives may retain fewer levels.
 - Every imported primitive and generated LOD persists its crack-aware cluster hierarchy and deterministic page table in the Model product. Hierarchy reduction accounts for normals and UVs, protects texture seams during permissive fallback, and refuses attribute-blind fallback. Runtime registration validates and clones that product-owned hierarchy instead of rebuilding it.
+- Every imported primitive compiles a padded mesh distance field through a temporary BVH. Model v18 stores signed 16-bit samples for watertight meshes and conservative unsigned samples for open or non-manifold geometry in a separate range-addressable chunk. Import diagnostics report field count and payload size; cache-hit catalog loading validates descriptors without reading samples.
 - A Model recipe may prefer `auto`, `conventional`, or `virtual` submission. The preference is runtime policy metadata: products retain both canonical geometry and the hierarchy/page representation, so changing it neither discards geometry nor requires a distinct importer path.
 - Imported images become owned mipmapped texture payloads on the Model's generated Material resources. Each texture slot preserves its glTF minification, magnification, mip, and U/V wrap policy. The WGPU material path renders them with GGX direct lighting, authored tangent-space normal mapping with a derivative fallback, ambient diffuse/specular response, HDR emission, bloom, and tone mapping.
 - Project checking, building, and running automatically import products that are absent or stale. `scrapbot import` performs the same work explicitly and reports structured per-resource results.
@@ -141,9 +142,10 @@ own chunk relationships.
 
 ### 15. Split and stream large Model products
 
-**Decision:** Model v17 separates material images, pinned coarse pages, evictable detail pages, and
-the runtime catalog into four product chunks. Build the product with the common sequential writer;
-spool detail pages temporarily and emit the descriptor catalog only after exact ranges are known.
+**Decision:** Model v18 separates material images, pinned coarse pages, evictable detail pages,
+quantized mesh distance fields, and the runtime catalog into five product chunks. Build the product
+with the common sequential writer; spool detail pages temporarily and emit the descriptor catalog
+only after exact ranges are known.
 
 The pinned chunk contains every terminal refinement-DAG group, not merely groups at the global
 maximum hierarchy depth. Different regions may stop simplifying at different depths; evicting any
@@ -155,6 +157,9 @@ frontiers may reduce interior detail but cannot enlarge source openings by movin
 The v17 fingerprint invalidates products whose early terminal groups were incorrectly placed in
 the evictable detail chunk.
 
+The v18 fingerprint adds one independently addressable distance-field range per primitive. The
+catalog stores descriptors, never bulk voxel samples. See ADR-055.
+
 **Why:** Runtime startup should not walk gigabytes of payload bytes to discover a catalog. Import
 should not require enough spare memory for both the decoded source model and a second complete
 artifact-sized byte array.
@@ -165,7 +170,7 @@ independent decoding rather than whole-detail-chunk decompression.
 
 ## Related
 
-- **ADRs:** ADR-002, ADR-010, ADR-024, ADR-030, ADR-031, ADR-032, ADR-036, ADR-037, ADR-038, ADR-041, ADR-046, ADR-047, ADR-050, ADR-051, ADR-054
+- **ADRs:** ADR-002, ADR-010, ADR-024, ADR-030, ADR-031, ADR-032, ADR-036, ADR-037, ADR-038, ADR-041, ADR-046, ADR-047, ADR-050, ADR-051, ADR-054, ADR-055
 - **FDRs:** FDR-002, FDR-003, FDR-008, FDR-009
 
 ## Open Questions

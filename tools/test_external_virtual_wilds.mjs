@@ -256,7 +256,7 @@ function main() {
     );
     const expectedLods = expected.lods ?? 3;
     if (
-      metadata.schema !== "scrapbot.model.v17.coverage-frontier" ||
+      metadata.schema !== "scrapbot.model.v18.distance-fields" ||
       metadata.source !== expected.source ||
       metadata.node_count !== (expected.nodes ?? 1) ||
       metadata.mesh_count !== (expected.meshes ?? 1) ||
@@ -273,7 +273,12 @@ function main() {
       (expectedLods === 0 && metadata.lod_index_count !== 0) ||
       metadata.cluster_count !== expected.clusters ||
       metadata.cluster_group_count !== expected.groups ||
-      metadata.cluster_page_count !== expected.groups
+      metadata.cluster_page_count !== expected.groups ||
+      metadata.distance_field_count !== metadata.primitive_count ||
+      metadata.signed_distance_field_count < 0 ||
+      metadata.signed_distance_field_count > metadata.distance_field_count ||
+      metadata.distance_field_sample_count <= 0 ||
+      metadata.distance_field_byte_count !== metadata.distance_field_sample_count * 2
     ) {
       throw new Error(
         `${expected.source} metadata does not match the pinned scan shape`,

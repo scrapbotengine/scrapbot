@@ -31,10 +31,19 @@ The native compiler has a narrow allocation-owning C boundary. Odin validates an
 into engine-owned memory before releasing native storage. Field construction remains invalidated
 asset work; ordinary frames must never invoke it.
 
-The initial compiler stores full-precision samples so its accuracy and topology contract can be
-tested independently. Model-product persistence, quantization, GPU residency, world clipmaps, and
-individual consumers are later slices. HZB remains the primary visibility mechanism until a
-same-workload profile proves that distance-assisted coarse rejection is cheaper and equally safe.
+The compiler first produces full-precision samples so its accuracy and topology contract can be
+tested independently. Model v18 then quantizes every sample into one signed 16-bit value with a
+per-field scale. Zero remains exact, sign is preserved, and maximum reconstruction error is half
+one quantization step.
+
+Quantized samples live in an independently addressable Model-product chunk. Primitive catalog
+records contain only dimensions, bounds, voxel and value scales, topology classification, and a
+validated absolute byte range. Catalog loading does not read sample payloads. One range loader
+reconstructs engine-owned quantized samples only for a consumer that requests them.
+
+GPU residency, world clipmaps, and individual consumers remain later slices. HZB remains the
+primary visibility mechanism until a same-workload profile proves that distance-assisted coarse
+rejection is cheaper and equally safe.
 
 ## Consequences
 
@@ -42,5 +51,5 @@ same-workload profile proves that distance-assisted coarse rejection is cheaper 
 - Open assets remain useful without pretending they enclose a volume.
 - The temporary BVH makes preprocessing scale better than testing every voxel against every
   triangle, but import time and product resolution still require representative benchmarks.
-- Shipping fields requires an independently addressable Model-product chunk; placing bulk samples
-  in the runtime catalog would violate the existing startup boundary.
+- Model products grow by two bytes per compiled voxel, while cache-hit catalog loading remains
+  independent of that payload size.

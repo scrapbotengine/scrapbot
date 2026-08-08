@@ -13,12 +13,13 @@ import "core:path/filepath"
 import "core:strings"
 import cgltf "vendor:cgltf"
 
-MODEL_IMPORTER_SCHEMA :: "scrapbot.model.v17.coverage-frontier"
-MODEL_CATALOG_MAGIC :: [8]u8{'S', 'B', 'M', 'C', 'A', 'T', '1', '7'}
-MODEL_IMAGE_CHUNK_MAGIC :: [8]u8{'S', 'B', 'M', 'I', 'M', 'G', '1', '7'}
-MODEL_COARSE_CHUNK_MAGIC :: [8]u8{'S', 'B', 'M', 'C', 'R', 'S', '1', '7'}
-MODEL_DETAIL_CHUNK_MAGIC :: [8]u8{'S', 'B', 'M', 'D', 'T', 'L', '1', '7'}
-MODEL_PRODUCT_CHUNK_COUNT :: 4
+MODEL_IMPORTER_SCHEMA :: "scrapbot.model.v18.distance-fields"
+MODEL_CATALOG_MAGIC :: [8]u8{'S', 'B', 'M', 'C', 'A', 'T', '1', '8'}
+MODEL_IMAGE_CHUNK_MAGIC :: [8]u8{'S', 'B', 'M', 'I', 'M', 'G', '1', '8'}
+MODEL_COARSE_CHUNK_MAGIC :: [8]u8{'S', 'B', 'M', 'C', 'R', 'S', '1', '8'}
+MODEL_DETAIL_CHUNK_MAGIC :: [8]u8{'S', 'B', 'M', 'D', 'T', 'L', '1', '8'}
+MODEL_DISTANCE_FIELD_CHUNK_MAGIC :: [8]u8{'S', 'B', 'M', 'S', 'D', 'F', '1', '8'}
+MODEL_PRODUCT_CHUNK_COUNT :: 5
 MODEL_READER_BUFFER_SIZE :: 64 * 1024
 
 Model_Vertex :: struct {
@@ -61,7 +62,17 @@ Model_Primitive :: struct {
 	vertex_count, index_count: u32,
 	hierarchy: geometry.Hierarchy,
 	page_payloads: []geometry.Page_Payload_Record,
+	distance_field: Model_Distance_Field,
 	lods: [dynamic]Model_Primitive_LOD,
+}
+
+Model_Distance_Field :: struct {
+	dimensions: [3]u32,
+	bounds_min, bounds_max: shared.Vec3,
+	voxel_size, value_scale: f32,
+	signed: bool,
+	product_offset, product_size: u64,
+	samples: []i16,
 }
 
 Model_Primitive_LOD :: struct {
@@ -104,6 +115,8 @@ Model_Metadata :: struct {
 	vertex_count, index_count, material_count, texture_count: int,
 	lod_count, lod_vertex_count, lod_index_count: int,
 	cluster_count, cluster_group_count, cluster_page_count: int,
+	distance_field_count, signed_distance_field_count, distance_field_sample_count: int,
+	distance_field_byte_count: int,
 	ignored_texture_count: int,
 }
 
@@ -244,6 +257,10 @@ ensure_model_import :: proc(
 			cluster_count = metadata.cluster_count,
 			cluster_group_count = metadata.cluster_group_count,
 			cluster_page_count = metadata.cluster_page_count,
+			distance_field_count = metadata.distance_field_count,
+			signed_distance_field_count = metadata.signed_distance_field_count,
+			distance_field_sample_count = metadata.distance_field_sample_count,
+			distance_field_byte_count = metadata.distance_field_byte_count,
 			material_count = metadata.material_count,
 			texture_count = metadata.texture_count,
 			ignored_texture_count = metadata.ignored_texture_count,
@@ -1122,6 +1139,7 @@ destroy_model_primitive :: proc(primitive: ^Model_Primitive) {
 	delete(primitive.indices)
 	delete(primitive.query_positions)
 	delete(primitive.page_payloads)
+	delete(primitive.distance_field.samples)
 	geometry.destroy_hierarchy(&primitive.hierarchy)
 	for &lod in primitive.lods {
 		delete(lod.vertices)
@@ -1346,6 +1364,23 @@ model_metadata :: proc(
 			metadata.cluster_count += len(primitive.hierarchy.clusters)
 			metadata.cluster_group_count += len(primitive.hierarchy.groups)
 			metadata.cluster_page_count += len(primitive.hierarchy.pages)
+			if primitive.distance_field.product_size > 0 ||
+			   len(primitive.distance_field.samples) > 0 {
+				distance_field_sample_count := len(primitive.distance_field.samples)
+				if distance_field_sample_count == 0 {
+					distance_field_sample_count = int(primitive.distance_field.product_size / 2)
+				}
+				distance_field_byte_count := int(primitive.distance_field.product_size)
+				if distance_field_byte_count == 0 {
+					distance_field_byte_count = distance_field_sample_count * size_of(i16)
+				}
+				metadata.distance_field_count += 1
+				metadata.distance_field_sample_count += distance_field_sample_count
+				metadata.distance_field_byte_count += distance_field_byte_count
+				if primitive.distance_field.signed {
+					metadata.signed_distance_field_count += 1
+				}
+			}
 			metadata.lod_count += len(primitive.lods)
 			for lod in primitive.lods {
 				metadata.lod_vertex_count += len(lod.vertices)
@@ -1496,6 +1531,9 @@ write_model_product_file :: proc(
 	if model == nil {
 		return 0, "imported model product is unavailable"
 	}
+	if distance_field_err := model_prepare_distance_fields(model); distance_field_err != "" {
+		return 0, distance_field_err
+	}
 	file, create_err := os.create(path)
 	if create_err != nil {
 		return 0, fmt.tprintf("failed to create imported model product: %v", create_err)
@@ -1548,6 +1586,15 @@ write_model_product_file :: proc(
 	   !asset_product_stream_finish_chunk(&writer) {
 		return 0, "failed to write imported model detail-geometry chunk"
 	}
+	if !asset_product_stream_begin_chunk(&writer, .Model_Distance_Fields) {
+		return 0, "failed to begin imported model distance-field chunk"
+	}
+	distance_magic := MODEL_DISTANCE_FIELD_CHUNK_MAGIC
+	if !asset_product_stream_write(&writer, distance_magic[:]) ||
+	   !model_stream_distance_fields(&writer, model) ||
+	   !asset_product_stream_finish_chunk(&writer) {
+		return 0, "failed to write imported model distance-field chunk"
+	}
 	if !asset_product_stream_begin_chunk(&writer, .Model_Catalog) ||
 	   !model_stream_catalog(&writer, model) ||
 	   !asset_product_stream_finish_chunk(&writer) {
@@ -1562,6 +1609,79 @@ write_model_product_file :: proc(
 	}
 	file_open = false
 	return byte_count, ""
+}
+
+model_prepare_distance_fields :: proc(model: ^Model_Product) -> string {
+	if model == nil {
+		return "imported model product is unavailable"
+	}
+	for &mesh in model.meshes {
+		for &primitive in mesh.primitives {
+			if len(primitive.distance_field.samples) > 0 {
+				continue
+			}
+			field, field_err := geometry.build_distance_field(
+				raw_data(primitive.vertices[:]),
+				len(primitive.vertices),
+				size_of(Model_Vertex),
+				primitive.indices[:],
+			)
+			if field_err != "" {
+				return fmt.tprintf("primitive %s distance field: %s", primitive.key, field_err)
+			}
+			quantized, quantized_err := geometry.quantize_distance_field(&field)
+			geometry.destroy_distance_field(&field)
+			if quantized_err != "" {
+				return fmt.tprintf("primitive %s distance field: %s", primitive.key, quantized_err)
+			}
+			primitive.distance_field = {
+				dimensions = quantized.dimensions,
+				bounds_min = {
+					quantized.bounds_min[0],
+					quantized.bounds_min[1],
+					quantized.bounds_min[2],
+				},
+				bounds_max = {
+					quantized.bounds_max[0],
+					quantized.bounds_max[1],
+					quantized.bounds_max[2],
+				},
+				voxel_size = quantized.voxel_size,
+				value_scale = quantized.value_scale,
+				signed = quantized.signed,
+				samples = quantized.samples,
+			}
+			quantized.samples = nil
+			geometry.destroy_quantized_distance_field(&quantized)
+		}
+	}
+	return ""
+}
+
+model_stream_distance_fields :: proc(
+	writer: ^Asset_Product_Stream_Writer,
+	model: ^Model_Product,
+) -> bool {
+	buffer: [64 * 1024]u8
+	for &mesh in model.meshes {
+		for &primitive in mesh.primitives {
+			field := &primitive.distance_field
+			field.product_offset = writer.offset
+			field.product_size = u64(len(field.samples) * size_of(i16))
+			cursor := 0
+			for cursor < len(field.samples) {
+				count := min(len(field.samples) - cursor, len(buffer) / size_of(i16))
+				for sample, index in field.samples[cursor:cursor + count] {
+					endian.unchecked_put_u16le(buffer[index * 2:], transmute(u16)sample)
+				}
+				if !asset_product_stream_write(writer, buffer[:count * 2]) {
+					return false
+				}
+				cursor += count
+			}
+		}
+	}
+	return true
 }
 
 model_stream_images :: proc(writer: ^Asset_Product_Stream_Writer, model: ^Model_Product) -> bool {
@@ -1802,6 +1922,7 @@ model_write_primitive_record :: proc(bytes: ^[dynamic]u8, primitive: Model_Primi
 	}
 	model_write_hierarchy(bytes, primitive.hierarchy)
 	model_write_page_records(bytes, primitive.page_payloads)
+	model_write_distance_field_record(bytes, primitive.distance_field)
 	model_write_u32(bytes, u32(len(primitive.lods)))
 	for lod in primitive.lods {
 		model_write_u32(bytes, lod.level)
@@ -1815,6 +1936,19 @@ model_write_primitive_record :: proc(bytes: ^[dynamic]u8, primitive: Model_Primi
 		model_write_hierarchy(bytes, lod.hierarchy)
 		model_write_page_records(bytes, lod.page_payloads)
 	}
+}
+
+model_write_distance_field_record :: proc(bytes: ^[dynamic]u8, field: Model_Distance_Field) {
+	for dimension in field.dimensions {
+		model_write_u32(bytes, dimension)
+	}
+	model_write_vec3(bytes, field.bounds_min)
+	model_write_vec3(bytes, field.bounds_max)
+	model_write_f32(bytes, field.voxel_size)
+	model_write_f32(bytes, field.value_scale)
+	model_write_u32(bytes, 1 if field.signed else 0)
+	model_write_u64(bytes, field.product_offset)
+	model_write_u64(bytes, field.product_size)
 }
 
 model_write_node_record :: proc(bytes: ^[dynamic]u8, node: Model_Node) {
@@ -1935,13 +2069,18 @@ read_model_product :: proc(path: string) -> (model: Model_Product, err: string) 
 	image_chunk, image_found := asset_product_find_chunk(&directory, .Model_Material_Images)
 	coarse_chunk, coarse_found := asset_product_find_chunk(&directory, .Model_Coarse_Geometry)
 	detail_chunk, detail_found := asset_product_find_chunk(&directory, .Model_Detail_Geometry)
+	distance_field_chunk, distance_field_found := asset_product_find_chunk(
+		&directory,
+		.Model_Distance_Fields,
+	)
 	catalog_chunk, catalog_found := asset_product_find_chunk(&directory, .Model_Catalog)
-	if !image_found || !coarse_found || !detail_found || !catalog_found {
+	if !image_found || !coarse_found || !detail_found || !distance_field_found || !catalog_found {
 		return {}, "imported model product chunks are missing"
 	}
 	if !model_validate_chunk_magic(file, image_chunk, MODEL_IMAGE_CHUNK_MAGIC) ||
 	   !model_validate_chunk_magic(file, coarse_chunk, MODEL_COARSE_CHUNK_MAGIC) ||
-	   !model_validate_chunk_magic(file, detail_chunk, MODEL_DETAIL_CHUNK_MAGIC) {
+	   !model_validate_chunk_magic(file, detail_chunk, MODEL_DETAIL_CHUNK_MAGIC) ||
+	   !model_validate_chunk_magic(file, distance_field_chunk, MODEL_DISTANCE_FIELD_CHUNK_MAGIC) {
 		return {}, "imported model product has an invalid chunk header"
 	}
 	if catalog_chunk.offset > u64(max(int)) ||
@@ -2133,6 +2272,13 @@ read_model_product :: proc(path: string) -> (model: Model_Product, err: string) 
 					detail_chunk,
 				)
 			}
+			if ok {
+				ok = model_read_distance_field_record(
+					&reader,
+					&primitive.distance_field,
+					distance_field_chunk,
+				)
+			}
 			if !ok {
 				destroy_model_primitive(&primitive)
 				destroy_model_mesh(&mesh)
@@ -2261,6 +2407,129 @@ read_model_product :: proc(path: string) -> (model: Model_Product, err: string) 
 		return {}, "imported model product has trailing data"
 	}
 	return model, ""
+}
+
+model_read_distance_field_record :: proc(
+	reader: ^Model_Reader,
+	field: ^Model_Distance_Field,
+	chunk: Asset_Product_Chunk,
+) -> bool {
+	if reader == nil || field == nil {
+		return false
+	}
+	ok := true
+	for &dimension in field.dimensions {
+		dimension, ok = model_read_u32(reader)
+		if !ok {
+			return false
+		}
+	}
+	field.bounds_min, ok = model_read_vec3(reader)
+	if ok {
+		field.bounds_max, ok = model_read_vec3(reader)
+	}
+	if ok {
+		field.voxel_size, ok = model_read_f32(reader)
+	}
+	if ok {
+		field.value_scale, ok = model_read_f32(reader)
+	}
+	signed_field: u32
+	if ok {
+		signed_field, ok = model_read_u32(reader)
+	}
+	if ok {
+		field.product_offset, ok = model_read_u64(reader)
+	}
+	if ok {
+		field.product_size, ok = model_read_u64(reader)
+	}
+	field.signed = signed_field == 1
+	return ok && signed_field <= 1 && model_distance_field_descriptor_valid(field^, chunk)
+}
+
+model_distance_field_descriptor_valid :: proc(
+	field: Model_Distance_Field,
+	chunk: Asset_Product_Chunk,
+) -> bool {
+	sample_count := u64(field.dimensions[0]) * u64(field.dimensions[1]) * u64(field.dimensions[2])
+	values := [8]f32 {
+		field.bounds_min.x,
+		field.bounds_min.y,
+		field.bounds_min.z,
+		field.bounds_max.x,
+		field.bounds_max.y,
+		field.bounds_max.z,
+		field.voxel_size,
+		field.value_scale,
+	}
+	if sample_count == 0 ||
+	   sample_count > 256 * 256 * 256 ||
+	   field.product_size != sample_count * size_of(i16) ||
+	   !model_chunk_contains(chunk, field.product_offset, field.product_size) {
+		return false
+	}
+	for value, index in values {
+		if math.is_nan(value) || math.is_inf(value) {
+			return false
+		}
+		if index < 3 && value >= values[index + 3] {
+			return false
+		}
+	}
+	return field.voxel_size > 0 && field.value_scale > 0
+}
+
+read_model_distance_field_samples :: proc(
+	path: string,
+	descriptor: Model_Distance_Field,
+) -> (
+	geometry.Quantized_Distance_Field,
+	string,
+) {
+	file, open_err := os.open(path)
+	if open_err != nil {
+		return {}, fmt.tprintf("failed to open imported model distance field: %v", open_err)
+	}
+	defer os.close(file)
+	info, stat_err := os.stat(path, context.temp_allocator)
+	if stat_err != nil || info.size < 0 || info.size > i64(max(int)) {
+		return {}, "failed to inspect imported model distance field"
+	}
+	directory, directory_err := read_asset_product_directory(file, int(info.size), .Model)
+	if directory_err != "" {
+		return {}, directory_err
+	}
+	defer destroy_asset_product_directory(&directory)
+	chunk, found := asset_product_find_chunk(&directory, .Model_Distance_Fields)
+	if !found ||
+	   !model_validate_chunk_magic(file, chunk, MODEL_DISTANCE_FIELD_CHUNK_MAGIC) ||
+	   !model_distance_field_descriptor_valid(descriptor, chunk) ||
+	   descriptor.product_offset > u64(max(i64)) {
+		return {}, "imported model distance-field range is invalid"
+	}
+	sample_count :=
+		u64(descriptor.dimensions[0]) *
+		u64(descriptor.dimensions[1]) *
+		u64(descriptor.dimensions[2])
+	bytes := make([]u8, int(descriptor.product_size), context.temp_allocator)
+	read_count, read_err := os.read_at(file, bytes, i64(descriptor.product_offset))
+	if read_err != nil || read_count != len(bytes) {
+		return {}, "failed to read imported model distance-field samples"
+	}
+	result := geometry.Quantized_Distance_Field {
+		samples = make([]i16, int(sample_count)),
+		dimensions = descriptor.dimensions,
+		bounds_min = {descriptor.bounds_min.x, descriptor.bounds_min.y, descriptor.bounds_min.z},
+		bounds_max = {descriptor.bounds_max.x, descriptor.bounds_max.y, descriptor.bounds_max.z},
+		voxel_size = descriptor.voxel_size,
+		value_scale = descriptor.value_scale,
+		signed = descriptor.signed,
+	}
+	for &sample, index in result.samples {
+		sample = transmute(i16)endian.unchecked_get_u16le(bytes[index * 2:])
+	}
+	return result, ""
 }
 
 model_read_page_payloads :: proc(

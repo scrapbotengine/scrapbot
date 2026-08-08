@@ -217,7 +217,7 @@ resource = "d4000000-0000-4000-8000-000000000001"
       readFileSync(join(importedDirectory, metadataName), "utf8"),
     );
     if (
-      metadata.schema !== "scrapbot.model.v10.offline-lods" ||
+      metadata.schema !== "scrapbot.model.v18.distance-fields" ||
       metadata.node_count !== 1 ||
       metadata.mesh_count !== 1 ||
       metadata.primitive_count !== 1 ||
@@ -229,12 +229,17 @@ resource = "d4000000-0000-4000-8000-000000000001"
       metadata.lod_count < 1 ||
       metadata.lod_count > 3 ||
       metadata.lod_vertex_count <= 0 ||
-      metadata.lod_index_count <= 0
+      metadata.lod_index_count <= 0 ||
+      metadata.distance_field_count !== metadata.primitive_count ||
+      metadata.signed_distance_field_count < 0 ||
+      metadata.signed_distance_field_count > metadata.distance_field_count ||
+      metadata.distance_field_sample_count <= 0 ||
+      metadata.distance_field_byte_count !== metadata.distance_field_sample_count * 2
     ) {
       throw new Error("Damaged Helmet metadata does not match the expected real-world model shape");
     }
     console.log(
-      `[external-gltf] imported Damaged Helmet: ${metadata.vertex_count} vertices, ${metadata.index_count} indices, ${metadata.lod_count} generated LODs, ${metadata.texture_count} rendered PBR textures`,
+      `[external-gltf] imported Damaged Helmet: ${metadata.vertex_count} vertices, ${metadata.index_count} indices, ${metadata.lod_count} generated LODs, ${metadata.texture_count} rendered PBR textures, ${metadata.distance_field_count} mesh distance field (${metadata.distance_field_byte_count} bytes)`,
     );
   } finally {
     rmSync(project, { force: true, recursive: true });

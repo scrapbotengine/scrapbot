@@ -283,11 +283,13 @@ asset_import_product_summary :: proc(product: ^Asset_Import_Product) -> string {
 			)
 		case .Model:
 			return fmt.tprintf(
-				"%d primitive(s), %d vertices, %d LOD(s), %d cluster page(s), %s",
+				"%d primitive(s), %d vertices, %d LOD(s), %d cluster page(s), %d SDF(s) / %s, %s",
 				product.primitive_count,
 				product.vertex_count,
 				product.lod_count,
 				product.cluster_page_count,
+				product.distance_field_count,
+				asset_import_byte_count(product.distance_field_byte_count),
 				asset_import_byte_count(product.byte_count),
 			)
 		case .Environment:
