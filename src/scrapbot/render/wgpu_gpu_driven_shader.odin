@@ -1366,8 +1366,10 @@ struct Batch_Info {
 	meshlet_count: u32,
 	submission_mode: u32,
 	compact_command_index: u32,
-	compact_visible_offset: u32,
-	compact_visible_capacity: u32,
+	compact_command_count: u32,
+	compact_bucket_commands: array<u32, 4>,
+	compact_visible_offsets: array<u32, 4>,
+	compact_visible_capacities: array<u32, 4>,
 	compact_shadow_pages: u32,
 };
 
@@ -1426,6 +1428,7 @@ struct Cull_Uniform {
 	shadow_visible_stride: u32,
 	meshlet_enabled: u32,
 	meshlet_shadow_visible_stride: u32,
+	indirect_command_stride: u32,
 	meshlet_debug_record_offset: u32,
 	debug_view: u32,
 	meshlet_force_enabled: u32,
@@ -1440,6 +1443,7 @@ struct Cull_Uniform {
 	virtual_blend_low_scale: f32,
 	virtual_blend_high_scale: f32,
 	virtual_shadow_error_pixels: vec4<f32>,
+	padding: vec3<u32>,
 };
 
 struct Virtual_Page_Feedback {
@@ -1471,6 +1475,8 @@ struct Visibility_Counters {
 	visible_meshlet_draws: atomic<u32>,
 	visible_virtual_clusters: atomic<u32>,
 	visible_virtual_blend_clusters: atomic<u32>,
+	visible_virtual_triangles: atomic<u32>,
+	compact_vertex_invocations: atomic<u32>,
 	virtual_rejected_clusters: atomic<u32>,
 	virtual_page_request_count: atomic<u32>,
 	virtual_page_prefetch_count: atomic<u32>,
@@ -2119,6 +2125,16 @@ fn append_batch_meshlet_debug(
 const COMPACT_CANDIDATE_CAMERA = 1u;
 const COMPACT_CANDIDATE_PREDICTIVE = 2u;
 const COMPACT_CANDIDATE_SHADOW_BASE = 4u;
+const COMPACT_CLUSTER_BUCKET_TRIANGLES = array<u32, 4>(32u, 64u, 96u, 124u);
+
+fn compact_cluster_bucket(triangle_count: u32) -> u32 {
+	for (var bucket_index = 0u; bucket_index < 4u; bucket_index = bucket_index + 1u) {
+		if (triangle_count <= COMPACT_CLUSTER_BUCKET_TRIANGLES[bucket_index]) {
+			return bucket_index;
+		}
+	}
+	return 3u;
+}
 
 fn cull_compact_candidate(invocation: vec3<u32>) {
 	let slot = invocation.x;
@@ -2245,21 +2261,25 @@ fn cull_compact_camera_meshlet(
 			2u,
 		);
 	}
-	let local_index = atomicAdd(
-		&indirect[batch.compact_command_index].instance_count,
-		1u,
-	);
+	let bucket_index = compact_cluster_bucket(meshlet.triangle_count);
+	let command_index = batch.compact_bucket_commands[bucket_index];
+	let local_index = atomicAdd(&indirect[command_index].instance_count, 1u);
 	if (local_index == 0u) {
 		atomicAdd(&counters.visible_meshlet_draws, 1u);
 	}
 	if (meshlet.virtual_geometry != 0u) {
 		atomicAdd(&counters.visible_virtual_clusters, 1u);
+		atomicAdd(&counters.visible_virtual_triangles, meshlet.triangle_count);
+		atomicAdd(
+			&counters.compact_vertex_invocations,
+			COMPACT_CLUSTER_BUCKET_TRIANGLES[bucket_index] * 3u,
+		);
 		if (virtual_cluster_blended(instance, meshlet)) {
 			atomicAdd(&counters.visible_virtual_blend_clusters, 1u);
 		}
 	}
-	let record_offset = batch.compact_visible_offset + local_index;
-	if (local_index < batch.compact_visible_capacity) {
+	let record_offset = batch.compact_visible_offsets[bucket_index] + local_index;
+	if (local_index < batch.compact_visible_capacities[bucket_index]) {
 		visible_instances[record_offset * 2u] = slot;
 		visible_instances[record_offset * 2u + 1u] = meshlet_index;
 		atomicAdd(&counters.visible_meshlets, 1u);
@@ -2283,12 +2303,15 @@ fn cull_compact_shadow_meshlet(
 	if (!shadow_sphere_visible(bounds, cascade_index)) {
 		return;
 	}
-	let indirect_index = cascade_index * cull.batch_count + batch.compact_command_index;
+	let bucket_index = compact_cluster_bucket(meshlet.triangle_count);
+	let indirect_index =
+		cascade_index * cull.indirect_command_stride +
+		batch.compact_bucket_commands[bucket_index];
 	let local_index = atomicAdd(&indirect[indirect_index].instance_count, 1u);
 	let record_offset =
 		cascade_index * cull.meshlet_shadow_visible_stride +
-		batch.compact_visible_offset + local_index;
-	if (local_index < batch.compact_visible_capacity) {
+		batch.compact_visible_offsets[bucket_index] + local_index;
+	if (local_index < batch.compact_visible_capacities[bucket_index]) {
 		visible_instances[record_offset * 2u] = slot;
 		visible_instances[record_offset * 2u + 1u] = meshlet_index;
 		atomicAdd(&counters.shadow_visible_meshlets, 1u);
@@ -2515,9 +2538,10 @@ fn cull_instances(invocation: vec3<u32>, submission_mode: u32) {
 					);
 				}
 				var local_index = 0u;
+				let compact_bucket_index = compact_cluster_bucket(meshlet.triangle_count);
 				if (submission_mode == 2u) {
 					local_index = atomicAdd(
-						&indirect[batch.compact_command_index].instance_count,
+						&indirect[batch.compact_bucket_commands[compact_bucket_index]].instance_count,
 						1u,
 					);
 				} else {
@@ -2534,13 +2558,19 @@ fn cull_instances(invocation: vec3<u32>, submission_mode: u32) {
 				}
 				if (submission_mode == 2u && meshlet.virtual_geometry != 0u) {
 					atomicAdd(&counters.visible_virtual_clusters, 1u);
+					atomicAdd(&counters.visible_virtual_triangles, meshlet.triangle_count);
+					atomicAdd(
+						&counters.compact_vertex_invocations,
+						COMPACT_CLUSTER_BUCKET_TRIANGLES[compact_bucket_index] * 3u,
+					);
 					if (virtual_cluster_blended(instance, meshlet)) {
 						atomicAdd(&counters.visible_virtual_blend_clusters, 1u);
 					}
 				}
 				if (submission_mode == 2u) {
-					let record_offset = batch.compact_visible_offset + local_index;
-					if (local_index < batch.compact_visible_capacity) {
+					let record_offset =
+						batch.compact_visible_offsets[compact_bucket_index] + local_index;
+					if (local_index < batch.compact_visible_capacities[compact_bucket_index]) {
 						visible_instances[record_offset * 2u] = slot;
 						visible_instances[record_offset * 2u + 1u] = meshlet_index;
 						atomicAdd(&counters.visible_meshlets, 1u);
@@ -2592,16 +2622,18 @@ fn cull_instances(invocation: vec3<u32>, submission_mode: u32) {
 					continue;
 				}
 				var indirect_index = cascade_index * arrayLength(&meshlets) + meshlet_index;
+				let compact_bucket_index = compact_cluster_bucket(meshlet.triangle_count);
 				if (submission_mode == 2u) {
 					indirect_index =
-						cascade_index * cull.batch_count + batch.compact_command_index;
+						cascade_index * cull.indirect_command_stride +
+						batch.compact_bucket_commands[compact_bucket_index];
 				}
 				let local_index = atomicAdd(&shadow_indirect[indirect_index].instance_count, 1u);
 				if (submission_mode == 2u) {
 					let record_offset =
 						cascade_index * cull.meshlet_shadow_visible_stride +
-						batch.compact_visible_offset + local_index;
-					if (local_index < batch.compact_visible_capacity) {
+						batch.compact_visible_offsets[compact_bucket_index] + local_index;
+					if (local_index < batch.compact_visible_capacities[compact_bucket_index]) {
 						shadow_visible_instances[record_offset * 2u] = slot;
 						shadow_visible_instances[record_offset * 2u + 1u] = meshlet_index;
 						atomicAdd(&counters.shadow_visible_meshlets, 1u);
@@ -2622,7 +2654,7 @@ fn cull_instances(invocation: vec3<u32>, submission_mode: u32) {
 			}
 			atomicAdd(&counters.shadow_visible_instances, 1u);
 		} else {
-			let indirect_index = cascade_index * cull.batch_count + batch_index;
+			let indirect_index = cascade_index * cull.indirect_command_stride + batch_index;
 			let local_index = atomicAdd(&shadow_indirect[indirect_index].instance_count, 1u);
 			if (local_index < batch.visible_capacity) {
 				shadow_visible_instances[

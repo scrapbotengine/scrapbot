@@ -88,8 +88,10 @@ the authored adaptive-quality floor limits how far its one-pixel maximum-quality
 Capable adapters retain cluster metadata and arena-global indirect templates. They select the
 desired resident frontier and draw a coarse fallback while refinement is missing. Native
 multi-draw consumes cluster commands directly. Other indirect-first-instance adapters compact
-batch-local instance candidates, then test hierarchy clusters in parallel into bounded camera
-records before vertex-pulling from the arenas.
+batch-local instance candidates, then test hierarchy clusters in parallel into four bounded
+triangle-count lanes per compatible material span before vertex-pulling from the arenas. Empty
+lanes submit no command. Useful visible-triangle and padded vertex-invocation counters expose the
+remaining portable-path waste without readback-driven submission.
 
 Fully resident portable resources retain classic indexed shadows. Streamed resources prefer
 page-local compact shadows so camera and cascade submission select from the same resident hierarchy.

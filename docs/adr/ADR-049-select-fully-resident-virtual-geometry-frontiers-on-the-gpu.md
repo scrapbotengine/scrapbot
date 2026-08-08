@@ -37,10 +37,11 @@ compatible command ranges together.
 
 Adapters with indirect-first-instance but no native multi-draw instead append selected
 `{instance slot, cluster index}` records into a bounded camera storage stream. A compatible run of
-clusters sharing one material owns one retained record span and one non-indexed indirect command.
-Its vertex shader pulls cluster indices and packed attributes directly from the shared geometry
-arenas. Every selected record renders the fixed maximum cluster vertex count; invocations beyond
-the cluster's triangle count degenerate to its first vertex.
+clusters sharing one material owns four retained triangle-count lanes with ceilings of 32, 64, 96,
+and 124 triangles. Each nonempty lane owns one non-indexed indirect command. The vertex shader
+pulls cluster indices and packed attributes directly from the shared geometry arenas. Invocations
+beyond a cluster's triangle count degenerate to its first vertex, but the lane ceiling bounds that
+padding substantially below the worst-case cluster size for smaller clusters.
 
 The portable path renders directional shadows from the already GPU-selected object LOD through
 classic indexed-indirect commands. It retains a separate indexed shadow template because the
@@ -92,8 +93,10 @@ defines the layered policy that decides whether a hierarchy-bearing Geometry use
 
 Adapters without indirect-first-instance, capacity-limited layouts, and `--cpu-culling` retain
 classic indexed drawing and the existing object-level imported LOD contract. The backend exposes
-hierarchy command, nonempty selected-cluster, instance-cluster threshold-rejection, and compacted-
-submission counters. Streamed portable resources build one coarse indexed shadow proxy from their
+hierarchy command, nonempty selected-cluster, instance-cluster threshold-rejection, useful visible-
+triangle, padded compact-vertex-invocation, and compacted-submission counters. Comparing useful
+triangle vertices with padded vertex invocations makes the portable path's lane utilization
+measurable. Streamed portable resources build one coarse indexed shadow proxy from their
 already-pinned root pages, so their cascade path neither requires evicted canonical geometry nor
 padded compact vertex pulling. The public `virtual_geometry` camera debug view colors submitted clusters by
 identity within a mint-to-pink hierarchy-depth palette.
@@ -107,8 +110,9 @@ Virtual Geometry now operates on Metal adapters that expose indirect-first-insta
 their WGPU implementation does not expose native multi-draw. Compatible material runs amortize
 submission without requiring mesh shaders, backend-specific argument buffers, or one encoded draw
 per cluster. The portable camera path spends extra GPU culling and vertex-pulling work to preserve
-stable CPU frame cost. Its indexed pinned-root shadow proxy preserves that CPU behavior while
-avoiding fixed-vertex compact shadow records.
+stable CPU frame cost. Triangle-count lanes exchange several bounded indirect commands and
+additional atomic counters for less padded vertex work. Its indexed pinned-root shadow proxy
+preserves that CPU behavior while avoiding padded compact shadow records.
 
 The first implementation is fully resident. Hierarchy metadata and every cluster index stream are
 uploaded with the Geometry version, so large resources can consume more index-arena memory than

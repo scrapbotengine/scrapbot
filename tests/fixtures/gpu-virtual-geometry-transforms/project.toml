@@ -1,3 +1,5 @@
 name = "GPU Virtual Geometry Transform Fixture"
 default_scene = "scenes/main.scene.toml"
 
+[render]
+geometry_mode = "virtual"

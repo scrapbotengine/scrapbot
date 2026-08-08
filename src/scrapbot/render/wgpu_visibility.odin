@@ -1679,6 +1679,8 @@ wgpu_publish_visibility :: proc(renderer: ^WGPU_Renderer, stats: ^Render_Stats) 
 	stats.visible_virtual_clusters = renderer.gpu_visibility_counters.visible_virtual_clusters
 	stats.visible_virtual_blend_clusters =
 		renderer.gpu_visibility_counters.visible_virtual_blend_clusters
+	stats.visible_virtual_triangles = renderer.gpu_visibility_counters.visible_virtual_triangles
+	stats.compact_vertex_invocations = renderer.gpu_visibility_counters.compact_vertex_invocations
 	stats.virtual_rejected_clusters = renderer.gpu_visibility_counters.virtual_rejected_clusters
 	stats.virtual_geometry_page_budget_bytes = renderer.virtual_geometry_budget_bytes
 	stats.virtual_geometry_page_resident_bytes = renderer.virtual_geometry_resident_bytes

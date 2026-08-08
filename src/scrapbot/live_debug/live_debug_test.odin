@@ -25,7 +25,12 @@ test_live_debug_snapshot_supports_json_and_cbor :: proc(t: ^testing.T) {
 			phase = "running",
 			frame_index = 42,
 			camera = {available = true, debug_view = "meshlet-visibility"},
-			renderer = {backend = "wgpu", visible_virtual_clusters = 73},
+			renderer = {
+				backend = "wgpu",
+				visible_virtual_clusters = 73,
+				visible_virtual_triangles = 4_096,
+				compact_vertex_invocations = 15_360,
+			},
 		},
 	)
 	json_data, json_err := encode_snapshot(&service, .JSON)
@@ -36,6 +41,8 @@ test_live_debug_snapshot_supports_json_and_cbor :: proc(t: ^testing.T) {
 	testing.expect(t, json.unmarshal(json_data, &decoded_json) == nil)
 	testing.expect_value(t, decoded_json.frame_index, u64(42))
 	testing.expect_value(t, decoded_json.renderer.visible_virtual_clusters, u32(73))
+	testing.expect_value(t, decoded_json.renderer.visible_virtual_triangles, u32(4_096))
+	testing.expect_value(t, decoded_json.renderer.compact_vertex_invocations, u32(15_360))
 	cbor_data, cbor_err := encode_snapshot(&service, .CBOR)
 	defer delete(cbor_data)
 	testing.expect_value(t, cbor_err, "")
@@ -43,6 +50,8 @@ test_live_debug_snapshot_supports_json_and_cbor :: proc(t: ^testing.T) {
 	defer destroy_snapshot_strings(&decoded_cbor)
 	testing.expect(t, cbor.unmarshal(cbor_data, &decoded_cbor) == nil)
 	testing.expect_value(t, decoded_cbor.camera.debug_view, "meshlet-visibility")
+	testing.expect_value(t, decoded_cbor.renderer.visible_virtual_triangles, u32(4_096))
+	testing.expect_value(t, decoded_cbor.renderer.compact_vertex_invocations, u32(15_360))
 }
 
 @(test)

@@ -131,6 +131,8 @@ WGPU_GPU_Visibility_Summary :: struct {
 	visible_meshlet_draws: u32,
 	visible_virtual_clusters: u32,
 	visible_virtual_blend_clusters: u32,
+	visible_virtual_triangles: u32,
+	compact_vertex_invocations: u32,
 	virtual_rejected_clusters: u32,
 	virtual_page_request_count: u32,
 	virtual_page_prefetch_count: u32,
@@ -349,8 +351,10 @@ WGPU_Draw_Batch :: struct {
 	virtual_geometry: bool,
 	compact_submission: bool,
 	compact_command_index: u32,
-	compact_visible_offset: u32,
-	compact_visible_capacity: u32,
+	compact_command_count: u32,
+	compact_bucket_commands: [WGPU_COMPACT_CLUSTER_BUCKET_COUNT]u32,
+	compact_visible_offsets: [WGPU_COMPACT_CLUSTER_BUCKET_COUNT]u32,
+	compact_visible_capacities: [WGPU_COMPACT_CLUSTER_BUCKET_COUNT]u32,
 	visible_offset: u32,
 	visible_capacity: u32,
 	meshlet_draw_offset: u32,
@@ -412,6 +416,7 @@ WGPU_GPU_Cull_Uniform :: struct {
 	shadow_visible_stride: u32,
 	meshlet_enabled: u32,
 	meshlet_shadow_visible_stride: u32,
+	indirect_command_stride: u32,
 	meshlet_debug_record_offset: u32,
 	debug_view: u32,
 	meshlet_force_enabled: u32,
@@ -425,9 +430,11 @@ WGPU_GPU_Cull_Uniform :: struct {
 	occlusion_world_bias: f32,
 	virtual_blend_low_scale: f32,
 	virtual_blend_high_scale: f32,
+	_virtual_shadow_alignment: [3]u32,
 	virtual_shadow_error_pixels: [4]f32,
+	_padding: [4]u32,
 }
-#assert(size_of(WGPU_GPU_Cull_Uniform) == 848)
+#assert(size_of(WGPU_GPU_Cull_Uniform) == 880)
 
 WGPU_Draw_Indexed_Indirect :: struct {
 	index_count: u32,
@@ -464,11 +471,13 @@ WGPU_GPU_Batch_Info :: struct {
 	meshlet_count: u32,
 	submission_mode: u32,
 	compact_command_index: u32,
-	compact_visible_offset: u32,
-	compact_visible_capacity: u32,
+	compact_command_count: u32,
+	compact_bucket_commands: [WGPU_COMPACT_CLUSTER_BUCKET_COUNT]u32,
+	compact_visible_offsets: [WGPU_COMPACT_CLUSTER_BUCKET_COUNT]u32,
+	compact_visible_capacities: [WGPU_COMPACT_CLUSTER_BUCKET_COUNT]u32,
 	compact_shadow_pages: u32,
 }
-#assert(size_of(WGPU_GPU_Batch_Info) == 36)
+#assert(size_of(WGPU_GPU_Batch_Info) == 80)
 
 WGPU_GPU_Meshlet_Info :: struct {
 	bounds: [4]f32,
@@ -961,6 +970,7 @@ WGPU_Renderer :: struct {
 	gpu_conventional_instance_count: int,
 	gpu_virtual_instance_count: int,
 	gpu_meshlet_visible_capacity: int,
+	gpu_indirect_command_count: int,
 	gpu_meshlet_supported: bool,
 	gpu_meshlet_native_multi_draw: bool,
 	gpu_meshlet_layout_valid: bool,
@@ -1435,11 +1445,13 @@ wgpu_profile_workload :: proc(
 	shadow_draws := u64(0)
 	visible_instances := u64(0)
 	shadow_instances := u64(0)
+	compact_vertex_invocations := u64(0)
 	if stats != nil {
 		geometry_draws = u64(max(stats.draw_submissions, 0))
 		shadow_draws = geometry_draws
 		visible_instances = u64(stats.visible_instances)
 		shadow_instances = u64(stats.shadow_visible_instances)
+		compact_vertex_invocations = u64(stats.compact_vertex_invocations)
 	}
 	if renderer.draw_batch_cache.valid {
 		shadow_draws = u64(
@@ -1609,6 +1621,7 @@ wgpu_profile_workload :: proc(
 			height = viewport_height,
 			passes = 1,
 			draws = geometry_draws,
+			invocations = compact_vertex_invocations,
 			instances = visible_instances,
 		},
 		world = {
@@ -1617,6 +1630,7 @@ wgpu_profile_workload :: proc(
 			height = viewport_height,
 			passes = 1,
 			draws = geometry_draws,
+			invocations = compact_vertex_invocations,
 			instances = visible_instances,
 		},
 		hiz = hiz,
@@ -3348,11 +3362,14 @@ wgpu_encode_render_pass :: proc(
 					0,
 					wgpu.WHOLE_SIZE,
 				)
-				wgpu.RenderPassEncoderDrawIndirect(
-					render_pass,
-					renderer.gpu_indirect_buffer,
-					u64(span.first_indirect) * u64(size_of(WGPU_Draw_Indexed_Indirect)),
-				)
+				for command_offset in 0 ..< span.indirect_count {
+					wgpu.RenderPassEncoderDrawIndirect(
+						render_pass,
+						renderer.gpu_indirect_buffer,
+						u64(span.first_indirect + command_offset) *
+						u64(size_of(WGPU_Draw_Indexed_Indirect)),
+					)
+				}
 			} else if span.mode == .Meshlet {
 				wgpu.RenderPassEncoderSetVertexBuffer(
 					render_pass,
@@ -3790,11 +3807,14 @@ wgpu_encode_depth_prepass :: proc(
 				0,
 				wgpu.WHOLE_SIZE,
 			)
-			wgpu.RenderPassEncoderDrawIndirect(
-				pass,
-				renderer.gpu_indirect_buffer,
-				u64(span.first_indirect) * u64(size_of(WGPU_Draw_Indexed_Indirect)),
-			)
+			for command_offset in 0 ..< span.indirect_count {
+				wgpu.RenderPassEncoderDrawIndirect(
+					pass,
+					renderer.gpu_indirect_buffer,
+					u64(span.first_indirect + command_offset) *
+					u64(size_of(WGPU_Draw_Indexed_Indirect)),
+				)
+			}
 		} else if span.mode == .Meshlet {
 			wgpu.RenderPassEncoderSetVertexBuffer(
 				pass,
@@ -4055,15 +4075,17 @@ wgpu_encode_shadow_cascade_pass :: proc(
 					u64(renderer.gpu_meshlet_visible_buffer_capacity) *
 					u64(size_of(WGPU_GPU_Compact_Record)),
 				)
-				wgpu.RenderPassEncoderDrawIndirect(
-					pass,
-					renderer.gpu_shadow_indirect_buffer,
-					u64(
-						cascade_index * renderer.draw_batch_cache.batch_count +
-						int(span.first_indirect),
-					) *
-					u64(size_of(WGPU_Draw_Indexed_Indirect)),
-				)
+				for command_offset in 0 ..< span.indirect_count {
+					wgpu.RenderPassEncoderDrawIndirect(
+						pass,
+						renderer.gpu_shadow_indirect_buffer,
+						u64(
+							cascade_index * renderer.gpu_indirect_command_count +
+							int(span.first_indirect + command_offset),
+						) *
+						u64(size_of(WGPU_Draw_Indexed_Indirect)),
+					)
+				}
 			} else if span.mode == .Meshlet {
 				wgpu.RenderPassEncoderSetVertexBuffer(
 					pass,
@@ -4094,7 +4116,7 @@ wgpu_encode_shadow_cascade_pass :: proc(
 					pass,
 					renderer.gpu_shadow_indirect_buffer,
 					u64(
-						cascade_index * renderer.draw_batch_cache.batch_count +
+						cascade_index * renderer.gpu_indirect_command_count +
 						int(span.first_indirect),
 					) *
 					u64(size_of(WGPU_Draw_Indexed_Indirect)),
@@ -4112,7 +4134,7 @@ wgpu_encode_shadow_cascade_pass :: proc(
 					pass,
 					renderer.gpu_shadow_indirect_buffer,
 					u64(
-						cascade_index * renderer.draw_batch_cache.batch_count +
+						cascade_index * renderer.gpu_indirect_command_count +
 						int(span.first_indirect),
 					) *
 					u64(size_of(WGPU_Draw_Indexed_Indirect)),

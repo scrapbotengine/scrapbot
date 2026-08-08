@@ -1013,10 +1013,11 @@ test_wgpu_geometry_arena_submission_spans_merge_compatible_lod_batches :: proc(t
 	testing.expect_value(t, wgpu_draw_submission_count(&renderer, batches[:]), 2)
 
 	batches[0].compact_submission = true
+	batches[0].compact_command_count = 4
 	span = wgpu_draw_submission_span(&renderer, batches[:], 0)
 	testing.expect_value(t, span.next_batch, 1)
 	testing.expect_value(t, span.first_indirect, u32(0))
-	testing.expect_value(t, span.indirect_count, u32(1))
+	testing.expect_value(t, span.indirect_count, u32(4))
 	testing.expect_value(t, span.mode, WGPU_Submission_Mode.Compact)
 	for &batch in batches[:3] {
 		batch.compact_submission = true
@@ -1054,29 +1055,68 @@ test_wgpu_compact_submission_spans_share_one_bounded_record_range :: proc(t: ^te
 			compact_submission = true,
 			meshlet_visible_offset = 0,
 			meshlet_visible_capacity = 12,
+			compact_visible_capacities = {4, 8, 0, 0},
 		},
 		{
 			material = material,
 			compact_submission = true,
 			meshlet_visible_offset = 12,
 			meshlet_visible_capacity = 20,
+			compact_visible_capacities = {0, 4, 16, 0},
 		},
 		{
 			material = other_material,
 			compact_submission = true,
 			meshlet_visible_offset = 32,
 			meshlet_visible_capacity = 8,
+			compact_visible_capacities = {0, 0, 0, 8},
 		},
 	}
-	wgpu_assign_compact_submission_spans(batches[:])
+	command_count := wgpu_assign_compact_submission_spans(batches[:], 3)
+	testing.expect_value(t, command_count, u32(7))
 	for index in 0 ..< 2 {
-		testing.expect_value(t, batches[index].compact_command_index, u32(0))
-		testing.expect_value(t, batches[index].compact_visible_offset, u32(0))
-		testing.expect_value(t, batches[index].compact_visible_capacity, u32(32))
+		testing.expect_value(t, batches[index].compact_command_index, u32(3))
+		testing.expect_value(t, batches[index].compact_command_count, u32(3))
+		testing.expect_value(t, batches[index].compact_bucket_commands, [4]u32{3, 4, 5, ~u32(0)})
+		testing.expect_value(t, batches[index].compact_visible_offsets, [4]u32{0, 4, 16, 32})
+		testing.expect_value(t, batches[index].compact_visible_capacities, [4]u32{4, 12, 16, 0})
 	}
-	testing.expect_value(t, batches[2].compact_command_index, u32(2))
-	testing.expect_value(t, batches[2].compact_visible_offset, u32(32))
-	testing.expect_value(t, batches[2].compact_visible_capacity, u32(8))
+	testing.expect_value(t, batches[2].compact_command_index, u32(6))
+	testing.expect_value(t, batches[2].compact_command_count, u32(1))
+	testing.expect_value(
+		t,
+		batches[2].compact_bucket_commands,
+		[4]u32{~u32(0), ~u32(0), ~u32(0), 6},
+	)
+	testing.expect_value(t, batches[2].compact_visible_offsets, [4]u32{32, 32, 32, 32})
+	testing.expect_value(t, batches[2].compact_visible_capacities, [4]u32{0, 0, 0, 8})
+}
+
+@(test)
+test_wgpu_compact_cluster_buckets_bound_padded_vertex_work :: proc(t: ^testing.T) {
+	cases := [?]struct {
+		triangles: u32,
+		bucket: int,
+		vertices: u32,
+	} {
+		{1, 0, 96},
+		{32, 0, 96},
+		{33, 1, 192},
+		{64, 1, 192},
+		{65, 2, 288},
+		{96, 2, 288},
+		{97, 3, 372},
+		{124, 3, 372},
+	}
+	for test_case in cases {
+		bucket := wgpu_compact_cluster_bucket(test_case.triangles)
+		testing.expect_value(t, bucket, test_case.bucket)
+		testing.expect_value(
+			t,
+			wgpu_compact_cluster_bucket_vertex_count(bucket),
+			test_case.vertices,
+		)
+	}
 }
 
 @(test)

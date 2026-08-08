@@ -20,6 +20,8 @@ WGPU_MESHLET_DEBUG_VERTEX_COUNT ::
 WGPU_MESHLET_MIN_BATCH_INSTANCES :: u32(2)
 WGPU_AUTO_VIRTUAL_GEOMETRY_MIN_TRIANGLES :: u32(50_000)
 WGPU_COMPACT_CLUSTER_VERTEX_COUNT :: u32(124 * 3)
+WGPU_COMPACT_CLUSTER_BUCKET_COUNT :: 4
+WGPU_COMPACT_CLUSTER_BUCKET_TRIANGLES :: [WGPU_COMPACT_CLUSTER_BUCKET_COUNT]u32{32, 64, 96, 124}
 WGPU_SHADOW_CASCADE_UPDATE_CADENCE :: [WGPU_SHADOW_CASCADE_COUNT]u64{1, 2, 4, 8}
 WGPU_SHADOW_CASCADE_UPDATE_OFFSET :: [WGPU_SHADOW_CASCADE_COUNT]u64{0, 0, 3, 5}
 
@@ -82,6 +84,23 @@ WGPU_Draw_Submission_Span :: struct {
 	first_indirect: u32,
 	indirect_count: u32,
 	mode: WGPU_Submission_Mode,
+}
+
+wgpu_compact_cluster_bucket :: proc "contextless" (triangle_count: u32) -> int {
+	for limit, bucket_index in WGPU_COMPACT_CLUSTER_BUCKET_TRIANGLES {
+		if triangle_count <= limit {
+			return bucket_index
+		}
+	}
+	return WGPU_COMPACT_CLUSTER_BUCKET_COUNT - 1
+}
+
+wgpu_compact_cluster_bucket_vertex_count :: proc "contextless" (bucket_index: int) -> u32 {
+	if bucket_index < 0 || bucket_index >= WGPU_COMPACT_CLUSTER_BUCKET_COUNT {
+		return WGPU_COMPACT_CLUSTER_VERTEX_COUNT
+	}
+	limits := WGPU_COMPACT_CLUSTER_BUCKET_TRIANGLES
+	return limits[bucket_index] * 3
 }
 
 wgpu_geometry_uses_virtual_clusters :: proc "contextless" (geometry: ^resources.Geometry) -> bool {
@@ -241,7 +260,7 @@ wgpu_virtual_shadow_error_pixels :: proc "contextless" (
 	cascade_index: int,
 	resolution_scale: f32 = 1,
 ) -> f32 {
-	// Compact shadow rendering executes one fixed-size vertex-pulling record per
+	// Compact shadow rendering executes one bucketed vertex-pulling record per
 	// selected cluster. Keep its hierarchy comfortably below the shadow map's
 	// texel density instead of spending portable-path invocations on geometry
 	// that cannot change the stored shadow.
@@ -356,16 +375,21 @@ wgpu_draw_submission_span :: proc "contextless" (
 	if renderer == nil || start < 0 || start >= len(batches) {
 		return {next_batch = start + 1}
 	}
+	if !renderer.gpu_meshlet_supported {
+		return {
+			next_batch = start + 1,
+			first_indirect = u32(start),
+			indirect_count = 1,
+			mode = .Classic,
+		}
+	}
 	first := batches[start]
 	mode := wgpu_batch_submission_mode(renderer, first)
 	span := WGPU_Draw_Submission_Span {
 		next_batch = start + 1,
-		first_indirect = first.meshlet_draw_offset if mode == .Meshlet else u32(start),
-		indirect_count = first.meshlet_draw_count if mode == .Meshlet else 1,
+		first_indirect = first.meshlet_draw_offset if mode == .Meshlet else (first.compact_command_index if mode == .Compact else u32(start)),
+		indirect_count = first.meshlet_draw_count if mode == .Meshlet else (first.compact_command_count if mode == .Compact else 1),
 		mode = mode,
-	}
-	if !renderer.gpu_meshlet_supported {
-		return span
 	}
 	for batch_index in start + 1 ..< len(batches) {
 		batch := batches[batch_index]
@@ -392,7 +416,7 @@ wgpu_draw_submission_count :: proc "contextless" (
 	for batch_index < len(batches) {
 		span := wgpu_draw_submission_span(renderer, batches, batch_index)
 		batch_index = span.next_batch
-		count += 1
+		count += int(span.indirect_count) if span.mode == .Compact else 1
 	}
 	return count
 }
@@ -416,16 +440,21 @@ wgpu_shadow_draw_submission_span :: proc "contextless" (
 	if renderer == nil || start < 0 || start >= len(batches) {
 		return {next_batch = start + 1}
 	}
+	if !renderer.gpu_meshlet_supported {
+		return {
+			next_batch = start + 1,
+			first_indirect = u32(start),
+			indirect_count = 1,
+			mode = .Classic,
+		}
+	}
 	first := batches[start]
 	mode := wgpu_shadow_batch_submission_mode(renderer, first)
 	span := WGPU_Draw_Submission_Span {
 		next_batch = start + 1,
-		first_indirect = first.meshlet_draw_offset if mode == .Meshlet else u32(start),
-		indirect_count = first.meshlet_draw_count if mode == .Meshlet else 1,
+		first_indirect = first.meshlet_draw_offset if mode == .Meshlet else (first.compact_command_index if mode == .Compact else u32(start)),
+		indirect_count = first.meshlet_draw_count if mode == .Meshlet else (first.compact_command_count if mode == .Compact else 1),
 		mode = mode,
-	}
-	if !renderer.gpu_meshlet_supported {
-		return span
 	}
 	for batch_index in start + 1 ..< len(batches) {
 		batch := batches[batch_index]
@@ -452,12 +481,16 @@ wgpu_shadow_draw_submission_count :: proc "contextless" (
 	for batch_index < len(batches) {
 		span := wgpu_shadow_draw_submission_span(renderer, batches, batch_index)
 		batch_index = span.next_batch
-		count += 1
+		count += int(span.indirect_count) if span.mode == .Compact else 1
 	}
 	return count
 }
 
-wgpu_assign_compact_submission_spans :: proc "contextless" (batches: []WGPU_Draw_Batch) {
+wgpu_assign_compact_submission_spans :: proc "contextless" (
+	batches: []WGPU_Draw_Batch,
+	first_command: u32,
+) -> u32 {
+	next_command := first_command
 	batch_index := 0
 	for batch_index < len(batches) {
 		first := batches[batch_index]
@@ -466,22 +499,45 @@ wgpu_assign_compact_submission_spans :: proc "contextless" (batches: []WGPU_Draw
 			continue
 		}
 		next_batch := batch_index + 1
-		capacity := first.meshlet_visible_capacity
+		bucket_capacities := first.compact_visible_capacities
 		for next_batch < len(batches) {
 			next := batches[next_batch]
 			if !next.compact_submission || next.material != first.material {
 				break
 			}
-			capacity += next.meshlet_visible_capacity
+			for bucket_index in 0 ..< WGPU_COMPACT_CLUSTER_BUCKET_COUNT {
+				bucket_capacities[bucket_index] += next.compact_visible_capacities[bucket_index]
+			}
 			next_batch += 1
 		}
+		bucket_offsets: [WGPU_COMPACT_CLUSTER_BUCKET_COUNT]u32
+		bucket_commands := [WGPU_COMPACT_CLUSTER_BUCKET_COUNT]u32 {
+			~u32(0),
+			~u32(0),
+			~u32(0),
+			~u32(0),
+		}
+		record_offset := first.meshlet_visible_offset
+		command_count: u32
+		for capacity, bucket_index in bucket_capacities {
+			bucket_offsets[bucket_index] = record_offset
+			record_offset += capacity
+			if capacity > 0 {
+				bucket_commands[bucket_index] = next_command
+				next_command += 1
+				command_count += 1
+			}
+		}
 		for compact_index in batch_index ..< next_batch {
-			batches[compact_index].compact_command_index = u32(batch_index)
-			batches[compact_index].compact_visible_offset = first.meshlet_visible_offset
-			batches[compact_index].compact_visible_capacity = capacity
+			batches[compact_index].compact_command_index = next_command - command_count
+			batches[compact_index].compact_command_count = command_count
+			batches[compact_index].compact_bucket_commands = bucket_commands
+			batches[compact_index].compact_visible_offsets = bucket_offsets
+			batches[compact_index].compact_visible_capacities = bucket_capacities
 		}
 		batch_index = next_batch
 	}
+	return next_command
 }
 
 wgpu_meshlet_visible_buffer_bytes :: proc "contextless" (capacity: int) -> u64 {
@@ -3021,13 +3077,25 @@ wgpu_refresh_gpu_batch_layout :: proc(
 		)
 		batch.meshlet_visible_capacity = batch_capacity
 		meshlet_capacity_valid = meshlet_capacity_valid && batch_capacity_ok
+		batch.compact_visible_capacities = {}
+		if batch.compact_submission {
+			per_cluster_capacity := wgpu_meshlet_visible_instance_capacity(batch.instance_count)
+			for cluster in geometry.clusters {
+				bucket_index := wgpu_compact_cluster_bucket(cluster.triangle_count)
+				batch.compact_visible_capacities[bucket_index] += per_cluster_capacity
+			}
+		}
 		meshlet_draw_offset += batch.meshlet_draw_count
 		meshlet_visible_offset += batch.meshlet_visible_capacity
 	}
-	wgpu_assign_compact_submission_spans(cache.batches[:cache.batch_count])
+	indirect_command_count := wgpu_assign_compact_submission_spans(
+		cache.batches[:cache.batch_count],
+		u32(cache.batch_count),
+	)
+	renderer.gpu_indirect_command_count = int(indirect_command_count)
 	if buffer_err := wgpu_ensure_gpu_draw_buffers(
 		renderer,
-		cache.batch_count,
+		max(cache.batch_count, renderer.gpu_indirect_command_count),
 		int(visible_offset),
 	); buffer_err != "" {
 		return buffer_err
@@ -3088,8 +3156,10 @@ wgpu_refresh_gpu_batch_layout :: proc(
 				WGPU_Submission_Mode.Compact if batch.compact_submission else (WGPU_Submission_Mode.Meshlet if batch.meshlet_submission else WGPU_Submission_Mode.Classic),
 			),
 			compact_command_index = batch.compact_command_index,
-			compact_visible_offset = batch.compact_visible_offset,
-			compact_visible_capacity = batch.compact_visible_capacity,
+			compact_command_count = batch.compact_command_count,
+			compact_bucket_commands = batch.compact_bucket_commands,
+			compact_visible_offsets = batch.compact_visible_offsets,
+			compact_visible_capacities = batch.compact_visible_capacities,
 			compact_shadow_pages = 1 if batch.compact_submission && wgpu_geometry_uses_compact_shadow_pages(geometry) else 0,
 		}
 		if !renderer.gpu_meshlet_supported {
@@ -3325,12 +3395,13 @@ wgpu_update_indirect_template_cache :: proc(
 	if renderer == nil || cache == nil {
 		return false, "GPU draw-batch cache is not available"
 	}
-	if len(renderer.gpu_indirect_templates) != cache.batch_count {
-		resize(&renderer.gpu_indirect_templates, cache.batch_count)
+	command_count := max(renderer.gpu_indirect_command_count, cache.batch_count)
+	if len(renderer.gpu_indirect_templates) != command_count {
+		resize(&renderer.gpu_indirect_templates, command_count)
 		changed = true
 	}
-	if len(renderer.gpu_shadow_indirect_templates) != cache.batch_count {
-		resize(&renderer.gpu_shadow_indirect_templates, cache.batch_count)
+	if len(renderer.gpu_shadow_indirect_templates) != command_count {
+		resize(&renderer.gpu_shadow_indirect_templates, command_count)
 		changed = true
 	}
 	for batch, batch_index in cache.batches[:cache.batch_count] {
@@ -3343,26 +3414,18 @@ wgpu_update_indirect_template_cache :: proc(
 		if geometry_err != "" {
 			return false, geometry_err
 		}
-		shadow_template := wgpu_geometry_indirect_template(
+		template := wgpu_geometry_indirect_template(
 			geometry,
 			batch.visible_offset,
 			renderer.gpu_meshlet_supported,
 		)
-		template := shadow_template
-		if batch.compact_submission {
-			template = {
-				index_count = WGPU_COMPACT_CLUSTER_VERTEX_COUNT,
-				base_vertex = i32(batch.compact_visible_offset),
-			}
-			if geometry.vertex_range.size == 0 && geometry.shadow_index_count == 0 {
-				shadow_template = template
-			} else if geometry.shadow_index_count > 0 {
-				shadow_template = wgpu_geometry_shadow_indirect_template(
-					geometry,
-					batch.visible_offset,
-					renderer.gpu_meshlet_supported,
-				)
-			}
+		shadow_template := template
+		if batch.compact_submission && geometry.shadow_index_count > 0 {
+			shadow_template = wgpu_geometry_shadow_indirect_template(
+				geometry,
+				batch.visible_offset,
+				renderer.gpu_meshlet_supported,
+			)
 		}
 		if renderer.gpu_indirect_templates[batch_index] != template {
 			renderer.gpu_indirect_templates[batch_index] = template
@@ -3371,6 +3434,29 @@ wgpu_update_indirect_template_cache :: proc(
 		if renderer.gpu_shadow_indirect_templates[batch_index] != shadow_template {
 			renderer.gpu_shadow_indirect_templates[batch_index] = shadow_template
 			changed = true
+		}
+		if batch.compact_submission {
+			compact_shadow := geometry.vertex_range.size == 0 && geometry.shadow_index_count == 0
+			for command_index, bucket_index in batch.compact_bucket_commands {
+				if command_index == ~u32(0) {
+					continue
+				}
+				compact_template := WGPU_Draw_Indexed_Indirect {
+					index_count = wgpu_compact_cluster_bucket_vertex_count(bucket_index),
+					base_vertex = i32(batch.compact_visible_offsets[bucket_index]),
+				}
+				if renderer.gpu_indirect_templates[command_index] != compact_template {
+					renderer.gpu_indirect_templates[command_index] = compact_template
+					changed = true
+				}
+				compact_shadow_template :=
+					compact_template if compact_shadow else WGPU_Draw_Indexed_Indirect{}
+				if renderer.gpu_shadow_indirect_templates[command_index] !=
+				   compact_shadow_template {
+					renderer.gpu_shadow_indirect_templates[command_index] = compact_shadow_template
+					changed = true
+				}
+			}
 		}
 	}
 	return
@@ -4679,6 +4765,7 @@ wgpu_prepare_gpu_draw_batches :: proc(
 		shadow_visible_stride = u32(renderer.gpu_visible_buffer_capacity),
 		meshlet_enabled = 1 if renderer.gpu_meshlet_submission_active else 0,
 		meshlet_shadow_visible_stride = u32(renderer.gpu_meshlet_visible_buffer_capacity),
+		indirect_command_stride = u32(renderer.gpu_indirect_command_count),
 		meshlet_debug_record_offset = 0,
 		debug_view = u32(camera.debug_view),
 		meshlet_force_enabled = 1 if renderer.gpu_meshlet_force_enabled else 0,
@@ -4787,7 +4874,8 @@ wgpu_encode_gpu_culling :: proc(
 		0,
 		u64(batch_count) * u64(size_of(WGPU_Draw_Indexed_Indirect)),
 	)
-	copy_size := u64(batch_count) * u64(size_of(WGPU_Draw_Indexed_Indirect))
+	copy_size :=
+		u64(renderer.gpu_indirect_command_count) * u64(size_of(WGPU_Draw_Indexed_Indirect))
 	wgpu.CommandEncoderCopyBufferToBuffer(
 		encoder,
 		renderer.gpu_indirect_template_buffer,
@@ -5119,7 +5207,7 @@ wgpu_prepare_cpu_culling :: proc(
 		indirect[batch_index].instance_count = camera_counts[batch_index]
 		for cascade_index in 0 ..< WGPU_SHADOW_CASCADE_COUNT {
 			shadow_indirect_index :=
-				cascade_index * renderer.draw_batch_cache.batch_count + batch_index
+				cascade_index * renderer.gpu_indirect_command_count + batch_index
 			shadow_indirect[shadow_indirect_index].instance_count =
 				shadow_counts[cascade_index][batch_index]
 		}

@@ -1,7 +1,7 @@
 # FDR-012: Render profiling
 
 **Status:** Active
-**Last reviewed:** 2026-07-31
+**Last reviewed:** 2026-08-08
 
 ## Overview
 
@@ -11,7 +11,7 @@
 
 - The command runs headless with hot reload disabled and a fixed 60 Hz simulation delta.
 - Warmup frames execute normally but do not enter the report.
-- Every measured frame records active CPU time, exact physical and logical dimensions, pixel density, viewport bounds, shaded pixels, a raw renderer snapshot, per-frame deltas for cumulative upload/rebuild/dispatch counters, structured pass workload descriptions, and per-pass GPU timestamps when supported.
+- Every measured frame records active CPU time, exact physical and logical dimensions, pixel density, viewport bounds, shaded pixels, a raw renderer snapshot, per-frame deltas for cumulative upload/rebuild/dispatch counters, structured pass workload descriptions, and per-pass GPU timestamps when supported. The renderer snapshot distinguishes useful visible virtual triangles from padded compact vertex invocations.
 - Workload descriptions expose whether a pass ran, its target dimensions, pass count, compute workgroups and invocation upper bound, raster draws and instances, and fixed shader sample budget where meaningful.
 - Transform expansion, clustered-light construction, visibility, shadows, depth, world shading, Hi-Z, AO, SSR, volumetric fog, temporal resolve, bloom, automatic exposure, composite, and UI have distinct timestamp phases for attribution.
 - One span runs from the earliest executed timed pass boundary through the final executed timed pass boundary, including UI when present. A second span shares the same beginning and ends after final composition, before UI. These ordered spans, rather than a sum of independently measured passes, define GPU frame and scene time.

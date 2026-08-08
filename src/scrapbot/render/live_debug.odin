@@ -97,6 +97,8 @@ publish_live_debug_render_stats :: proc(
 	destination.visible_meshlet_draws = stats.visible_meshlet_draws
 	destination.visible_virtual_clusters = stats.visible_virtual_clusters
 	destination.visible_virtual_blend_clusters = stats.visible_virtual_blend_clusters
+	destination.visible_virtual_triangles = stats.visible_virtual_triangles
+	destination.compact_vertex_invocations = stats.compact_vertex_invocations
 	destination.virtual_rejected_clusters = stats.virtual_rejected_clusters
 	destination.virtual_geometry_page_budget_bytes = stats.virtual_geometry_page_budget_bytes
 	destination.virtual_geometry_page_resident_bytes = stats.virtual_geometry_page_resident_bytes
