@@ -87,6 +87,7 @@ System_Proc :: #type proc "contextless" (ctx: ^System_Context) -> cstring
 Transform :: raw.Transform
 Time :: raw.Time
 Mesh_Payload :: raw.Mesh_Payload
+Geometry_Mode :: raw.Geometry_Mode
 Geometry_Vertex :: raw.Geometry_Vertex
 Geometry_Desc :: raw.Geometry_Desc
 Material_Desc :: raw.Material_Desc
@@ -403,8 +404,11 @@ payload :: proc {
 	payload_by_descriptor,
 }
 
-mesh :: proc "contextless" (primitive: cstring) -> Mesh_Payload {
-	return Mesh_Payload{primitive = primitive}
+mesh :: proc "contextless" (
+	primitive: cstring,
+	geometry_mode: Geometry_Mode = .Inherit,
+) -> Mesh_Payload {
+	return Mesh_Payload{primitive = primitive, geometry_mode = geometry_mode}
 }
 
 component_by_name :: proc "contextless" (

@@ -469,7 +469,7 @@ test_scene_persistence_structural_roundtrip_covers_every_scene_component :: proc
 		has_mesh = true,
 		mesh = {primitive = "cube"},
 		has_geometry = true,
-		geometry_resource = "schema-geometry",
+		geometry = {resource = "schema-geometry", geometry_mode = .Conventional},
 		has_material = true,
 		material_resource = "a6000000-0000-4000-8000-000000000001",
 		has_shadow_caster = true,

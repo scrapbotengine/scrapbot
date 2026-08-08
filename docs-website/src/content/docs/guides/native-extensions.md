@@ -354,12 +354,18 @@ geometry := scrapbot.register_generated_geometry(&reg, "cube", &cube)
 material := scrapbot.material(&reg, "orange", {0.95, 0.38, 0.18, 1})
 neon := scrapbot.emissive_material(&reg, "neon", {2, 0.2, 6})
 spawn := scrapbot.spawn_options("Native Spawned", &spawn_transform, &geometry, &material, payloads[:])
+spawn.geometry_mode = .Virtual
 if err := scrapbot.spawn(ctx, &spawn); err != nil {
 	return err
 }
 ```
 
 Lifecycle writes must be declared in the system access list. A renderable spawn declares writes for transform, `scrapbot.geometry`, and `scrapbot.material` alongside its gameplay components.
+
+`scrapbot.Geometry_Mode` provides `.Inherit`, `.Auto`, `.Conventional`, and `.Virtual` for
+`Mesh_Payload.geometry_mode` and `Spawn_Options.geometry_mode`. Resolution follows the same
+entity–asset–project policy as scene TOML. Unsupported or ineligible virtual requests fall back to
+conventional submission.
 
 ## Build it
 

@@ -281,10 +281,16 @@ object surviving object-level visibility. Visible meshlet draws count indirect m
 with at least one surviving instance. These camera counters remain separate from shadow-cascade
 visibility and from repeated API work across depth, shadow, and world passes.
 
+Render extraction carries the entity's geometry preference into retained batch identity. WGPU
+resolves entity, Model asset, and project policy once when topology changes. Automatic mode chooses
+virtual submission only for capable, hierarchy-bearing Geometry at or above the stable source-
+triangle crossover; it never flips because the camera moved.
+
 Continuous virtual-geometry submission retains one base Geometry/material batch and selects detail
 inside that Geometry's cluster hierarchy. It does not also retain the base Geometry's generated
-discrete LOD handles. Classic GPU submission and the CPU-reference path retain those alternates and
-perform whole-object LOD selection instead.
+discrete LOD handles. Conventional GPU submission and the CPU-reference path retain those alternates
+and perform whole-object LOD selection instead. Geometry caches include the resolved path, allowing
+two entities to consume different representations of the same resource safely.
 
 Hi-Z state is an explicit enum: unavailable, below threshold, scene changed, camera changed, warming up, or active. Object and meshlet occlusion counts remain separate so a zero can be interpreted without guessing which eligibility or safety gate applied.
 

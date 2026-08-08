@@ -473,10 +473,15 @@ build_world :: proc(scene: ^Scene) -> World {
 			entity.name,
 		)
 		world_entity.scene_order = scene_order
-		world_entity.geometry_resource = clone_world_string(&world, entity.geometry_resource)
+		world_entity.geometry_resource = clone_world_string(&world, entity.geometry.resource)
 		world_entity.material_resource = clone_world_string(&world, entity.material_resource)
-		world_entity.model_resource = clone_world_string(&world, entity.model_resource)
-		if entity.model_resource != "" {
+		world_entity.model_resource = clone_world_string(&world, entity.model.resource)
+		world_entity.geometry_mode = shared.geometry_mode_override(
+			entity.mesh.geometry_mode,
+			entity.geometry.geometry_mode,
+			entity.model.geometry_mode,
+		)
+		if entity.model.resource != "" {
 			world.model_instance_revision += 1
 		}
 		world_entity.has_shadow_caster = entity.has_shadow_caster
@@ -783,9 +788,14 @@ release_transform_slot :: proc(world: ^World, index: int) {
 	append(&world.free_transform_indices, index)
 }
 
-allocate_mesh_slot :: proc(world: ^World, primitive: string) -> int {
+allocate_mesh_slot :: proc(
+	world: ^World,
+	primitive: string,
+	geometry_mode: shared.Geometry_Mode = .Inherit,
+) -> int {
 	mesh := Mesh_Component {
 		primitive = clone_world_string(world, primitive),
+		geometry_mode = geometry_mode,
 	}
 	if index, found := take_free_slot(&world.free_mesh_indices); found {
 		world.meshes[index] = mesh
@@ -1038,16 +1048,25 @@ ensure_entity_renderable :: proc(world: ^World, entity_index: int) {
 	append(&world.renderables, value)
 }
 
-add_geometry :: proc(world: ^World, entity_index: int, handle: shared.Geometry_Handle) {
+add_geometry :: proc(
+	world: ^World,
+	entity_index: int,
+	handle: shared.Geometry_Handle,
+	geometry_mode: shared.Geometry_Mode = .Inherit,
+) {
 	if !entity_is_alive(world, entity_index) { return }
 	entity := &world.entities[entity_index]
 	delete_world_string(world, entity.geometry_resource); entity.geometry_resource = ""
 	if entity.geometry_index >= 0 && entity.geometry_index < len(world.geometries) {
 		world.geometries[entity.geometry_index].handle = handle
+		world.geometries[entity.geometry_index].geometry_mode = geometry_mode
 		mark_render_entity_dirty(world, entity_index)
 		return
 	}
-	entity.geometry_index = allocate_geometry_slot(world, Geometry_Component{handle = handle})
+	entity.geometry_index = allocate_geometry_slot(
+		world,
+		Geometry_Component{handle = handle, geometry_mode = geometry_mode},
+	)
 	bump_component_revision(world, entity_index)
 	mark_render_entity_dirty(world, entity_index)
 }
@@ -1077,10 +1096,14 @@ resolve_geometry_reference :: proc(
 	entity := &world.entities[entity_index]
 	if entity.geometry_index >= 0 && entity.geometry_index < len(world.geometries) {
 		world.geometries[entity.geometry_index].handle = handle
+		world.geometries[entity.geometry_index].geometry_mode = entity.geometry_mode
 		mark_render_entity_dirty(world, entity_index)
 		return
 	}
-	entity.geometry_index = allocate_geometry_slot(world, Geometry_Component{handle = handle})
+	entity.geometry_index = allocate_geometry_slot(
+		world,
+		Geometry_Component{handle = handle, geometry_mode = entity.geometry_mode},
+	)
 	bump_component_revision(world, entity_index)
 	mark_render_entity_dirty(world, entity_index)
 }
@@ -1184,12 +1207,14 @@ reconcile_render_instances :: proc(world: ^World, registry: ^resources.Registry)
 				instance := Render_Instance_Component {
 					geometry = geometry.handle,
 					material = material.handle,
+					geometry_mode = geometry.geometry_mode,
 				}
 				if entity.render_instance_index >= 0 &&
 				   entity.render_instance_index < len(world.render_instances) {
 					previous := world.render_instances[entity.render_instance_index]
 					if previous.geometry != instance.geometry ||
-					   previous.material != instance.material {
+					   previous.material != instance.material ||
+					   previous.geometry_mode != instance.geometry_mode {
 						mark_render_topology_changed(world)
 					}
 					world.render_instances[entity.render_instance_index] = instance
@@ -1272,7 +1297,10 @@ resource_render_instance_for_entity :: proc(
 			entity = entity,
 			local_parent = world.transforms[entity.transform_index].parent,
 			transform = world_transform,
-			geometry = Geometry_Component{handle = internal.geometry},
+			geometry = Geometry_Component {
+				handle = internal.geometry,
+				geometry_mode = internal.geometry_mode,
+			},
 			material = Material_Component{handle = internal.material},
 			shadow_caster = entity.has_shadow_caster,
 			shadow_receiver = entity.has_shadow_receiver,
@@ -1420,7 +1448,11 @@ render_list_remove_instance :: proc(list: ^Render_List, world: ^World, entity_in
 }
 
 render_list_batch_key :: proc(instance: Render_Instance) -> shared.Render_Batch_Key {
-	return {geometry = instance.geometry.handle, material = instance.material.handle}
+	return {
+		geometry = instance.geometry.handle,
+		material = instance.material.handle,
+		geometry_mode = instance.geometry.geometry_mode,
+	}
 }
 
 render_list_adjust_batch_membership :: proc(
@@ -2136,7 +2168,12 @@ remove_transform :: proc(world: ^World, entity_index: int) {
 	mark_render_entity_dirty(world, entity_index)
 }
 
-add_mesh :: proc(world: ^World, entity_index: int, primitive: string) {
+add_mesh :: proc(
+	world: ^World,
+	entity_index: int,
+	primitive: string,
+	geometry_mode: shared.Geometry_Mode = .Inherit,
+) {
 	if !entity_is_alive(world, entity_index) {
 		return
 	}
@@ -2145,11 +2182,13 @@ add_mesh :: proc(world: ^World, entity_index: int, primitive: string) {
 	if entity.mesh_index >= 0 && entity.mesh_index < len(world.meshes) {
 		delete_world_string(world, world.meshes[entity.mesh_index].primitive)
 		world.meshes[entity.mesh_index].primitive = clone_world_string(world, primitive)
+		world.meshes[entity.mesh_index].geometry_mode = geometry_mode
 	} else {
-		entity.mesh_index = allocate_mesh_slot(world, primitive)
+		entity.mesh_index = allocate_mesh_slot(world, primitive, geometry_mode)
 		bump_component_revision(world, entity_index)
 	}
 	ensure_entity_renderable(world, entity_index)
+	entity.geometry_mode = geometry_mode
 	mark_render_entity_dirty(world, entity_index)
 }
 

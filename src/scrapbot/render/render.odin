@@ -57,6 +57,10 @@ Render_Stats :: struct {
 	visible_batches: u32,
 	draw_capacity: int,
 	draw_database_rebuilds: u64,
+	conventional_batches: int,
+	virtual_batches: int,
+	conventional_instances: int,
+	virtual_instances: int,
 	gpu_driven: bool,
 	compute_culling: bool,
 	meshlet_culling: bool,
@@ -577,6 +581,7 @@ apply_render_feature_overrides :: proc "contextless" (
 
 Run_Config :: struct {
 	backend: Renderer_Backend,
+	geometry_mode: shared.Geometry_Mode,
 	virtual_geometry_budget_bytes: u64,
 	virtual_geometry_prefetch: bool,
 	cpu_culling: bool,

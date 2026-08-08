@@ -896,7 +896,12 @@ wgpu_encode_viewport_draws :: proc(
 	wgpu.RenderPassEncoderSetBindGroup(pass, 0, renderer.ui_viewport_bind_groups[layer])
 	wgpu.RenderPassEncoderSetBindGroup(pass, 2, renderer.environment_bind_group)
 	for draw, index in draws {
-		geometry, geometry_err := wgpu_geometry_cache(renderer, registry, draw.geometry)
+		geometry, geometry_err := wgpu_geometry_cache(
+			renderer,
+			registry,
+			draw.geometry,
+			.Conventional,
+		)
 		if geometry_err != "" {
 			return geometry_err
 		}

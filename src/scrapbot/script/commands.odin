@@ -101,15 +101,36 @@ scrapbot_add_component :: proc "c" (L: Lua_State) -> c.int {
 		}
 		return 0
 	}
+	if component_ref.name == "scrapbot.mesh" {
+		if err := require_system_access(runtime, component_ref.name, .Write); err != "" {
+			return luau_push_error(L, err)
+		}
+		primitive, geometry_mode, ok := read_mesh_payload(L, 3)
+		if !ok {
+			return luau_push_error(
+				L,
+				"scrapbot.mesh expects primitive and optional geometry_mode fields",
+			)
+		}
+		if err := ecs.queue_add_mesh(
+			&runtime.commands,
+			entity.index,
+			entity.generation,
+			primitive,
+			geometry_mode,
+		); err != "" {
+			return luau_push_error(L, err)
+		}
+		return 0
+	}
 	if component_ref.name == "scrapbot.geometry" || component_ref.name == "scrapbot.material" {
 		if err := require_system_access(runtime, component_ref.name, .Write);
 		   err != "" { return luau_push_error(L, err) }
 		expected := "geometry"; if component_ref.name == "scrapbot.material" { expected = "material" }
-		index, generation, ok := resource_handle_fields(
-			L,
-			3,
-			expected,
-		); if !ok { return luau_push_error(L, "render component expects a matching resource handle") }
+		index, generation, geometry_mode, ok := render_resource_payload_fields(L, 3, expected)
+		if !ok {
+			return luau_push_error(L, "render component expects a matching resource payload")
+		}
 		if component_ref.name == "scrapbot.geometry" {
 			if _, valid := resources.get_geometry(runtime.resource_registry, {index, generation});
 			   !valid { return luau_push_error(L, "geometry resource handle is stale") }
@@ -118,6 +139,7 @@ scrapbot_add_component :: proc "c" (L: Lua_State) -> c.int {
 				entity.index,
 				entity.generation,
 				{index, generation},
+				geometry_mode,
 			); err != "" { return luau_push_error(L, err) }
 		} else {
 			if _, valid := resources.get_material(runtime.resource_registry, {index, generation});
@@ -275,14 +297,30 @@ read_spawn_components :: proc "c" (
 			if err = ecs.spawn_set_transform(spawn, transform); err != "" {
 				return err
 			}
+		} else if component_name == "scrapbot.mesh" {
+			if err := require_system_access(runtime, component_name, .Write); err != "" {
+				return err
+			}
+			primitive, geometry_mode, ok := read_mesh_payload(L, -1)
+			if !ok {
+				return "scrapbot.mesh expects primitive and optional geometry_mode fields"
+			}
+			if err := ecs.spawn_set_mesh(spawn, primitive, geometry_mode); err != "" {
+				return err
+			}
 		} else if component_name == "scrapbot.geometry" {
 			if err := require_system_access(runtime, component_name, .Write);
 			   err != "" { return err }
-			index, generation, ok := resource_handle_fields(L, -1, "geometry")
+			index, generation, geometry_mode, ok := render_resource_payload_fields(
+				L,
+				-1,
+				"geometry",
+			)
 			if !ok { return "scrapbot.geometry expects a geometry resource handle" }
 			if _, valid := resources.get_geometry(runtime.resource_registry, {index, generation});
 			   !valid { return "scrapbot.geometry references a stale resource" }
 			ecs.spawn_set_geometry(spawn, {index, generation})
+			spawn.geometry_mode = geometry_mode
 		} else if component_name == "scrapbot.material" {
 			if err := require_system_access(runtime, component_name, .Write);
 			   err != "" { return err }
@@ -422,6 +460,80 @@ resource_handle_fields :: proc "c" (
 		"generation",
 	); generation := lua_tointegerx(L, -1, &is_number); lua_settop(L, -2); if is_number == 0 || generation <= 0 { return 0, 0, false }
 	return u32(handle_index), u32(generation), true
+}
+
+read_mesh_payload :: proc "c" (
+	L: Lua_State,
+	index: c.int,
+) -> (
+	string,
+	shared.Geometry_Mode,
+	bool,
+) {
+	lua_getfield(L, index, "primitive")
+	primitive, primitive_ok := luau_required_string(L, -1)
+	lua_settop(L, -2)
+	if !primitive_ok || primitive == "" {
+		return "", .Inherit, false
+	}
+
+	geometry_mode := shared.Geometry_Mode.Inherit
+	lua_getfield(L, index, "geometry_mode")
+	if lua_type(L, -1) != LUA_TNIL {
+		name, name_ok := luau_required_string(L, -1)
+		if !name_ok {
+			lua_settop(L, -2)
+			return "", .Inherit, false
+		}
+		parsed, parsed_ok := shared.geometry_mode_from_name(name)
+		if !parsed_ok {
+			lua_settop(L, -2)
+			return "", .Inherit, false
+		}
+		geometry_mode = parsed
+	}
+	lua_settop(L, -2)
+	return primitive, geometry_mode, true
+}
+
+render_resource_payload_fields :: proc "c" (
+	L: Lua_State,
+	index: c.int,
+	expected_kind: string,
+) -> (
+	u32,
+	u32,
+	shared.Geometry_Mode,
+	bool,
+) {
+	if handle_index, generation, ok := resource_handle_fields(L, index, expected_kind); ok {
+		return handle_index, generation, .Inherit, true
+	}
+
+	lua_getfield(L, index, "resource")
+	handle_index, generation, handle_ok := resource_handle_fields(L, -1, expected_kind)
+	lua_settop(L, -2)
+	if !handle_ok {
+		return 0, 0, .Inherit, false
+	}
+
+	geometry_mode := shared.Geometry_Mode.Inherit
+	lua_getfield(L, index, "geometry_mode")
+	if lua_type(L, -1) != LUA_TNIL {
+		name, name_ok := luau_required_string(L, -1)
+		if !name_ok {
+			lua_settop(L, -2)
+			return 0, 0, .Inherit, false
+		}
+		parsed, parsed_ok := shared.geometry_mode_from_name(name)
+		if !parsed_ok {
+			lua_settop(L, -2)
+			return 0, 0, .Inherit, false
+		}
+		geometry_mode = parsed
+	}
+	lua_settop(L, -2)
+	return handle_index, generation, geometry_mode, true
 }
 
 read_transform_payload :: proc "c" (

@@ -140,7 +140,7 @@ scrapbot.system({
 		name = "Test Bullet",
 		components = {
 			["scrapbot.transform"] = { position = { x = 0, y = 1, z = 0 }, scale = { x = 1, y = 1, z = 1 } },
-			["scrapbot.geometry"] = geometry,
+			["scrapbot.geometry"] = { resource = geometry, geometry_mode = "virtual" },
 			["scrapbot.material"] = material,
 			velocity = { value = { x = 0, y = 10, z = 0 } },
 			bullet = { age = 0 },
@@ -189,6 +189,13 @@ end)
 	testing.expect(t, entity.alive)
 	testing.expect(t, entity.transform_index >= 0)
 	testing.expect(t, entity.geometry_index >= 0)
+	if entity.geometry_index >= 0 {
+		testing.expect_value(
+			t,
+			world.geometries[entity.geometry_index].geometry_mode,
+			shared.Geometry_Mode.Virtual,
+		)
+	}
 	testing.expect(t, entity.material_index >= 0)
 	testing.expect_value(t, len(entity.custom_component_storage_indices), 2)
 	testing.expectf(t, step_runtime(&runtime, &world, 1.0 / 60.0) == "", "collision system failed")

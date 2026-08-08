@@ -469,7 +469,7 @@ resolve_snapshot_resource_names :: proc(
 		return
 	}
 	entity := world.entities[entity_index]
-	if snapshot.entity.geometry_resource == "" &&
+	if snapshot.entity.geometry.resource == "" &&
 	   entity.geometry_index >= 0 &&
 	   entity.geometry_index < len(world.geometries) {
 		handle := world.geometries[entity.geometry_index].handle
@@ -477,7 +477,7 @@ resolve_snapshot_resource_names :: proc(
 			resource := state.resource_registry.geometries[handle.index]
 			if resource.alive && resource.generation == handle.generation {
 				snapshot.entity.has_geometry = true
-				snapshot.entity.geometry_resource = ecs.clone_snapshot_string(resource.name)
+				snapshot.entity.geometry.resource = ecs.clone_snapshot_string(resource.name)
 			}
 		}
 	}

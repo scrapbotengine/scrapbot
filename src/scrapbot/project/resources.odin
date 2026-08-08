@@ -286,22 +286,22 @@ validate_scene_resource_references :: proc(
 			)
 		}
 		if entity.has_model {
-			resource_id, valid := shared.resource_uuid_parse(entity.model_resource)
+			resource_id, valid := shared.resource_uuid_parse(entity.model.resource)
 			if !valid || !known_models[resource_id] {
 				return fmt.tprintf(
 					"scene entity '%s' references unknown model resource '%s'",
 					entity.name,
-					entity.model_resource,
+					entity.model.resource,
 				)
 			}
 		}
 		if entity.has_geometry {
-			if resource_id, valid := shared.resource_uuid_parse(entity.geometry_resource);
+			if resource_id, valid := shared.resource_uuid_parse(entity.geometry.resource);
 			   valid && !known_geometries[resource_id] {
 				return fmt.tprintf(
 					"scene entity '%s' references unknown geometry resource '%s'",
 					entity.name,
-					entity.geometry_resource,
+					entity.geometry.resource,
 				)
 			}
 		}

@@ -28,6 +28,7 @@ parse_project_resource :: proc(
 	resource.texture.color_space = .SRGB
 	resource.texture.generate_mipmaps = true
 	resource.model.generate_lods = true
+	resource.model.geometry_mode = .Inherit
 	resource.model.lod_ratios = {0.5, 0.25, 0.125}
 	resource.model.lod_screen_radii = {0.18, 0.07, 0.025}
 	resource.model.lod_count = shared.MAX_GEOMETRY_LODS - 1
@@ -163,6 +164,15 @@ parse_project_resource :: proc(
 					}
 				case "generate_lods":
 					resource.model.generate_lods, found = parse_bool(value)
+				case "geometry_mode":
+					mode_name: string
+					mode_name, found = parse_basic_string(value)
+					if found {
+						resource.model.geometry_mode, found = shared.geometry_mode_from_name(
+							mode_name,
+						)
+						found = found && resource.model.geometry_mode != .Inherit
+					}
 				case "lod_ratios":
 					model_lod_ratio_count, found = parse_fixed_f32_list(
 						value,
@@ -808,6 +818,7 @@ parse_project_config :: proc(source: string) -> (config: Project_Config, result:
 		height = shared.DEFAULT_WINDOW_HEIGHT,
 	}
 	config.render.environment_intensity = 1
+	config.render.geometry_mode = .Auto
 	config.render.virtual_geometry_budget_mb = 64
 	config.render.virtual_geometry_prefetch = true
 	config.render.environment_reflection_intensity = 1
@@ -945,6 +956,15 @@ parse_project_config :: proc(source: string) -> (config: Project_Config, result:
 		}
 		if section == "render" {
 			switch key {
+				case "geometry_mode":
+					mode_name: string
+					mode_name, found = parse_basic_string(value)
+					if found {
+						config.render.geometry_mode, found = shared.geometry_mode_from_name(
+							mode_name,
+						)
+						found = found && config.render.geometry_mode != .Inherit
+					}
 				case "virtual_geometry_budget_mb", "virtual_geometry_index_budget_mb":
 					config.render.virtual_geometry_budget_mb, found = parse_f32(value)
 				case "virtual_geometry_prefetch":
@@ -1534,24 +1554,60 @@ parse_scene :: proc(
 				if !found { return scene, fail(.Invalid_Field, fmt.tprintf("invalid point_light.%s", key)) }
 			case "mesh":
 				current.has_mesh = true
-				if key != "primitive" {
-					return scene, fail(.Invalid_Field, fmt.tprintf("unknown mesh field '%s'", key))
+				switch key {
+					case "primitive":
+						current.mesh.primitive, found = parse_basic_string(value)
+						if !found || current.mesh.primitive == "" {
+							return scene, fail(
+								.Invalid_Field,
+								"mesh.primitive must be a non-empty basic string",
+							)
+						}
+					case "geometry_mode":
+						mode_name: string
+						mode_name, found = parse_basic_string(value)
+						if found {
+							current.mesh.geometry_mode, found = shared.geometry_mode_from_name(
+								mode_name,
+							)
+						}
+					case:
+						return scene, fail(
+							.Invalid_Field,
+							fmt.tprintf("unknown mesh field '%s'", key),
+						)
 				}
-				current.mesh.primitive, found = parse_basic_string(value)
-				if !found || current.mesh.primitive == "" {
-					return scene, fail(
-						.Invalid_Field,
-						"mesh.primitive must be a non-empty basic string",
-					)
+				if !found {
+					return scene, fail(.Invalid_Field, fmt.tprintf("invalid mesh.%s", key))
 				}
 			case "geometry":
 				current.has_geometry = true
-				if key !=
-				   "resource" { return scene, fail(.Invalid_Field, "geometry only supports resource") }
-				current.geometry_resource, found = parse_basic_string(value)
-				if !found ||
-				   current.geometry_resource ==
-					   "" { return scene, fail(.Invalid_Field, "geometry.resource must be a non-empty basic string") }
+				switch key {
+					case "resource":
+						current.geometry.resource, found = parse_basic_string(value)
+						if !found || current.geometry.resource == "" {
+							return scene, fail(
+								.Invalid_Field,
+								"geometry.resource must be a non-empty basic string",
+							)
+						}
+					case "geometry_mode":
+						mode_name: string
+						mode_name, found = parse_basic_string(value)
+						if found {
+							current.geometry.geometry_mode, found = shared.geometry_mode_from_name(
+								mode_name,
+							)
+						}
+					case:
+						return scene, fail(
+							.Invalid_Field,
+							fmt.tprintf("unknown geometry field '%s'", key),
+						)
+				}
+				if !found {
+					return scene, fail(.Invalid_Field, fmt.tprintf("invalid geometry.%s", key))
+				}
 			case "material":
 				current.has_material = true
 				if key !=
@@ -1562,14 +1618,31 @@ parse_scene :: proc(
 					   "" { return scene, fail(.Invalid_Field, "material.resource must be a non-empty basic string") }
 			case "model":
 				current.has_model = true
-				if key !=
-				   "resource" { return scene, fail(.Invalid_Field, "model only supports resource") }
-				current.model_resource, found = parse_basic_string(value)
-				if !found || current.model_resource == "" {
-					return scene, fail(
-						.Invalid_Field,
-						"model.resource must be a non-empty resource UUID",
-					)
+				switch key {
+					case "resource":
+						current.model.resource, found = parse_basic_string(value)
+						if !found || current.model.resource == "" {
+							return scene, fail(
+								.Invalid_Field,
+								"model.resource must be a non-empty resource UUID",
+							)
+						}
+					case "geometry_mode":
+						mode_name: string
+						mode_name, found = parse_basic_string(value)
+						if found {
+							current.model.geometry_mode, found = shared.geometry_mode_from_name(
+								mode_name,
+							)
+						}
+					case:
+						return scene, fail(
+							.Invalid_Field,
+							fmt.tprintf("unknown model field '%s'", key),
+						)
+				}
+				if !found {
+					return scene, fail(.Invalid_Field, fmt.tprintf("invalid model.%s", key))
 				}
 			case "shadow_caster", "shadow_receiver":
 				return scene, fail(

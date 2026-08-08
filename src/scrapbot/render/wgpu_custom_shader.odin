@@ -1533,7 +1533,12 @@ wgpu_encode_transparent_pass :: proc(
 	for draw, draw_index in renderer.transparent_draws {
 		material, material_ok := resources.get_material(registry, draw.material)
 		if !material_ok { return "transparent draw references an unavailable material" }
-		geometry, geometry_err := wgpu_geometry_cache(renderer, registry, draw.geometry)
+		geometry, geometry_err := wgpu_geometry_cache(
+			renderer,
+			registry,
+			draw.geometry,
+			.Conventional,
+		)
 		if geometry_err != "" { return geometry_err }
 		geometry_resource, geometry_ok := resources.get_geometry(registry, draw.geometry)
 		if !geometry_ok { return "transparent draw references unavailable geometry" }

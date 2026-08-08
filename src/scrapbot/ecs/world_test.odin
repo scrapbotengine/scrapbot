@@ -7,6 +7,29 @@ import "core:fmt"
 import "core:slice"
 import "core:testing"
 
+@(test)
+test_world_preserves_inherited_geometry_mode_until_resource_policy_resolution :: proc(
+	t: ^testing.T,
+) {
+	scene, result := project.parse_scene(
+		`[[entities]]
+id = "a2000000-0000-4000-8000-000000000099"
+name = "Inherited Model"
+
+[entities.model]
+resource = "b1000000-0000-4000-8000-000000000003"
+		`,
+	)
+	defer project.destroy_scene(&scene)
+	testing.expect(t, result.err == .None)
+	if result.err != .None {
+		return
+	}
+	world := build_world(&scene)
+	defer destroy_world(&world)
+	testing.expect_value(t, world.entities[0].geometry_mode, shared.Geometry_Mode.Inherit)
+}
+
 MULTI_CUBE_SCENE :: `[[entities]]
 id = "a2000000-0000-4000-8000-000000000001"
 name = "Main Camera"

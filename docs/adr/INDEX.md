@@ -55,3 +55,4 @@
 | [ADR-051](ADR-051-wrap-runtime-assets-in-chunked-products.md) | Wrap runtime assets in chunked products | 2026-08-02 |
 | [ADR-052](ADR-052-coordinate-adaptive-render-quality-from-one-frame-budget.md) | Coordinate adaptive render quality from one frame budget | 2026-08-02 |
 | [ADR-053](ADR-053-expose-live-debugging-through-a-transport-independent-service.md) | Expose live debugging through a transport-independent service | 2026-08-05 |
+| [ADR-054](ADR-054-select-geometry-submission-through-layered-policy.md) | Select geometry submission through layered policy | 2026-08-08 |

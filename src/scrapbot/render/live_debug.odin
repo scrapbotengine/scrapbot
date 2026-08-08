@@ -89,6 +89,10 @@ publish_live_debug_render_stats :: proc(
 		return
 	}
 	destination.draw_batches = stats.draw_batches
+	destination.conventional_batches = stats.conventional_batches
+	destination.virtual_batches = stats.virtual_batches
+	destination.conventional_instances = stats.conventional_instances
+	destination.virtual_instances = stats.virtual_instances
 	destination.visible_batches = stats.visible_batches
 	destination.visible_meshlet_draws = stats.visible_meshlet_draws
 	destination.visible_virtual_clusters = stats.visible_virtual_clusters

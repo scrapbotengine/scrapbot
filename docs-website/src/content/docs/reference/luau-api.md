@@ -181,6 +181,25 @@ Texture paths must be project-relative paths beginning with `assets/`; absolute 
 
 Named registration updates an existing transient runtime resource while preserving its handle. Spawn component maps use `scrapbot.geometry` and `scrapbot.material` names with the returned handles. These functions do not create persistent project resources; authored materials live in standalone `.resource.toml` files and scenes reference their UUIDs.
 
+`scrapbot.geometry_component` accepts either a geometry handle or a policy-bearing payload:
+
+```lua
+local rock = scrapbot.geometry.create("rock", descriptor)
+
+scrapbot.spawn({
+	components = {
+		["scrapbot.geometry"] = {
+			resource = rock,
+			geometry_mode = "virtual",
+		},
+	},
+})
+```
+
+`geometry_mode` is `inherit`, `auto`, `conventional`, or `virtual`. The direct-handle form remains
+equivalent to `{ resource = handle, geometry_mode = "inherit" }`. Geometry and mesh query payloads
+return the resolved authored mode alongside their resource or primitive field.
+
 ## Queries and views
 
 | API | Meaning |

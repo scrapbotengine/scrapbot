@@ -695,7 +695,12 @@ test_gpu_dirty_instance_sync_reactivates_an_authoritative_render_slot :: proc(t:
 	defer delete(cache.batches)
 	append(
 		&cache.batches,
-		WGPU_Draw_Batch{geometry = geometry, material = material, visible_capacity = 64},
+		WGPU_Draw_Batch {
+			geometry = geometry,
+			material = material,
+			geometry_mode = .Conventional,
+			visible_capacity = 64,
+		},
 	)
 	cache.batch_count = 1
 
@@ -802,7 +807,8 @@ test_gpu_resource_cache_reuses_slots_across_handle_generations :: proc(t: ^testi
 		{handle = {index = 7, generation = 4}},
 	}
 	geometries := [?]WGPU_Geometry_Cache {
-		{handle = {index = 3, generation = 2}},
+		{handle = {index = 3, generation = 2}, virtual_geometry = false},
+		{handle = {index = 3, generation = 2}, virtual_geometry = true},
 		{handle = {index = 9, generation = 5}},
 	}
 	testing.expect_value(
@@ -812,8 +818,17 @@ test_gpu_resource_cache_reuses_slots_across_handle_generations :: proc(t: ^testi
 	)
 	testing.expect_value(
 		t,
-		wgpu_geometry_cache_slot(geometries[:], {index = 3, generation = 88}),
+		wgpu_geometry_cache_slot_for_submission(
+			geometries[:],
+			{index = 3, generation = 88},
+			false,
+		),
 		0,
+	)
+	testing.expect_value(
+		t,
+		wgpu_geometry_cache_slot_for_submission(geometries[:], {index = 3, generation = 88}, true),
+		1,
 	)
 }
 
@@ -1658,7 +1673,9 @@ test_wgpu_draw_database_materializes_only_effective_geometry_lod_batches :: proc
 		&list.instances,
 		Render_Instance{geometry = {handle = base}, material = {handle = material}},
 	)
-	renderer: WGPU_Renderer
+	renderer := WGPU_Renderer {
+		geometry_mode = .Virtual,
+	}
 	defer delete(renderer.draw_batch_cache.batches)
 	defer delete(renderer.draw_batch_cache.source_indices)
 	defer delete(renderer.gpu_batch_indices_by_slot)
@@ -1979,6 +1996,39 @@ test_wgpu_batch_membership_invalidates_layout_only_for_policy_or_capacity_change
 }
 
 @(test)
+test_geometry_mode_names_and_layered_resolution_are_canonical :: proc(t: ^testing.T) {
+	candidates := [4]shared.Geometry_Mode {
+		shared.Geometry_Mode.Inherit,
+		shared.Geometry_Mode.Auto,
+		shared.Geometry_Mode.Conventional,
+		shared.Geometry_Mode.Virtual,
+	}
+	for candidate in candidates {
+		name := shared.geometry_mode_name(candidate)
+		parsed, ok := shared.geometry_mode_from_name(name)
+		testing.expect(t, ok)
+		testing.expect_value(t, parsed, candidate)
+	}
+	_, unknown_ok := shared.geometry_mode_from_name("classic-ish")
+	testing.expect(t, !unknown_ok)
+	testing.expect_value(
+		t,
+		shared.geometry_mode_resolve(.Inherit, .Virtual, .Conventional),
+		shared.Geometry_Mode.Virtual,
+	)
+	testing.expect_value(
+		t,
+		shared.geometry_mode_resolve(.Inherit, .Inherit),
+		shared.Geometry_Mode.Auto,
+	)
+	testing.expect_value(
+		t,
+		shared.geometry_mode_override(.Inherit, .Inherit),
+		shared.Geometry_Mode.Inherit,
+	)
+}
+
+@(test)
 test_wgpu_meshlet_submission_policy_amortizes_indirect_commands :: proc(t: ^testing.T) {
 	testing.expect(t, !wgpu_geometry_uses_virtual_clusters(nil))
 	groups: [2]resources.Geometry_Cluster_Group
@@ -1993,6 +2043,7 @@ test_wgpu_meshlet_submission_policy_amortizes_indirect_commands :: proc(t: ^test
 	testing.expect(t, !wgpu_virtual_geometry_submission(nil, &one_group))
 	renderer := WGPU_Renderer {
 		gpu_meshlet_supported = true,
+		geometry_mode = .Virtual,
 	}
 	testing.expect(t, wgpu_virtual_geometry_submission(&renderer, &one_group))
 	testing.expect(t, wgpu_virtual_geometry_uses_compaction(&renderer, &one_group))
@@ -2028,6 +2079,95 @@ test_wgpu_meshlet_submission_policy_amortizes_indirect_commands :: proc(t: ^test
 	renderer.gpu_meshlet_force_enabled = true
 	testing.expect_value(t, wgpu_active_meshlet_draw_count(&renderer), 28)
 	testing.expect_value(t, wgpu_active_classic_batch_count(&renderer), 0)
+}
+
+@(test)
+test_wgpu_geometry_mode_policy_is_layered_stable_and_capability_safe :: proc(t: ^testing.T) {
+	groups: [2]resources.Geometry_Cluster_Group
+	indices := make([]u32, int(WGPU_AUTO_VIRTUAL_GEOMETRY_MIN_TRIANGLES) * 3)
+	defer delete(indices)
+	geometry := resources.Geometry {
+		indices = indices,
+		canonical_index_count = u32(len(indices)),
+		cluster_groups = groups[:],
+		cluster_max_depth = 1,
+	}
+	renderer := WGPU_Renderer {
+		geometry_mode = .Auto,
+		gpu_meshlet_supported = true,
+	}
+	testing.expect_value(
+		t,
+		wgpu_resolve_geometry_mode(&renderer, &geometry),
+		shared.Geometry_Mode.Virtual,
+	)
+	testing.expect_value(
+		t,
+		wgpu_resolve_geometry_mode(&renderer, &geometry, .Conventional),
+		shared.Geometry_Mode.Conventional,
+	)
+	geometry.geometry_mode = .Conventional
+	testing.expect_value(
+		t,
+		wgpu_resolve_geometry_mode(&renderer, &geometry),
+		shared.Geometry_Mode.Conventional,
+	)
+	testing.expect_value(
+		t,
+		wgpu_resolve_geometry_mode(&renderer, &geometry, .Virtual),
+		shared.Geometry_Mode.Virtual,
+	)
+	renderer.gpu_meshlet_supported = false
+	testing.expect_value(
+		t,
+		wgpu_resolve_geometry_mode(&renderer, &geometry, .Virtual),
+		shared.Geometry_Mode.Conventional,
+	)
+}
+
+@(test)
+test_wgpu_draw_batches_split_same_asset_by_resolved_geometry_mode :: proc(t: ^testing.T) {
+	registry: resources.Registry
+	defer resources.destroy_registry(&registry)
+	desc, desc_err := resources.plane(10, 10, 64, 64)
+	defer delete(desc.vertices)
+	defer delete(desc.indices)
+	handle, register_err := resources.register_geometry(&registry, "mixed-mode-cube", desc)
+	material, material_err := resources.register_material(&registry, "mixed-mode-material", {})
+	testing.expect(t, desc_err == "" && register_err == "" && material_err == "")
+	geometry, geometry_ok := resources.get_geometry(&registry, handle)
+	testing.expect(t, geometry_ok && wgpu_geometry_uses_virtual_clusters(geometry))
+	if !geometry_ok || !wgpu_geometry_uses_virtual_clusters(geometry) {
+		return
+	}
+
+	renderer := WGPU_Renderer {
+		geometry_mode = .Auto,
+		gpu_meshlet_supported = true,
+	}
+	defer delete(renderer.draw_batch_cache.source_indices)
+	defer delete(renderer.draw_batch_cache.batches)
+	list: Render_List = {
+		world_uuid = shared.entity_uuid_from_engine_name("mixed-geometry-mode-batches"),
+		topology_revision = 1,
+	}
+	defer ecs.destroy_render_list(&list)
+	append(
+		&list.instances,
+		shared.Render_Instance {
+			geometry = {handle = handle, geometry_mode = .Conventional},
+			material = {handle = material},
+		},
+		shared.Render_Instance {
+			geometry = {handle = handle, geometry_mode = .Virtual},
+			material = {handle = material},
+		},
+	)
+	cache := wgpu_ensure_draw_batch_cache(&renderer, &list, &registry)
+	testing.expect(t, cache != nil)
+	testing.expect_value(t, cache.batch_count, 2)
+	testing.expect_value(t, cache.instance_count, 2)
+	testing.expect(t, cache.batches[0].geometry_mode != cache.batches[1].geometry_mode)
 }
 
 @(test)
@@ -2508,6 +2648,7 @@ test_wgpu_virtual_geometry_activates_only_after_a_stable_window :: proc(t: ^test
 	defer delete(renderer.virtual_geometry_pending_activations)
 	defer delete(renderer.virtual_geometry_transitions)
 	cache := &renderer.geometry_cache[0]
+	cache.virtual_geometry = true
 	cache.handle = {
 		index = 7,
 		generation = 2,
@@ -2594,6 +2735,7 @@ test_wgpu_virtual_geometry_serializes_nested_transitions :: proc(t: ^testing.T) 
 	defer delete(renderer.virtual_geometry_pending_activations)
 	defer delete(renderer.virtual_geometry_transitions)
 	cache := &renderer.geometry_cache[0]
+	cache.virtual_geometry = true
 	cache.handle = {
 		index = 9,
 		generation = 3,
@@ -3299,6 +3441,7 @@ test_wgpu_compact_shadows_use_pages_only_for_streamed_geometry :: proc(t: ^testi
 	batch := WGPU_Draw_Batch {
 		meshlet_submission = true,
 		compact_submission = true,
+		virtual_geometry = true,
 	}
 
 	testing.expect_value(

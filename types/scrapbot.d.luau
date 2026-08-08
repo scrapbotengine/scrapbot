@@ -116,6 +116,8 @@ export type ScrapbotGeometryResource = {kind: "geometry", index: number, generat
 
 export type ScrapbotMaterialResource = {kind: "material", index: number, generation: number}
 
+export type ScrapbotGeometryMode = "inherit" | "auto" | "conventional" | "virtual"
+
 export type ScrapbotUiThemeName = "reduced_dark"
 
 export type ScrapbotUiThemeReference = ScrapbotUiThemeName | string
@@ -573,17 +575,25 @@ export type ReadonlyScrapbotPointLight = {
 export type ScrapbotPointLightComponent = ScrapbotComponent<ScrapbotPointLight, ReadonlyScrapbotPointLight>
 
 export type ScrapbotMesh = {
+	primitive: string,
+	geometry_mode: ScrapbotGeometryMode?,
 }
 
 export type ReadonlyScrapbotMesh = {
+	read primitive: string,
+	read geometry_mode: ScrapbotGeometryMode,
 }
 
 export type ScrapbotMeshComponent = ScrapbotComponent<ScrapbotMesh, ReadonlyScrapbotMesh>
 
 export type ScrapbotGeometry = {
+	resource: ScrapbotGeometryResource,
+	geometry_mode: ScrapbotGeometryMode?,
 }
 
 export type ReadonlyScrapbotGeometry = {
+	read resource: string,
+	read geometry_mode: ScrapbotGeometryMode,
 }
 
 export type ScrapbotGeometryComponent = ScrapbotComponent<ScrapbotGeometry, ReadonlyScrapbotGeometry>
@@ -597,9 +607,13 @@ export type ReadonlyScrapbotMaterial = {
 export type ScrapbotMaterialComponent = ScrapbotComponent<ScrapbotMaterial, ReadonlyScrapbotMaterial>
 
 export type ScrapbotModel = {
+	resource: string,
+	geometry_mode: ScrapbotGeometryMode?,
 }
 
 export type ReadonlyScrapbotModel = {
+	read resource: string,
+	read geometry_mode: ScrapbotGeometryMode,
 }
 
 export type ScrapbotModelComponent = ScrapbotComponent<ScrapbotModel, ReadonlyScrapbotModel>

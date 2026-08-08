@@ -312,14 +312,18 @@ Lens dirt requires camera bloom and is suppressed by non-lit debug views. Changi
 | Scene field | Type | Meaning |
 | --- | --- | --- |
 | `primitive` | string | Non-empty primitive name. The built-in path supports `cube` and a 64×64 `plane`. |
+| `geometry_mode` | string | `inherit`, `auto`, `conventional`, or `virtual`; defaults to `inherit`. |
 
-This is the legacy convenience path used by generated projects. It resolves built-in cube or plane geometry plus the default material when no authored material is present, and exposes membership-only query payloads. The plane's subdivision density supports vertex-displaced surfaces such as water.
+This convenience path resolves built-in cube or plane geometry plus the default material when no
+authored material is present. Queries expose both `primitive` and `geometry_mode`. The plane's
+subdivision density supports vertex-displaced surfaces such as water.
 
 ### `scrapbot.geometry` and `scrapbot.material`
 
 | Component | Scene field | Meaning |
 | --- | --- | --- |
 | `scrapbot.geometry` | `resource` | Non-empty geometry name registered by Luau or native Odin. |
+| `scrapbot.geometry` | `geometry_mode` | `inherit`, `auto`, `conventional`, or `virtual`; defaults to `inherit`. |
 | `scrapbot.material` | `resource` | UUID of an authored `scrapbot.material` project resource. |
 
 An entity using this resource-backed path becomes renderable when it has a Transform plus valid geometry and material handles. Materials may contribute metallic-roughness factors, mipmapped base-color/normal/occlusion/emissive images, and unbounded linear HDR emission that feeds world bloom. Imported glTF models populate that complete PBR contract; authored project materials currently expose base color, an optional Texture resource, and emission. The ECS stores generational resource handles; scene files store geometry names and stable material resource UUIDs. Luau and native material creation remains a transient runtime facility rather than authored project-resource persistence. See [Project File Reference](/reference/project-files/#project-resources) and [Luau API: Render resources](/reference/luau-api/#render-resources).
@@ -329,8 +333,14 @@ An entity using this resource-backed path becomes renderable when it has a Trans
 | Scene field | Type | Meaning |
 | --- | --- | --- |
 | `resource` | UUID string | Authored `scrapbot.model` project resource to instantiate. |
+| `geometry_mode` | string | Instance override: `inherit`, `auto`, `conventional`, or `virtual`. |
 
 The authored entity is the model root. Resource initialization and reload reconcile the imported glTF node hierarchy into derived runtime ECS entities with Transform, Geometry, and Material state. `shadow_caster` and `shadow_receiver` markers on the root are inherited by every generated primitive during that reconciliation. Models may contain multiple meshes and primitives; the renderer continues to consume ordinary renderable ECS entities rather than a model-specific draw path. Luau and native systems can query membership, but model resource replacement is currently a scene/editor authoring operation rather than a runtime payload write.
+
+Geometry submission resolves from the entity override, then the model asset preference, then the
+project default. `auto` selects virtual submission only for eligible geometry at or above the
+engine's stable topology crossover. Forced virtual mode still falls back safely when the active
+backend or geometry cannot support it.
 
 ## Lights and shadows
 

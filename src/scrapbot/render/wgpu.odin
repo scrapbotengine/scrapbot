@@ -341,6 +341,7 @@ WGPU_Automatic_Exposure_State :: struct {
 WGPU_Draw_Batch :: struct {
 	geometry: shared.Geometry_Handle,
 	material: shared.Material_Handle,
+	geometry_mode: shared.Geometry_Mode,
 	first_instance: u32,
 	instance_count: u32,
 	meshlet_submission: bool,
@@ -664,12 +665,13 @@ wgpu_texture_cache_slot :: proc(
 	return -1
 }
 
-wgpu_geometry_cache_slot :: proc "contextless" (
+wgpu_geometry_cache_slot_for_submission :: proc "contextless" (
 	cache: []WGPU_Geometry_Cache,
 	handle: shared.Geometry_Handle,
+	virtual_geometry: bool,
 ) -> int {
 	for cached, index in cache {
-		if cached.handle.index == handle.index {
+		if cached.handle.index == handle.index && cached.virtual_geometry == virtual_geometry {
 			return index
 		}
 	}
@@ -954,6 +956,10 @@ WGPU_Renderer :: struct {
 	gpu_compact_selected_batch_count: int,
 	gpu_virtual_cluster_draw_count: int,
 	gpu_classic_batch_count: int,
+	gpu_conventional_batch_count: int,
+	gpu_virtual_batch_count: int,
+	gpu_conventional_instance_count: int,
+	gpu_virtual_instance_count: int,
 	gpu_meshlet_visible_capacity: int,
 	gpu_meshlet_supported: bool,
 	gpu_meshlet_native_multi_draw: bool,
@@ -1097,6 +1103,7 @@ WGPU_Renderer :: struct {
 	geometry_cache: [dynamic]WGPU_Geometry_Cache,
 	geometry_vertex_arena: WGPU_Geometry_Arena,
 	geometry_index_arena: WGPU_Geometry_Arena,
+	geometry_mode: shared.Geometry_Mode,
 	virtual_geometry_budget_bytes: u64,
 	virtual_geometry_resident_bytes: u64,
 	virtual_geometry_page_count: int,
@@ -2509,8 +2516,17 @@ wgpu_rebuild_draw_batch_cache :: proc(
 		handles: [shared.MAX_GEOMETRY_LODS]shared.Geometry_Handle
 		handles[0] = candidate.geometry.handle
 		handle_count := 1
+		geometry_mode := shared.geometry_mode_resolve(
+			candidate.geometry.geometry_mode,
+			renderer.geometry_mode,
+		)
 		if geometry, alive := resources.get_geometry(registry, candidate.geometry.handle); alive {
-			lod_count := wgpu_geometry_draw_lod_count(renderer, geometry)
+			geometry_mode = wgpu_resolve_geometry_mode(
+				renderer,
+				geometry,
+				candidate.geometry.geometry_mode,
+			)
+			lod_count := wgpu_geometry_draw_lod_count(renderer, geometry, geometry_mode)
 			for handle in geometry.lod_handles[:lod_count] {
 				handles[handle_count] = handle
 				handle_count += 1
@@ -2520,7 +2536,9 @@ wgpu_rebuild_draw_batch_cache :: proc(
 			found := false
 			for batch_index in 0 ..< cache.batch_count {
 				batch := cache.batches[batch_index]
-				if batch.geometry == handle && batch.material == candidate.material.handle {
+				if batch.geometry == handle &&
+				   batch.material == candidate.material.handle &&
+				   batch.geometry_mode == geometry_mode {
 					found = true
 					break
 				}
@@ -2530,7 +2548,11 @@ wgpu_rebuild_draw_batch_cache :: proc(
 			}
 			append(
 				&cache.batches,
-				WGPU_Draw_Batch{geometry = handle, material = candidate.material.handle},
+				WGPU_Draw_Batch {
+					geometry = handle,
+					material = candidate.material.handle,
+					geometry_mode = geometry_mode,
+				},
 			)
 			cache.batch_count += 1
 		}
@@ -2542,12 +2564,33 @@ wgpu_rebuild_draw_batch_cache :: proc(
 			if candidate.material.handle != batch.material {
 				continue
 			}
+			candidate_geometry, candidate_alive := resources.get_geometry(
+				registry,
+				candidate.geometry.handle,
+			)
+			candidate_mode := shared.geometry_mode_resolve(
+				candidate.geometry.geometry_mode,
+				renderer.geometry_mode,
+			)
+			if candidate_alive {
+				candidate_mode = wgpu_resolve_geometry_mode(
+					renderer,
+					candidate_geometry,
+					candidate.geometry.geometry_mode,
+				)
+			}
+			if candidate_mode != batch.geometry_mode {
+				continue
+			}
 			matches := candidate.geometry.handle == batch.geometry
 			if !matches {
-				if geometry, alive := resources.get_geometry(registry, candidate.geometry.handle);
-				   alive {
-					lod_count := wgpu_geometry_draw_lod_count(renderer, geometry)
-					for handle in geometry.lod_handles[:lod_count] {
+				if candidate_alive {
+					lod_count := wgpu_geometry_draw_lod_count(
+						renderer,
+						candidate_geometry,
+						batch.geometry_mode,
+					)
+					for handle in candidate_geometry.lod_handles[:lod_count] {
 						if handle == batch.geometry {
 							matches = true
 							break
@@ -2670,13 +2713,19 @@ wgpu_geometry_cache :: proc(
 	renderer: ^WGPU_Renderer,
 	registry: ^resources.Registry,
 	handle: shared.Geometry_Handle,
+	geometry_mode: shared.Geometry_Mode = .Inherit,
 ) -> (
 	^WGPU_Geometry_Cache,
 	string,
 ) {
 	geometry, ok := resources.get_geometry(registry, handle)
 	if !ok { return nil, "render geometry handle is stale" }
-	cache_index := wgpu_geometry_cache_slot(renderer.geometry_cache[:], handle)
+	virtual_submission := wgpu_virtual_geometry_submission(renderer, geometry, geometry_mode)
+	cache_index := wgpu_geometry_cache_slot_for_submission(
+		renderer.geometry_cache[:],
+		handle,
+		virtual_submission,
+	)
 	if cache_index < 0 {
 		cache_index = len(renderer.geometry_cache)
 		append(&renderer.geometry_cache, WGPU_Geometry_Cache{})
@@ -2695,7 +2744,6 @@ wgpu_geometry_cache :: proc(
 		renderer.geometry_index_arena.usage = {.Index, .Storage}
 		renderer.geometry_index_arena.label = "Scrapbot Shared Geometry Index Arena"
 	}
-	virtual_submission := wgpu_virtual_geometry_submission(renderer, geometry)
 	preload_virtual_geometry :=
 		virtual_submission &&
 		wgpu_virtual_geometry_should_preload_pages(
@@ -4223,6 +4271,10 @@ wgpu_draw_frame :: proc(
 		config.stats.virtual_geometry = renderer.gpu_virtual_cluster_draw_count > 0
 		config.stats.virtual_geometry_compacted = renderer.gpu_compact_submission_active
 		config.stats.virtual_cluster_draws = renderer.gpu_virtual_cluster_draw_count
+		config.stats.conventional_batches = renderer.gpu_conventional_batch_count
+		config.stats.virtual_batches = renderer.gpu_virtual_batch_count
+		config.stats.conventional_instances = renderer.gpu_conventional_instance_count
+		config.stats.virtual_instances = renderer.gpu_virtual_instance_count
 		config.stats.meshlet_visible_capacity = renderer.gpu_meshlet_visible_capacity
 		config.stats.clustered_lighting = true
 		config.stats.shadow_cascades =
@@ -4524,6 +4576,10 @@ wgpu_render_offscreen_frame :: proc(
 		config.stats.virtual_geometry = renderer.gpu_virtual_cluster_draw_count > 0
 		config.stats.virtual_geometry_compacted = renderer.gpu_compact_submission_active
 		config.stats.virtual_cluster_draws = renderer.gpu_virtual_cluster_draw_count
+		config.stats.conventional_batches = renderer.gpu_conventional_batch_count
+		config.stats.virtual_batches = renderer.gpu_virtual_batch_count
+		config.stats.conventional_instances = renderer.gpu_conventional_instance_count
+		config.stats.virtual_instances = renderer.gpu_virtual_instance_count
 		config.stats.meshlet_visible_capacity = renderer.gpu_meshlet_visible_capacity
 		config.stats.clustered_lighting = true
 		config.stats.shadow_cascades =
@@ -4791,6 +4847,7 @@ wgpu_run_headless :: proc(world: ^World, config: ^Run_Config) -> string {
 		return init_err
 	}
 	wgpu_configure_profile(&renderer, config.profile)
+	renderer.geometry_mode = config.geometry_mode
 	renderer.virtual_geometry_budget_bytes = config.virtual_geometry_budget_bytes
 	renderer.virtual_geometry_prefetch_enabled = config.virtual_geometry_prefetch
 	renderer.cpu_culling = config.cpu_culling
@@ -5036,6 +5093,7 @@ wgpu_run_window :: proc(world: ^World, config: ^Run_Config) -> string {
 		return init_err
 	}
 	wgpu_configure_profile(&renderer, config.profile)
+	renderer.geometry_mode = config.geometry_mode
 	renderer.virtual_geometry_budget_bytes = config.virtual_geometry_budget_bytes
 	renderer.virtual_geometry_prefetch_enabled = config.virtual_geometry_prefetch
 	renderer.cpu_culling = config.cpu_culling

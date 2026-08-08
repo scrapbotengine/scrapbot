@@ -126,13 +126,15 @@ capture_registered_component_snapshot :: proc(
 			value.mesh.primitive = clone_snapshot_string(value.mesh.primitive)
 		case .Geometry:
 			value.has_geometry = true
-			value.geometry_resource = clone_snapshot_string(entity.geometry_resource)
+			value.geometry.resource = clone_snapshot_string(entity.geometry_resource)
+			value.geometry.geometry_mode = entity.geometry_mode
 		case .Material:
 			value.has_material = true
 			value.material_resource = clone_snapshot_string(entity.material_resource)
 		case .Model:
 			value.has_model = true
-			value.model_resource = clone_snapshot_string(entity.model_resource)
+			value.model.resource = clone_snapshot_string(entity.model_resource)
+			value.model.geometry_mode = entity.geometry_mode
 		case .Shadow_Caster:
 			value.has_shadow_caster = true
 		case .Shadow_Receiver:
@@ -337,15 +339,17 @@ apply_registered_component_snapshot :: proc(
 			set_optional_point_light(world, entity_index, true, value.point_light)
 			mark_render_entity_dirty(world, entity_index)
 		case .Mesh:
-			add_mesh(world, entity_index, value.mesh.primitive)
+			add_mesh(world, entity_index, value.mesh.primitive, value.mesh.geometry_mode)
 		case .Geometry:
-			set_entity_resource(world, entity_index, true, value.geometry_resource)
+			set_entity_geometry_mode(world, entity_index, value.geometry.geometry_mode)
+			set_entity_resource(world, entity_index, true, value.geometry.resource)
 			mark_render_entity_dirty(world, entity_index)
 		case .Material:
 			set_entity_resource(world, entity_index, false, value.material_resource)
 			mark_render_entity_dirty(world, entity_index)
 		case .Model:
-			set_entity_model_resource(world, entity_index, value.model_resource)
+			set_entity_geometry_mode(world, entity_index, value.model.geometry_mode)
+			set_entity_model_resource(world, entity_index, value.model.resource)
 		case .Shadow_Caster:
 			world.entities[entity_index].has_shadow_caster = true
 			mark_render_entity_dirty(world, entity_index)
@@ -415,9 +419,15 @@ capture_entity_snapshot :: proc(world: ^World, entity_index: int) -> (Entity_Sna
 			scene_order = source.scene_order,
 			has_shadow_caster = source.has_shadow_caster,
 			has_shadow_receiver = source.has_shadow_receiver,
-			geometry_resource = clone_snapshot_string(source.geometry_resource),
+			geometry = {
+				resource = clone_snapshot_string(source.geometry_resource),
+				geometry_mode = source.geometry_mode,
+			},
 			material_resource = clone_snapshot_string(source.material_resource),
-			model_resource = clone_snapshot_string(source.model_resource),
+			model = {
+				resource = clone_snapshot_string(source.model_resource),
+				geometry_mode = source.geometry_mode,
+			},
 		},
 	}
 	entity := &snapshot.entity
@@ -521,9 +531,9 @@ destroy_entity_snapshot :: proc(snapshot: ^Entity_Snapshot) {
 	}
 	entity := &snapshot.entity
 	delete(entity.name)
-	delete(entity.geometry_resource)
+	delete(entity.geometry.resource)
 	delete(entity.material_resource)
-	delete(entity.model_resource)
+	delete(entity.model.resource)
 	delete(entity.mesh.primitive)
 	delete(entity.world_environment.lighting)
 	delete(entity.world_environment.background)
@@ -971,13 +981,22 @@ apply_entity_snapshot :: proc(world: ^World, snapshot: ^Entity_Snapshot) -> (int
 	)
 	set_optional_point_light(world, entity_index, value.has_point_light, value.point_light)
 	if value.has_mesh {
-		add_mesh(world, entity_index, value.mesh.primitive)
+		add_mesh(world, entity_index, value.mesh.primitive, value.mesh.geometry_mode)
 	} else {
 		remove_mesh(world, entity_index)
 	}
-	set_entity_resource(world, entity_index, true, value.geometry_resource)
+	set_entity_geometry_mode(
+		world,
+		entity_index,
+		shared.geometry_mode_override(
+			value.mesh.geometry_mode,
+			value.geometry.geometry_mode,
+			value.model.geometry_mode,
+		),
+	)
+	set_entity_resource(world, entity_index, true, value.geometry.resource)
 	set_entity_resource(world, entity_index, false, value.material_resource)
-	set_entity_model_resource(world, entity_index, value.model_resource)
+	set_entity_model_resource(world, entity_index, value.model.resource)
 	entity.has_shadow_caster = value.has_shadow_caster
 	entity.has_shadow_receiver = value.has_shadow_receiver
 	apply_ui_snapshot(world, entity_index, value)
@@ -1299,6 +1318,36 @@ set_entity_model_resource :: proc(world: ^World, entity_index: int, value: strin
 		world.model_instance_revision = 1
 	}
 	bump_component_revision(world, entity_index)
+}
+
+set_entity_geometry_mode :: proc(
+	world: ^World,
+	entity_index: int,
+	geometry_mode: shared.Geometry_Mode,
+) {
+	if !entity_is_alive(world, entity_index) {
+		return
+	}
+	entity := &world.entities[entity_index]
+	if entity.geometry_mode == geometry_mode {
+		return
+	}
+	entity.geometry_mode = geometry_mode
+	if entity.geometry_index >= 0 && entity.geometry_index < len(world.geometries) {
+		world.geometries[entity.geometry_index].geometry_mode = geometry_mode
+	}
+	if entity.mesh_index >= 0 && entity.mesh_index < len(world.meshes) {
+		world.meshes[entity.mesh_index].geometry_mode = geometry_mode
+	}
+	if entity.model_resource != "" {
+		despawn_model_instance_entities(world, entity.uuid)
+		world.model_instance_revision += 1
+		if world.model_instance_revision == 0 {
+			world.model_instance_revision = 1
+		}
+	}
+	bump_component_revision(world, entity_index)
+	mark_render_entity_dirty(world, entity_index)
 }
 
 apply_ui_snapshot :: proc(world: ^World, entity_index: int, value: ^shared.Scene_Entity) {

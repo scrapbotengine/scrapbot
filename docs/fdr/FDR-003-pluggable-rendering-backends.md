@@ -32,6 +32,7 @@ Pluggable rendering backends allow Scrapbot to start with `wgpu-native` while ke
 - WGPU keeps a persistent slot-addressed GPU instance table, separates static source state from hot Transform state, sends Transform-only changes through one dense update upload, coalesces nearby static slot changes into bounded uploads, retains compact render/culling uniforms and instance-to-LOD batch mappings, computes camera and shadow frustum visibility into compacted batch slices, and obtains instance counts from indexed indirect draw arguments.
 - The retained draw database grows geometrically past the original 64-batch limit. It rebuilds only when render membership, geometry LOD topology, or required capacity changes.
 - Every Geometry version owns bounded meshlets and a crack-aware, deterministically paged cluster hierarchy. Simplification preserves normal and UV discontinuities and never falls back to attribute-blind reduction.
+- Geometry submission resolves at stable topology boundaries from entity override, Model-resource preference, project default, and backend automatic policy. Conventional and Virtual instances of one Geometry can coexist in separate retained batches and caches.
 - Complete page sets that fit the remaining budget are admitted immediately; coarse pages remain pinned for streamed resources. The GPU selects resident detail, requests missing finer pages, and draws the nearest resident fallback before camera sphere, normal-cone, and Hi-Z tests.
 - Native multi-draw adapters retain one indirect command per hierarchy cluster. Other indirect-first-instance adapters append selected instance/cluster records into a bounded camera stream and vertex-pull compatible material spans through one indirect command.
 - Adapters without indirect-first-instance and `--cpu-culling` retain whole-primitive imported LOD selection. Streamed resources use the indexed proxy built from pinned coarse pages.
@@ -462,9 +463,22 @@ Shaders without the option bind a shared zero field and disabled uniform. They p
 **Tradeoff:** The first field has fixed resolution and one frequency band. It does not yet provide
 currents, interaction masks, caustics, underwater rendering, or water-aware motion vectors.
 
+### 26. Choose geometry submission with a layered stable policy
+
+**Decision:** Resolve `auto`, `conventional`, or `virtual` from the entity, Model resource, and
+project in that order. Let WGPU's automatic policy select Virtual only for capable hierarchy-bearing
+Geometry at or above its conservative 50,000-triangle crossover. Keep the result stable until
+component membership, preference, resource version, or backend capability changes. See ADR-054.
+
+**Why:** Virtual Geometry is a scalability tool for dense inputs, not a universally cheaper draw
+path. Mixed scenes need local control without camera-motion-driven topology churn.
+
+**Tradeoff:** Automatic selection begins with one portable threshold. Profiles expose the resolved
+batch and instance mix, but qualified adapter-specific calibration remains future work.
+
 ## Related
 
-- **ADRs:** ADR-003, ADR-005, ADR-010, ADR-011, ADR-029, ADR-034, ADR-038, ADR-039, ADR-046, ADR-047, ADR-048, ADR-049, ADR-050
+- **ADRs:** ADR-003, ADR-005, ADR-010, ADR-011, ADR-029, ADR-034, ADR-038, ADR-039, ADR-046, ADR-047, ADR-048, ADR-049, ADR-050, ADR-054
 - **FDRs:** FDR-001, FDR-002, FDR-008
 
 ## Open Questions

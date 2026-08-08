@@ -212,6 +212,7 @@ register_project_model :: proc(
 					{
 						query_positions = primitive.query_positions,
 						canonical_index_count = primitive.index_count,
+						geometry_mode = declaration.model.geometry_mode,
 						hierarchy = &primitive.hierarchy,
 						page_source = page_source_pointer,
 					},
@@ -224,6 +225,7 @@ register_project_model :: proc(
 					{vertices = vertices, indices = primitive.indices[:]},
 					&primitive.hierarchy,
 					page_source_pointer,
+					declaration.model.geometry_mode,
 				)
 				delete(vertices)
 			}
@@ -256,6 +258,7 @@ register_project_model :: proc(
 						{
 							query_positions = lod.query_positions,
 							canonical_index_count = lod.index_count,
+							geometry_mode = declaration.model.geometry_mode,
 							hierarchy = &lod.hierarchy,
 							page_source = lod_page_source_pointer,
 						},
@@ -268,6 +271,7 @@ register_project_model :: proc(
 						{vertices = lod_vertices, indices = lod.indices[:]},
 						&lod.hierarchy,
 						lod_page_source_pointer,
+						declaration.model.geometry_mode,
 					)
 					delete(lod_vertices)
 				}

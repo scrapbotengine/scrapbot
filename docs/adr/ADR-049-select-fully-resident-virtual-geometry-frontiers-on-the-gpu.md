@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-31
 
-**Updated:** 2026-08-05
+**Updated:** 2026-08-08
 
 ## Context
 
@@ -86,8 +86,9 @@ tracks actual output resolution without owning a second, hidden quality controll
 
 Native multi-draw adapters also use the hierarchy for shadows before applying cascade sphere and
 normal-cone tests. The portable path uses the camera-selected object LOD for conservative cascade
-visibility. A hierarchy-bearing batch uses cluster camera submission even with one instance because
-geometric-detail selection does not require instance-count amortization.
+visibility. A batch selected for virtual submission uses cluster camera submission even with one
+instance because geometric-detail selection does not require instance-count amortization. ADR-054
+defines the layered policy that decides whether a hierarchy-bearing Geometry uses that path.
 
 Adapters without indirect-first-instance, capacity-limited layouts, and `--cpu-culling` retain
 classic indexed drawing and the existing object-level imported LOD contract. The backend exposes

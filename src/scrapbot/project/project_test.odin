@@ -89,6 +89,7 @@ name = "Ship"
 
 [model]
 source = "assets/ship.glb"
+geometry_mode = "virtual"
 lod_ratios = [0.6, 0.3]
 lod_screen_radii = [0.2, 0.05]
 `,
@@ -96,6 +97,7 @@ lod_screen_radii = [0.2, 0.05]
 	testing.expect(t, result.err == .None)
 	testing.expect(t, resource.kind == .Model)
 	testing.expect_value(t, resource.model.source, "assets/ship.glb")
+	testing.expect_value(t, resource.model.geometry_mode, shared.Geometry_Mode.Virtual)
 	testing.expect(t, resource.model.generate_lods)
 	testing.expect_value(t, resource.model.lod_count, 2)
 	testing.expect_value(t, resource.model.lod_ratios[0], f32(0.6))
@@ -220,6 +222,7 @@ source = "assets/studio.hdr"
 default_scene = "scenes/main.scene.toml"
 
 [render]
+geometry_mode = "auto"
 virtual_geometry_budget_mb = 96.5
 virtual_geometry_prefetch = false
 environment = "a1000000-0000-4000-8000-000000000021"
@@ -236,6 +239,7 @@ background_blur = 0.25
 	)
 	defer destroy_project_config(&config)
 	testing.expect(t, config_result.err == .None)
+	testing.expect_value(t, config.render.geometry_mode, shared.Geometry_Mode.Auto)
 	testing.expect_value(t, config.render.virtual_geometry_budget_mb, f32(96.5))
 	testing.expect(t, !config.render.virtual_geometry_prefetch)
 	testing.expect_value(t, config.render.environment, resource.id)
@@ -2473,6 +2477,7 @@ rotation = [0, 0, 0]
 scale = [1, 1, 1]
 [entities.model]
 resource = "a7000000-0000-4000-8000-000000000001"
+geometry_mode = "conventional"
 `,
 	)
 	defer destroy_scene(&scene)
@@ -2482,8 +2487,34 @@ resource = "a7000000-0000-4000-8000-000000000001"
 		testing.expect(t, scene.entities[0].has_model)
 		testing.expect_value(
 			t,
-			scene.entities[0].model_resource,
+			scene.entities[0].model.resource,
 			"a7000000-0000-4000-8000-000000000001",
 		)
+		testing.expect_value(
+			t,
+			scene.entities[0].model.geometry_mode,
+			shared.Geometry_Mode.Conventional,
+		)
+	}
+}
+
+@(test)
+test_geometry_mode_configuration_rejects_unknown_and_explicit_inherit_modes :: proc(
+	t: ^testing.T,
+) {
+	modes := [2]string{"inherit", "definitely-not-a-mode"}
+	for mode in modes {
+		config, result := parse_project_config(
+			fmt.tprintf(
+				`name = "Bad Geometry Mode"
+default_scene = "scenes/main.scene.toml"
+[render]
+geometry_mode = "%s"
+`,
+				mode,
+			),
+		)
+		destroy_project_config(&config)
+		testing.expect(t, result.err == .Invalid_Field)
 	}
 }

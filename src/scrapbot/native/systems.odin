@@ -1285,7 +1285,12 @@ system_spawn :: proc "c" (ctx: ^api.System_Context, options: ^api.Spawn_Options)
 		if options.mesh.primitive == nil {
 			return "native mesh primitive is not available"
 		}
-		if err := ecs.spawn_set_mesh(&spawn, string(options.mesh.primitive)); err != "" {
+		geometry_mode, geometry_mode_ok := geometry_mode_from_api(options.mesh.geometry_mode)
+		if !geometry_mode_ok {
+			return "native mesh geometry mode is invalid"
+		}
+		if err := ecs.spawn_set_mesh(&spawn, string(options.mesh.primitive), geometry_mode);
+		   err != "" {
 			return cstring(raw_data(err))
 		}
 	}
@@ -1296,6 +1301,11 @@ system_spawn :: proc "c" (ctx: ^api.System_Context, options: ^api.Spawn_Options)
 			.Write,
 		) { return "native system does not have write access to scrapbot.geometry" }
 		ecs.spawn_set_geometry(&spawn, {options.geometry.index, options.geometry.generation})
+		geometry_mode, geometry_mode_ok := geometry_mode_from_api(options.geometry_mode)
+		if !geometry_mode_ok {
+			return "native geometry mode is invalid"
+		}
+		spawn.geometry_mode = geometry_mode
 	}
 	if options.material != nil {
 		if !system_allows_component_access(
@@ -1422,6 +1432,10 @@ system_add_mesh :: proc "c" (
 	if mesh == nil || mesh.primitive == nil {
 		return "native mesh payload is not available"
 	}
+	geometry_mode, geometry_mode_ok := geometry_mode_from_api(mesh.geometry_mode)
+	if !geometry_mode_ok {
+		return "native mesh geometry mode is invalid"
+	}
 	if !system_allows_component_access(step.system.declaration, "scrapbot.mesh", .Write) {
 		return "native system does not have write access to scrapbot.mesh"
 	}
@@ -1433,10 +1447,30 @@ system_add_mesh :: proc "c" (
 		int(entity.index),
 		entity.generation,
 		string(mesh.primitive),
+		geometry_mode,
 	); err != "" {
 		return cstring(raw_data(err))
 	}
 	return nil
+}
+
+geometry_mode_from_api :: proc "contextless" (
+	value: api.Geometry_Mode,
+) -> (
+	shared.Geometry_Mode,
+	bool,
+) {
+	switch value {
+		case .Inherit:
+			return .Inherit, true
+		case .Auto:
+			return .Auto, true
+		case .Conventional:
+			return .Conventional, true
+		case .Virtual:
+			return .Virtual, true
+	}
+	return .Inherit, false
 }
 
 system_add_component :: proc "c" (

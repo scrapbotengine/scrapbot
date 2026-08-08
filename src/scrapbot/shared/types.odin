@@ -41,6 +41,13 @@ Renderer_Backend :: enum {
 	WGPU,
 }
 
+Geometry_Mode :: enum u8 {
+	Inherit,
+	Auto,
+	Conventional,
+	Virtual,
+}
+
 Project_Config :: struct {
 	name: string,
 	default_scene: string,
@@ -55,6 +62,7 @@ Project_Window_Config :: struct {
 }
 
 Project_Render_Config :: struct {
+	geometry_mode: Geometry_Mode,
 	virtual_geometry_budget_mb: f32,
 	virtual_geometry_prefetch: bool,
 	environment: Resource_UUID,
@@ -141,6 +149,7 @@ Project_Texture_Resource :: struct {
 
 Project_Model_Resource :: struct {
 	source: string,
+	geometry_mode: Geometry_Mode,
 	generate_lods: bool,
 	lod_ratios: [MAX_GEOMETRY_LODS - 1]f32,
 	lod_screen_radii: [MAX_GEOMETRY_LODS - 1]f32,
@@ -215,6 +224,16 @@ Scene :: struct {
 	entities: [dynamic]Scene_Entity,
 }
 
+Scene_Geometry_Component :: struct {
+	resource: string,
+	geometry_mode: Geometry_Mode,
+}
+
+Scene_Model_Component :: struct {
+	resource: string,
+	geometry_mode: Geometry_Mode,
+}
+
 Scene_Entity :: struct {
 	id: Entity_UUID,
 	name: string,
@@ -234,11 +253,11 @@ Scene_Entity :: struct {
 	has_mesh: bool,
 	mesh: Mesh_Component,
 	has_geometry: bool,
-	geometry_resource: string,
+	geometry: Scene_Geometry_Component,
 	has_material: bool,
 	material_resource: string,
 	has_model: bool,
-	model_resource: string,
+	model: Scene_Model_Component,
 	has_shadow_caster: bool,
 	has_shadow_receiver: bool,
 	has_ui_theme: bool,
@@ -1663,10 +1682,12 @@ Editor_UI_Lookup_Key :: struct {
 
 Mesh_Component :: struct {
 	primitive: string,
+	geometry_mode: Geometry_Mode,
 }
 
 Geometry_Component :: struct {
 	handle: Geometry_Handle,
+	geometry_mode: Geometry_Mode,
 }
 Material_Component :: struct {
 	handle: Material_Handle,
@@ -1674,6 +1695,7 @@ Material_Component :: struct {
 Render_Instance_Component :: struct {
 	geometry: Geometry_Handle,
 	material: Material_Handle,
+	geometry_mode: Geometry_Mode,
 }
 
 Named_Vec3 :: struct {
@@ -1742,6 +1764,7 @@ World_Entity :: struct {
 	geometry_index: int,
 	material_index: int,
 	model_resource: string,
+	geometry_mode: Geometry_Mode,
 	model_owner: Entity_UUID,
 	render_instance_index: int,
 	render_active_index: int,
@@ -1803,6 +1826,7 @@ Render_Instance :: struct {
 Render_Batch_Key :: struct {
 	geometry: Geometry_Handle,
 	material: Material_Handle,
+	geometry_mode: Geometry_Mode,
 }
 
 Camera_Instance :: struct {

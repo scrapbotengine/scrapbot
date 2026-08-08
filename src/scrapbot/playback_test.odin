@@ -200,7 +200,7 @@ test_playback_cycles_preserve_authored_render_resource_references :: proc(t: ^te
 			id = shared.entity_uuid_from_engine_name("playback-resource-cycle"),
 			name = "Authored Resource Entity",
 			has_geometry = true,
-			geometry_resource = geometry_resource,
+			geometry = {resource = geometry_resource},
 			has_material = true,
 			material_resource = material_resource,
 		},

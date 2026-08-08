@@ -4,6 +4,7 @@ This file tracks current actionable engineering work. The broad product roadmap 
 
 ## Rendering
 
+- [ ] Calibrate the automatic Conventional/Virtual Geometry crossover across qualified adapter classes and representative asset shapes while preserving ADR-054's stable layered policy.
 - [ ] Partition or bound portable compact submission so visibility-table pressure cannot globally disable virtual submission or leave streamed resources undrawable; add an over-cap mixed-batch GPU fixture.
 - [ ] Partition geometry storage bindings or use relative page offsets so portable vertex pulling can use residency beyond the currently correctness-bounded single-binding prefix; measure and reduce fragmentation-driven detail deferrals.
 - [ ] Deduplicate virtual-Geometry page feedback by group before bounded GPU readback, then shrink the temporary 32,768-record demand lane while preserving zero-overflow moving high-detail views.

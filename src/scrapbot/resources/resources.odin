@@ -51,6 +51,7 @@ Geometry_Desc :: struct {
 Geometry_Catalog_Desc :: struct {
 	query_positions: []Vec3,
 	canonical_index_count: u32,
+	geometry_mode: shared.Geometry_Mode,
 	hierarchy: ^Geometry_Hierarchy,
 	page_source: ^Geometry_Page_Source_Desc,
 }
@@ -144,6 +145,7 @@ Geometry :: struct {
 	name: string,
 	source: string,
 	authored: bool,
+	geometry_mode: shared.Geometry_Mode,
 	vertices: []Vertex,
 	indices: []u32,
 	query_proxy: Geometry_Query_Proxy,
@@ -810,6 +812,7 @@ register_geometry_with_hierarchy :: proc(
 	desc: Geometry_Desc,
 	prebuilt_hierarchy: ^Geometry_Hierarchy,
 	page_source: ^Geometry_Page_Source_Desc = nil,
+	geometry_mode: shared.Geometry_Mode = .Inherit,
 ) -> (
 	Geometry_Handle,
 	string,
@@ -891,6 +894,7 @@ register_geometry_with_hierarchy :: proc(
 		geometry.cluster_triangles = hierarchy.triangles
 		install_geometry_page_source(geometry, &prepared_page_source)
 		geometry.cluster_max_depth = hierarchy.max_depth
+		geometry.geometry_mode = geometry_mode
 		geometry.bounds = calculate_bounds(desc.vertices)
 		geometry.lod_handles = {}
 		geometry.lod_screen_radii = {}
@@ -914,6 +918,7 @@ register_geometry_with_hierarchy :: proc(
 		&registry.geometries,
 		Geometry {
 			name = cloned_name,
+			geometry_mode = geometry_mode,
 			vertices = clone_slice(desc.vertices, registry.allocator) if retain_canonical else nil,
 			indices = clone_slice(desc.indices, registry.allocator) if retain_canonical else nil,
 			query_proxy = query_proxy,
@@ -1030,6 +1035,7 @@ register_geometry_catalog :: proc(
 		registered.cluster_triangles = hierarchy.triangles
 		install_geometry_page_source(registered, &prepared_page_source)
 		registered.cluster_max_depth = hierarchy.max_depth
+		registered.geometry_mode = desc.geometry_mode
 		registered.bounds = bounds
 		registered.lod_handles = {}
 		registered.lod_screen_radii = {}
@@ -1053,6 +1059,7 @@ register_geometry_catalog :: proc(
 		&registry.geometries,
 		Geometry {
 			name = cloned_name,
+			geometry_mode = desc.geometry_mode,
 			query_proxy = query_proxy,
 			canonical_vertex_count = u32(len(desc.query_positions)),
 			canonical_index_count = desc.canonical_index_count,

@@ -1,6 +1,6 @@
 # Resources and Registries
 
-**Last verified:** 2026-08-05
+**Last verified:** 2026-08-08
 **Persistent declarations:** `shared.Project_Resource` and `project.load_project_resources`  
 **Runtime authority:** `resources.Registry`
 
@@ -23,7 +23,7 @@ Scrapbot resources live outside ECS. Persistent project files use stable UUIDs; 
 | Source kind | TOML `type` | Runtime family | ECS reference | Editor persistence |
 | --- | --- | --- | --- | --- |
 | `Texture` | `scrapbot.texture` | Texture | Material Texture handle | Incrementally imported and inspectable; source/settings remain text-authored |
-| `Model` | `scrapbot.model` | Model bundle plus generated Geometry/Material entries | `scrapbot.model` root reconciles derived ECS children | Incrementally imported and inspectable; source remains text-authored |
+| `Model` | `scrapbot.model` | Model bundle plus generated Geometry/Material entries and an authored submission preference | `scrapbot.model` root reconciles derived ECS children | Incrementally imported and inspectable; source remains text-authored |
 | `Environment` | `scrapbot.environment` | Environment | `scrapbot.world_environment` references lighting/background UUIDs | Incrementally imported and inspectable; source/settings remain text-authored |
 | `Icon_Set` | `scrapbot.icon_set` | Icon Set | `scrapbot.ui_icon` and icon-bearing controls reference set UUID plus symbol | Incrementally imported and inspectable; source directory remains text-authored |
 | `Shader` | `scrapbot.shader` | Shader | Material references the Shader UUID | Text-authored WGSL hooks; loaded and versioned with project resources |
@@ -64,6 +64,7 @@ The recursive project loader rejects duplicate UUIDs. Scene validation resolves 
 - Page construction occurs only at import or explicit registration/replacement boundaries. Stable frames do no partitioning, simplification, payload construction, or cluster work.
 - Missing authored declarations mark prior entries dead, increment generation/version, and invalidate old handles without compacting registry indexes.
 - Render preparation and the WGPU backend consume exact handle/version/topology changes; stable geometry is neither re-extracted nor re-uploaded.
+- The retained renderer resolves submission preference at topology boundaries in entity, Model asset, then project order. Automatic mode selects virtual submission only for capable, hierarchy-bearing Geometry at or above the stable source-triangle crossover. Camera movement never changes the chosen path.
 - WGPU uploads ordinary Geometry versions into shared aligned vertex and index arena ranges. Streamed Virtual Geometry allocates only resident page-local vertex and index ranges and retains no complete canonical GPU allocation.
 - Complete resources that fit the remaining budget retain canonical vertex/index ranges plus expanded page indices as a nonduplicating fast path. Larger resources pin the coarsest frontier. Bounded GPU feedback reports prioritized visible demand, future-camera prefetch, and visible resident-group touches.
 - Imported refinement payloads are read from exact product ranges by a dedicated worker. Versioned completions reach the render thread without waiting, then admit or evict complete groups under per-frame byte/group limits and the combined vertex/index project budget. Demand precedes speculative work, may reclaim prefetched groups immediately, and promotes them on visible use; speculative requests cannot evict recently visible groups.
@@ -121,7 +122,7 @@ The recursive project loader rejects duplicate UUIDs. Scene validation resolves 
 - Editor Reimport addresses one authored UUID, forces only that Texture, Model, Environment, or Icon Set importer, updates the existing registry slot, and then reconciles model instances when relevant. Reimport All uses the same path for every imported declaration; neither action reloads Luau or native Odin.
 - A replaced or removed Model retires generated Geometry and Material outputs absent from the replacement by marking their slots dead and incrementing generation/version. Stable/reused products retain their handles.
 - Texture, Model, and Material inspection target the public `scrapbot.ui_viewport` component at the resource UUID. WGPU resolves the UUID by registry family, assigns an independently sized pooled target, and renders either an aspect-preserving Texture pass or an isolated Model/Material preview scene with its own camera, lighting, environment, and renderer-owned presentation geometry. Icon Set inspection reads its symbol count, atlas shape, dependency, product size, and import state from the ordinary registry/import records. Stable viewport targets cache by component, target size/aspect, exact resource version, and relevant registry revisions. Import state, dependency path, product type/size, and the last explicit failure remain editor presentation over registry/import state rather than new resource authority.
-- `scrapbot.model` roots reconcile a derived runtime hierarchy during resource/bootstrap reload work and after an explicit model-root structural revision. Generated primitives inherit the root's `scrapbot.shadow_caster` and `scrapbot.shadow_receiver` membership during that reconciliation. Stable ordinary frames only compare revision counters and consume the resulting standard Transform/Geometry/Material/shadow-marker entities without model scans.
+- `scrapbot.model` roots reconcile a derived runtime hierarchy during resource/bootstrap reload work and after an explicit model-root structural revision. Generated primitives inherit the resolved entity/asset/project geometry mode plus the root's `scrapbot.shadow_caster` and `scrapbot.shadow_receiver` membership. Stable ordinary frames only compare revision counters and consume the resulting standard Transform/Geometry/Material/shadow-marker entities without model scans.
 - Source/tests: `asset_import/imports.odin`, `asset_import/icons.odin`, `asset_import/environments.odin`, `asset_import/models.odin`, `asset_import/model_lods.odin`, `geometry/hierarchy.odin`, `resources/textures.odin`, `resources/icons.odin`, `resources/models.odin`, `scrapbot.odin`; importer, icon compiler, registry, environment-filtering, model-instance, and WGPU tests.
 
 ### Font

@@ -569,7 +569,31 @@ push_query_component_table :: proc "c" (
 			push_ui_action_table(L, world.ui_actions[entity.ui_action_index])
 			return
 		case "scrapbot.mesh":
-			lua_createtable(L, 0, 0)
+			mesh := world.meshes[entity.mesh_index]
+			lua_createtable(L, 0, 2)
+			lua_pushlstring(L, cstring(raw_data(mesh.primitive)), c.size_t(len(mesh.primitive)))
+			lua_setfield(L, -2, "primitive")
+			push_geometry_mode_field(L, mesh.geometry_mode)
+			return
+		case "scrapbot.geometry":
+			lua_createtable(L, 0, 2)
+			lua_pushlstring(
+				L,
+				cstring(raw_data(entity.geometry_resource)),
+				c.size_t(len(entity.geometry_resource)),
+			)
+			lua_setfield(L, -2, "resource")
+			push_geometry_mode_field(L, entity.geometry_mode)
+			return
+		case "scrapbot.model":
+			lua_createtable(L, 0, 2)
+			lua_pushlstring(
+				L,
+				cstring(raw_data(entity.model_resource)),
+				c.size_t(len(entity.model_resource)),
+			)
+			lua_setfield(L, -2, "resource")
+			push_geometry_mode_field(L, entity.geometry_mode)
 			return
 	}
 
@@ -583,6 +607,12 @@ push_query_component_table :: proc "c" (
 		return
 	}
 	lua_createtable(L, 0, 0)
+}
+
+push_geometry_mode_field :: proc "c" (L: Lua_State, geometry_mode: shared.Geometry_Mode) {
+	name := shared.geometry_mode_name(geometry_mode)
+	lua_pushlstring(L, cstring(raw_data(name)), c.size_t(len(name)))
+	lua_setfield(L, -2, "geometry_mode")
 }
 
 push_transform_table :: proc "c" (L: Lua_State, transform: Transform_Component) {

@@ -119,6 +119,7 @@ UI_Component_Command :: struct {
 Command_Mesh :: struct {
 	primitive: [MAX_COMMAND_NAME_BYTES]u8,
 	primitive_len: int,
+	geometry_mode: shared.Geometry_Mode,
 }
 
 Spawn_Command :: struct {
@@ -131,6 +132,7 @@ Spawn_Command :: struct {
 	mesh: Command_Mesh,
 	has_geometry: bool,
 	geometry: Geometry_Handle,
+	geometry_mode: shared.Geometry_Mode,
 	has_material: bool,
 	material: Material_Handle,
 	has_point_light: bool,
@@ -207,6 +209,7 @@ Queued_Spawn_Command :: struct {
 	mesh: Command_Mesh,
 	has_geometry: bool,
 	geometry: Geometry_Handle,
+	geometry_mode: shared.Geometry_Mode,
 	has_material: bool,
 	material: Material_Handle,
 	has_point_light: bool,
@@ -309,11 +312,17 @@ spawn_set_transform :: proc "c" (spawn: ^Spawn_Command, transform: Transform_Com
 	return ""
 }
 
-spawn_set_mesh :: proc "c" (spawn: ^Spawn_Command, primitive: string) -> string {
+spawn_set_mesh :: proc "c" (
+	spawn: ^Spawn_Command,
+	primitive: string,
+	geometry_mode: shared.Geometry_Mode = .Inherit,
+) -> string {
 	if spawn == nil {
 		return "spawn command is not available"
 	}
 	spawn.has_mesh = true
+	spawn.mesh.geometry_mode = geometry_mode
+	spawn.geometry_mode = geometry_mode
 	if err := copy_command_string(
 		spawn.mesh.primitive[:],
 		&spawn.mesh.primitive_len,
@@ -697,6 +706,7 @@ queue_spawn_command :: proc "c" (buffer: ^Command_Buffer, spawn: Spawn_Command) 
 		mesh = spawn.mesh,
 		has_geometry = spawn.has_geometry,
 		geometry = spawn.geometry,
+		geometry_mode = spawn.geometry_mode,
 		has_material = spawn.has_material,
 		material = spawn.material,
 		has_point_light = spawn.has_point_light,
@@ -776,6 +786,7 @@ queue_add_geometry :: proc "c" (
 	entity_index: int,
 	generation: u32,
 	handle: Geometry_Handle,
+	geometry_mode: shared.Geometry_Mode = .Inherit,
 ) -> string {
 	if buffer == nil || buffer.commands == nil {
 		return "command buffer is not initialized"
@@ -787,6 +798,7 @@ queue_add_geometry :: proc "c" (
 			generation = generation,
 			kind = .Geometry,
 			geometry = handle,
+			mesh = {geometry_mode = geometry_mode},
 		},
 	)
 }
@@ -840,6 +852,7 @@ queue_add_mesh :: proc "c" (
 	entity_index: int,
 	generation: u32,
 	primitive: string,
+	geometry_mode: shared.Geometry_Mode = .Inherit,
 ) -> string {
 	if buffer == nil {
 		return "command buffer is not available"
@@ -852,6 +865,7 @@ queue_add_mesh :: proc "c" (
 		generation = generation,
 		kind = .Mesh,
 	}
+	add.mesh.geometry_mode = geometry_mode
 	if err := copy_command_string(
 		add.mesh.primitive[:],
 		&add.mesh.primitive_len,
@@ -1128,7 +1142,11 @@ spawn_queued_entity :: proc(
 	}
 	mesh_index := INVALID_COMPONENT_INDEX
 	if spawn.has_mesh {
-		mesh_index = allocate_mesh_slot(world, command_mesh_primitive(&spawn.mesh))
+		mesh_index = allocate_mesh_slot(
+			world,
+			command_mesh_primitive(&spawn.mesh),
+			spawn.mesh.geometry_mode,
+		)
 	}
 
 	world_entity := &world.entities[entity_index]
@@ -1146,7 +1164,9 @@ spawn_queued_entity :: proc(
 		}
 	}
 	ensure_entity_renderable(world, entity_index)
-	if spawn.has_geometry { add_geometry(world, entity_index, spawn.geometry) }
+	if spawn.has_geometry {
+		add_geometry(world, entity_index, spawn.geometry, spawn.geometry_mode)
+	}
 	if spawn.has_material { add_material(world, entity_index, spawn.material) }
 
 	for i in 0 ..< spawn.custom_component_count {
@@ -1306,9 +1326,14 @@ apply_add_component :: proc(
 		case .Transform:
 			add_transform(world, command.entity_index, command.transform)
 		case .Mesh:
-			add_mesh(world, command.entity_index, command_mesh_primitive(&command.mesh))
+			add_mesh(
+				world,
+				command.entity_index,
+				command_mesh_primitive(&command.mesh),
+				command.mesh.geometry_mode,
+			)
 		case .Geometry:
-			add_geometry(world, command.entity_index, command.geometry)
+			add_geometry(world, command.entity_index, command.geometry, command.mesh.geometry_mode)
 		case .Material:
 			add_material(world, command.entity_index, command.material)
 		case .Shadow_Caster:

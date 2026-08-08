@@ -18,6 +18,7 @@ width = 1600
 height = 900
 
 [render]
+geometry_mode = "auto"
 virtual_geometry_budget_mb = 64
 
 [[native_extensions]]
@@ -39,6 +40,7 @@ Fields:
 | `window.width` | No | Positive logical width up to 16384. |
 | `window.height` | No | Positive logical height up to 16384. |
 | `[render]` | No | Renderer-wide project policy. |
+| `render.geometry_mode` | No | Default geometry submission policy: `auto`, `conventional`, or `virtual`. Defaults to `auto`. |
 | `render.virtual_geometry_budget_mb` | No | Budget for resident virtual-geometry vertex and index pages, from 0.015625 to 16384 MiB. Defaults to 64 MiB. Pinned coarse fallback pages may exceed it. Portable compact paths also defer detail that cannot fit inside the adapter's storage-binding window. |
 | `render.virtual_geometry_prefetch` | No | Predict refinement from bounded camera motion and a widened future view. Defaults to `true`; visible demand remains available when disabled. |
 | `render.virtual_geometry_index_budget_mb` | No | Deprecated alias for `render.virtual_geometry_budget_mb`; retained for existing projects. |
@@ -49,7 +51,10 @@ Fields:
 | `fonts.name` | Yes | Resource name used by UI components. Must be a unique identifier token. |
 | `fonts.source` | Yes | Safe path under `assets/` ending in `.ttf` or `.otf`. |
 
-The optional `[render]` table owns renderer-wide policy such as the virtual-geometry payload budget.
+The optional `[render]` table owns renderer-wide policy such as geometry submission and the
+virtual-geometry payload budget. `auto` uses conventional submission for small geometry and virtual
+submission for eligible geometry with at least 50,000 source triangles. The crossover is stable
+until geometry topology changes; it does not switch as the camera moves.
 Its environment fields remain accepted as a compatibility fallback for scenes without
 `scrapbot.world_environment`. New projects should author environment state on the scene entity;
 when present, that component is authoritative.
@@ -235,6 +240,7 @@ name = "Crate"
 
 [model]
 source = "assets/models/crate.glb"
+geometry_mode = "auto"
 generate_lods = true
 lod_ratios = [0.5, 0.25, 0.125]
 lod_screen_radii = [0.18, 0.07, 0.025]
@@ -245,6 +251,11 @@ The importer starts at the selected/default glTF scene and includes only reachab
 Images may come from GLB buffer views, base64 data URIs, or safe relative files beside the `.gltf`; every image dependency participates in cache invalidation. Missing normals are generated. Imported subresources use semantic keys derived from authored names, hierarchy, and content where necessary, so harmless glTF array reordering preserves generated handles and derived entity UUIDs.
 
 Imported mesh LOD generation is enabled by default with the values shown above. `lod_ratios` gives each alternate level's target index ratio relative to the source. `lod_screen_radii` gives the matching descending projected-radius threshold at which the renderer selects that level. Both arrays must contain the same non-zero number of values, up to three.
+
+`geometry_mode` optionally sets the model asset's preferred submission policy to `auto`,
+`conventional`, or `virtual`. When omitted, instances inherit the project default. The imported
+product retains both conventional and virtual representations so entity overrides do not require a
+reimport.
 
 The importer uses meshoptimizer with position, normal, and UV evidence, compacts each retained level, and stores measured simplification error in the product. A primitive with fewer than 16 triangles, or one that cannot meet the next useful reduction within its error bound, retains fewer levels. Set `generate_lods = false` to keep only source geometry; ratio and radius arrays are then ignored.
 
@@ -449,6 +460,7 @@ Built-in primitive convenience:
 ```toml
 [entities.mesh]
 primitive = "cube"
+geometry_mode = "inherit"
 ```
 
 The mesh component resolves `cube` or `plane` into built-in geometry and supplies the default material when no authored material is present. The plane is a reusable 64×64 grid suitable for vertex-displaced surfaces. This is the compact primitive path used by generated projects and small text-authored scenes.
@@ -458,6 +470,7 @@ Imported model instance:
 ```toml
 [entities.model]
 resource = "b1000000-0000-4000-8000-000000000003"
+geometry_mode = "inherit"
 ```
 
 The UUID must name an authored `scrapbot.model` resource. Scrapbot retains the authored entity as the model root and reconciles imported nodes/primitives into stable derived ECS children. Their local transforms preserve the imported hierarchy; renderable children receive the generated Geometry and Material handles. Reimport/reload replaces only this derived hierarchy, never the authored root.
@@ -467,12 +480,17 @@ Explicit render resources:
 ```toml
 [entities.geometry]
 resource = "b1000000-0000-4000-8000-000000000010"
+geometry_mode = "inherit"
 
 [entities.material]
 resource = "b1000000-0000-4000-8000-000000000001"
 ```
 
 Geometry accepts either a transient runtime resource name such as `cube` or a stable UUID for an authored `scrapbot.geometry_lod` resource. Material is a stable project resource UUID and must resolve to an authored `scrapbot.material` resource. Entities become renderable once transform, geometry, and material references are valid.
+
+Every geometry-bearing entity may set `geometry_mode` to `inherit`, `auto`, `conventional`, or
+`virtual`. Resolution proceeds from entity to model asset to project default. `virtual` remains a
+preference: unsupported backends and ineligible geometry safely use conventional submission.
 
 Lights:
 

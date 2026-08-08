@@ -62,6 +62,14 @@ test_registry_contains_engine_components :: proc(t: ^testing.T) {
 	mesh, mesh_ok := find_definition(&registry, "scrapbot.mesh")
 	testing.expect(t, mesh_ok)
 	testing.expect(t, mesh.id != camera.id)
+	testing.expect_value(t, mesh.field_count, 2)
+	testing.expect_value(t, mesh.fields[0].name, "primitive")
+	testing.expect_value(t, mesh.fields[1].name, "geometry_mode")
+	geometry, geometry_ok := find_definition(&registry, "scrapbot.geometry")
+	model, model_ok := find_definition(&registry, "scrapbot.model")
+	testing.expect(t, geometry_ok && model_ok)
+	testing.expect_value(t, geometry.fields[1].name, "geometry_mode")
+	testing.expect_value(t, model.fields[1].name, "geometry_mode")
 	ui_state, ui_state_ok := find_definition(&registry, "scrapbot.ui_state")
 	render_instance, render_instance_ok := find_definition(
 		&registry,

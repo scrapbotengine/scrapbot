@@ -94,7 +94,8 @@ editor_reflected_snapshot_component_value :: proc(
 			}
 		case .Geometry:
 			if entity.has_geometry {
-				return any{rawptr(&entity.geometry_resource), typeid_of(string)}, true
+				return any{rawptr(&entity.geometry), typeid_of(shared.Scene_Geometry_Component)},
+					true
 			}
 		case .Material:
 			if entity.has_material {
@@ -102,7 +103,7 @@ editor_reflected_snapshot_component_value :: proc(
 			}
 		case .Model:
 			if entity.has_model {
-				return any{rawptr(&entity.model_resource), typeid_of(string)}, true
+				return any{rawptr(&entity.model), typeid_of(shared.Scene_Model_Component)}, true
 			}
 		case .Shadow_Caster:
 			return nil, entity.has_shadow_caster
@@ -1349,11 +1350,11 @@ editor_reflected_component_valid :: proc(
 		case "scrapbot.mesh":
 			return entity.mesh.primitive != ""
 		case "scrapbot.geometry":
-			return entity.geometry_resource != ""
+			return entity.geometry.resource != ""
 		case "scrapbot.material":
 			return entity.material_resource != ""
 		case "scrapbot.model":
-			return entity.model_resource != ""
+			return entity.model.resource != ""
 		case "scrapbot.ui_layout":
 			return(
 				entity.ui_layout.parent != entity.id &&

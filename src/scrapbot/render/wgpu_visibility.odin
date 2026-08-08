@@ -389,7 +389,11 @@ wgpu_refresh_geometry_group_state :: proc(
 	if !ok {
 		return ""
 	}
-	cache_index := wgpu_geometry_cache_slot(renderer.geometry_cache[:], handle)
+	cache_index := wgpu_geometry_cache_slot_for_submission(
+		renderer.geometry_cache[:],
+		handle,
+		true,
+	)
 	if cache_index < 0 {
 		return ""
 	}
@@ -641,7 +645,11 @@ wgpu_consume_virtual_page_io :: proc(renderer: ^WGPU_Renderer, registry: ^resour
 			break
 		}
 		geometry, geometry_ok := resources.get_geometry(registry, job.handle)
-		cache_index := wgpu_geometry_cache_slot(renderer.geometry_cache[:], job.handle)
+		cache_index := wgpu_geometry_cache_slot_for_submission(
+			renderer.geometry_cache[:],
+			job.handle,
+			true,
+		)
 		if geometry_ok &&
 		   geometry.version == job.geometry_version &&
 		   cache_index >= 0 &&
@@ -811,7 +819,11 @@ wgpu_finish_virtual_group_transitions :: proc(
 	frame := renderer.profile_frame_index
 	write_index := 0
 	for transition in renderer.virtual_geometry_transitions {
-		cache_index := wgpu_geometry_cache_slot(renderer.geometry_cache[:], transition.handle)
+		cache_index := wgpu_geometry_cache_slot_for_submission(
+			renderer.geometry_cache[:],
+			transition.handle,
+			true,
+		)
 		if cache_index < 0 ||
 		   int(transition.group_index) >=
 			   len(renderer.geometry_cache[cache_index].cluster_groups) {
@@ -843,7 +855,11 @@ wgpu_activate_stable_virtual_groups :: proc(
 	frame := renderer.profile_frame_index
 	write_index := 0
 	for activation in renderer.virtual_geometry_pending_activations {
-		cache_index := wgpu_geometry_cache_slot(renderer.geometry_cache[:], activation.handle)
+		cache_index := wgpu_geometry_cache_slot_for_submission(
+			renderer.geometry_cache[:],
+			activation.handle,
+			true,
+		)
 		if cache_index < 0 ||
 		   int(activation.group_index) >=
 			   len(renderer.geometry_cache[cache_index].cluster_groups) {
@@ -1150,7 +1166,11 @@ wgpu_process_virtual_page_feedback :: proc(
 			if !geometry_ok || int(feedback.group_index) >= len(geometry.cluster_groups) {
 				continue
 			}
-			cache_index := wgpu_geometry_cache_slot(renderer.geometry_cache[:], handle)
+			cache_index := wgpu_geometry_cache_slot_for_submission(
+				renderer.geometry_cache[:],
+				handle,
+				true,
+			)
 			if cache_index < 0 {
 				continue
 			}
@@ -1258,7 +1278,11 @@ wgpu_process_virtual_page_feedback :: proc(
 		if !geometry_ok {
 			continue
 		}
-		cache_index := wgpu_geometry_cache_slot(renderer.geometry_cache[:], request.handle)
+		cache_index := wgpu_geometry_cache_slot_for_submission(
+			renderer.geometry_cache[:],
+			request.handle,
+			true,
+		)
 		if cache_index < 0 {
 			continue
 		}

@@ -119,6 +119,7 @@ export type ScrapbotPointerSnapshot = {
 
 export type ScrapbotGeometryResource = {kind: "geometry", index: number, generation: number}
 export type ScrapbotMaterialResource = {kind: "material", index: number, generation: number}
+export type ScrapbotGeometryMode = "inherit" | "auto" | "conventional" | "virtual"
 export type ScrapbotUiThemeName = "reduced_dark"
 export type ScrapbotUiThemeReference = ScrapbotUiThemeName | string
 export type ScrapbotUiThemeRecipe = "canvas" | "region" | "panel_surface" | "raised" | "control" | "overlay" | "primary_text" | "secondary_text" | "muted_text" | "accent_text" | "warning_text" | "danger_text" | "quiet_button" | "standard_button" | "primary_button" | "destructive_button" | "input" | "panel" | "list" | "scroll_area" | "checkbox" | "color_picker" | "chrome_bar" | "selected_button" | "warning_button" | "warning_frame"
@@ -315,14 +316,14 @@ write_luau_component_type :: proc(builder: ^strings.Builder, definition: Definit
 	for i in 0 ..< definition.field_count {
 		field := definition.fields[i]
 		optional := ""
-		if strings.has_prefix(definition.name, "scrapbot.ui_") {
+		if strings.has_prefix(definition.name, "scrapbot.ui_") || field.name == "geometry_mode" {
 			optional = "?"
 		}
 		fmt.sbprintf(
 			builder,
 			"\t%s: %s%s,\n",
 			field.name,
-			luau_field_type_name(field.field_type),
+			luau_component_field_type_name(definition.name, field, false),
 			optional,
 		)
 	}
@@ -336,7 +337,7 @@ write_luau_component_type :: proc(builder: ^strings.Builder, definition: Definit
 			builder,
 			"\tread %s: %s,\n",
 			field.name,
-			luau_readonly_field_type_name(field.field_type),
+			luau_component_field_type_name(definition.name, field, true),
 		)
 	}
 	strings.write_string(builder, "}\n\n")
@@ -348,6 +349,23 @@ write_luau_component_type :: proc(builder: ^strings.Builder, definition: Definit
 		luau_component_write_type(definition, type_name),
 		readonly_type_name,
 	)
+}
+
+luau_component_field_type_name :: proc(
+	component_name: string,
+	field: Field_Definition,
+	readonly: bool,
+) -> string {
+	if field.name == "geometry_mode" {
+		return "ScrapbotGeometryMode"
+	}
+	if component_name == "scrapbot.geometry" && field.name == "resource" && !readonly {
+		return "ScrapbotGeometryResource"
+	}
+	if readonly {
+		return luau_readonly_field_type_name(field.field_type)
+	}
+	return luau_field_type_name(field.field_type)
 }
 
 luau_component_write_type :: proc(definition: Definition, type_name: string) -> string {

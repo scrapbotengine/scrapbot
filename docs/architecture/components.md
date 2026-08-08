@@ -193,21 +193,21 @@ These entries deliberately omit exhaustive field/default documentation. Follow t
 
 ### `scrapbot.mesh`
 
-- **Contract:** Legacy primitive-name shortcut that resolves built-in geometry and material for render eligibility.
+- **Contract:** Primitive-name shortcut plus an inherited/automatic/conventional/virtual geometry-submission preference.
 - **Storage/lifecycle:** Dedicated typed ECS storage; authored.
 - **Producers:** Scene loading, spawn/deferred commands, editor component authoring.
-- **Consumers:** Render-instance reconciliation and resource render-list extraction.
-- **Invalidation:** Attach/remove/name replacement is structural and re-evaluates the entity's retained render slot.
-- **Surfaces:** Public; scene/editor author the primitive while current Luau/native access is membership-oriented; see the [public component reference](../../docs-website/src/content/docs/reference/components.md#scrapbotmesh).
+- **Consumers:** Render-instance reconciliation, layered submission-policy resolution, and resource render-list extraction.
+- **Invalidation:** Attach/remove, primitive replacement, or submission-policy replacement is structural and re-evaluates the entity's retained render slot.
+- **Surfaces:** Public across scene TOML, Luau, native Odin, and editor authoring; see the [public component reference](../../docs-website/src/content/docs/reference/components.md#scrapbotmesh).
 - **Source/tests:** `ecs/world.odin`, `ecs/commands.odin`, `render/render.odin`; `ecs/world_test.odin`, `ecs/registered_components_test.odin`.
 
 ### `scrapbot.geometry`
 
-- **Contract:** Generational handle to a shared geometry resource used with Transform and Material.
+- **Contract:** Generational handle to a shared geometry resource plus an inherited/automatic/conventional/virtual submission preference.
 - **Storage/lifecycle:** Dedicated typed ECS storage; authored reference to registry-owned data.
 - **Producers:** Scene resource resolution, Luau/native resource APIs, editor authoring and playback restore.
-- **Consumers:** Render-instance reconciliation, retained render list, GPU draw/batch database.
-- **Invalidation:** Membership/handle changes are structural; resource topology/content versions invalidate affected retained/GPU state.
+- **Consumers:** Render-instance reconciliation, layered submission-policy resolution, retained render list, and GPU draw/batch database.
+- **Invalidation:** Membership, handle, or submission-policy changes are structural; resource topology/content versions invalidate affected retained/GPU state.
 - **Surfaces:** Public; persistent scenes store a resource name while ECS stores a resolved handle; see the [public component reference](../../docs-website/src/content/docs/reference/components.md#scrapbotgeometry-and-scrapbotmaterial).
 - **Source/tests:** `ecs/world.odin`, `resources/`, `render/wgpu_gpu_driven.odin`; `ecs/world_test.odin`, `resources/resources_test.odin`.
 
@@ -223,11 +223,11 @@ These entries deliberately omit exhaustive field/default documentation. Follow t
 
 ### `scrapbot.model`
 
-- **Contract:** References one authored Model UUID from a scene root entity.
+- **Contract:** References one authored Model UUID plus an optional instance-level geometry-submission preference.
 - **Storage/lifecycle:** Authored UUID reference on the root; imported nodes and primitives are derived Runtime-origin ECS entities owned by that root.
 - **Producers:** Scene TOML, editor reflected authoring, resource/bootstrap reconciliation.
-- **Consumers:** Model-instance reconciliation, then ordinary transform hierarchy and render extraction through derived Geometry/Material entities.
-- **Invalidation:** Model import/version or world replacement removes and recreates only the root's derived hierarchy with deterministic child UUIDs; ordinary frames do not scan model resources.
+- **Consumers:** Model-instance reconciliation resolves entity, asset, and project submission policy, then ordinary transform hierarchy and render extraction consume derived Geometry/Material entities.
+- **Invalidation:** Model import/version, submission-policy replacement, or world replacement removes and recreates only the root's derived hierarchy with deterministic child UUIDs; ordinary frames do not scan model resources.
 - **Surfaces:** Public scene TOML, component membership queries, and editor inspection; generated children are not persistent source.
 - **Source/tests:** `asset_import/models.odin`, `resources/models.odin`, `scrapbot.odin`; `asset_import/models_test.odin`, `model_instance_test.odin`.
 
