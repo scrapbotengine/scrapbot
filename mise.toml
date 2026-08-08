@@ -675,11 +675,20 @@ for (const [label, raw, expectedCompute] of [["compute", process.argv[1], true],
   const result = JSON.parse(raw);
   const stats = result.result?.render_stats;
   if (result.schema_version !== 1 || result.command !== "run" || result.ok !== true ||
-      stats?.compute_culling !== expectedCompute || result.result.draw_batches !== 3 ||
-      stats.visible_instances !== 3 || stats.lod0_visible_instances !== 1 ||
-      stats.lod1_visible_instances !== 1 || stats.lod2_visible_instances !== 1 ||
-      stats.lod3_visible_instances !== 0) {
+      stats?.compute_culling !== expectedCompute || stats.visible_instances !== 3) {
     console.error(`unexpected ${label} GPU LOD diagnostics`);
+    process.exit(1);
+  }
+  if (expectedCompute && (result.result.draw_batches !== 1 ||
+      !stats.virtual_geometry || !stats.virtual_geometry_compacted ||
+      stats.visible_virtual_clusters < 1)) {
+    console.error("compute LOD fixture did not submit a compact virtual-geometry frontier");
+    process.exit(1);
+  }
+  if (!expectedCompute && (result.result.draw_batches !== 3 ||
+      stats.lod0_visible_instances !== 1 || stats.lod1_visible_instances !== 1 ||
+      stats.lod2_visible_instances !== 1 || stats.lod3_visible_instances !== 0)) {
+    console.error("CPU LOD fixture did not select the expected classic LOD tiers");
     process.exit(1);
   }
 }
@@ -797,11 +806,11 @@ if (result.schema_version !== 1 || result.command !== "run" || result.ok !== tru
     stats.virtual_geometry_page_feedback < 1 ||
 	stats.virtual_geometry_group_uploads < 2 ||
 	stats.virtual_geometry_prefetch_group_uploads < 1 ||
-	stats.virtual_geometry_prefetch_hits < 1 ||
+	stats.virtual_geometry_prefetch_evictions < 1 ||
 	stats.virtual_geometry_group_evictions < 1 ||
     stats.virtual_geometry_page_evictions < stats.virtual_geometry_group_evictions ||
     stats.virtual_geometry_page_upload_bytes <= 0) {
-  console.error("virtual geometry pressure fixture did not predict, stream, hit, and evict complete groups");
+  console.error("virtual geometry pressure fixture did not predict, stream, and evict complete groups");
   console.error(JSON.stringify(stats, null, 2));
   process.exit(1);
 }

@@ -27,6 +27,7 @@ sun_glow = 0.3
 
 [entities.components.scrapbot.volumetric_fog]
 color = [0.56, 0.65, 0.75]
+resolution_scale = 0.25
 density = 0.024
 height = 0
 height_falloff = 0.12
@@ -63,6 +64,7 @@ temporal_antialiasing = true
 fast_antialiasing = false
 ambient_occlusion = true
 ambient_occlusion_quality = 0.5
+ambient_occlusion_resolution_scale = 0.25
 screen_space_reflections = true
 screen_space_reflections_quality = 0.5
 bloom = true

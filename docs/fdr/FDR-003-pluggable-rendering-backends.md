@@ -1,7 +1,7 @@
 # FDR-003: Pluggable rendering backends
 
 **Status:** Active
-**Last reviewed:** 2026-08-06
+**Last reviewed:** 2026-08-08
 
 ## Overview
 
@@ -22,7 +22,7 @@ Pluggable rendering backends allow Scrapbot to start with `wgpu-native` while ke
   - combines diffuse irradiance, roughness-prefiltered reflection, direct GGX lighting, and emission;
   - supports imported environment lighting plus an independently imported or procedural visible sky;
   - derives an above-horizon procedural sun as the first directional render light;
-  - applies half-resolution, 32-sector visibility-bitmask AO only to indirect diffuse;
+  - applies resolution-scaled, 32-sector visibility-bitmask AO only to indirect diffuse;
   - resolves TAA with camera reprojection, previous-depth rejection, and neighborhood clamping;
   - optionally meters viewport log luminance and adapts exposure entirely on the GPU;
   - builds five bloom levels, derives optional ghost flares and procedural lens dirt from that HDR energy, then tone maps and applies an optional vignette once into the sRGB presentation target.
@@ -133,9 +133,11 @@ The built-in indexed primitive generators cover cubes, planes, icospheres, UV sp
 
 **Decision:** Render the world into floating-point color, compact surface data, and a separate indirect-diffuse contribution.
 
-The active camera controls a `0.5`–`1` world render-grid ceiling/floor, optional GPU target, adaptive post-quality floor, fixed or automatic exposure, TAA, current-frame fast AA, half-resolution AO, SSR, and five-level bloom. Native scale is the default. World, depth, Hi-Z, and post targets are sized from the physical game viewport, excluding editor chrome. Lower scales reduce those viewport-local targets further; final composition maps the result into the native game viewport before project UI and editor chrome. AO maps an authored `0.25`–`1` ceiling to four bounded 8/16/24/36-sample tiers, with balanced `0.5` as the default.
+The active camera controls a `0.5`–`1` world render-grid ceiling/floor, optional GPU target, adaptive post-quality floor, fixed or automatic exposure, TAA, current-frame fast AA, resolution-scaled AO, SSR, and five-level bloom. Native scale is the default. World, depth, Hi-Z, and post targets are sized from the physical game viewport, excluding editor chrome. Lower scales reduce those viewport-local targets further; final composition maps the result into the native game viewport before project UI and editor chrome. AO has independent `0.25`–`1` sampling-quality and target-resolution controls, defaulting to `0.5` and `0.25` respectively.
 
-One optional authored `scrapbot.volumetric_fog` component supplies a global exponential height medium. A separately timestamped half-resolution compute pass integrates 4–16 low-discrepancy sub-step samples, rotated across the eight-frame temporal sequence and kept within a centered fraction of each ray interval, up to scene depth or the authored distance bound. The bounded span preserves temporal coverage without exposing the half-resolution fog grid during ordinary camera motion. The coordinated frame-budget policy selects the step count. The full-resolution temporal pass depth-aware upsamples scattering and transmittance before history accumulation. Ambient scattering is unshadowed; anisotropic primary-directional scattering uses a 2×2 UV-space filter and the same cascade transition bands as opaque geometry. Projects may independently opt clustered point lights into the medium. Absence or zero density skips the ray-march dispatch.
+One optional authored `scrapbot.volumetric_fog` component supplies a global exponential height medium and an independent `0.25`–`1` target-resolution scale, defaulting to `0.25`. A separately timestamped compute pass integrates 4–16 low-discrepancy sub-step samples, rotated across the eight-frame temporal sequence and kept within a centered fraction of each ray interval, up to scene depth or the authored distance bound. The bounded span preserves temporal coverage without exposing the fog grid during ordinary camera motion. The coordinated frame-budget policy selects the step count.
+
+The full-resolution temporal pass depth-aware reconstructs scattering and transmittance from the actual retained-target dimensions before history accumulation. Ambient scattering is unshadowed; anisotropic primary-directional scattering uses a 2×2 UV-space filter and the same cascade transition bands as opaque geometry. Projects may independently opt clustered point lights into the medium. Absence or zero density skips the ray-march dispatch.
 
 AO uses rotated view-space slices and a 32-sector visibility bitmask. Each depth sample covers the interval between its front surface and a constant-thickness reconstructed back surface. A separable bilateral filter crosses only compatible depth and normals, then AO attenuates indirect diffuse.
 

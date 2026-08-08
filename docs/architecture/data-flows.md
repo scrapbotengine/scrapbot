@@ -1,6 +1,6 @@
 # Major Data Flows
 
-**Last verified:** 2026-08-06
+**Last verified:** 2026-08-08
 
 ## Project load and world bootstrap
 
@@ -218,9 +218,9 @@ WGPU retains active point lights in a geometrically growing buffer and rebuilds 
 
 Four stabilized camera-relative projections feed independent shadow-cull lanes and depth-array layers. The near layer refreshes each frame. Far layers retain their projection and depth between staggered 2/4/8-frame updates, so an ordinary frame rasterizes no more than two cascades. Light activation, world/topology/Transform changes, camera cuts, and shadow-resolution changes force all four layers to refresh.
 
-One optional `scrapbot.volumetric_fog` component supplies a global exponential height medium. Postprocessing reads only that component storage's compact active set and clamps the reflected payload. A separately timed half-resolution compute pass folds 16 temporally rotated low-discrepancy ray samples into scattering/transmittance; the full-resolution temporal pass depth-aware upsamples that result before history accumulation.
+One optional `scrapbot.volumetric_fog` component supplies a global exponential height medium and an authored `0.25`–`1` target scale. Postprocessing reads only that component storage's compact active set and clamps the reflected payload. A separately timed scalable compute pass folds 16 temporally rotated low-discrepancy ray samples into scattering/transmittance. The full-resolution temporal pass depth-aware reconstructs that result from the actual target dimensions before history accumulation.
 
-Each sample uses the first directional light and a 2×2 UV-space filtered lookup into the same four shadow cascades as opaque rendering. Both paths cross-fade the final 10% of each cascade into its successor and fade the final cascade to unshadowed. Opt-in local scattering reads every relevant point light from the existing GPU-built cluster for that sample. A low-discrepancy spatial offset rotates across the eight-frame temporal sequence so fixed ray slices do not appear as bands; there is no duplicate light list. The half-resolution fog target is retained and recreated only with the other post targets. Local fog volumes remain follow-up work.
+Each sample uses the first directional light and a 2×2 UV-space filtered lookup into the same four shadow cascades as opaque rendering. Both paths cross-fade the final 10% of each cascade into its successor and fade the final cascade to unshadowed. Opt-in local scattering reads every relevant point light from the existing GPU-built cluster for that sample. A low-discrepancy spatial offset rotates across the eight-frame temporal sequence so fixed ray slices do not appear as bands; there is no duplicate light list. The fog target is retained and recreated only when its scale or another post-target dependency changes. Local fog volumes remain follow-up work.
 
 ### Instances and materials
 

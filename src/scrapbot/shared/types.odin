@@ -388,6 +388,7 @@ Camera_Component :: struct {
 	fast_antialiasing: bool,
 	ambient_occlusion: bool,
 	ambient_occlusion_quality: f32,
+	ambient_occlusion_resolution_scale: f32,
 	screen_space_reflections: bool,
 	screen_space_reflections_quality: f32,
 	bloom: bool,

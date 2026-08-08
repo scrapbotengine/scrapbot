@@ -359,6 +359,7 @@ export type ScrapbotCamera = {
 	fast_antialiasing: boolean,
 	ambient_occlusion: boolean,
 	ambient_occlusion_quality: number,
+	ambient_occlusion_resolution_scale: number,
 	screen_space_reflections: boolean,
 	screen_space_reflections_quality: number,
 	bloom: boolean,
@@ -385,6 +386,7 @@ export type ReadonlyScrapbotCamera = {
 	read fast_antialiasing: boolean,
 	read ambient_occlusion: boolean,
 	read ambient_occlusion_quality: number,
+	read ambient_occlusion_resolution_scale: number,
 	read screen_space_reflections: boolean,
 	read screen_space_reflections_quality: number,
 	read bloom: boolean,
@@ -444,6 +446,7 @@ export type ScrapbotWorldEnvironmentComponent = ScrapbotComponent<ScrapbotWorldE
 
 export type ScrapbotVolumetricFog = {
 	color: Vec3,
+	resolution_scale: number,
 	density: number,
 	height: number,
 	height_falloff: number,
@@ -456,6 +459,7 @@ export type ScrapbotVolumetricFog = {
 
 export type ReadonlyScrapbotVolumetricFog = {
 	read color: ReadonlyVec3,
+	read resolution_scale: number,
 	read density: number,
 	read height: number,
 	read height_falloff: number,

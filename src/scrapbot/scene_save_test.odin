@@ -73,6 +73,7 @@ test_scene_camera_serialization_persists_render_features :: proc(t: ^testing.T) 
 	camera.fast_antialiasing = true
 	camera.ambient_occlusion = false
 	camera.ambient_occlusion_quality = 0.75
+	camera.ambient_occlusion_resolution_scale = 0.5
 	camera.screen_space_reflections = true
 	camera.screen_space_reflections_quality = 0.25
 	camera.bloom = false
@@ -100,6 +101,7 @@ test_scene_camera_serialization_persists_render_features :: proc(t: ^testing.T) 
 	testing.expect(t, strings.contains(serialized, "fast_antialiasing = true"))
 	testing.expect(t, strings.contains(serialized, "ambient_occlusion = false"))
 	testing.expect(t, strings.contains(serialized, "ambient_occlusion_quality = 0.75"))
+	testing.expect(t, strings.contains(serialized, "ambient_occlusion_resolution_scale = 0.5"))
 	testing.expect(t, strings.contains(serialized, "screen_space_reflections = true"))
 	testing.expect(t, strings.contains(serialized, "screen_space_reflections_quality = 0.25"))
 	testing.expect(t, strings.contains(serialized, "bloom = false"))

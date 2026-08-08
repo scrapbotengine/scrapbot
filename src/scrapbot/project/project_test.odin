@@ -878,6 +878,11 @@ far = 100
 		default_exposure.entities[0].camera.ambient_occlusion_quality,
 		f32(0.5),
 	)
+	testing.expect_value(
+		t,
+		shared.camera_ambient_occlusion_resolution_scale(default_exposure.entities[0].camera),
+		f32(0.25),
+	)
 	testing.expect(t, !default_exposure.entities[0].camera.screen_space_reflections)
 	testing.expect_value(
 		t,
@@ -908,6 +913,7 @@ temporal_antialiasing = false
 fast_antialiasing = true
 ambient_occlusion = false
 ambient_occlusion_quality = 0.75
+ambient_occlusion_resolution_scale = 0.5
 screen_space_reflections = true
 screen_space_reflections_quality = 0.25
 bloom = false
@@ -931,6 +937,11 @@ bloom = false
 	testing.expect(t, configured.entities[0].camera.fast_antialiasing)
 	testing.expect(t, !configured.entities[0].camera.ambient_occlusion)
 	testing.expect_value(t, configured.entities[0].camera.ambient_occlusion_quality, f32(0.75))
+	testing.expect_value(
+		t,
+		configured.entities[0].camera.ambient_occlusion_resolution_scale,
+		f32(0.5),
+	)
 	testing.expect(t, configured.entities[0].camera.screen_space_reflections)
 	testing.expect_value(
 		t,
@@ -987,6 +998,18 @@ ambient_occlusion_quality = 1.25
 	)
 	defer destroy_scene(&invalid_quality)
 	testing.expect(t, invalid_quality_result.err == .Invalid_Field)
+
+	invalid_ao_scale, invalid_ao_scale_result := parse_scene(
+		`[[entities]]
+id = "a6000000-0000-4000-8000-000000000097"
+name = "Camera"
+
+[entities.camera]
+ambient_occlusion_resolution_scale = 0.1
+`,
+	)
+	defer destroy_scene(&invalid_ao_scale)
+	testing.expect(t, invalid_ao_scale_result.err == .Invalid_Field)
 
 	invalid_reflection_quality, invalid_reflection_quality_result := parse_scene(
 		`[[entities]]

@@ -376,6 +376,7 @@ temporal_antialiasing = true
 fast_antialiasing = false
 ambient_occlusion = true
 ambient_occlusion_quality = 0.5
+ambient_occlusion_resolution_scale = 0.25
 screen_space_reflections = false
 screen_space_reflections_quality = 0.5
 bloom = true
@@ -400,7 +401,7 @@ Automatic metering samples only the active game viewport. It does not include ed
 
 TAA, visibility-bitmask ambient occlusion, and bloom default on; fast fullscreen antialiasing and material-aware screen-space reflections default off. Fast AA is used only when TAA is off.
 
-Ambient occlusion models visible depth samples with constant thickness so thin geometry does not permanently close a whole sampling slice. It affects only indirect diffuse lighting and cannot see geometry absent from the current depth buffer. `ambient_occlusion_quality` selects bounded `0.25`, `0.5`, `0.75`, and `1` sampling tiers; the balanced `0.5` default uses 16 samples per half-resolution pixel.
+Ambient occlusion models visible depth samples with constant thickness so thin geometry does not permanently close a whole sampling slice. It affects only indirect diffuse lighting and cannot see geometry absent from the current depth buffer. `ambient_occlusion_quality` selects bounded `0.25`, `0.5`, `0.75`, and `1` sampling tiers; the balanced `0.5` default uses 16 samples per AO pixel. `ambient_occlusion_resolution_scale` independently sizes the AO target from `0.25` to `1` of the camera render grid and defaults to `0.25`.
 
 SSR reflects only current-frame, on-screen world surfaces and fades rough, distant, uncertain, and screen-edge hits. `screen_space_reflections_quality` uses the same four authored tiers with 16, 32, 48, and 64 ray-march steps. Lower tiers widen their stride to preserve approximately the same reach with coarser intersection precision. These camera values may be changed live through the generated inspector or Luau query writeback.
 

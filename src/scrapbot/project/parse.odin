@@ -1422,6 +1422,8 @@ parse_scene :: proc(
 						current.camera.ambient_occlusion, found = parse_bool(value)
 					case "ambient_occlusion_quality":
 						current.camera.ambient_occlusion_quality, found = parse_f32(value)
+					case "ambient_occlusion_resolution_scale":
+						current.camera.ambient_occlusion_resolution_scale, found = parse_f32(value)
 					case "screen_space_reflections":
 						current.camera.screen_space_reflections, found = parse_bool(value)
 					case "screen_space_reflections_quality":
@@ -2432,6 +2434,7 @@ parse_scene :: proc(
 			automatic_exposure_max := shared.camera_automatic_exposure_max(entity.camera)
 			automatic_exposure_speed := shared.camera_automatic_exposure_speed(entity.camera)
 			ambient_occlusion_quality := entity.camera.ambient_occlusion_quality
+			ambient_occlusion_resolution_scale := entity.camera.ambient_occlusion_resolution_scale
 			screen_space_reflections_quality := entity.camera.screen_space_reflections_quality
 			if math.is_nan(exposure) ||
 			   math.is_inf(exposure) ||
@@ -2469,6 +2472,10 @@ parse_scene :: proc(
 			   math.is_inf(ambient_occlusion_quality) ||
 			   ambient_occlusion_quality < 0.25 ||
 			   ambient_occlusion_quality > 1 ||
+			   math.is_nan(ambient_occlusion_resolution_scale) ||
+			   math.is_inf(ambient_occlusion_resolution_scale) ||
+			   ambient_occlusion_resolution_scale < 0.25 ||
+			   ambient_occlusion_resolution_scale > 1 ||
 			   math.is_nan(screen_space_reflections_quality) ||
 			   math.is_inf(screen_space_reflections_quality) ||
 			   screen_space_reflections_quality < 0.25 ||

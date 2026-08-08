@@ -122,8 +122,9 @@ Parent UUIDs must resolve to another entity with a Transform and may not form a 
 | `automatic_exposure_speed` | number | Positive adaptation rate in inverse seconds. Defaults to `2`. |
 | `temporal_antialiasing` | boolean | Enables projection jitter and retained depth-aware temporal resolution. Defaults to `true`. |
 | `fast_antialiasing` | boolean | Enables a lightweight current-frame fullscreen edge filter when temporal antialiasing is disabled. Defaults to `false`; TAA takes precedence when both are enabled. |
-| `ambient_occlusion` | boolean | Enables half-resolution, thickness-aware visibility-bitmask ambient occlusion with mapped surface normals, joint depth/normal filtering, and indirect-diffuse-only composition. Defaults to `true`. |
-| `ambient_occlusion_quality` | number | Selects a bounded AO sampling tier from `0.25` to `1`. Defaults to the balanced `0.5` tier (16 samples per half-resolution pixel); `0.25`, `0.75`, and `1` use 8, 24, and 36 samples. |
+| `ambient_occlusion` | boolean | Enables scalable, thickness-aware visibility-bitmask ambient occlusion with mapped surface normals, joint depth/normal filtering, and indirect-diffuse-only composition. Defaults to `true`. |
+| `ambient_occlusion_quality` | number | Selects a bounded AO sampling tier from `0.25` to `1`. Defaults to the balanced `0.5` tier (16 samples per AO pixel); `0.25`, `0.75`, and `1` use 8, 24, and 36 samples. |
+| `ambient_occlusion_resolution_scale` | number | AO target scale relative to the camera's world render grid, from `0.25` to `1`. Defaults to `0.25`. Changing it rebuilds retained post targets once. |
 | `screen_space_reflections` | boolean | Enables material-aware screen-space reflections for sufficiently smooth visible surfaces. Defaults to `false`. |
 | `screen_space_reflections_quality` | number | Selects a bounded SSR ray-march tier from `0.25` to `1`. Defaults to the balanced `0.5` tier (32 steps per eligible pixel); `0.25`, `0.75`, and `1` use 16, 48, and 64 steps. |
 | `bloom` | boolean | Enables the five-level HDR bloom pyramid. Defaults to `true`. |
@@ -201,6 +202,7 @@ A scene may contain at most one Volumetric Fog component. It is an ordinary refl
 ```toml
 [entities.components.scrapbot.volumetric_fog]
 color = [0.56, 0.65, 0.75]
+resolution_scale = 0.25
 density = 0.024
 height = 0
 height_falloff = 0.12
@@ -214,6 +216,7 @@ point_light_intensity = 0.6
 | Field | Type | Effective default | Meaning |
 | --- | --- | --- | --- |
 | `color` | Vec3 | `[0.62, 0.72, 0.82]` | Non-negative linear HDR scattering color. |
+| `resolution_scale` | number | `0.25` | Fog target scale relative to the camera's world render grid, from `0.25` to `1`. |
 | `density` | number | `0` | Base extinction density from `0` to `1`. Zero disables fog. |
 | `height` | number | `0` | World-space reference height at which base density applies. |
 | `height_falloff` | number | `0.2` | Exponential density falloff above `height`, from `0` to `10`. |
@@ -223,13 +226,13 @@ point_light_intensity = 0.6
 | `light_intensity` | number | `1` | Primary directional-light scattering multiplier from `0` to `10`. |
 | `point_light_intensity` | number | `0` | Clustered point-light scattering multiplier from `0` to `10`. Zero disables local-light scattering. |
 
-The renderer integrates 16 stable midpoint samples per half-resolution camera ray. Density varies exponentially with world height and stops at scene depth or `max_distance`. The first directional light contributes anisotropic in-scattering and is filtered through the same four shadow cascades used by opaque geometry.
+The renderer integrates 16 stable midpoint samples per fog-target camera ray. Density varies exponentially with world height and stops at scene depth or `max_distance`. The first directional light contributes anisotropic in-scattering and is filtered through the same four shadow cascades used by opaque geometry.
 
 When enabled, each midpoint reads every relevant point light from the same GPU-built view-frustum cluster used by opaque surface lighting. Point-light scattering is currently unshadowed.
 
 Fog is depth-aware upsampled before temporal antialiasing and bloom. Its low-discrepancy sub-step offset rotates across the eight-frame temporal sequence, allowing TAA to integrate smooth shafts without exposing fixed ray-march slices. Local fog volumes, froxels, and explicit quality controls remain follow-up work.
 
-Luau systems can query and write the complete payload after declaring `scrapbot.volumetric_fog` in their access lists. Presence enables the feature; removing the component or setting `density` to zero skips the fog dispatch. The retained half-resolution target follows the normal post-target resize lifecycle.
+Luau systems can query and write the complete payload after declaring `scrapbot.volumetric_fog` in their access lists. Presence enables the feature; removing the component or setting `density` to zero skips the fog dispatch. Changing `resolution_scale` explicitly invalidates the retained post targets; stable frames reuse them.
 
 ### `scrapbot.vignette`
 

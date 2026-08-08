@@ -104,6 +104,7 @@ temporal_antialiasing = true
 fast_antialiasing = false
 ambient_occlusion = true
 ambient_occlusion_quality = 0.5
+ambient_occlusion_resolution_scale = 0.25
 screen_space_reflections = false
 screen_space_reflections_quality = 0.5
 bloom = true

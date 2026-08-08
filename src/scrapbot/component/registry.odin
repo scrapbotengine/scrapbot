@@ -241,6 +241,18 @@ init_registry :: proc(registry: ^Registry) {
 					maximum = 1,
 				},
 			},
+			Field_Definition {
+				name = "ambient_occlusion_resolution_scale",
+				field_type = .Number,
+				editor = {
+					draggable = true,
+					step = 0.25,
+					has_minimum = true,
+					minimum = 0.25,
+					has_maximum = true,
+					maximum = 1,
+				},
+			},
 			Field_Definition{name = "screen_space_reflections", field_type = .Bool},
 			Field_Definition {
 				name = "screen_space_reflections_quality",
@@ -355,6 +367,18 @@ init_registry :: proc(registry: ^Registry) {
 		"scrapbot.volumetric_fog",
 		{
 			Field_Definition{name = "color", field_type = .Vec3},
+			Field_Definition {
+				name = "resolution_scale",
+				field_type = .Number,
+				editor = {
+					draggable = true,
+					step = 0.25,
+					has_minimum = true,
+					minimum = 0.25,
+					has_maximum = true,
+					maximum = 1,
+				},
+			},
 			Field_Definition {
 				name = "density",
 				field_type = .Number,

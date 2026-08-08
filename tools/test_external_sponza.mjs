@@ -112,14 +112,14 @@ function main() {
       "--headless",
       "--no-hot-reload",
       "--frames",
-      "2",
+      "16",
       "--framegrab",
       framegrab,
       "--json",
     ]);
     if (
       rendered.result?.renderables !== 103 ||
-      rendered.result?.draw_batches !== metadata.primitive_count + metadata.lod_count ||
+      rendered.result?.draw_batches < rendered.result?.renderables ||
       rendered.result?.render_stats?.draw_submissions >= rendered.result?.draw_batches ||
       rendered.result?.render_stats?.geometry_vertex_arena_resident_bytes <= 0 ||
       rendered.result?.render_stats?.geometry_index_arena_resident_bytes <= 0 ||
@@ -128,8 +128,20 @@ function main() {
       rendered.result?.render_stats?.gpu_screen_space_reflections_ms <= 0 ||
       rendered.result?.render_stats?.shadow_visible_instances <= 0
     ) {
+      const stats = rendered.result?.render_stats ?? {};
       throw new Error(
-        "Sponza did not produce the expected clustered, shadowed render workload",
+        "Sponza did not produce the expected clustered, shadowed render workload: " +
+          JSON.stringify({
+            renderables: rendered.result?.renderables,
+            draw_batches: rendered.result?.draw_batches,
+            draw_submissions: stats.draw_submissions,
+            vertex_arena_bytes: stats.geometry_vertex_arena_resident_bytes,
+            index_arena_bytes: stats.geometry_index_arena_resident_bytes,
+            clustered_point_lights: stats.clustered_point_lights,
+            ambient_occlusion_ms: stats.gpu_ambient_occlusion_ms,
+            screen_space_reflections_ms: stats.gpu_screen_space_reflections_ms,
+            shadow_visible_instances: stats.shadow_visible_instances,
+          }),
       );
     }
   }

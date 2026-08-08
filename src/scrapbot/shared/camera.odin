@@ -78,6 +78,7 @@ camera_defaults :: proc "contextless" () -> Camera_Component {
 		temporal_antialiasing = true,
 		ambient_occlusion = true,
 		ambient_occlusion_quality = 0.5,
+		ambient_occlusion_resolution_scale = 0.25,
 		screen_space_reflections = false,
 		screen_space_reflections_quality = 0.5,
 		bloom = true,
@@ -108,6 +109,7 @@ camera_copy_render_features :: proc "contextless" (
 	destination.fast_antialiasing = source.fast_antialiasing
 	destination.ambient_occlusion = source.ambient_occlusion
 	destination.ambient_occlusion_quality = source.ambient_occlusion_quality
+	destination.ambient_occlusion_resolution_scale = source.ambient_occlusion_resolution_scale
 	destination.screen_space_reflections = source.screen_space_reflections
 	destination.screen_space_reflections_quality = source.screen_space_reflections_quality
 	destination.bloom = source.bloom
@@ -198,6 +200,13 @@ camera_ambient_occlusion_quality :: proc "contextless" (camera: Camera_Component
 		return 0.5
 	}
 	return clamp(camera.ambient_occlusion_quality, 0.25, 1)
+}
+
+camera_ambient_occlusion_resolution_scale :: proc "contextless" (camera: Camera_Component) -> f32 {
+	if camera.ambient_occlusion_resolution_scale <= 0 {
+		return 0.25
+	}
+	return clamp(camera.ambient_occlusion_resolution_scale, 0.25, 1)
 }
 
 camera_ambient_occlusion_sample_count :: proc "contextless" (camera: Camera_Component) -> u32 {

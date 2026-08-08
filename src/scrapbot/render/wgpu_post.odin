@@ -7,6 +7,7 @@ import "vendor:wgpu"
 
 WGPU_Volumetric_Fog_Settings :: struct {
 	color: shared.Vec3,
+	resolution_scale: f32,
 	density: f32,
 	height: f32,
 	height_falloff: f32,
@@ -165,6 +166,7 @@ wgpu_post_vec2 :: proc(
 wgpu_volumetric_fog_settings :: proc(world: ^shared.World) -> WGPU_Volumetric_Fog_Settings {
 	settings := WGPU_Volumetric_Fog_Settings {
 		color = {0.62, 0.72, 0.82},
+		resolution_scale = WGPU_DEFAULT_VOLUMETRIC_FOG_RESOLUTION_SCALE,
 		height_falloff = 0.2,
 		max_distance = 100,
 		anisotropy = 0.35,
@@ -182,6 +184,11 @@ wgpu_volumetric_fog_settings :: proc(world: ^shared.World) -> WGPU_Volumetric_Fo
 	settings.color.x = max(settings.color.x, 0)
 	settings.color.y = max(settings.color.y, 0)
 	settings.color.z = max(settings.color.z, 0)
+	settings.resolution_scale = clamp(
+		wgpu_fog_number(component, "resolution_scale", settings.resolution_scale),
+		f32(0.25),
+		f32(1),
+	)
 	settings.density = clamp(wgpu_fog_number(component, "density", 0), f32(0), f32(1))
 	settings.height = wgpu_fog_number(component, "height", 0)
 	settings.height_falloff = clamp(
@@ -880,7 +887,6 @@ wgpu_create_post_process_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 	if renderer.bloom_bright_pipeline == nil || renderer.bloom_downsample_pipeline == nil {
 		return "failed to create bloom compute pipelines"
 	}
-
 	composite_chain := wgpu.ShaderSourceWGSL {
 		chain = {sType = .ShaderSourceWGSL},
 		code = WGPU_COMPOSITE_SHADER,
@@ -1168,6 +1174,8 @@ wgpu_release_post_targets :: proc(renderer: ^WGPU_Renderer) {
 	}
 	renderer.post_width = 0
 	renderer.post_height = 0
+	renderer.post_ambient_occlusion_resolution_scale = 0
+	renderer.post_volumetric_fog_resolution_scale = 0
 	renderer.post_depth_view = nil
 	renderer.temporal_output_index = 0
 	renderer.temporal_history_valid = false
@@ -1290,10 +1298,14 @@ wgpu_ensure_post_targets :: proc(
 	renderer: ^WGPU_Renderer,
 	width, height: u32,
 	depth_view: wgpu.TextureView,
+	ambient_occlusion_resolution_scale: f32,
+	volumetric_fog_resolution_scale: f32,
 ) -> string {
 	if renderer.post_width == width &&
 	   renderer.post_height == height &&
 	   renderer.post_depth_view == depth_view &&
+	   renderer.post_ambient_occlusion_resolution_scale == ambient_occlusion_resolution_scale &&
+	   renderer.post_volumetric_fog_resolution_scale == volumetric_fog_resolution_scale &&
 	   renderer.hdr_view != nil {
 		return ""
 	}
@@ -1420,8 +1432,8 @@ wgpu_ensure_post_targets :: proc(
 			return err
 		}
 	}
-	volumetric_fog_width := max(u32(1), (width + 1) / 2)
-	volumetric_fog_height := max(u32(1), (height + 1) / 2)
+	volumetric_fog_width := wgpu_post_scaled_dimension(width, volumetric_fog_resolution_scale)
+	volumetric_fog_height := wgpu_post_scaled_dimension(height, volumetric_fog_resolution_scale)
 	renderer.volumetric_fog_texture, renderer.volumetric_fog_view, err = wgpu_create_post_texture(
 		renderer,
 		"Scrapbot Volumetric Fog",
@@ -1433,8 +1445,14 @@ wgpu_ensure_post_targets :: proc(
 	if err != "" {
 		return err
 	}
-	ambient_occlusion_width := max(u32(1), (width + 1) / 2)
-	ambient_occlusion_height := max(u32(1), (height + 1) / 2)
+	ambient_occlusion_width := wgpu_post_scaled_dimension(
+		width,
+		ambient_occlusion_resolution_scale,
+	)
+	ambient_occlusion_height := wgpu_post_scaled_dimension(
+		height,
+		ambient_occlusion_resolution_scale,
+	)
 	for index in 0 ..< len(renderer.ambient_occlusion_textures) {
 		texture := wgpu.DeviceCreateTexture(
 			renderer.device,
@@ -1622,7 +1640,6 @@ wgpu_ensure_post_targets :: proc(
 		renderer.bloom_textures[index] = texture
 		renderer.bloom_views[index] = view
 	}
-
 	for temporal_index in 0 ..< len(renderer.temporal_color_views) {
 		for index in 0 ..< WGPU_BLOOM_LEVELS {
 			source := renderer.temporal_color_views[temporal_index]
@@ -1698,8 +1715,31 @@ wgpu_ensure_post_targets :: proc(
 	renderer.temporal_output_index = 0
 	renderer.post_width = width
 	renderer.post_height = height
+	renderer.post_ambient_occlusion_resolution_scale = ambient_occlusion_resolution_scale
+	renderer.post_volumetric_fog_resolution_scale = volumetric_fog_resolution_scale
 	renderer.post_depth_view = depth_view
 	return ""
+}
+
+wgpu_post_scaled_dimension :: proc "contextless" (dimension: u32, scale: f32) -> u32 {
+	return max(u32(1), u32(math.ceil(f32(dimension) * clamp(scale, 0.25, 1))))
+}
+
+wgpu_post_resolution_scales :: proc(
+	renderer: ^WGPU_Renderer,
+	world: ^shared.World,
+	render_feature_overrides: Render_Feature_Overrides,
+) -> (
+	ambient_occlusion: f32,
+	volumetric_fog: f32,
+) {
+	camera := shared.camera_defaults()
+	if renderer != nil && renderer.render_list.has_camera {
+		camera = renderer.render_list.camera.camera
+	}
+	camera = apply_render_feature_overrides(camera, render_feature_overrides)
+	fog := wgpu_volumetric_fog_settings(world)
+	return shared.camera_ambient_occlusion_resolution_scale(camera), fog.resolution_scale
 }
 
 wgpu_encode_fullscreen_pass :: proc(
@@ -1770,9 +1810,6 @@ wgpu_encode_bloom_and_composite :: proc(
 	delta_time: f32,
 	render_feature_overrides: Render_Feature_Overrides,
 ) -> string {
-	if err := wgpu_ensure_post_targets(renderer, width, height, depth_view); err != "" {
-		return err
-	}
 	resolved_camera := camera
 	if !has_camera {
 		resolved_camera = shared.camera_defaults()
@@ -1783,6 +1820,23 @@ wgpu_encode_bloom_and_composite :: proc(
 		adaptive_post_quality = clamp(renderer.dynamic_resolution.effective_post_quality, 0.25, 1)
 	}
 	resolved_camera = camera_apply_adaptive_post_quality(resolved_camera, adaptive_post_quality)
+	fog := wgpu_volumetric_fog_settings(world)
+	if render_feature_overrides.disable_volumetric_fog {
+		fog.density = 0
+	}
+	ambient_occlusion_resolution_scale := shared.camera_ambient_occlusion_resolution_scale(
+		resolved_camera,
+	)
+	if err := wgpu_ensure_post_targets(
+		renderer,
+		width,
+		height,
+		depth_view,
+		ambient_occlusion_resolution_scale,
+		fog.resolution_scale,
+	); err != "" {
+		return err
+	}
 	debug_view := resolved_camera.debug_view != .Lit
 	if debug_view {
 		resolved_camera.automatic_exposure = false
@@ -1793,10 +1847,16 @@ wgpu_encode_bloom_and_composite :: proc(
 		resolved_camera.bloom = false
 	}
 	temporal_output_index := renderer.temporal_output_index
-	ambient_occlusion_width := max(u32(1), (width + 1) / 2)
-	ambient_occlusion_height := max(u32(1), (height + 1) / 2)
-	volumetric_fog_width := max(u32(1), (width + 1) / 2)
-	volumetric_fog_height := max(u32(1), (height + 1) / 2)
+	ambient_occlusion_width := wgpu_post_scaled_dimension(
+		width,
+		ambient_occlusion_resolution_scale,
+	)
+	ambient_occlusion_height := wgpu_post_scaled_dimension(
+		height,
+		ambient_occlusion_resolution_scale,
+	)
+	volumetric_fog_width := wgpu_post_scaled_dimension(width, fog.resolution_scale)
+	volumetric_fog_height := wgpu_post_scaled_dimension(height, fog.resolution_scale)
 	projection := renderer.gpu_cluster_uniform.projection
 	viewport := renderer.gpu_cluster_uniform.viewport
 	history_valid := f32(0)
@@ -1939,7 +1999,6 @@ wgpu_encode_bloom_and_composite :: proc(
 			f32(renderer.temporal_sample_index % 8),
 		},
 	}
-	fog := wgpu_volumetric_fog_settings(world)
 	if render_feature_overrides.disable_volumetric_fog || debug_view {
 		fog.density = 0
 	}

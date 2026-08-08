@@ -418,6 +418,8 @@ push_query_component_table :: proc "c" (
 				lua_setfield(L, -2, "ambient_occlusion")
 				lua_pushnumber(L, f64(shared.camera_ambient_occlusion_quality(value)))
 				lua_setfield(L, -2, "ambient_occlusion_quality")
+				lua_pushnumber(L, f64(shared.camera_ambient_occlusion_resolution_scale(value)))
+				lua_setfield(L, -2, "ambient_occlusion_resolution_scale")
 				lua_pushboolean(L, 1 if value.screen_space_reflections else 0)
 				lua_setfield(L, -2, "screen_space_reflections")
 				lua_pushnumber(L, f64(shared.camera_screen_space_reflections_quality(value)))

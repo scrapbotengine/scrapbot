@@ -859,8 +859,12 @@ fn ambient_occlusion_at(pixel: vec2<i32>) -> f32 {
 		for (var x = 0; x <= 1; x += 1) {
 			let offset = vec2<i32>(x, y);
 			let ao_pixel = clamp(base + offset, vec2<i32>(0), ao_dimensions - vec2<i32>(1));
+			let representative_position =
+				(vec2<f32>(ao_pixel) + vec2<f32>(0.5)) *
+				vec2<f32>(full_dimensions) /
+				vec2<f32>(ao_dimensions);
 			let representative_pixel = clamp(
-				ao_pixel * 2 + vec2<i32>(1),
+				vec2<i32>(representative_position),
 				viewport_minimum(),
 				viewport_maximum(),
 			);
@@ -1168,8 +1172,12 @@ fn volumetric_fog_at(pixel: vec2<i32>) -> vec4<f32> {
 				vec2<i32>(0),
 				fog_dimensions - vec2<i32>(1),
 			);
+			let full_position =
+				(vec2<f32>(fog_pixel) + vec2<f32>(0.5)) *
+				vec2<f32>(full_dimensions) /
+				vec2<f32>(fog_dimensions);
 			let full_pixel = min(
-				fog_pixel * 2 + vec2<i32>(1),
+				vec2<i32>(full_position),
 				full_dimensions - vec2<i32>(1),
 			);
 			let sample_depth = linear_view_depth(full_pixel);
@@ -1288,8 +1296,12 @@ fn volumetric_fog_cs(@builtin(global_invocation_id) invocation: vec3<u32>) {
 		return;
 	}
 	let full_dimensions = vec2<i32>(textureDimensions(current_depth));
+	let sample_position =
+		(vec2<f32>(invocation.xy) + vec2<f32>(0.5)) *
+		vec2<f32>(full_dimensions) /
+		vec2<f32>(dimensions);
 	let pixel = min(
-		vec2<i32>(invocation.xy) * 2 + vec2<i32>(1),
+		vec2<i32>(sample_position),
 		full_dimensions - vec2<i32>(1),
 	);
 	let depth = textureLoad(current_depth, pixel, 0);
@@ -1517,7 +1529,11 @@ fn clamp_full_pixel(pixel: vec2<i32>) -> vec2<i32> {
 }
 
 fn full_pixel_from_ao(pixel: vec2<i32>) -> vec2<i32> {
-	return clamp_full_pixel(pixel * 2 + vec2<i32>(1));
+	let full_dimensions = vec2<f32>(textureDimensions(scene_depth));
+	let ao_dimensions = vec2<f32>(textureDimensions(destination_occlusion));
+	let sample_position =
+		(vec2<f32>(pixel) + vec2<f32>(0.5)) * full_dimensions / ao_dimensions;
+	return clamp_full_pixel(vec2<i32>(sample_position));
 }
 
 fn depth_at(pixel: vec2<i32>) -> f32 {

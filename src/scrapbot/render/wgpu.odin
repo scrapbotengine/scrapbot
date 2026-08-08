@@ -29,6 +29,8 @@ WGPU_MAX_GPU_INSTANCES :: 131_072
 WGPU_INITIAL_DRAW_CAPACITY :: 64
 WGPU_VISIBLE_ALIGNMENT :: 64
 WGPU_BLOOM_LEVELS :: 5
+WGPU_DEFAULT_AMBIENT_OCCLUSION_RESOLUTION_SCALE :: f32(0.25)
+WGPU_DEFAULT_VOLUMETRIC_FOG_RESOLUTION_SCALE :: f32(0.25)
 WGPU_GPU_TIMESTAMP_FRAMES :: 4
 WGPU_MAX_HIZ_LEVELS :: 16
 WGPU_HIZ_MIN_INSTANCES :: 256
@@ -1086,6 +1088,8 @@ WGPU_Renderer :: struct {
 	post_depth_view: wgpu.TextureView,
 	post_width: u32,
 	post_height: u32,
+	post_ambient_occlusion_resolution_scale: f32,
+	post_volumetric_fog_resolution_scale: f32,
 	render_depth_texture: wgpu.Texture,
 	render_depth_view: wgpu.TextureView,
 	render_depth_width: u32,
@@ -1541,10 +1545,11 @@ wgpu_profile_workload :: proc(
 	if render_feature_overrides.disable_volumetric_fog {
 		fog.density = 0
 	}
-	ao_width := max(u32(1), (width + 1) / 2)
-	ao_height := max(u32(1), (height + 1) / 2)
-	fog_width := max(u32(1), (width + 1) / 2)
-	fog_height := max(u32(1), (height + 1) / 2)
+	ao_scale := shared.camera_ambient_occlusion_resolution_scale(camera)
+	ao_width := wgpu_post_scaled_dimension(width, ao_scale)
+	ao_height := wgpu_post_scaled_dimension(height, ao_scale)
+	fog_width := wgpu_post_scaled_dimension(width, fog.resolution_scale)
+	fog_height := wgpu_post_scaled_dimension(height, fog.resolution_scale)
 	bloom_workgroups: u64
 	bloom_invocations: u64
 	for index in 0 ..< WGPU_BLOOM_LEVELS {
@@ -3153,11 +3158,15 @@ wgpu_encode_render_pass :: proc(
 	if err := wgpu_sync_environment(renderer, registry, &renderer.render_list); err != "" {
 		return err
 	}
+	ambient_occlusion_resolution_scale, volumetric_fog_resolution_scale :=
+		wgpu_post_resolution_scales(renderer, world, config.render_feature_overrides)
 	if err := wgpu_ensure_post_targets(
 		renderer,
 		layout.render_width,
 		layout.render_height,
 		render_depth_view,
+		ambient_occlusion_resolution_scale,
+		volumetric_fog_resolution_scale,
 	); err != "" {
 		return err
 	}
@@ -4265,11 +4274,15 @@ wgpu_draw_frame :: proc(
 	if err = wgpu_encode_clustered_lighting(renderer, encoder); err != "" {
 		return false, false, err
 	}
+	ambient_occlusion_resolution_scale, volumetric_fog_resolution_scale :=
+		wgpu_post_resolution_scales(renderer, world, config.render_feature_overrides)
 	if err = wgpu_ensure_post_targets(
 		renderer,
 		layout.render_width,
 		layout.render_height,
 		render_depth_view,
+		ambient_occlusion_resolution_scale,
+		volumetric_fog_resolution_scale,
 	); err != "" {
 		return false, false, err
 	}

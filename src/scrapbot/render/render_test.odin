@@ -146,6 +146,21 @@ test_composite_dithers_tone_mapped_output_in_fixed_display_space :: proc(t: ^tes
 }
 
 @(test)
+test_ao_and_fog_reconstruction_follow_their_actual_target_dimensions :: proc(t: ^testing.T) {
+	testing.expect_value(t, WGPU_DEFAULT_AMBIENT_OCCLUSION_RESOLUTION_SCALE, f32(0.25))
+	testing.expect_value(t, WGPU_DEFAULT_VOLUMETRIC_FOG_RESOLUTION_SCALE, f32(0.25))
+	testing.expect_value(t, wgpu_post_scaled_dimension(1920, 0.25), u32(480))
+	testing.expect_value(t, wgpu_post_scaled_dimension(1919, 0.5), u32(960))
+	testing.expect(
+		t,
+		strings.contains(WGPU_AMBIENT_OCCLUSION_SHADER, "full_dimensions / ao_dimensions"),
+	)
+	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "vec2<f32>(full_dimensions) /"))
+	testing.expect(t, !strings.contains(WGPU_AMBIENT_OCCLUSION_SHADER, "pixel * 2"))
+	testing.expect(t, !strings.contains(WGPU_TEMPORAL_AA_SHADER, "fog_pixel * 2"))
+}
+
+@(test)
 test_automatic_exposure_is_gpu_resident_viewport_scoped_and_shared_by_bloom_and_composite :: proc(
 	t: ^testing.T,
 ) {
@@ -3439,6 +3454,7 @@ test_volumetric_fog_settings_read_the_lowest_ordered_live_component :: proc(t: ^
 	append(&selected.number_fields, shared.Named_Number{name = "density", value = 0.035})
 	append(
 		&selected.number_fields,
+		shared.Named_Number{name = "resolution_scale", value = 0.5},
 		shared.Named_Number{name = "anisotropy", value = 4},
 		shared.Named_Number{name = "max_distance", value = -10},
 		shared.Named_Number{name = "point_light_intensity", value = 0.7},
@@ -3457,6 +3473,7 @@ test_volumetric_fog_settings_read_the_lowest_ordered_live_component :: proc(t: ^
 
 	settings := wgpu_volumetric_fog_settings(&world)
 	testing.expect_value(t, settings.color, shared.Vec3{0.2, 0.3, 0.4})
+	testing.expect_value(t, settings.resolution_scale, f32(0.5))
 	testing.expect_value(t, settings.density, f32(0.035))
 	testing.expect_value(t, settings.anisotropy, f32(0.9))
 	testing.expect_value(t, settings.max_distance, f32(0.1))
