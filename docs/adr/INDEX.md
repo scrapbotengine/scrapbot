@@ -56,3 +56,4 @@
 | [ADR-052](ADR-052-coordinate-adaptive-render-quality-from-one-frame-budget.md) | Coordinate adaptive render quality from one frame budget | 2026-08-02 |
 | [ADR-053](ADR-053-expose-live-debugging-through-a-transport-independent-service.md) | Expose live debugging through a transport-independent service | 2026-08-05 |
 | [ADR-054](ADR-054-select-geometry-submission-through-layered-policy.md) | Select geometry submission through layered policy | 2026-08-08 |
+| [ADR-055](ADR-055-compile-mesh-distance-fields-offline.md) | Compile mesh distance fields offline | 2026-08-08 |

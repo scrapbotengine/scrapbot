@@ -284,14 +284,16 @@ fi
 '''
 
 [tasks.meshoptimizer]
-description = "Build the pinned meshoptimizer library for offline meshlet generation"
-sources = ["third_party/meshoptimizer/src/**/*", "third_party/meshoptimizer/Makefile", "native/clusterlod/clusterlod.cpp"]
+description = "Build the pinned meshoptimizer library and Scrapbot's offline geometry compilers"
+sources = ["third_party/meshoptimizer/src/**/*", "third_party/meshoptimizer/Makefile", "native/clusterlod/clusterlod.cpp", "native/distance_field/distance_field.cpp"]
 outputs = ["third_party/meshoptimizer/build/release/libmeshoptimizer.a"]
 run = '''
 make -C third_party/meshoptimizer config=release build/release/libmeshoptimizer.a
 mkdir -p third_party/meshoptimizer/build/release/scrapbot
 ${CXX:-c++} -O3 -std=c++11 -Ithird_party/meshoptimizer/src -c native/clusterlod/clusterlod.cpp -o third_party/meshoptimizer/build/release/scrapbot/clusterlod.o
+${CXX:-c++} -O3 -std=c++11 -c native/distance_field/distance_field.cpp -o third_party/meshoptimizer/build/release/scrapbot/distance_field.o
 ar rcs third_party/meshoptimizer/build/release/libmeshoptimizer.a third_party/meshoptimizer/build/release/scrapbot/clusterlod.o
+ar rcs third_party/meshoptimizer/build/release/libmeshoptimizer.a third_party/meshoptimizer/build/release/scrapbot/distance_field.o
 '''
 
 [tasks.wgpu]
