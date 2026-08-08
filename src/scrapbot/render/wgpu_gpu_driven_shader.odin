@@ -1476,6 +1476,7 @@ struct Visibility_Counters {
 	visible_virtual_clusters: atomic<u32>,
 	visible_virtual_blend_clusters: atomic<u32>,
 	visible_virtual_triangles: atomic<u32>,
+	compact_triangles: atomic<u32>,
 	compact_vertex_invocations: atomic<u32>,
 	virtual_rejected_clusters: atomic<u32>,
 	virtual_page_request_count: atomic<u32>,
@@ -2264,16 +2265,17 @@ fn cull_compact_camera_meshlet(
 	let bucket_index = compact_cluster_bucket(meshlet.triangle_count);
 	let command_index = batch.compact_bucket_commands[bucket_index];
 	let local_index = atomicAdd(&indirect[command_index].instance_count, 1u);
+	atomicAdd(&counters.compact_triangles, meshlet.triangle_count);
+	atomicAdd(
+		&counters.compact_vertex_invocations,
+		COMPACT_CLUSTER_BUCKET_TRIANGLES[bucket_index] * 3u,
+	);
 	if (local_index == 0u) {
 		atomicAdd(&counters.visible_meshlet_draws, 1u);
 	}
 	if (meshlet.virtual_geometry != 0u) {
 		atomicAdd(&counters.visible_virtual_clusters, 1u);
 		atomicAdd(&counters.visible_virtual_triangles, meshlet.triangle_count);
-		atomicAdd(
-			&counters.compact_vertex_invocations,
-			COMPACT_CLUSTER_BUCKET_TRIANGLES[bucket_index] * 3u,
-		);
 		if (virtual_cluster_blended(instance, meshlet)) {
 			atomicAdd(&counters.visible_virtual_blend_clusters, 1u);
 		}
@@ -2559,13 +2561,16 @@ fn cull_instances(invocation: vec3<u32>, submission_mode: u32) {
 				if (submission_mode == 2u && meshlet.virtual_geometry != 0u) {
 					atomicAdd(&counters.visible_virtual_clusters, 1u);
 					atomicAdd(&counters.visible_virtual_triangles, meshlet.triangle_count);
+					if (virtual_cluster_blended(instance, meshlet)) {
+						atomicAdd(&counters.visible_virtual_blend_clusters, 1u);
+					}
+				}
+				if (submission_mode == 2u) {
+					atomicAdd(&counters.compact_triangles, meshlet.triangle_count);
 					atomicAdd(
 						&counters.compact_vertex_invocations,
 						COMPACT_CLUSTER_BUCKET_TRIANGLES[compact_bucket_index] * 3u,
 					);
-					if (virtual_cluster_blended(instance, meshlet)) {
-						atomicAdd(&counters.visible_virtual_blend_clusters, 1u);
-					}
 				}
 				if (submission_mode == 2u) {
 					let record_offset =

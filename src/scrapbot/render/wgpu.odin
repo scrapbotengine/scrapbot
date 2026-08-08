@@ -132,6 +132,7 @@ WGPU_GPU_Visibility_Summary :: struct {
 	visible_virtual_clusters: u32,
 	visible_virtual_blend_clusters: u32,
 	visible_virtual_triangles: u32,
+	compact_triangles: u32,
 	compact_vertex_invocations: u32,
 	virtual_rejected_clusters: u32,
 	virtual_page_request_count: u32,
@@ -963,6 +964,7 @@ WGPU_Renderer :: struct {
 	gpu_meshlet_selected_draw_count: int,
 	gpu_meshlet_selected_batch_count: int,
 	gpu_compact_selected_batch_count: int,
+	gpu_compact_selected_instance_count: int,
 	gpu_virtual_cluster_draw_count: int,
 	gpu_classic_batch_count: int,
 	gpu_conventional_batch_count: int,
@@ -4290,8 +4292,12 @@ wgpu_draw_frame :: proc(
 		config.stats.meshlet_native_multi_draw =
 			renderer.gpu_meshlet_submission_active && renderer.gpu_meshlet_native_multi_draw
 		config.stats.meshlet_draws = wgpu_active_meshlet_draw_count(renderer)
+		config.stats.meshlet_compacted = renderer.gpu_compact_submission_active
+		config.stats.meshlet_compact_batches = renderer.gpu_compact_selected_batch_count
+		config.stats.meshlet_compact_instances = renderer.gpu_compact_selected_instance_count
 		config.stats.virtual_geometry = renderer.gpu_virtual_cluster_draw_count > 0
-		config.stats.virtual_geometry_compacted = renderer.gpu_compact_submission_active
+		config.stats.virtual_geometry_compacted =
+			renderer.gpu_compact_submission_active && renderer.gpu_virtual_batch_count > 0
 		config.stats.virtual_cluster_draws = renderer.gpu_virtual_cluster_draw_count
 		config.stats.conventional_batches = renderer.gpu_conventional_batch_count
 		config.stats.virtual_batches = renderer.gpu_virtual_batch_count
@@ -4595,8 +4601,12 @@ wgpu_render_offscreen_frame :: proc(
 		config.stats.meshlet_native_multi_draw =
 			renderer.gpu_meshlet_submission_active && renderer.gpu_meshlet_native_multi_draw
 		config.stats.meshlet_draws = wgpu_active_meshlet_draw_count(renderer)
+		config.stats.meshlet_compacted = renderer.gpu_compact_submission_active
+		config.stats.meshlet_compact_batches = renderer.gpu_compact_selected_batch_count
+		config.stats.meshlet_compact_instances = renderer.gpu_compact_selected_instance_count
 		config.stats.virtual_geometry = renderer.gpu_virtual_cluster_draw_count > 0
-		config.stats.virtual_geometry_compacted = renderer.gpu_compact_submission_active
+		config.stats.virtual_geometry_compacted =
+			renderer.gpu_compact_submission_active && renderer.gpu_virtual_batch_count > 0
 		config.stats.virtual_cluster_draws = renderer.gpu_virtual_cluster_draw_count
 		config.stats.conventional_batches = renderer.gpu_conventional_batch_count
 		config.stats.virtual_batches = renderer.gpu_virtual_batch_count

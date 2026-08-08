@@ -93,11 +93,15 @@ publish_live_debug_render_stats :: proc(
 	destination.virtual_batches = stats.virtual_batches
 	destination.conventional_instances = stats.conventional_instances
 	destination.virtual_instances = stats.virtual_instances
+	destination.meshlet_compacted = stats.meshlet_compacted
+	destination.meshlet_compact_batches = stats.meshlet_compact_batches
+	destination.meshlet_compact_instances = stats.meshlet_compact_instances
 	destination.visible_batches = stats.visible_batches
 	destination.visible_meshlet_draws = stats.visible_meshlet_draws
 	destination.visible_virtual_clusters = stats.visible_virtual_clusters
 	destination.visible_virtual_blend_clusters = stats.visible_virtual_blend_clusters
 	destination.visible_virtual_triangles = stats.visible_virtual_triangles
+	destination.compact_triangles = stats.compact_triangles
 	destination.compact_vertex_invocations = stats.compact_vertex_invocations
 	destination.virtual_rejected_clusters = stats.virtual_rejected_clusters
 	destination.virtual_geometry_page_budget_bytes = stats.virtual_geometry_page_budget_bytes

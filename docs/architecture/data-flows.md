@@ -85,19 +85,20 @@ resident parent drawable. The coordinated render-quality controller owns both re
 bounded projected-error changes. The active viewport height feeds that frontier calculation, while
 the authored adaptive-quality floor limits how far its one-pixel maximum-quality target may relax.
 
-Capable adapters retain cluster metadata and arena-global indirect templates. They select the
-desired resident frontier and draw a coarse fallback while refinement is missing. Native
-multi-draw consumes cluster commands directly. Other indirect-first-instance adapters compact
-batch-local instance candidates, then test hierarchy clusters in parallel into four bounded
-triangle-count lanes per compatible material span before vertex-pulling from the arenas. Empty
-lanes submit no command. Useful visible-triangle and padded vertex-invocation counters expose the
-remaining portable-path waste without readback-driven submission.
+Capable adapters retain meshlet metadata and arena-global indirect templates. Virtual Geometry
+also selects the desired resident hierarchy frontier and draws a coarse fallback while refinement
+is missing. Native multi-draw consumes meshlet commands directly. Other indirect-first-instance
+adapters compact batch-local instance candidates, then test ordinary meshlets or hierarchy
+clusters in parallel into four bounded triangle-count lanes per compatible material span before
+vertex-pulling from the arenas. Empty lanes submit no command. Compact triangle and padded vertex-
+invocation counters expose the remaining portable-path waste without readback-driven submission.
 
-Fully resident portable resources retain classic indexed shadows. Streamed resources prefer
-page-local compact shadows so camera and cascade submission select from the same resident hierarchy.
-They also build one coarse indexed shadow proxy from their already-pinned root pages; its rebased
-index range aliases the pinned vertex allocation and remains available for capability or capacity
-fallback. Classic and compact culling never write the same shadow indirect command.
+Conventional portable meshlets use compact camera and shadow streams. Fully resident portable
+virtual resources retain classic indexed shadows. Streamed resources prefer page-local compact
+shadows so camera and cascade submission select from the same resident hierarchy. They also build
+one coarse indexed shadow proxy from their already-pinned root pages; its rebased index range
+aliases the pinned vertex allocation and remains available for capability or capacity fallback.
+Classic and compact culling never write the same shadow indirect command.
 Adapters without indirect-first-instance keep whole-primitive submission.
 
 Hot reload stages the resource registry, world, script/native runtime, source set, and playback baseline independently. Failure destroys the staged bundle; success swaps it atomically.

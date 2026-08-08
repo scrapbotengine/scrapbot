@@ -1,7 +1,7 @@
 # ADR-046: Store meshlets with geometry resources
 
 **Date:** 2026-07-30
-**Updated:** 2026-08-04
+**Updated:** 2026-08-08
 
 ## Context
 
@@ -36,12 +36,19 @@ On adapters that expose `indirect-first-instance`, WGPU expands the local triang
 meshlet-ordered index range in the shared geometry index arena. It retains meshlet metadata,
 visibility slices, and indexed-indirect templates beside the existing whole-primitive draw database.
 WGPU also requests native multi-draw-count when available, which guarantees fixed multi-draw is
-not emulated internally; adapters without it retain correct fixed multi-draw semantics.
+not emulated internally. Adapters without it retain fixed multi-draw only for forced diagnostic
+views; ordinary selected meshlets use portable compaction.
 
 WGPU chooses submission independently for every retained geometry/material/LOD batch. A batch with
 at least two instances uses meshlets; a single-instance batch retains one whole-primitive indirect
 command. The threshold is part of retained batch layout and changes only when membership crosses
 it, so an ordinary frame does not rescan or rewrite the draw database.
+
+Native multi-draw adapters retain one indexed-indirect command per meshlet. Other
+indirect-first-instance adapters use the same parallel compact backend as portable virtual
+Geometry: one candidate pass followed by meshlet-major camera and shadow passes. Compatible
+same-material batches share four triangle-count lanes and at most four non-indexed indirect draws.
+The vertex shaders pull conventional meshlet indices and attributes from the shared arenas.
 
 The conservative threshold prevents cluster command setup and driver finalization from costing
 more than the raster work it can avoid on low-instance architectural meshes. Meshlet identity,
@@ -53,18 +60,18 @@ LOD. It then tests that Geometry's meshlets:
 
 - camera visibility uses the meshlet sphere, normal cone for single-sided materials, and Hi-Z;
 - shadow visibility uses each cascade's frustum and the meshlet sphere;
-- one atomic instance count and compact visible-instance slice are retained per meshlet.
+- native multi-draw writes one atomic instance count and visible-instance slice per meshlet;
+- portable compaction appends `{instance slot, meshlet index}` records to shared material lanes.
 
-World, depth, and shadow passes may therefore mix one whole-primitive indirect draw for one batch
-with a meshlet-ordered fixed multi-draw for the next. Fixed multi-draw is intentional: meshlet
-topology and command count are already known at the resource-version boundary, while compute
-writes zero or nonzero instance counts into those retained commands. A GPU-authored command-count
-buffer would add state and synchronization without compacting any information the renderer needs.
+World, depth, and shadow passes may therefore mix whole-primitive draws, native fixed multi-draw,
+and portable compact spans. Native command topology remains known at the resource-version
+boundary. Portable topology is bounded by the four retained lane ceilings rather than the number
+of meshlets, avoiding emulated empty draws and serial instance-major walks on dense resources.
 
-Mixed culling stays within WebGPU's portable eight-storage-buffer stage limit. One compute pass
-issues a classic dispatch only when classic batches exist and a meshlet dispatch only when meshlet
-batches exist. Both dispatches use the same batch table and counters, bind their canonical
-visibility/indirect buffers, and immediately reject instances assigned to the other policy.
+Mixed culling stays within WebGPU's portable eight-storage-buffer stage limit. Classic, native,
+candidate, camera-meshlet, and shadow-meshlet dispatches share the retained batch table and
+counters. Each stage binds only its required visibility and indirect buffers and rejects batches
+owned by another submission policy.
 
 Adapters without `indirect-first-instance`, `--cpu-culling`, empty meshlet layouts, or layouts that
 would exceed the bounded visibility allocation retain indexed-indirect submission. Complete
@@ -83,10 +90,11 @@ bounds without inventing an importer-only model representation or a second rende
 Geometry registration does additional CPU work and retains extra cluster arrays. Scrapbot also
 gains a pinned C++ source dependency and must build/link meshoptimizer on every supported host.
 
-Capable native adapters now reject invisible clusters before rasterization when batch reuse can
-amortize the retained cluster commands. Low-instance batches avoid that command multiplier, while
-meshlet-oriented debug views can still inspect every eligible cluster. No cluster identity escapes
-the backend.
+Capable adapters now reject invisible clusters before rasterization when batch reuse can amortize
+the work. Native multi-draw keeps exact per-meshlet commands. Portable adapters transpose the
+work into parallel meshlet-major culling and a bounded number of lane draws. Low-instance batches
+avoid either command multiplier, while meshlet-oriented debug views can still inspect every
+eligible cluster. No cluster identity escapes the backend.
 
 Each meshlet reserves an aligned visible-instance slice sized to its batch membership. The backend
 caps the total at 1,048,576 entries and falls back rather than allocating unbounded storage.

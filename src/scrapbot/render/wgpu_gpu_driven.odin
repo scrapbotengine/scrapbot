@@ -164,6 +164,13 @@ wgpu_virtual_geometry_uses_compaction :: proc "contextless" (
 	)
 }
 
+wgpu_meshlet_submission_uses_compaction :: proc "contextless" (
+	renderer: ^WGPU_Renderer,
+	meshlet_submission: bool,
+) -> bool {
+	return renderer != nil && meshlet_submission && !renderer.gpu_meshlet_native_multi_draw
+}
+
 wgpu_virtual_geometry_should_preload_pages :: proc "contextless" (
 	renderer: ^WGPU_Renderer,
 	geometry: ^resources.Geometry,
@@ -344,8 +351,7 @@ wgpu_geometry_uses_compact_shadow_pages :: proc "contextless" (
 	return(
 		geometry != nil &&
 		geometry.valid &&
-		geometry.virtual_geometry &&
-		geometry.vertex_range.size == 0 \
+		(!geometry.virtual_geometry || geometry.vertex_range.size == 0) \
 	)
 }
 
@@ -3019,6 +3025,7 @@ wgpu_refresh_gpu_batch_layout :: proc(
 	meshlet_selected_draw_count := 0
 	meshlet_selected_batch_count := 0
 	compact_selected_batch_count := 0
+	compact_selected_instance_count := 0
 	virtual_cluster_draw_count := 0
 	conventional_batch_count := 0
 	virtual_batch_count := 0
@@ -3044,23 +3051,23 @@ wgpu_refresh_gpu_batch_layout :: proc(
 			geometry,
 			batch.geometry_mode,
 		)
-		batch.compact_submission = wgpu_virtual_geometry_uses_compaction(
-			renderer,
-			geometry,
-			batch.geometry_mode,
-		)
 		batch.meshlet_draw_count = u32(
 			len(geometry.clusters) if batch.virtual_geometry else len(geometry.meshlets),
 		)
 		batch.meshlet_submission =
 			batch.virtual_geometry ||
 			wgpu_meshlet_batch_submission(batch.meshlet_draw_count, batch.instance_count)
+		batch.compact_submission = wgpu_meshlet_submission_uses_compaction(
+			renderer,
+			batch.meshlet_submission,
+		)
 		if batch.meshlet_submission {
 			meshlet_selected_draw_count += int(batch.meshlet_draw_count)
 			meshlet_selected_batch_count += 1
 		}
 		if batch.compact_submission {
 			compact_selected_batch_count += 1
+			compact_selected_instance_count += int(batch.instance_count)
 		}
 		if batch.virtual_geometry {
 			virtual_cluster_draw_count += int(batch.meshlet_draw_count)
@@ -3342,6 +3349,7 @@ wgpu_refresh_gpu_batch_layout :: proc(
 	renderer.gpu_meshlet_selected_draw_count = meshlet_selected_draw_count
 	renderer.gpu_meshlet_selected_batch_count = meshlet_selected_batch_count
 	renderer.gpu_compact_selected_batch_count = compact_selected_batch_count
+	renderer.gpu_compact_selected_instance_count = compact_selected_instance_count
 	renderer.gpu_virtual_cluster_draw_count = virtual_cluster_draw_count
 	renderer.gpu_classic_batch_count = cache.batch_count - meshlet_selected_batch_count
 	renderer.gpu_conventional_batch_count = conventional_batch_count

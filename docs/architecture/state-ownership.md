@@ -62,18 +62,21 @@ Classic per-batch slices retain 256-byte dynamic-storage alignment. Meshlet and 
 slices share one storage binding and allocate exact `cluster count × max(instance count, 1)`
 cardinality, without multiplying every cluster by the classic alignment.
 Native multi-draw adapters address those templates directly. Other capable adapters retain a
-bounded camera stream of compact `{instance slot, cluster index}` records plus one non-indexed
-indirect command per compatible material span. Their vertex shaders pull cluster indices and
-packed attributes from the shared geometry arenas. A separate indexed shadow template lets those
-adapters reuse the GPU-selected object LOD in four conservative cascade lists. Geometry versions
-define command topology. Batch membership capacity defines visibility allocation.
+bounded stream of compact `{instance slot, meshlet index}` records plus four triangle-count lanes
+per compatible material span. Their vertex shaders pull indices and packed attributes from the
+shared geometry arenas. Conventional meshlets use the same compact representation for camera and
+shadow work. Fully resident virtual resources may retain indexed object-LOD shadows, while
+streamed resources use page-local compact shadows. Geometry versions define command topology.
+Batch membership capacity defines visibility allocation.
 
 Only batches resolved to virtual submission use the cluster hierarchy. Automatic policy requires a
 capable adapter, eligible hierarchy-bearing Geometry, and the stable source-triangle crossover;
-forced virtual requests still fall back safely when those hard capabilities are absent. Conventional
-batches retain ordinary whole-primitive or discrete-LOD submission. Policy changes invalidate only
-the retained batch layout, while camera motion never changes the resolved path. Meshlet-oriented
-debug views may change visualization without rewriting policy topology.
+forced virtual requests still fall back safely when those hard capabilities are absent.
+Conventional batches select whole-primitive submission for single instances and ordinary meshlets
+for reused batches. Those meshlets use native multi-draw or portable compaction according to
+adapter capability. Policy changes invalidate only the retained batch layout, while camera motion
+never changes the resolved path. Meshlet-oriented debug views may change visualization without
+rewriting policy topology.
 
 WGPU queries the device's storage-buffer binding limit during initialization. Retained cluster
 metadata grows geometrically until another power of two would cross that limit, then uses the
@@ -91,9 +94,10 @@ work.
 
 Stable frames copy separate active camera and shadow templates, run object-first compute culling,
 and submit matching command ranges. Portable compact submission first appends bounded batch-local
-instance candidates. Parallel camera and shadow dispatches then assign one hierarchy cluster to
-each invocation instead of making one instance invocation loop the complete hierarchy. Separate
-candidate, camera, and shadow bind groups reuse the baseline eight-storage-buffer layout.
+instance candidates. Parallel camera and shadow dispatches then assign one ordinary meshlet or
+hierarchy cluster to each invocation instead of making one instance invocation loop the complete
+resource. Separate candidate, camera, and shadow bind groups reuse the baseline eight-storage-
+buffer layout.
 
 Mixed frames encode classic, native-cluster, and portable compact work in the same visibility pass.
 Stable frames do not rescan resources, rebuild cluster metadata, upload debug identities, or

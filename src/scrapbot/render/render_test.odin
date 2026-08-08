@@ -2087,9 +2087,12 @@ test_wgpu_meshlet_submission_policy_amortizes_indirect_commands :: proc(t: ^test
 	}
 	testing.expect(t, wgpu_virtual_geometry_submission(&renderer, &one_group))
 	testing.expect(t, wgpu_virtual_geometry_uses_compaction(&renderer, &one_group))
+	testing.expect(t, wgpu_meshlet_submission_uses_compaction(&renderer, true))
+	testing.expect(t, !wgpu_meshlet_submission_uses_compaction(&renderer, false))
 	renderer.gpu_meshlet_native_multi_draw = true
 	testing.expect(t, wgpu_virtual_geometry_submission(&renderer, &one_group))
 	testing.expect(t, !wgpu_virtual_geometry_uses_compaction(&renderer, &one_group))
+	testing.expect(t, !wgpu_meshlet_submission_uses_compaction(&renderer, true))
 	renderer.gpu_meshlet_supported = false
 	testing.expect(t, !wgpu_virtual_geometry_submission(&renderer, &one_group))
 	testing.expect(t, !wgpu_virtual_geometry_uses_compaction(&renderer, &one_group))
@@ -2119,6 +2122,31 @@ test_wgpu_meshlet_submission_policy_amortizes_indirect_commands :: proc(t: ^test
 	renderer.gpu_meshlet_force_enabled = true
 	testing.expect_value(t, wgpu_active_meshlet_draw_count(&renderer), 28)
 	testing.expect_value(t, wgpu_active_classic_batch_count(&renderer), 0)
+}
+
+@(test)
+test_wgpu_compact_shadow_submission_supports_portable_conventional_meshlets :: proc(
+	t: ^testing.T,
+) {
+	conventional := WGPU_Geometry_Cache {
+		valid = true,
+		virtual_geometry = false,
+		vertex_range = {size = u64(size_of(resources.Vertex))},
+	}
+	testing.expect(t, wgpu_geometry_uses_compact_shadow_pages(&conventional))
+
+	virtual_canonical := WGPU_Geometry_Cache {
+		valid = true,
+		virtual_geometry = true,
+		vertex_range = {size = u64(size_of(resources.Vertex))},
+	}
+	testing.expect(t, !wgpu_geometry_uses_compact_shadow_pages(&virtual_canonical))
+
+	virtual_page_only := WGPU_Geometry_Cache {
+		valid = true,
+		virtual_geometry = true,
+	}
+	testing.expect(t, wgpu_geometry_uses_compact_shadow_pages(&virtual_page_only))
 }
 
 @(test)

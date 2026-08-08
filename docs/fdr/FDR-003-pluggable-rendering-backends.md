@@ -34,7 +34,7 @@ Pluggable rendering backends allow Scrapbot to start with `wgpu-native` while ke
 - Every Geometry version owns bounded meshlets and a crack-aware, deterministically paged cluster hierarchy. Simplification preserves normal and UV discontinuities and never falls back to attribute-blind reduction.
 - Geometry submission resolves at stable topology boundaries from entity override, Model-resource preference, project default, and backend automatic policy. Conventional and Virtual instances of one Geometry can coexist in separate retained batches and caches.
 - Complete page sets that fit the remaining budget are admitted immediately; coarse pages remain pinned for streamed resources. The GPU selects resident detail, requests missing finer pages, and draws the nearest resident fallback before camera sphere, normal-cone, and Hi-Z tests.
-- Native multi-draw adapters retain one indirect command per hierarchy cluster. Other indirect-first-instance adapters append selected instance/cluster records into a bounded camera stream and vertex-pull compatible material spans through four triangle-count lanes. Only nonempty lanes submit indirect commands.
+- Native multi-draw adapters retain one indirect command per ordinary meshlet or hierarchy cluster. Other indirect-first-instance adapters append selected instance/meshlet records into bounded camera and shadow streams and vertex-pull compatible material spans through four triangle-count lanes. Only nonempty lanes submit indirect commands.
 - Adapters without indirect-first-instance and `--cpu-culling` retain whole-primitive imported LOD selection. Streamed resources use the indexed proxy built from pinned coarse pages.
 - The active camera selects a backend-neutral debug view: lit output, material inputs, mapped world normals, logarithmic depth, retained meshlet identity, exact GPU-selected LOD, selected virtual-geometry clusters and hierarchy depth, object/meshlet visibility classification, one retained Hi-Z mip, or exact screen-space Hi-Z query footprints. Non-lit views skip presentation effects so diagnostics remain direct and stable.
 - Hi-Z false color and texel boundaries expose the exact conservative max-depth hierarchy without readback or rebuilding it. Occlusion Queries records each tested rectangle, selected mip, bound depth, sampled farthest depth, identity, and visible/culled decision in a bounded GPU-native stream.
@@ -42,7 +42,7 @@ Pluggable rendering backends allow Scrapbot to start with `wgpu-native` while ke
 - Large stable scenes run a depth prepass, build a max-depth Hi-Z pyramid, and conservatively reject occluded bounding spheres from the following frame. Camera or persistent-instance changes disable stale-pyramid rejection for that frame. Each query projects the eight corners of an enclosing cube and uses their nearest possible depth, so large off-axis clusters cannot be rejected from a center-only approximation. Camera-plane crossings and large near-field bounds remain visible rather than risking a false rejection.
 - UUID-backed `scrapbot.geometry_lod` project resources declare generated icosphere levels and descending projected screen-radius thresholds. The GPU visibility pass selects the geometry batch; the CPU-reference path implements the same result.
 - `--cpu-culling` runs the same conservative camera/shadow visibility contract on the CPU and uploads its compacted lists and counts; it is a compatibility and correctness-reference path, not the performance default.
-- Structured run results distinguish retained draw batches from encoded draw submissions. They include shared geometry arena capacity, residency, uploads, bytes, and growths beside GPU-driven, visibility, meshlet, Hi-Z, LOD, instance-upload, useful virtual-triangle, padded compact-vertex-invocation, and optional per-pass timing counters. Visibility and timing use asynchronous readback rings and never synchronously stall the frame.
+- Structured run results distinguish retained draw batches from encoded draw submissions. They include shared geometry arena capacity, residency, uploads, bytes, and growths beside GPU-driven, visibility, meshlet, Hi-Z, LOD, instance-upload, portable compact-batch/instance, useful compact-triangle, padded compact-vertex-invocation, virtual-geometry, and optional per-pass timing counters. Visibility and timing use asynchronous readback rings and never synchronously stall the frame.
 - Headless `wgpu` creates an adapter and device without SDL or an OS presentation surface, renders into an offscreen texture, and can run bounded GPU workloads without reading pixels back.
 - The offscreen path can optionally render a losslessly compressed final-frame PNG with `--framegrab`.
 - `--framegrab-region x,y,width,height` exports a top-left-origin 1:1 pixel crop without resampling; omitting it preserves the complete 1280×720 frame.
@@ -184,9 +184,9 @@ indexed-indirect template plus aligned instance slice per meshlet. After object 
 selection, compute camera cluster visibility from sphere, normal cone, and Hi-Z tests and shadow
 cluster visibility from cascade spheres. Select ordinary meshlet submission independently for
 batches with at least two instances; retain one whole-primitive command for single-instance
-non-hierarchical batches. Meshlet
-debug views force eligible batches through the cluster path. Submit selected CPU-known command
-ranges through native fixed multi-draw. See ADR-046.
+non-hierarchical batches. Meshlet debug views force eligible batches through the cluster path.
+Native multi-draw submits retained indexed commands. Portable adapters compact conventional and
+virtual meshlets into shared triangle-count lanes. See ADR-046.
 
 **Why:** Large reused primitives need a visibility unit smaller than the complete object, but mesh
 shaders are outside the current WebGPU baseline. Fine-grained submission can cost more than it
@@ -198,16 +198,16 @@ command's instance count.
 **Tradeoff:** Each meshlet reserves visibility capacity for the complete batch, so WGPU bounds the
 total at 1,048,576 entries and falls back when it cannot represent a layout safely. Double-sided
 materials skip normal-cone rejection. The deterministic CPU reference remains whole-primitive
-culling rather than duplicating the GPU cluster implementation. WGPU requests native multi-draw-
-count when present; without it, wgpu-native may emulate the fixed multi-draw call as individual
-indirect draws. The current two-instance threshold is conservative and backend-wide rather than
-adapter-calibrated. Cluster metadata capacity grows geometrically within the device's reported
-storage-buffer binding limit. When the next power of two would exceed that limit, WGPU retains the
-largest legal capacity so spare allocation does not disqualify topology whose live records fit.
+culling rather than duplicating the GPU cluster implementation. Portable vertex pulling adds
+bounded triangle-lane padding, reported by `compact_triangles` and
+`compact_vertex_invocations`. The current two-instance threshold is conservative and backend-wide
+rather than adapter-calibrated. Cluster metadata capacity grows geometrically within the device's
+reported storage-buffer binding limit.
 
-A mixed frame uses one compute pass with separate classic and meshlet dispatches. Each dispatch
-binds only its canonical visibility and indirect resources, stays within the portable storage-
-binding limit, and returns immediately for batches owned by the other policy.
+A mixed frame uses one compute pass with classic, native-meshlet, compact-candidate, and parallel
+compact-meshlet stages. Each stage binds only its required visibility and indirect resources,
+stays within the portable storage-binding limit, and returns immediately for batches owned by the
+other policies.
 
 ### 15. Make render debug views part of the camera contract
 

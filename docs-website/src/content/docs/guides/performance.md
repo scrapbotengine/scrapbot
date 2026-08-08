@@ -138,12 +138,13 @@ Scrapbot's portable SIMD layer currently uses four `f32` lanes for matrix multip
   selected resident camera clusters after ordinary visibility tests. `virtual_rejected_clusters`
   counts candidates rejected because another hierarchy level owns their screen-space region.
 
-  `visible_virtual_triangles` is the useful triangle count selected for the camera. Portable
-  compact submission reports `compact_vertex_invocations`, including padded vertex work. Compare
-  `visible_virtual_triangles * 3` with `compact_vertex_invocations` to measure lane utilization.
-  The portable path groups selected records into 32-, 64-, 96-, and 124-triangle lanes, so smaller
-  clusters no longer pay the maximum 124-triangle vertex cost. Native multi-draw and conventional
-  submission leave the padded-invocation counter at zero.
+  `visible_virtual_triangles` is the useful virtual-geometry triangle count selected for the
+  camera. Portable compact submission reports `compact_triangles` across conventional and virtual
+  meshlets plus `compact_vertex_invocations`, including padded vertex work. Compare
+  `compact_triangles * 3` with `compact_vertex_invocations` to measure lane utilization. The
+  portable path groups selected records into 32-, 64-, 96-, and 124-triangle lanes, so smaller
+  meshlets no longer pay the maximum 124-triangle vertex cost. Native multi-draw and classic whole-
+  primitive submission leave both compact counters at zero.
 
   `virtual_geometry_page_budget_bytes`, `virtual_geometry_page_resident_bytes`, and the total,
   resident, pinned, and prefetched page counts describe current residency. Demand requests,

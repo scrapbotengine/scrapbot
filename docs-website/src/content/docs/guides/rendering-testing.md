@@ -101,13 +101,19 @@ evicted canonical geometry is never required. Selection, compaction, cascade vis
 command counts remain GPU-produced. Near cascades retain a finer hierarchy frontier; farther
 cascades use progressively coarser error thresholds to bound vertex-pulling and raster work.
 
-Small Geometry whose hierarchy cannot simplify retains ordinary meshlets. Those batches require at least two instances to amortize their command range; a single-instance batch keeps one whole-primitive command.
+Small Geometry whose hierarchy cannot simplify retains ordinary meshlets. Those batches require
+at least two instances to amortize cluster culling; a single-instance batch keeps one whole-
+primitive command. Native multi-draw adapters retain one indexed command per meshlet. Other
+indirect-first-instance adapters feed ordinary meshlets through the same candidate and parallel
+meshlet stages as virtual Geometry, then vertex-pull at most four triangle-count lanes per
+compatible material span.
 
 After whole-object rejection and LOD selection, compute tests camera meshlets against the frustum,
 single-sided normal cone, and Hi-Z; shadow lanes test each cascade frustum. World and depth can mix
 whole-primitive indirect draws with native cluster multi-draw or portable compact spans. Shadows
-mix whole-primitive draws with native cluster multi-draw, classic indexed spans for complete
-portable resources, and compact page-local spans for streamed portable resources.
+mix whole-primitive draws, native cluster multi-draw, compact conventional spans, classic indexed
+spans for complete portable virtual resources, and compact page-local spans for streamed virtual
+resources.
 
 Arena-global offsets let adjacent same-material LOD commands share one native multi-draw span. On
 portable compact paths, compatible material batches share bounded record spans. Meshlets, Meshlet
