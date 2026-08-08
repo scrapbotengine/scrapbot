@@ -4231,3 +4231,15 @@ test_adaptive_quality_floor_bounds_virtual_geometry_error :: proc(t: ^testing.T)
 	testing.expect_value(t, frame_budget_maximum_virtual_error_pixels(0.75), f32(1))
 	testing.expect_value(t, frame_budget_maximum_virtual_error_pixels(1), f32(1))
 }
+
+@(test)
+test_distance_field_gpu_packing_preserves_signed_odd_length_samples :: proc(t: ^testing.T) {
+	samples := [?]i16{-32768, -7, 0, 42, 32767}
+	packed := wgpu_pack_distance_field_samples(samples[:])
+	defer delete(packed)
+	testing.expect_value(t, len(packed), 3)
+	for sample, index in samples {
+		testing.expect_value(t, wgpu_unpack_distance_field_sample(packed, index), sample)
+	}
+	testing.expect_value(t, u16(packed[2] >> 16), u16(0))
+}

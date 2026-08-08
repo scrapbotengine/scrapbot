@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "timeout_frames": 180,
+  "actions": [
+    {"action": "click", "target": {"text": "VIEW / CAMERA", "origin": "editor"}},
+    {"action": "click", "target": {"text": "DISTANCE FIELD", "origin": "editor"}},
+    {"action": "wait", "frames": 8},
+    {"action": "expect", "target": {"text": "VIEW / DISTANCE FIELD", "origin": "editor"}, "expect": "visible"},
+    {"action": "capture", "target": {"name": "__scrapbot_editor_viewport", "origin": "editor"}, "padding": 4}
+  ]
+}

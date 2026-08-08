@@ -54,6 +54,7 @@ Geometry_Catalog_Desc :: struct {
 	geometry_mode: shared.Geometry_Mode,
 	hierarchy: ^Geometry_Hierarchy,
 	page_source: ^Geometry_Page_Source_Desc,
+	distance_field: ^Geometry_Distance_Field_Desc,
 }
 
 Geometry_Query_Proxy :: struct {
@@ -70,6 +71,14 @@ Geometry_Page_Source_Desc :: struct {
 	path: string,
 	records: []geometry.Page_Payload_Record,
 	bytes: []u8,
+}
+
+Geometry_Distance_Field_Desc :: struct {
+	dimensions: [3]u32,
+	bounds: Bounds,
+	voxel_size, value_scale: f32,
+	signed: bool,
+	product_offset, product_size: u64,
 }
 
 Material_Desc :: struct {
@@ -163,6 +172,7 @@ Geometry :: struct {
 	page_source_path: string,
 	page_payload_records: []geometry.Page_Payload_Record,
 	page_payload_bytes: []u8,
+	distance_field: Geometry_Distance_Field_Desc,
 	cluster_max_depth: u32,
 	bounds: Bounds,
 	lod_handles: [shared.MAX_GEOMETRY_LODS - 1]Geometry_Handle,
@@ -895,6 +905,7 @@ register_geometry_with_hierarchy :: proc(
 		install_geometry_page_source(geometry, &prepared_page_source)
 		geometry.cluster_max_depth = hierarchy.max_depth
 		geometry.geometry_mode = geometry_mode
+		geometry.distance_field = {}
 		geometry.bounds = calculate_bounds(desc.vertices)
 		geometry.lod_handles = {}
 		geometry.lod_screen_radii = {}
@@ -973,6 +984,12 @@ register_geometry_catalog :: proc(
 	if desc.hierarchy == nil || desc.page_source == nil || desc.page_source.kind != .File {
 		return {}, "geometry catalog requires a file-backed cluster hierarchy"
 	}
+	if desc.distance_field != nil {
+		if distance_field_err := validate_geometry_distance_field_desc(desc.distance_field^);
+		   distance_field_err != "" {
+			return {}, distance_field_err
+		}
+	}
 	if hierarchy_err := geometry.validate_hierarchy(desc.hierarchy, len(desc.query_positions));
 	   hierarchy_err != "" {
 		return {}, hierarchy_err
@@ -1036,6 +1053,8 @@ register_geometry_catalog :: proc(
 		install_geometry_page_source(registered, &prepared_page_source)
 		registered.cluster_max_depth = hierarchy.max_depth
 		registered.geometry_mode = desc.geometry_mode
+		registered.distance_field =
+			desc.distance_field^ if desc.distance_field != nil else Geometry_Distance_Field_Desc{}
 		registered.bounds = bounds
 		registered.lod_handles = {}
 		registered.lod_screen_radii = {}
@@ -1075,6 +1094,7 @@ register_geometry_catalog :: proc(
 			page_source_path = prepared_page_source.path,
 			page_payload_records = prepared_page_source.records,
 			page_payload_bytes = prepared_page_source.bytes,
+			distance_field = desc.distance_field^ if desc.distance_field != nil else Geometry_Distance_Field_Desc{},
 			cluster_max_depth = hierarchy.max_depth,
 			bounds = bounds,
 			generation = 1,
@@ -1084,6 +1104,30 @@ register_geometry_catalog :: proc(
 	)
 	registry.geometry_topology_revision += 1
 	return {u32(len(registry.geometries) - 1), 1}, ""
+}
+
+validate_geometry_distance_field_desc :: proc(desc: Geometry_Distance_Field_Desc) -> string {
+	sample_count := u64(desc.dimensions[0]) * u64(desc.dimensions[1]) * u64(desc.dimensions[2])
+	if sample_count == 0 || sample_count > 256 * 256 * 256 {
+		return "geometry distance-field dimensions are invalid"
+	}
+	if desc.product_size != sample_count * u64(size_of(i16)) {
+		return "geometry distance-field byte range does not match its dimensions"
+	}
+	if !finite3(desc.bounds.min) ||
+	   !finite3(desc.bounds.max) ||
+	   desc.bounds.min.x >= desc.bounds.max.x ||
+	   desc.bounds.min.y >= desc.bounds.max.y ||
+	   desc.bounds.min.z >= desc.bounds.max.z {
+		return "geometry distance-field bounds are invalid"
+	}
+	if !finite(desc.voxel_size) ||
+	   desc.voxel_size <= 0 ||
+	   !finite(desc.value_scale) ||
+	   desc.value_scale <= 0 {
+		return "geometry distance-field scales must be positive and finite"
+	}
+	return ""
 }
 
 prepare_geometry_query_proxy :: proc(

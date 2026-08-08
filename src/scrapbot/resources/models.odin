@@ -198,6 +198,22 @@ register_project_model :: proc(
 			if artifact_path != "" && len(primitive.page_payloads) > 0 {
 				page_source_pointer = &page_source
 			}
+			distance_field := Geometry_Distance_Field_Desc {
+				dimensions = primitive.distance_field.dimensions,
+				bounds = {
+					min = primitive.distance_field.bounds_min,
+					max = primitive.distance_field.bounds_max,
+				},
+				voxel_size = primitive.distance_field.voxel_size,
+				value_scale = primitive.distance_field.value_scale,
+				signed = primitive.distance_field.signed,
+				product_offset = primitive.distance_field.product_offset,
+				product_size = primitive.distance_field.product_size,
+			}
+			distance_field_pointer: ^Geometry_Distance_Field_Desc
+			if primitive.distance_field.product_size > 0 {
+				distance_field_pointer = &distance_field
+			}
 			geometry_name := fmt.tprintf(
 				"__model_%s_geometry_%016x",
 				id_text,
@@ -215,6 +231,7 @@ register_project_model :: proc(
 						geometry_mode = declaration.model.geometry_mode,
 						hierarchy = &primitive.hierarchy,
 						page_source = page_source_pointer,
+						distance_field = distance_field_pointer,
 					},
 				)
 			} else {
@@ -343,6 +360,44 @@ register_project_model :: proc(
 	append(&registry.models, model)
 	bump_model_revision(registry)
 	return {u32(len(registry.models) - 1), 1}, ""
+}
+
+load_geometry_distance_field_samples :: proc(
+	geometry: ^Geometry,
+	allocator := context.allocator,
+) -> (
+	[]i16,
+	string,
+) {
+	if geometry == nil || geometry.page_source_path == "" {
+		return nil, "geometry distance-field source is unavailable"
+	}
+	desc := geometry.distance_field
+	if desc.product_size == 0 {
+		return nil, "geometry has no distance field"
+	}
+	field, field_err := asset_import.read_model_distance_field_samples(
+		geometry.page_source_path,
+		{
+			dimensions = desc.dimensions,
+			bounds_min = desc.bounds.min,
+			bounds_max = desc.bounds.max,
+			voxel_size = desc.voxel_size,
+			value_scale = desc.value_scale,
+			signed = desc.signed,
+			product_offset = desc.product_offset,
+			product_size = desc.product_size,
+		},
+	)
+	if field_err != "" {
+		return nil, field_err
+	}
+	if allocator == context.allocator {
+		return field.samples, ""
+	}
+	samples := clone_slice(field.samples, allocator)
+	delete(field.samples)
+	return samples, ""
 }
 
 model_material_image :: proc(

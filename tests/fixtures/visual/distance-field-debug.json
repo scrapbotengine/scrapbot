@@ -1,0 +1,33 @@
+{
+  "width": 631,
+  "height": 610,
+  "regions": [
+    {
+      "name": "field_surface",
+      "rect": [280, 280, 72, 72],
+      "expect": {
+        "mean_red": [0.15, 0.40],
+        "mean_green": [0.70, 0.95],
+        "mean_blue": [0.65, 0.95],
+        "mean_chroma": [0.45, 0.80]
+      }
+    },
+    {
+      "name": "field_distance",
+      "rect": [540, 24, 56, 56],
+      "expect": {
+        "mean_luminance": [0.01, 0.08],
+        "mean_chroma": [0.03, 0.20]
+      }
+    }
+  ],
+  "comparisons": [
+    {
+      "left": "field_surface",
+      "metric": "mean_luminance",
+      "operator": "greater",
+      "right": "field_distance",
+      "margin": 0.25
+    }
+  ]
+}

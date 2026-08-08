@@ -375,6 +375,7 @@ Render_Debug_View :: enum u32 {
 	HiZ,
 	Occlusion_Queries,
 	Virtual_Geometry,
+	Distance_Field,
 }
 
 HiZ_Occlusion_Status :: enum u32 {

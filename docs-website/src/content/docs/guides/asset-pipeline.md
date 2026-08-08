@@ -91,6 +91,12 @@ samples use signed 16-bit quantization and live in their own chunk, so runtime c
 validates their descriptors without reading the voxel payload. Import progress reports both the
 field count and its stored size.
 
+Runtime Geometry keeps the validated descriptor and file range. The renderer loads and uploads the
+samples lazily when a GPU consumer requests them; loading an ordinary scene does not make every
+field GPU-resident. In the editor, choose **View / Distance Field** to inspect a middle voxel slice
+through that same runtime cache. Cyan shows unsigned surface distance. Signed fields use warm
+outside and blue inside values, with pale values nearest the surface.
+
 The chunk directory can describe encoded data, but Model v18 stores its chunks uncompressed.
 Compression must preserve the runtime access pattern:
 

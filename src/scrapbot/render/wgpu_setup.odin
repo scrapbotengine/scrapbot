@@ -544,6 +544,7 @@ wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
 		wgpu.ShaderModuleRelease(renderer.gpu_cluster_shader)
 	}
 	wgpu_release_hiz(renderer)
+	wgpu_release_distance_field_debug(renderer)
 	gpu_buffers := [?]wgpu.Buffer {
 		renderer.gpu_instance_buffer,
 		renderer.gpu_transform_update_buffer,
@@ -599,6 +600,7 @@ wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
 		wgpu.BufferRelease(renderer.uniform_buffer)
 	}
 	for &cached in renderer.geometry_cache {
+		wgpu_release_geometry_distance_field(&cached)
 		delete(cached.cluster_pages)
 		delete(cached.cluster_groups)
 		delete(cached.refined_group_cluster_offsets)

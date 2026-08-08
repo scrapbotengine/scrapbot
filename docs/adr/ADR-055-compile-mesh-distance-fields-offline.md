@@ -41,9 +41,19 @@ records contain only dimensions, bounds, voxel and value scales, topology classi
 validated absolute byte range. Catalog loading does not read sample payloads. One range loader
 reconstructs engine-owned quantized samples only for a consumer that requests them.
 
-GPU residency, world clipmaps, and individual consumers remain later slices. HZB remains the
-primary visibility mechanism until a same-workload profile proves that distance-assisted coarse
-rejection is cheaper and equally safe.
+Runtime Geometry retains the validated descriptor and immutable Model-product range. The WGPU
+backend lazily loads and packs a field into a geometry-versioned storage buffer only when a GPU
+consumer requests it. Replacement, retirement, or renderer shutdown releases that cache; stable
+frames neither read the product nor repeat the upload.
+
+The camera's `distance_field` debug view samples a middle slice of the first submitted field. It uses
+the same retained descriptor, bounded range loader, packing contract, and GPU buffer intended for
+future consumers, so the visualization verifies the actual runtime path rather than a separate
+importer preview.
+
+World clipmaps and individual effects remain later slices. HZB remains the primary visibility
+mechanism until a same-workload profile proves that distance-assisted coarse rejection is cheaper
+and equally safe.
 
 ## Consequences
 
@@ -53,3 +63,5 @@ rejection is cheaper and equally safe.
   triangle, but import time and product resolution still require representative benchmarks.
 - Model products grow by two bytes per compiled voxel, while cache-hit catalog loading remains
   independent of that payload size.
+- GPU residency is opt-in and change-driven; merely registering imported Geometry does not upload
+  its distance field.

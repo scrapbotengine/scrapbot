@@ -548,6 +548,10 @@ WGPU_Geometry_Cache :: struct {
 	refined_group_parents: [dynamic]u32,
 	vertex_count: u32,
 	index_count: u32,
+	distance_field_buffer: wgpu.Buffer,
+	distance_field_uniform_buffer: wgpu.Buffer,
+	distance_field_bind_group: wgpu.BindGroup,
+	distance_field_bytes: u64,
 	valid: bool,
 	virtual_geometry: bool,
 }
@@ -883,6 +887,10 @@ WGPU_Renderer :: struct {
 	gpu_hiz_occlusion_enabled: bool,
 	gpu_hiz_occlusion_status: shared.HiZ_Occlusion_Status,
 	gpu_hiz_requested: bool,
+	gpu_distance_field_debug_shader: wgpu.ShaderModule,
+	gpu_distance_field_debug_pipeline: wgpu.RenderPipeline,
+	gpu_distance_field_debug_pipeline_layout: wgpu.PipelineLayout,
+	gpu_distance_field_debug_bind_group_layout: wgpu.BindGroupLayout,
 	gpu_previous_view_projection: Mat4,
 	gpu_current_view_projection: Mat4,
 	gpu_previous_depth_view_projection: Mat4,
@@ -2653,6 +2661,7 @@ wgpu_release_geometry_cache_ranges :: proc(
 	if renderer == nil || cached == nil || !cached.valid {
 		return
 	}
+	wgpu_release_geometry_distance_field(cached)
 	retire_after_frame := u64(0)
 	if renderer.profile_frame_index > 0 {
 		retire_after_frame = renderer.profile_frame_index - 1
@@ -3170,6 +3179,7 @@ wgpu_geometry_cache :: proc(
 	delete(cached.refined_group_clusters)
 	delete(cached.refined_group_parent_offsets)
 	delete(cached.refined_group_parents)
+	wgpu_release_geometry_distance_field(cached)
 	cached^ = {
 		handle = handle,
 		version = geometry.version,
@@ -3438,6 +3448,14 @@ wgpu_encode_render_pass :: proc(
 		renderer.gpu_hiz_occlusion_enabled = false
 	}
 	if err := wgpu_encode_hiz_debug_view(renderer, encoder, layout.render_viewport); err != "" {
+		return err
+	}
+	if err := wgpu_encode_distance_field_debug_view(
+		renderer,
+		encoder,
+		registry,
+		layout.render_viewport,
+	); err != "" {
 		return err
 	}
 	if err := wgpu_encode_meshlet_debug_overlay(renderer, encoder, layout.render_viewport);

@@ -111,6 +111,8 @@ Use the `VIEW / CAMERA` menu inside the Game surface to inspect the rendered inp
 - Meshlet Visibility colors submitted meshlets green and overlays rejected bounds from the GPU culler. Red and purple identify object-level frustum and Hi-Z rejection; orange, cyan, and magenta identify meshlet-level frustum, cone, and Hi-Z rejection.
 - Hi-Z displays the retained max-depth pyramid in false color. Use the adjacent minus and plus controls to inspect each mip; visible cell boundaries show the exact coarse regions sampled by conservative occlusion queries.
 - Occlusion Queries dims the world and overlays the exact projected rectangle tested for each object or meshlet. Mint survived; pink was rejected. Use **Freeze** to retain one valid evidence set while you inspect it; ordinary culling and simulation continue.
+- Virtual Geometry colors the retained hierarchy frontier and residency state used for submission.
+- Distance Field shows a middle voxel slice from the first submitted imported Geometry field. The renderer range-loads and uploads that field on demand; cyan represents unsigned surface distance, while signed fields distinguish inside and outside.
 
 `Camera` follows the project camera's authored debug fields. Choosing another item, mip, or freeze state is a transient editor override: it changes neither the project camera nor authoring history. Non-lit views bypass temporal jitter and presentation effects so the displayed values remain stable and direct. Meshlets, Meshlet Visibility, and Occlusion Queries show a red/slate checker when the current adapter or `--cpu-culling` run uses whole-primitive submission.
 

@@ -62,6 +62,7 @@ test_project_model_products_register_generated_meshes_and_materials :: proc(t: ^
 	testing.expect_value(t, len(model.meshes[0].primitives), 1)
 	geometry, geometry_alive := get_geometry(&registry, model.meshes[0].primitives[0].geometry)
 	material, material_alive := get_material(&registry, model.meshes[0].primitives[0].material)
+	distance_field_sample_count := 0
 	testing.expect(t, geometry_alive)
 	testing.expect(t, material_alive)
 	if geometry_alive {
@@ -82,6 +83,20 @@ test_project_model_products_register_generated_meshes_and_materials :: proc(t: ^
 		testing.expect(t, fallback.owned)
 		testing.expect_value(t, len(fallback.vertices), 3)
 		testing.expect_value(t, len(fallback.indices), 3)
+		testing.expect(t, geometry.distance_field.product_size > 0)
+		testing.expect_value(
+			t,
+			geometry.distance_field.product_size,
+			u64(geometry.distance_field.dimensions[0]) *
+			u64(geometry.distance_field.dimensions[1]) *
+			u64(geometry.distance_field.dimensions[2]) *
+			2,
+		)
+		samples, samples_err := load_geometry_distance_field_samples(geometry)
+		defer delete(samples)
+		testing.expectf(t, samples_err == "", "distance-field load failed: %s", samples_err)
+		testing.expect_value(t, len(samples), int(geometry.distance_field.product_size / 2))
+		distance_field_sample_count = len(samples)
 	}
 	if material_alive {
 		testing.expect_value(t, material.desc.base_color.x, f32(1))
@@ -106,6 +121,18 @@ test_project_model_products_register_generated_meshes_and_materials :: proc(t: ^
 			defer destroy_geometry_canonical_view(&fallback)
 			testing.expectf(t, fallback_err == "", "cloned fallback failed: %s", fallback_err)
 			testing.expect_value(t, len(fallback.indices), 3)
+			testing.expect_value(t, cloned_geometry.distance_field, geometry.distance_field)
+			cloned_samples, cloned_samples_err := load_geometry_distance_field_samples(
+				cloned_geometry,
+			)
+			defer delete(cloned_samples)
+			testing.expectf(
+				t,
+				cloned_samples_err == "",
+				"cloned distance-field load failed: %s",
+				cloned_samples_err,
+			)
+			testing.expect_value(t, len(cloned_samples), distance_field_sample_count)
 		}
 	}
 	geometry_handle := model.meshes[0].primitives[0].geometry

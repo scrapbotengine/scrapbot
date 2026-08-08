@@ -478,6 +478,7 @@ LOD_CPU_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-lod-cpu.png"
 MESHLET_VISIBILITY_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-meshlet-visibility.png"
 HIZ_DEBUG_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-hiz-debug.png"
 OCCLUSION_DEBUG_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-occlusion-debug.png"
+DISTANCE_FIELD_DEBUG_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-distance-field-debug.png"
 TRANSFORM_COMPUTE_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-transform-compute.png"
 TRANSFORM_CPU_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-transform-cpu.png"
 MASK_FRAME="${TMPDIR:-/tmp}/scrapbot-gltf-mask.png"
@@ -489,7 +490,7 @@ CLUSTER_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-cluster-capacity.png"
 CLUSTER_PAUSED_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-cluster-paused.png"
 CLUSTER_STOPPED_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-cluster-stopped.png"
 CLUSTER_RESTART_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-cluster-restart.png"
-trap 'rm -f "$COMPUTE_FRAME" "$CPU_FRAME" "$UI_FRAME" "$RESPONSIVE_UI_FRAME" "$RESPONSIVE_UI_DUMP" "$OVERLAY_FRAME" "$OVERLAY_DUMP" "$ATMOSPHERE_FRAME" "$ATMOSPHERE_BASELINE_FRAME" "$ATMOSPHERE_DUMP" "$LOD_COMPUTE_FRAME" "$LOD_CPU_FRAME" "$MESHLET_VISIBILITY_FRAME" "$HIZ_DEBUG_FRAME" "$OCCLUSION_DEBUG_FRAME" "$TRANSFORM_COMPUTE_FRAME" "$TRANSFORM_CPU_FRAME" "$MASK_FRAME" "$LIGHTING_FRAME" "$PBR_FRAME" "$TAA_FRAME_A" "$TAA_FRAME_B" "$CLUSTER_FRAME" "$CLUSTER_PAUSED_FRAME" "$CLUSTER_STOPPED_FRAME" "$CLUSTER_RESTART_FRAME"' EXIT
+trap 'rm -f "$COMPUTE_FRAME" "$CPU_FRAME" "$UI_FRAME" "$RESPONSIVE_UI_FRAME" "$RESPONSIVE_UI_DUMP" "$OVERLAY_FRAME" "$OVERLAY_DUMP" "$ATMOSPHERE_FRAME" "$ATMOSPHERE_BASELINE_FRAME" "$ATMOSPHERE_DUMP" "$LOD_COMPUTE_FRAME" "$LOD_CPU_FRAME" "$MESHLET_VISIBILITY_FRAME" "$HIZ_DEBUG_FRAME" "$OCCLUSION_DEBUG_FRAME" "$DISTANCE_FIELD_DEBUG_FRAME" "$TRANSFORM_COMPUTE_FRAME" "$TRANSFORM_CPU_FRAME" "$MASK_FRAME" "$LIGHTING_FRAME" "$PBR_FRAME" "$TAA_FRAME_A" "$TAA_FRAME_B" "$CLUSTER_FRAME" "$CLUSTER_PAUSED_FRAME" "$CLUSTER_STOPPED_FRAME" "$CLUSTER_RESTART_FRAME"' EXIT
 COMPUTE_JSON="$(bin/scrapbot run tests/fixtures/gpu-driven --headless --no-hot-reload --frames 20 --framegrab "$COMPUTE_FRAME" --json)"
 CPU_JSON="$(bin/scrapbot run tests/fixtures/gpu-driven --headless --no-hot-reload --cpu-culling --frames 20 --framegrab "$CPU_FRAME" --json)"
 UI_JSON="$(bin/scrapbot run examples/ecs-showcase --headless --editor --no-hot-reload --frames 2 --framegrab "$UI_FRAME" --json)"
@@ -502,6 +503,7 @@ LOD_CPU_JSON="$(bin/scrapbot run tests/fixtures/gpu-lod --headless --no-hot-relo
 MESHLET_VISIBILITY_JSON="$(bin/scrapbot run examples/ecs-showcase --headless --editor --no-hot-reload --frames 20 --ui-script tests/fixtures/ui/game-debug-visibility.json --framegrab "$MESHLET_VISIBILITY_FRAME" --json)"
 HIZ_DEBUG_JSON="$(bin/scrapbot run examples/ecs-showcase --headless --editor --no-hot-reload --frames 60 --ui-script tests/fixtures/ui/game-debug-hiz.json --framegrab "$HIZ_DEBUG_FRAME" --json)"
 OCCLUSION_DEBUG_JSON="$(bin/scrapbot run tests/fixtures/gpu-driven --headless --editor --no-hot-reload --frames 60 --ui-script tests/fixtures/ui/game-debug-occlusion.json --framegrab "$OCCLUSION_DEBUG_FRAME" --json)"
+DISTANCE_FIELD_DEBUG_JSON="$(bin/scrapbot run tests/fixtures/gltf-materials --headless --editor --no-hot-reload --frames 60 --ui-script tests/fixtures/ui/game-debug-distance-field.json --framegrab "$DISTANCE_FIELD_DEBUG_FRAME" --json)"
 TRANSFORM_COMPUTE_JSON="$(bin/scrapbot run examples/minimal --headless --no-hot-reload --frames 20 --framegrab "$TRANSFORM_COMPUTE_FRAME" --json)"
 TRANSFORM_CPU_JSON="$(bin/scrapbot run examples/minimal --headless --no-hot-reload --cpu-culling --frames 20 --framegrab "$TRANSFORM_CPU_FRAME" --json)"
 MASK_JSON="$(bin/scrapbot run tests/fixtures/gltf-materials --headless --no-hot-reload --frames 2 --framegrab "$MASK_FRAME" --json)"
@@ -749,6 +751,14 @@ if (result.schema_version !== 1 || result.command !== "run" || result.ok !== tru
 }
 ' "$OCCLUSION_DEBUG_JSON"
 node -e '
+const result = JSON.parse(process.argv[1]);
+if (result.schema_version !== 1 || result.command !== "run" || result.ok !== true ||
+    result.result?.renderables !== 1 || result.result.draw_batches !== 1) {
+  console.error("distance-field debug view did not render imported geometry");
+  process.exit(1);
+}
+' "$DISTANCE_FIELD_DEBUG_JSON"
+node -e '
 for (const [label, raw, expectedCompute] of [["compute", process.argv[1], true], ["cpu", process.argv[2], false]]) {
   const result = JSON.parse(raw);
   const stats = result.result?.render_stats;
@@ -784,7 +794,9 @@ node tools/assert_png_variance.mjs "$CLUSTER_PAUSED_FRAME"
 node tools/assert_png_variance.mjs "$CLUSTER_STOPPED_FRAME"
 node tools/assert_png_variance.mjs "$CLUSTER_RESTART_FRAME"
 node tools/assert_png_variance.mjs "$OCCLUSION_DEBUG_FRAME"
+node tools/assert_png_variance.mjs "$DISTANCE_FIELD_DEBUG_FRAME"
 node tools/assert_png_contract.mjs "$PBR_FRAME" tests/fixtures/visual/pbr-materials.json
+node tools/assert_png_contract.mjs "$DISTANCE_FIELD_DEBUG_FRAME" tests/fixtures/visual/distance-field-debug.json
 '''
 
 [tasks.test-gpu-offscreen]

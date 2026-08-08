@@ -28,6 +28,8 @@ render_debug_view_name :: proc "contextless" (view: Render_Debug_View) -> string
 			return "occlusion_queries"
 		case .Virtual_Geometry:
 			return "virtual_geometry"
+		case .Distance_Field:
+			return "distance_field"
 	}
 	return "lit"
 }
@@ -58,6 +60,8 @@ render_debug_view_from_name :: proc "contextless" (name: string) -> (Render_Debu
 			return .Occlusion_Queries, true
 		case "virtual_geometry":
 			return .Virtual_Geometry, true
+		case "distance_field":
+			return .Distance_Field, true
 	}
 	return .Lit, false
 }
