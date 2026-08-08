@@ -124,4 +124,6 @@ publish_live_debug_render_stats :: proc(
 	destination.gpu_timestamps_valid = stats.gpu_timestamps_valid
 	destination.gpu_frame_ms = stats.gpu_frame_ms
 	destination.gpu_scene_ms = stats.gpu_scene_ms
+	destination.dynamic_resolution_filtered_gpu_ms = stats.dynamic_resolution_filtered_gpu_ms
+	destination.dynamic_resolution_tail_gpu_ms = stats.dynamic_resolution_tail_gpu_ms
 }

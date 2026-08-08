@@ -166,6 +166,10 @@ With `--runtime-stats`, JSON results include a `runtime_stats` object. It report
 JSON run results also include `render_stats`. For WGPU, the object groups together:
 
 - Active-path flags for compute culling, any active meshlet batch, native multi-draw acceleration, portable meshlet compaction, virtual-geometry compaction, and clustered lighting. `meshlet_compacted` reports any portable compact work; `meshlet_compact_batches` and `meshlet_compact_instances` report its retained scope. `virtual_geometry_compacted` narrows that flag to frames with compact virtual batches. A capable frame may mix classic, native, and compact batches.
+- Adaptive-quality state includes `render_scale`, `shadow_resolution`,
+  `virtual_geometry_error_pixels`, `adaptive_post_quality`, the filtered GPU-scene trend in
+  `dynamic_resolution_filtered_gpu_ms`, and the bounded p95 decision signal in
+  `dynamic_resolution_tail_gpu_ms`.
 - Meshlet capability, retained `draw_batches`, compatible fixed multi-draw spans in `draw_submissions`, selected meshlet command count in `meshlet_draws`, camera `visible_batches`, nonempty `visible_meshlet_draws`, visibility capacity, separate object/meshlet frustum, cone, and occlusion counters, and the opt-in `meshlet_debug_records` count.
 - Virtual-geometry topology and residency: page budget, resident bytes, total/resident/pinned pages, request/feedback counts, overflow, cumulative page/group uploads, evictions, upload bytes, and deferred group admissions.
 - Virtual-geometry selection and handoff: the active drawable frontier, projected-error overlap, drawable-group activations, `virtual_geometry_transitioning_groups`, and `visible_virtual_blend_clusters`. `visible_virtual_triangles` reports useful selected virtual geometry. `compact_triangles` reports all useful conventional and virtual triangles routed through portable compaction, while `compact_vertex_invocations` includes its padded vertex work.

@@ -2,6 +2,7 @@ package live_debug
 
 import "core:encoding/cbor"
 import "core:encoding/json"
+import "core:math"
 import "core:os"
 import "core:path/filepath"
 import "core:strings"
@@ -27,6 +28,8 @@ test_live_debug_snapshot_supports_json_and_cbor :: proc(t: ^testing.T) {
 			camera = {available = true, debug_view = "meshlet-visibility"},
 			renderer = {
 				backend = "wgpu",
+				dynamic_resolution_filtered_gpu_ms = 14.25,
+				dynamic_resolution_tail_gpu_ms = 17.75,
 				meshlet_compacted = true,
 				meshlet_compact_batches = 7,
 				meshlet_compact_instances = 91,
@@ -44,6 +47,14 @@ test_live_debug_snapshot_supports_json_and_cbor :: proc(t: ^testing.T) {
 	defer destroy_snapshot_strings(&decoded_json)
 	testing.expect(t, json.unmarshal(json_data, &decoded_json) == nil)
 	testing.expect_value(t, decoded_json.frame_index, u64(42))
+	testing.expect(
+		t,
+		math.abs(decoded_json.renderer.dynamic_resolution_filtered_gpu_ms - 14.25) < 0.001,
+	)
+	testing.expect(
+		t,
+		math.abs(decoded_json.renderer.dynamic_resolution_tail_gpu_ms - 17.75) < 0.001,
+	)
 	testing.expect(t, decoded_json.renderer.meshlet_compacted)
 	testing.expect_value(t, decoded_json.renderer.meshlet_compact_batches, 7)
 	testing.expect_value(t, decoded_json.renderer.meshlet_compact_instances, 91)
@@ -63,6 +74,10 @@ test_live_debug_snapshot_supports_json_and_cbor :: proc(t: ^testing.T) {
 	testing.expect_value(t, decoded_cbor.renderer.visible_virtual_triangles, u32(4_096))
 	testing.expect_value(t, decoded_cbor.renderer.compact_triangles, u32(5_120))
 	testing.expect_value(t, decoded_cbor.renderer.compact_vertex_invocations, u32(15_360))
+	testing.expect(
+		t,
+		math.abs(decoded_cbor.renderer.dynamic_resolution_tail_gpu_ms - 17.75) < 0.001,
+	)
 }
 
 @(test)

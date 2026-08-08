@@ -239,7 +239,13 @@ Shader revisions replace only that Shader handle/version's composed WGPU module 
 
 The active camera owns the world-render ceiling/floor, GPU target, adaptive post-quality floor, fixed/automatic exposure, TAA, current-frame fast AA, AO, SSR, and bloom switches. The editor fly camera contributes pose and lens while inheriting this policy.
 
-Before layout, WGPU drains completed asynchronous timestamp readbacks. The scene span runs from the earliest executed timed pass boundary through final composition, before native-resolution UI. One controller processes each sample exactly once, filters it, and applies asymmetric hysteresis to one ordered world-scale, shadow-resolution, or post-quality step. Samples retain their render-policy generation, so delayed evidence from any previous output or camera cannot affect current state. Authored values remain ceilings and floors; adapters without timestamp queries select maxima.
+Before layout, WGPU drains completed asynchronous timestamp readbacks. The scene span runs from the
+earliest executed timed pass boundary through final composition, before native-resolution UI. One
+controller processes each sample exactly once into an exponential average and a fixed 20-sample
+p95 window. The tail signal drives asymmetric hysteresis over one ordered world-scale, shadow-
+resolution, virtual-detail, or post-quality step. Samples retain their render-policy generation,
+so delayed evidence from any previous output or camera cannot affect current state. Authored values
+remain ceilings and floors; adapters without timestamp queries select maxima.
 
 WGPU derives one output layout and one effective world-render layout after that control step. The world, depth, Hi-Z, and post chain use the scaled layout. Final composition maps the complete scaled grid back onto the native output target. The native-resolution UI pass then paints project UI, editor-world overlays clipped to the Game viewport, and editor chrome in that order. Editor tabs and panels therefore occlude gizmos and camera visualizers when they cover the Game surface.
 

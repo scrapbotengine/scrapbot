@@ -98,6 +98,8 @@ Renderer_Snapshot :: struct {
 	gpu_timestamps_valid: bool,
 	gpu_frame_ms: f64,
 	gpu_scene_ms: f64,
+	dynamic_resolution_filtered_gpu_ms: f64,
+	dynamic_resolution_tail_gpu_ms: f64,
 }
 
 Snapshot :: struct {

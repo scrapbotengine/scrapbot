@@ -123,6 +123,7 @@ Render_Stats :: struct {
 	render_scale: f32,
 	dynamic_resolution: bool,
 	dynamic_resolution_filtered_gpu_ms: f64,
+	dynamic_resolution_tail_gpu_ms: f64,
 	adaptive_post_quality: f32,
 	gpu_instance_expansion_ms: f64,
 	gpu_clustered_lighting_ms: f64,
@@ -209,6 +210,10 @@ Frame_Budget_State :: struct {
 	effective_virtual_error_pixels: f32,
 	effective_post_quality: f32,
 	filtered_gpu_ms: f64,
+	tail_gpu_ms: f64,
+	gpu_samples: [FRAME_BUDGET_TAIL_WINDOW_SAMPLES]f64,
+	gpu_sample_count: int,
+	gpu_sample_cursor: int,
 	has_filtered_sample: bool,
 	last_sample_serial: u64,
 	over_budget_samples: int,
@@ -223,6 +228,8 @@ DYNAMIC_RESOLUTION_OVER_BUDGET_SAMPLES :: 3
 DYNAMIC_RESOLUTION_UNDER_BUDGET_SAMPLES :: 30
 DYNAMIC_RESOLUTION_CHANGE_COOLDOWN_SAMPLES :: 8
 DYNAMIC_RESOLUTION_FILTER_ALPHA :: f64(0.2)
+FRAME_BUDGET_TAIL_WINDOW_SAMPLES :: 20
+FRAME_BUDGET_TAIL_PERCENTILE :: 95
 
 FRAME_BUDGET_SHADOW_MAXIMUM :: u32(2048)
 FRAME_BUDGET_SHADOW_MIDDLE :: u32(1024)
@@ -232,6 +239,43 @@ FRAME_BUDGET_QUALITY_STEP :: f32(0.25)
 FRAME_BUDGET_VIRTUAL_ERROR_MINIMUM :: f32(1)
 FRAME_BUDGET_VIRTUAL_ERROR_MIDDLE :: f32(2)
 FRAME_BUDGET_VIRTUAL_ERROR_MAXIMUM :: f32(16)
+
+frame_budget_reset_evidence :: proc "contextless" (state: ^Frame_Budget_State) {
+	if state == nil {
+		return
+	}
+	state.filtered_gpu_ms = 0
+	state.tail_gpu_ms = 0
+	state.gpu_samples = {}
+	state.gpu_sample_count = 0
+	state.gpu_sample_cursor = 0
+	state.has_filtered_sample = false
+	state.over_budget_samples = 0
+	state.under_budget_samples = 0
+}
+
+frame_budget_record_gpu_sample :: proc "contextless" (state: ^Frame_Budget_State, gpu_ms: f64) {
+	if state == nil {
+		return
+	}
+	sample := max(gpu_ms, 0)
+	state.gpu_samples[state.gpu_sample_cursor] = sample
+	state.gpu_sample_cursor = (state.gpu_sample_cursor + 1) % FRAME_BUDGET_TAIL_WINDOW_SAMPLES
+	state.gpu_sample_count = min(state.gpu_sample_count + 1, FRAME_BUDGET_TAIL_WINDOW_SAMPLES)
+	sorted: [FRAME_BUDGET_TAIL_WINDOW_SAMPLES]f64
+	copy(sorted[:state.gpu_sample_count], state.gpu_samples[:state.gpu_sample_count])
+	for index in 1 ..< state.gpu_sample_count {
+		value := sorted[index]
+		cursor := index
+		for cursor > 0 && sorted[cursor - 1] > value {
+			sorted[cursor] = sorted[cursor - 1]
+			cursor -= 1
+		}
+		sorted[cursor] = value
+	}
+	percentile_rank := (state.gpu_sample_count * FRAME_BUDGET_TAIL_PERCENTILE + 99) / 100
+	state.tail_gpu_ms = sorted[max(percentile_rank, 1) - 1]
+}
 
 dynamic_resolution_quantize :: proc "contextless" (scale, minimum, maximum: f32) -> f32 {
 	steps := math.round(scale / DYNAMIC_RESOLUTION_SCALE_STEP)
@@ -452,10 +496,7 @@ dynamic_resolution_scale :: proc "contextless" (
 			frame_budget_maximum_virtual_error_pixels(minimum_quality),
 		)
 		state.effective_post_quality = clamp(state.effective_post_quality, minimum_quality, 1)
-		state.filtered_gpu_ms = 0
-		state.has_filtered_sample = false
-		state.over_budget_samples = 0
-		state.under_budget_samples = 0
+		frame_budget_reset_evidence(state)
 		state.cooldown_samples = 0
 	}
 	if !enabled || sample_serial == 0 || sample_serial == state.last_sample_serial {
@@ -469,12 +510,13 @@ dynamic_resolution_scale :: proc "contextless" (
 		state.filtered_gpu_ms +=
 			(max(gpu_scene_ms, 0) - state.filtered_gpu_ms) * DYNAMIC_RESOLUTION_FILTER_ALPHA
 	}
+	frame_budget_record_gpu_sample(state, gpu_scene_ms)
 	if state.cooldown_samples > 0 {
 		state.cooldown_samples -= 1
 		return state.effective_scale
 	}
-	over_budget := state.filtered_gpu_ms > f64(target) * DYNAMIC_RESOLUTION_OVER_BUDGET_RATIO
-	under_budget := state.filtered_gpu_ms < f64(target) * DYNAMIC_RESOLUTION_UNDER_BUDGET_RATIO
+	over_budget := state.tail_gpu_ms > f64(target) * DYNAMIC_RESOLUTION_OVER_BUDGET_RATIO
+	under_budget := state.tail_gpu_ms < f64(target) * DYNAMIC_RESOLUTION_UNDER_BUDGET_RATIO
 	if over_budget {
 		state.over_budget_samples += 1
 		state.under_budget_samples = 0
@@ -495,11 +537,8 @@ dynamic_resolution_scale :: proc "contextless" (
 		return state.effective_scale
 	}
 	state.generation += 1
-	state.filtered_gpu_ms = 0
-	state.has_filtered_sample = false
+	frame_budget_reset_evidence(state)
 	state.cooldown_samples = DYNAMIC_RESOLUTION_CHANGE_COOLDOWN_SAMPLES
-	state.over_budget_samples = 0
-	state.under_budget_samples = 0
 	return state.effective_scale
 }
 

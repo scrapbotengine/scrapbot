@@ -2,6 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-08-02
+**Updated:** 2026-08-08
 
 ## Context
 
@@ -11,7 +12,14 @@ Projects also need a clear distinction between authored intent and runtime adapt
 
 ## Decision
 
-WGPU owns one backend-local frame-budget controller per active render-policy camera. It consumes the ordered GPU scene span, filters each accepted sample exactly once, and advances at most one step on a deterministic quality ladder.
+WGPU owns one backend-local frame-budget controller per active render-policy camera. It consumes
+the ordered GPU scene span and advances at most one step on a deterministic quality ladder.
+
+The controller retains both an exponentially filtered average and a fixed 20-sample window. It
+uses the nearest-rank 95th percentile of that bounded window for both pressure and recovery
+decisions. Three sustained over-budget evaluations can degrade one step; recovery still requires
+prolonged headroom. This keeps a cheap camera stretch from restoring detail that repeatedly misses
+the authored target in heavier views.
 
 The ladder coordinates four derived outputs:
 
@@ -22,11 +30,16 @@ The ladder coordinates four derived outputs:
 
 Degradation first makes modest world-resolution concessions, then lowers the dominant shadow cost and uses the remaining authored scale range. At the minimum scale, it relaxes virtual-geometry detail before reducing post quality and the lowest shadow tier. Recovery walks the exact reverse order and requires sustained headroom. `adaptive_quality_minimum` bounds post quality, the permitted shadow tier, and the maximum virtual-geometry error.
 
-Every output change increments one policy generation, clears filtered evidence, starts one cooldown, and rejects delayed timestamp samples from the previous configuration. A camera-policy or stable owner change resets all outputs together. Unsupported timestamp queries and disabled adaptation select authored maxima.
+Every output change increments one policy generation, clears the average and tail evidence, starts
+one cooldown, and rejects delayed timestamp samples from the previous configuration. A camera-
+policy or stable owner change resets all outputs together. Unsupported timestamp queries and
+disabled adaptation select authored maxima.
 
 ## Consequences
 
 - Quality changes are deterministic, reversible, and observable through renderer/profile diagnostics.
+- `dynamic_resolution_filtered_gpu_ms` exposes the average signal;
+  `dynamic_resolution_tail_gpu_ms` exposes the bounded percentile used for decisions.
 - Authored camera settings remain authoritative ceilings and bounds; the controller never mutates ECS data.
 - Stable frames perform constant work and allocate nothing for policy evaluation.
 - A single scalar cannot perfectly model the visual importance or measured cost of every pass. The ordered ladder is deliberately explicit and may need platform-informed tuning as the hardware baseline matrix grows.

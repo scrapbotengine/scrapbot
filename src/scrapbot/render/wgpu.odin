@@ -4285,6 +4285,7 @@ wgpu_draw_frame :: proc(
 		config.stats.dynamic_resolution = renderer.dynamic_resolution.enabled
 		config.stats.dynamic_resolution_filtered_gpu_ms =
 			renderer.dynamic_resolution.filtered_gpu_ms
+		config.stats.dynamic_resolution_tail_gpu_ms = renderer.dynamic_resolution.tail_gpu_ms
 		config.stats.adaptive_post_quality = renderer.dynamic_resolution.effective_post_quality
 		config.stats.compute_culling = !config.cpu_culling
 		config.stats.meshlet_culling = renderer.gpu_meshlet_submission_active
@@ -4594,6 +4595,7 @@ wgpu_render_offscreen_frame :: proc(
 		config.stats.dynamic_resolution = renderer.dynamic_resolution.enabled
 		config.stats.dynamic_resolution_filtered_gpu_ms =
 			renderer.dynamic_resolution.filtered_gpu_ms
+		config.stats.dynamic_resolution_tail_gpu_ms = renderer.dynamic_resolution.tail_gpu_ms
 		config.stats.adaptive_post_quality = renderer.dynamic_resolution.effective_post_quality
 		config.stats.compute_culling = !config.cpu_culling
 		config.stats.meshlet_culling = renderer.gpu_meshlet_submission_active

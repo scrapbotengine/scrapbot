@@ -3957,6 +3957,35 @@ test_dynamic_resolution_requires_sustained_unique_gpu_samples :: proc(t: ^testin
 }
 
 @(test)
+test_frame_budget_tracks_a_bounded_tail_percentile :: proc(t: ^testing.T) {
+	state: Frame_Budget_State
+	for sample in 1 ..= FRAME_BUDGET_TAIL_WINDOW_SAMPLES {
+		frame_budget_record_gpu_sample(&state, f64(sample))
+	}
+	testing.expect_value(t, state.gpu_sample_count, FRAME_BUDGET_TAIL_WINDOW_SAMPLES)
+	testing.expect_value(t, state.tail_gpu_ms, f64(19))
+
+	frame_budget_record_gpu_sample(&state, 0)
+	testing.expect_value(t, state.gpu_sample_count, FRAME_BUDGET_TAIL_WINDOW_SAMPLES)
+	testing.expect_value(t, state.tail_gpu_ms, f64(19))
+}
+
+@(test)
+test_dynamic_resolution_degrades_for_sustained_tail_pressure :: proc(t: ^testing.T) {
+	camera := shared.camera_defaults()
+	camera.dynamic_resolution = true
+	camera.dynamic_resolution_target_ms = 10
+	state: Frame_Budget_State
+	_ = dynamic_resolution_scale(&state, camera, true, 1, 9)
+	_ = dynamic_resolution_scale(&state, camera, true, 2, 18)
+	_ = dynamic_resolution_scale(&state, camera, true, 3, 9)
+	scale := dynamic_resolution_scale(&state, camera, true, 4, 9)
+	testing.expect_value(t, scale, f32(0.95))
+	testing.expect_value(t, state.tail_gpu_ms, f64(0))
+	testing.expect_value(t, state.gpu_sample_count, 0)
+}
+
+@(test)
 test_dynamic_resolution_consumes_scene_span_and_respects_manual_bounds :: proc(t: ^testing.T) {
 	camera := shared.camera_defaults()
 	camera.resolution_scale = 0.8

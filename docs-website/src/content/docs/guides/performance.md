@@ -112,6 +112,10 @@ Scrapbot's portable SIMD layer currently uses four `f32` lanes for matrix multip
 - Project-component membership is indexed in both directions. Queries can start from sparse storage, and despawn releases only the custom storages owned by that entity.
 - Renderable membership follows structural and value dirty queues. The retained render list updates only changed entities and slots; an unchanged frame does not scan the active renderable set. Cameras and compact light sets remain cheap frame values because camera motion and lighting directly affect camera-dependent render state.
 - WGPU retains persistent instance records by stable ECS render slot, coalesces nearby changed slots into bounded uploads, and preserves render/culling uniforms until their values change.
+- Dynamic resolution evaluates a bounded 20-sample GPU-scene p95 instead of only an average. This
+  prevents a cheap view from restoring detail that causes recurring misses in a heavier view.
+  `dynamic_resolution_tail_gpu_ms` is the decision signal;
+  `dynamic_resolution_filtered_gpu_ms` remains the smoother trend signal.
 - Instance-to-LOD batch mappings and indirect templates are retained on stable frames. Transform-only changes upload 64-byte position/rotation/scale/local-bounds records; dirty-only compute expands them into model matrices, normal matrices, and world bounds while static material, shadow, batch, and LOD fields remain resident.
 - Spawn and despawn within an existing geometry/material/LOD batch adjust retained membership without rebuilding the draw database. New batch keys or required capacity may still grow it.
 - The backend computes camera and four-cascade shadow visibility on the GPU, then obtains per-batch instance counts through indexed indirect arguments.
