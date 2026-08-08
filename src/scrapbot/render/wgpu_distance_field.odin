@@ -208,7 +208,7 @@ wgpu_ensure_geometry_distance_field :: proc(
 	cached.distance_field_buffer = buffer
 	cached.distance_field_uniform_buffer = uniform_buffer
 	cached.distance_field_bind_group = bind_group
-	cached.distance_field_bytes = geometry.distance_field.product_size
+	cached.distance_field_bytes = packed_bytes
 	return ""
 }
 

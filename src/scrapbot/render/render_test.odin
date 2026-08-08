@@ -3251,6 +3251,9 @@ test_profile_reports_per_frame_counter_deltas_after_warmup :: proc(t: ^testing.T
 	stats.spectral_surface_dispatches += 3
 	stats.instance_uploads += 2
 	stats.instance_upload_bytes += 96
+	stats.world_distance_field_rebuilds += 1
+	stats.world_distance_field_dispatches += 7
+	stats.world_distance_field_upload_bytes += 1796
 	stats.geometry_arena_uploads += 3
 	stats.geometry_arena_upload_bytes += 768
 	stats.geometry_arena_growths += 1
@@ -3276,6 +3279,9 @@ test_profile_reports_per_frame_counter_deltas_after_warmup :: proc(t: ^testing.T
 	testing.expect_value(t, first.spectral_surface_dispatches, u64(3))
 	testing.expect_value(t, first.instance_uploads, u64(2))
 	testing.expect_value(t, first.instance_upload_bytes, u64(96))
+	testing.expect_value(t, first.world_distance_field_rebuilds, u64(1))
+	testing.expect_value(t, first.world_distance_field_dispatches, u64(7))
+	testing.expect_value(t, first.world_distance_field_upload_bytes, u64(1796))
 	testing.expect_value(t, first.geometry_arena_uploads, u64(3))
 	testing.expect_value(t, first.geometry_arena_upload_bytes, u64(768))
 	testing.expect_value(t, first.geometry_arena_growths, u64(1))
@@ -4242,4 +4248,48 @@ test_distance_field_gpu_packing_preserves_signed_odd_length_samples :: proc(t: ^
 		testing.expect_value(t, wgpu_unpack_distance_field_sample(packed, index), sample)
 	}
 	testing.expect_value(t, u16(packed[2] >> 16), u16(0))
+}
+
+@(test)
+test_world_distance_field_clipmap_centers_snap_independently_per_cascade :: proc(t: ^testing.T) {
+	centers := wgpu_distance_field_clipmap_centers({3.9, -0.1, 17.2})
+	testing.expect_value(t, centers[0], Vec3{3, -1, 17})
+	testing.expect_value(t, centers[1], Vec3{0, -4, 16})
+	testing.expect_value(t, centers[2], Vec3{0, -16, 16})
+}
+
+@(test)
+test_world_distance_field_clipmap_rebuilds_only_for_relevant_changes :: proc(t: ^testing.T) {
+	render_list: Render_List
+	render_list.topology_revision = 4
+	centers := wgpu_distance_field_clipmap_centers({3.9, -0.1, 17.2})
+	viewport := ui.Rect {
+		x = 12,
+		y = 8,
+		width = 640,
+		height = 360,
+	}
+	state := WGPU_Distance_Field_Clipmap_State {
+		valid = true,
+		topology_revision = 4,
+		geometry_topology_revision = 7,
+		centers = centers,
+		viewport = viewport,
+	}
+	testing.expect(
+		t,
+		!wgpu_distance_field_clipmap_needs_rebuild(state, &render_list, 7, centers, viewport),
+	)
+	append(&render_list.dirty_transform_slots, 3)
+	defer delete(render_list.dirty_transform_slots)
+	testing.expect(
+		t,
+		wgpu_distance_field_clipmap_needs_rebuild(state, &render_list, 7, centers, viewport),
+	)
+	clear(&render_list.dirty_transform_slots)
+	moved_centers := wgpu_distance_field_clipmap_centers({4.1, -0.1, 17.2})
+	testing.expect(
+		t,
+		wgpu_distance_field_clipmap_needs_rebuild(state, &render_list, 7, moved_centers, viewport),
+	)
 }

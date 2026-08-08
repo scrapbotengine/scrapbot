@@ -1818,6 +1818,9 @@ wgpu_create_gpu_driven_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 	   distance_field_err != "" {
 		return distance_field_err
 	}
+	if clipmap_err := wgpu_create_distance_field_clipmap_pipeline(renderer); clipmap_err != "" {
+		return clipmap_err
+	}
 	if hiz_err := wgpu_ensure_hiz_targets(renderer, 1, 1); hiz_err != "" {
 		return hiz_err
 	}

@@ -97,6 +97,17 @@ field GPU-resident. In the editor, choose **View / Distance Field** to inspect a
 through that same runtime cache. Cyan shows unsigned surface distance. Signed fields use warm
 outside and blue inside values, with pale values nearest the surface.
 
+Choose **View / World Distance Field** to build and inspect the first world-space clipmap consumer.
+The renderer transforms imported fields through their ordinary GPU instance records, seeds three
+camera-relative 32³ cascades, and propagates surface distance on the GPU. The view shows a top-down
+projection of the nearest cascade: bright cyan is near represented geometry and slate is farther
+away.
+
+Clipmap centers snap to 1, 4, and 16-unit voxel grids. An unchanged debug frame reuses the retained
+result without another upload or compute dispatch. Camera cell crossings, viewport changes,
+Geometry replacement, topology changes, and relevant instance/Transform dirtiness rebuild it.
+This is currently a diagnostic foundation; HZB still owns production occlusion.
+
 The chunk directory can describe encoded data, but Model v18 stores its chunks uncompressed.
 Compression must preserve the runtime access pattern:
 

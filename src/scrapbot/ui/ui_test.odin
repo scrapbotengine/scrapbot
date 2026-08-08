@@ -4388,6 +4388,11 @@ test_editor_game_view_debug_selector_is_transient_public_ui :: proc(t: ^testing.
 		.Debug_View_Item,
 		int(shared.Render_Debug_View.Distance_Field),
 	)
+	world_distance_field, world_distance_field_found := editor_ui_entity(
+		&world,
+		.Debug_View_Item,
+		int(shared.Render_Debug_View.World_Distance_Field),
+	)
 	hiz_increase, hiz_increase_found := editor_ui_entity(&world, .Debug_HiZ_Mip_Increase)
 	hiz_label, hiz_label_found := editor_ui_entity(&world, .Debug_HiZ_Mip_Label)
 	freeze, freeze_found := editor_ui_entity(&world, .Debug_Occlusion_Freeze)
@@ -4401,6 +4406,7 @@ test_editor_game_view_debug_selector_is_transient_public_ui :: proc(t: ^testing.
 		hiz_found &&
 		occlusion_found &&
 		distance_field_found &&
+		world_distance_field_found &&
 		hiz_increase_found &&
 		hiz_label_found &&
 		freeze_found &&
@@ -4413,6 +4419,7 @@ test_editor_game_view_debug_selector_is_transient_public_ui :: proc(t: ^testing.
 	   !hiz_found ||
 	   !occlusion_found ||
 	   !distance_field_found ||
+	   !world_distance_field_found ||
 	   !hiz_increase_found ||
 	   !hiz_label_found ||
 	   !freeze_found ||
@@ -4481,6 +4488,14 @@ test_editor_game_view_debug_selector_is_transient_public_ui :: proc(t: ^testing.
 		t,
 		world.ui_buttons[world.entities[button].ui_button_index].text,
 		"VIEW / DISTANCE FIELD",
+	)
+
+	editor_ui_handle_activation(state, &world, world.entities[world_distance_field].id, {})
+	testing.expect(t, state.editor_render_debug_view == .World_Distance_Field)
+	testing.expect_value(
+		t,
+		world.ui_buttons[world.entities[button].ui_button_index].text,
+		"VIEW / WORLD DISTANCE FIELD",
 	)
 
 	editor_ui_handle_activation(state, &world, world.entities[camera_item].id, {})

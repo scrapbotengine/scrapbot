@@ -51,9 +51,19 @@ the same retained descriptor, bounded range loader, packing contract, and GPU bu
 future consumers, so the visualization verifies the actual runtime path rather than a separate
 importer preview.
 
-World clipmaps and individual effects remain later slices. HZB remains the primary visibility
-mechanism until a same-workload profile proves that distance-assisted coarse rejection is cheaper
-and equally safe.
+The WGPU backend can compose requested mesh fields into three camera-relative world clipmaps. Each
+32³ cascade snaps independently to its voxel grid at 1, 4, and 16 world-unit resolution. Geometry
+samples seed the clipmaps through retained GPU instance transforms, and a five-step jump-flood
+pass derives unsigned world-space surface distance without a CPU voxel rebuild.
+
+The initial clipmap consumer is the `world_distance_field` debug view. It rebuilds only when its
+snapped centers, viewport, world topology, Geometry topology, or relevant instance/Transform dirty
+queues change. Stable debug frames retain the buffers and issue no clipmap upload or dispatch.
+Incremental toroidal updates and production AO, shadow, particle, or visibility consumers remain
+later slices.
+
+HZB remains the primary visibility mechanism until a same-workload profile proves that
+distance-assisted coarse rejection is cheaper and equally safe.
 
 ## Consequences
 
@@ -65,3 +75,5 @@ and equally safe.
   independent of that payload size.
 - GPU residency is opt-in and change-driven; merely registering imported Geometry does not upload
   its distance field.
+- World composition remains a backend-owned derived cache. It does not create an ECS component or
+  a second asset representation.

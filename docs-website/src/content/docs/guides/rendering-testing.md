@@ -120,7 +120,7 @@ portable compact paths, compatible material batches share bounded record spans. 
 Visibility, and Occlusion Queries force eligible batches through the detailed native/emulated
 meshlet path so diagnostics cover the complete retained cluster layout.
 
-Set `scrapbot.camera.debug_view` to `base_color`, `world_normals`, `roughness`, `metallic`, `depth`, `meshlets`, `lod`, `meshlet_visibility`, `hiz`, `occlusion_queries`, or `virtual_geometry` to capture the same diagnostics without opening the editor.
+Set `scrapbot.camera.debug_view` to `base_color`, `world_normals`, `roughness`, `metallic`, `depth`, `meshlets`, `lod`, `meshlet_visibility`, `hiz`, `occlusion_queries`, `virtual_geometry`, `distance_field`, or `world_distance_field` to capture the same diagnostics without opening the editor.
 
 `virtual_geometry` colors the GPU-selected resident cluster frontier by cluster identity and
 hierarchy depth. Amber marks a branch whose finer group is not completely resident. Cyan marks a
@@ -163,6 +163,11 @@ ranges into thousands of CPU-encoded calls.
 Pass `--cpu-culling` to run the same bounding-sphere tests, screen-radius LOD selection, and compaction on the CPU while retaining WGPU storage-buffer shaders and indirect draws. This is useful as a correctness oracle and compatibility diagnostic; compute culling remains the default. Hi-Z rejection is GPU-only and therefore disabled on the reference path. The compute path also disables previous-frame Hi-Z rejection whenever the camera or a persistent instance record changes, then rebuilds the pyramid from the current conservative frustum result.
 
 Run `mise test-gpu` for the complete bounded GPU regression suite. It drives a greater-than-64-batch stress scene through compute and CPU visibility. It also verifies adaptive Hi-Z rejection plus asynchronous timestamps and counters.
+
+The same gate opens both distance-field views against imported glTF geometry. The local view proves
+lazy product loading and signed-sample packing. The world view requires one retained three-cascade
+build, 98,304 derived voxels, seven compute dispatches, no repeated stable-frame rebuild, and a
+fixed image contract separating near geometry from empty field space.
 
 Run `mise test-virtual-geometry-gpu` for the dedicated residency-pressure gate. Its scripted camera
 traverses distinct procedural 48-page resources under a 64 KiB payload budget and requires

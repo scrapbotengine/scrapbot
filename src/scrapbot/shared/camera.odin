@@ -30,6 +30,8 @@ render_debug_view_name :: proc "contextless" (view: Render_Debug_View) -> string
 			return "virtual_geometry"
 		case .Distance_Field:
 			return "distance_field"
+		case .World_Distance_Field:
+			return "world_distance_field"
 	}
 	return "lit"
 }
@@ -62,6 +64,8 @@ render_debug_view_from_name :: proc "contextless" (name: string) -> (Render_Debu
 			return .Virtual_Geometry, true
 		case "distance_field":
 			return .Distance_Field, true
+		case "world_distance_field":
+			return .World_Distance_Field, true
 	}
 	return .Lit, false
 }

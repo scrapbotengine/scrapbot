@@ -891,6 +891,27 @@ WGPU_Renderer :: struct {
 	gpu_distance_field_debug_pipeline: wgpu.RenderPipeline,
 	gpu_distance_field_debug_pipeline_layout: wgpu.PipelineLayout,
 	gpu_distance_field_debug_bind_group_layout: wgpu.BindGroupLayout,
+	gpu_distance_field_clipmap_shader: wgpu.ShaderModule,
+	gpu_distance_field_clipmap_raster_pipeline: wgpu.ComputePipeline,
+	gpu_distance_field_clipmap_propagate_pipeline: wgpu.ComputePipeline,
+	gpu_distance_field_clipmap_finalize_pipeline: wgpu.ComputePipeline,
+	gpu_distance_field_clipmap_debug_pipeline: wgpu.RenderPipeline,
+	gpu_distance_field_clipmap_raster_pipeline_layout: wgpu.PipelineLayout,
+	gpu_distance_field_clipmap_propagate_pipeline_layout: wgpu.PipelineLayout,
+	gpu_distance_field_clipmap_finalize_pipeline_layout: wgpu.PipelineLayout,
+	gpu_distance_field_clipmap_debug_pipeline_layout: wgpu.PipelineLayout,
+	gpu_distance_field_clipmap_raster_bind_group_layout: wgpu.BindGroupLayout,
+	gpu_distance_field_clipmap_propagate_bind_group_layout: wgpu.BindGroupLayout,
+	gpu_distance_field_clipmap_finalize_bind_group_layout: wgpu.BindGroupLayout,
+	gpu_distance_field_clipmap_debug_bind_group_layout: wgpu.BindGroupLayout,
+	gpu_distance_field_clipmap_seed_buffers: [2]wgpu.Buffer,
+	gpu_distance_field_clipmap_distance_buffer: wgpu.Buffer,
+	gpu_distance_field_clipmap_instance_slot_buffer: wgpu.Buffer,
+	gpu_distance_field_clipmap_uniform_buffer: wgpu.Buffer,
+	gpu_distance_field_clipmap_propagate_bind_groups: [2]wgpu.BindGroup,
+	gpu_distance_field_clipmap_finalize_bind_group: wgpu.BindGroup,
+	gpu_distance_field_clipmap_debug_bind_group: wgpu.BindGroup,
+	gpu_distance_field_clipmap: WGPU_Distance_Field_Clipmap_State,
 	gpu_previous_view_projection: Mat4,
 	gpu_current_view_projection: Mat4,
 	gpu_previous_depth_view_projection: Mat4,
@@ -3458,6 +3479,13 @@ wgpu_encode_render_pass :: proc(
 	); err != "" {
 		return err
 	}
+	if err := wgpu_encode_distance_field_clipmap_debug_view(
+		renderer,
+		encoder,
+		layout.render_viewport,
+	); err != "" {
+		return err
+	}
 	if err := wgpu_encode_meshlet_debug_overlay(renderer, encoder, layout.render_viewport);
 	   err != "" {
 		return err
@@ -4343,6 +4371,7 @@ wgpu_draw_frame :: proc(
 		config.stats.instance_transform_upload_bytes = renderer.gpu_instance_transform_upload_bytes
 		config.stats.instance_expand_dispatches = renderer.gpu_instance_expand_dispatch_count
 		config.stats.instance_expanded_slots = renderer.gpu_instance_expanded_slot_count
+		wgpu_publish_distance_field_clipmap_stats(renderer, config.stats)
 	}
 	record_system_profile_phase(config, .Render_Prepare, render_prepare_start)
 	finish_runtime_frame(config, world, frame_start)
@@ -4362,6 +4391,15 @@ wgpu_draw_frame :: proc(
 		}
 	}
 	if err = wgpu_encode_gpu_instance_expansion(renderer, encoder); err != "" {
+		return false, false, err
+	}
+	if err = wgpu_encode_distance_field_clipmap(
+		renderer,
+		encoder,
+		config.resource_registry,
+		&renderer.render_list,
+		layout.render_viewport,
+	); err != "" {
 		return false, false, err
 	}
 	if !config.cpu_culling {
@@ -4653,6 +4691,7 @@ wgpu_render_offscreen_frame :: proc(
 		config.stats.instance_transform_upload_bytes = renderer.gpu_instance_transform_upload_bytes
 		config.stats.instance_expand_dispatches = renderer.gpu_instance_expand_dispatch_count
 		config.stats.instance_expanded_slots = renderer.gpu_instance_expanded_slot_count
+		wgpu_publish_distance_field_clipmap_stats(renderer, config.stats)
 	}
 	record_system_profile_phase(config, .Render_Prepare, render_prepare_start)
 	finish_runtime_frame(config, world, frame_start)
@@ -4672,6 +4711,15 @@ wgpu_render_offscreen_frame :: proc(
 		}
 	}
 	if err := wgpu_encode_gpu_instance_expansion(renderer, encoder); err != "" {
+		return err
+	}
+	if err := wgpu_encode_distance_field_clipmap(
+		renderer,
+		encoder,
+		config.resource_registry,
+		&renderer.render_list,
+		layout.render_viewport,
+	); err != "" {
 		return err
 	}
 	if !config.cpu_culling {

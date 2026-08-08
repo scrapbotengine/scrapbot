@@ -77,6 +77,9 @@ Profile_Counter_Deltas :: struct {
 	instance_transform_upload_bytes: u64,
 	instance_expand_dispatches: u64,
 	instance_expanded_slots: u64,
+	world_distance_field_rebuilds: u64,
+	world_distance_field_dispatches: u64,
+	world_distance_field_upload_bytes: u64,
 	ui_vertex_rebuilds: u64,
 	ui_project_vertex_rebuilds: u64,
 	ui_editor_vertex_rebuilds: u64,
@@ -416,6 +419,18 @@ profile_counter_deltas :: proc(current, previous: Render_Stats) -> Profile_Count
 		instance_expanded_slots = profile_counter_delta(
 			current.instance_expanded_slots,
 			previous.instance_expanded_slots,
+		),
+		world_distance_field_rebuilds = profile_counter_delta(
+			current.world_distance_field_rebuilds,
+			previous.world_distance_field_rebuilds,
+		),
+		world_distance_field_dispatches = profile_counter_delta(
+			current.world_distance_field_dispatches,
+			previous.world_distance_field_dispatches,
+		),
+		world_distance_field_upload_bytes = profile_counter_delta(
+			current.world_distance_field_upload_bytes,
+			previous.world_distance_field_upload_bytes,
 		),
 		ui_vertex_rebuilds = profile_counter_delta(
 			current.ui_vertex_rebuilds,

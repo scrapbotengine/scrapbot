@@ -397,6 +397,11 @@ A camera reads its world position and Euler orientation from the entity's resolv
 
 `debug_view = "occlusion_queries"` overlays the exact screen-space rectangles tested by GPU Hi-Z culling. Set `debug_occlusion_freeze = true` to preserve the latest valid query evidence while the view remains selected. These fields use the same public camera payload in scene TOML, Luau, native Odin, and the editor's transient extracted-camera override.
 
+`debug_view = "distance_field"` shows one imported primitive's retained voxel slice.
+`debug_view = "world_distance_field"` composes visible instances into the retained three-cascade
+world field and shows a top-down projection of its nearest cascade. Both are diagnostics; they do
+not replace Hi-Z visibility.
+
 `debug_view = "virtual_geometry"` shows the exact fully resident cluster frontier selected by the
 GPU. Individual clusters vary in color; the mint-to-pink palette moves from fine source clusters
 toward coarser hierarchy levels. The view works through native multi-draw or portable GPU-compacted

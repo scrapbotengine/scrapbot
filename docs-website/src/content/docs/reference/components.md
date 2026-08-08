@@ -107,7 +107,7 @@ Parent UUIDs must resolve to another entity with a Transform and may not form a 
 | `fov` | number | Vertical field of view in degrees. The editor constrains authored values to 1–179. |
 | `near` | number | Positive near clipping plane. |
 | `far` | number | Far clipping plane, greater than `near`. |
-| `debug_view` | string | Backend-neutral output view. Defaults to `"lit"`; supported values are `"lit"`, `"base_color"`, `"world_normals"`, `"roughness"`, `"metallic"`, `"depth"`, `"meshlets"`, `"lod"`, `"meshlet_visibility"`, `"hiz"`, `"occlusion_queries"`, and `"virtual_geometry"`. |
+| `debug_view` | string | Backend-neutral output view. Defaults to `"lit"`; supported values are `"lit"`, `"base_color"`, `"world_normals"`, `"roughness"`, `"metallic"`, `"depth"`, `"meshlets"`, `"lod"`, `"meshlet_visibility"`, `"hiz"`, `"occlusion_queries"`, `"virtual_geometry"`, `"distance_field"`, and `"world_distance_field"`. |
 | `debug_hiz_mip` | number | Hi-Z pyramid mip shown by the `"hiz"` debug view, from `0` through `15`. WGPU clamps it to the retained pyramid's highest available mip. Defaults to `0`. |
 | `debug_occlusion_freeze` | boolean | Preserves the latest GPU query records while the `"occlusion_queries"` view remains active. Culling continues normally. Defaults to `false`. |
 | `resolution_scale` | number | World/depth/post render-grid scale from `0.5` to `1`. Defaults to native resolution (`1`). When dynamic resolution is enabled, this is its maximum scale. |

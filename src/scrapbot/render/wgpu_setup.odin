@@ -545,6 +545,7 @@ wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
 	}
 	wgpu_release_hiz(renderer)
 	wgpu_release_distance_field_debug(renderer)
+	wgpu_release_distance_field_clipmap(renderer)
 	gpu_buffers := [?]wgpu.Buffer {
 		renderer.gpu_instance_buffer,
 		renderer.gpu_transform_update_buffer,
