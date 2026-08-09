@@ -1,7 +1,7 @@
 # Virtual Wilds
 
 Virtual Wilds is Scrapbot's real-world virtual-geometry showcase. It builds a moving coastal route
-from six full-detail CC0 Poly Haven models.
+from twelve full-detail CC0 Poly Haven models.
 
 Install the ignored source fixtures, then launch the editor:
 
@@ -15,8 +15,8 @@ checksum-verified files and places them under `assets/`. Scrapbot compiles them 
 versioned runtime products on first use.
 
 Use the camera's `virtual_geometry`, `meshlets`, and `lod` debug views to inspect the selected
-cluster frontier. The photogrammetry models contain 3,536,980 source triangles and compile into
-9,112 streamable cluster pages. The 192 MiB residency budget is intentionally smaller than that
+cluster frontier. The photogrammetry models contain 8,312,406 source triangles and compile into
+21,380 streamable cluster pages. The 192 MiB residency budget is intentionally smaller than that
 complete detail set.
 
 The camera tour therefore exercises visible page demand, predictive prefetch, and eviction while
@@ -54,10 +54,13 @@ deep floor lets open water reach its dark absorption color while scanned shelves
 shallows. Every tile samples the same world-space spectrum, so boundaries match while each tile
 retains useful vertex density and culls independently.
 
-Reused CC0 scans build staggered headlands, offshore stacks, rock gardens, submerged shelves,
-reefs, and stranded trunks along the route. The layered silhouettes make the
-landscape denser while giving absorption, refraction, and intersection foam real underwater
-topology.
+Twelve complementary CC0 scans build staggered headlands, offshore stacks, rock gardens,
+submerged shelves, reefs, and stranded trunks along the route. Three cliff profiles break up the
+canyon silhouette. Two broad coastline scans form tidal transitions, while three coast-rock
+families keep repeated formations from reading as copies.
+
+The layered topology makes the landscape denser while giving absorption, refraction, and
+intersection foam real underwater surfaces.
 
 A project-local Luau scatter system adds 220 shared low-poly rocks using the public procedural
 Geometry, Material, ECS spawn, and Transform APIs. The authored landscape generator places 40

@@ -1,0 +1,9 @@
+id = "7b000000-0000-4000-8000-000000000011"
+type = "scrapbot.model"
+name = "Coast Line 02"
+
+[model]
+source = "assets/coast_line_02/coast_line_02_1k.gltf"
+generate_lods = true
+lod_ratios = [0.5, 0.25, 0.125]
+lod_screen_radii = [0.18, 0.055, 0.018]

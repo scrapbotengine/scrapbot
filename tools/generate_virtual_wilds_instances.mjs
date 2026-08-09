@@ -9,10 +9,20 @@ const scenePath = resolve(
 );
 const beginMarker = "# BEGIN GENERATED LANDSCAPE INSTANCES";
 const endMarker = "# END GENERATED LANDSCAPE INSTANCES";
-const cliffSourcePath = resolve(
-  repositoryRoot,
-  "examples/virtual-wilds/assets/coastal_cliff_04/coastal_cliff_04_1k.gltf",
-);
+const cliffSources = new Map([
+  [
+    "7b000000-0000-4000-8000-000000000003",
+    "examples/virtual-wilds/assets/coastal_cliff_04/coastal_cliff_04_1k.gltf",
+  ],
+  [
+    "7b000000-0000-4000-8000-00000000000e",
+    "examples/virtual-wilds/assets/coastal_cliff_01/coastal_cliff_01_1k.gltf",
+  ],
+  [
+    "7b000000-0000-4000-8000-00000000000f",
+    "examples/virtual-wilds/assets/coastal_cliff_02/coastal_cliff_02_1k.gltf",
+  ],
+]);
 
 const resources = {
   rocks: "7b000000-0000-4000-8000-00000000000b",
@@ -77,6 +87,7 @@ function sceneTransform(source, entityName) {
     position: readVector("position"),
     rotation: readVector("rotation"),
     scale: readVector("scale"),
+    resource: block.match(/^resource = "([^"]+)"$/m)?.[1],
   };
 }
 
@@ -139,9 +150,14 @@ function readAccessor(gltf, binary, accessorIndex) {
   };
 }
 
-function loadCliffGeometry() {
-  const gltf = JSON.parse(readFileSync(cliffSourcePath, "utf8"));
-  const binaryPath = resolve(dirname(cliffSourcePath), gltf.buffers[0].uri);
+function loadCliffGeometry(resource) {
+  const source = cliffSources.get(resource);
+  if (!source) {
+    throw new Error(`Virtual Wilds ground resource ${resource} has no source geometry`);
+  }
+  const sourcePath = resolve(repositoryRoot, source);
+  const gltf = JSON.parse(readFileSync(sourcePath, "utf8"));
+  const binaryPath = resolve(dirname(sourcePath), gltf.buffers[0].uri);
   const binary = readFileSync(binaryPath);
   const primitive = gltf.meshes[0].primitives[0];
   return {
@@ -152,7 +168,6 @@ function loadCliffGeometry() {
 
 function groundedPinePlacements(source, count) {
   if (count === 0) return [];
-  const geometry = loadCliffGeometry();
   const groundNames = [
     "Western Canyon Wall",
     "Western Canyon Reach",
@@ -163,8 +178,14 @@ function groundedPinePlacements(source, count) {
     "Drowned Horizon Ridge",
   ];
   const grounds = groundNames.map((name) => sceneTransform(source, name));
+  const geometryByResource = new Map();
   const candidates = [];
   for (const ground of grounds) {
+    let geometry = geometryByResource.get(ground.resource);
+    if (!geometry) {
+      geometry = loadCliffGeometry(ground.resource);
+      geometryByResource.set(ground.resource, geometry);
+    }
     for (let index = 0; index < geometry.indices.count; index += 3) {
       const a = transformPoint(geometry.positions.read(geometry.indices.read(index)), ground);
       const b = transformPoint(geometry.positions.read(geometry.indices.read(index + 1)), ground);

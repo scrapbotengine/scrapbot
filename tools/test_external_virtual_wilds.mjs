@@ -76,6 +76,54 @@ const models = [
     clusters: 9560,
     groups: 642,
   },
+  {
+    id: "7b000000-0000-4000-8000-00000000000e",
+    source: "assets/coastal_cliff_01/coastal_cliff_01_1k.gltf",
+    vertices: 238686,
+    indices: 1385472,
+    clusters: 19600,
+    groups: 1203,
+  },
+  {
+    id: "7b000000-0000-4000-8000-00000000000f",
+    source: "assets/coastal_cliff_02/coastal_cliff_02_1k.gltf",
+    vertices: 482925,
+    indices: 2829852,
+    clusters: 39811,
+    groups: 2436,
+  },
+  {
+    id: "7b000000-0000-4000-8000-000000000010",
+    source: "assets/coast_line_01/coast_line_01_1k.gltf",
+    vertices: 272608,
+    indices: 1618473,
+    clusters: 22364,
+    groups: 1374,
+  },
+  {
+    id: "7b000000-0000-4000-8000-000000000011",
+    source: "assets/coast_line_02/coast_line_02_1k.gltf",
+    vertices: 383936,
+    indices: 2270820,
+    clusters: 31506,
+    groups: 1917,
+  },
+  {
+    id: "7b000000-0000-4000-8000-000000000012",
+    source: "assets/coast_rocks_02/coast_rocks_02_1k.gltf",
+    vertices: 648187,
+    indices: 3781269,
+    clusters: 53401,
+    groups: 3247,
+  },
+  {
+    id: "7b000000-0000-4000-8000-000000000013",
+    source: "assets/coast_rocks_03/coast_rocks_03_1k.gltf",
+    vertices: 415339,
+    indices: 2440392,
+    clusters: 34130,
+    groups: 2091,
+  },
 ];
 
 function runScrapbot(args) {
@@ -138,7 +186,7 @@ function main() {
     imported.result?.imported !== models.length ||
     imported.result?.products !== models.length
   ) {
-    throw new Error("expected a fresh six-model Virtual Wilds import");
+    throw new Error("expected a fresh twelve-model Virtual Wilds import");
   }
   runScrapbot(["check", project, "--json"]);
   const simulated = runScrapbot([
@@ -154,7 +202,7 @@ function main() {
   ]);
   if (
     simulated.result?.renderables !== 515 ||
-    simulated.result?.draw_batches !== 14
+    simulated.result?.draw_batches !== 20
   ) {
     throw new Error(
       "Virtual Wilds did not preserve its high-instance shared-batch workload",
@@ -226,7 +274,7 @@ function main() {
     const stats = rendered.result?.render_stats;
     if (
       rendered.result?.renderables !== 515 ||
-      rendered.result?.draw_batches !== 14 ||
+      rendered.result?.draw_batches !== 20 ||
       stats?.virtual_geometry !== true ||
       stats?.virtual_geometry_compacted !== true ||
       stats?.meshlet_visible_capacity > 1048576 ||
@@ -430,7 +478,7 @@ function main() {
       if (
         profile.frames?.some(
           (frame) =>
-            frame.render?.draw_batches !== 14 ||
+            frame.render?.draw_batches !== 20 ||
             frame.render?.virtual_geometry_compacted !== true ||
             !isVirtualGeometryErrorTier(
               frame.render?.virtual_geometry_error_pixels,

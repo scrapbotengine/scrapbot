@@ -487,9 +487,9 @@ id = "7b200000-0000-4000-8000-000000000007"
 name = "Generated Cliff Pine Grove 1"
 
 [entities.transform]
-position = [-98.8492, 18.1374, -131.9574]
-rotation = [0, 0.4306, 0]
-scale = [5.5548, 5.7665, 5.5548]
+position = [-65.9635, 19.357, -192.7219]
+rotation = [0, -2.9548, 0]
+scale = [4.2823, 5.0349, 4.2823]
 
 [entities.model]
 resource = "7b000000-0000-4000-8000-00000000000d"
@@ -503,9 +503,9 @@ id = "7b200000-0000-4000-8000-000000000008"
 name = "Generated Cliff Pine Grove 2"
 
 [entities.transform]
-position = [47.4714, 16.3086, -190.6892]
-rotation = [0, -2.9165, 0]
-scale = [4.7298, 4.4012, 4.7298]
+position = [8.5305, 21.3417, -196.9895]
+rotation = [0, -0.062, 0]
+scale = [5.0049, 4.7089, 5.0049]
 
 [entities.model]
 resource = "7b000000-0000-4000-8000-00000000000d"
@@ -517,9 +517,9 @@ id = "7b200000-0000-4000-8000-000000000009"
 name = "Generated Cliff Pine Grove 3"
 
 [entities.transform]
-position = [-33.1353, 19.3205, -195.8703]
-rotation = [0, 3.1231, 0]
-scale = [4.5342, 5.0712, 4.5342]
+position = [-23.6079, 18.8318, -194.7077]
+rotation = [0, 0.1036, 0]
+scale = [4.9975, 4.4908, 4.9975]
 
 [entities.model]
 resource = "7b000000-0000-4000-8000-00000000000d"
@@ -531,9 +531,9 @@ id = "7b200000-0000-4000-8000-00000000000a"
 name = "Generated Cliff Pine Grove 4"
 
 [entities.transform]
-position = [-53.4338, 18.2253, -159.8156]
-rotation = [0, -2.3518, 0]
-scale = [4.3829, 4.1028, 4.3829]
+position = [54.9529, 17.3518, -196.9057]
+rotation = [0, -3.0348, 0]
+scale = [4.2763, 4.3179, 4.2763]
 
 [entities.model]
 resource = "7b000000-0000-4000-8000-00000000000d"
@@ -545,9 +545,9 @@ id = "7b200000-0000-4000-8000-00000000000b"
 name = "Generated Cliff Pine Grove 5"
 
 [entities.transform]
-position = [49.8976, 17.8608, -198.8207]
-rotation = [0, 0.2692, 0]
-scale = [3.7402, 4.2353, 3.7402]
+position = [82.8811, 17.3858, -201.6713]
+rotation = [0, -2.9969, 0]
+scale = [4.8585, 5.8423, 4.8585]
 
 [entities.model]
 resource = "7b000000-0000-4000-8000-00000000000d"
@@ -559,9 +559,9 @@ id = "7b200000-0000-4000-8000-00000000000c"
 name = "Generated Cliff Pine Grove 6"
 
 [entities.transform]
-position = [-28.2844, 31.6101, -138.1822]
-rotation = [0, 1.2446, 0]
-scale = [5.2298, 5.1116, 5.2298]
+position = [-38.3903, 19.0012, -177.4285]
+rotation = [0, -2.4227, 0]
+scale = [4.5307, 5.1508, 4.5307]
 
 [entities.model]
 resource = "7b000000-0000-4000-8000-00000000000d"
@@ -573,9 +573,9 @@ id = "7b200000-0000-4000-8000-00000000000d"
 name = "Generated Cliff Pine Grove 7"
 
 [entities.transform]
-position = [42.0644, 18.1487, -199.7882]
-rotation = [0, -0.0059, 0]
-scale = [4.6228, 5.3744, 4.6228]
+position = [75.8826, 17.3929, -201.0326]
+rotation = [0, 0.0705, 0]
+scale = [4.9257, 5.4176, 4.9257]
 
 [entities.model]
 resource = "7b000000-0000-4000-8000-00000000000d"
@@ -587,9 +587,9 @@ id = "7b200000-0000-4000-8000-00000000000e"
 name = "Generated Cliff Pine Grove 8"
 
 [entities.transform]
-position = [14.3494, 17.3942, -190.7247]
-rotation = [0, 0.1176, 0]
-scale = [4.1207, 4.3281, 4.1207]
+position = [54.7898, 15.3801, -187.7542]
+rotation = [0, -2.9015, 0]
+scale = [5.6927, 5.0798, 5.6927]
 
 [entities.model]
 resource = "7b000000-0000-4000-8000-00000000000d"
@@ -601,9 +601,9 @@ id = "7b200000-0000-4000-8000-00000000000f"
 name = "Generated Cliff Pine Grove 9"
 
 [entities.transform]
-position = [5.7247, 17.0458, -187.4562]
-rotation = [0, 0.1342, 0]
-scale = [4.608, 5.1129, 4.608]
+position = [-35.9527, 17.5446, -169.7153]
+rotation = [0, -2.4576, 0]
+scale = [4.5374, 4.7189, 4.5374]
 
 [entities.model]
 resource = "7b000000-0000-4000-8000-00000000000d"
@@ -617,9 +617,9 @@ id = "7b200000-0000-4000-8000-000000000010"
 name = "Generated Cliff Pine Grove 10"
 
 [entities.transform]
-position = [23.7453, 17.896, -194.5323]
-rotation = [0, 0.1982, 0]
-scale = [4.2102, 4.4107, 4.2102]
+position = [29.4437, 17.1988, -192.7981]
+rotation = [0, 0.0926, 0]
+scale = [4.9317, 5.464, 4.9317]
 
 [entities.model]
 resource = "7b000000-0000-4000-8000-00000000000d"
@@ -631,9 +631,9 @@ id = "7b200000-0000-4000-8000-000000000011"
 name = "Generated Cliff Pine Grove 11"
 
 [entities.transform]
-position = [36.8816, 16.893, -192.3931]
-rotation = [0, -2.7677, 0]
-scale = [3.6719, 4.0753, 3.6719]
+position = [-53.2034, 18.9832, -192.6069]
+rotation = [0, -2.9309, 0]
+scale = [3.6483, 3.9435, 3.6483]
 
 [entities.model]
 resource = "7b000000-0000-4000-8000-00000000000d"
@@ -645,9 +645,9 @@ id = "7b200000-0000-4000-8000-000000000012"
 name = "Generated Cliff Pine Grove 12"
 
 [entities.transform]
-position = [106.5097, 15.9221, -199.331]
-rotation = [0, -2.8356, 0]
-scale = [3.8347, 4.2777, 3.8347]
+position = [37.5655, 18.1659, -199.6044]
+rotation = [0, -3.0713, 0]
+scale = [3.6073, 4.3672, 3.6073]
 
 [entities.model]
 resource = "7b000000-0000-4000-8000-00000000000d"
@@ -659,9 +659,9 @@ id = "7b200000-0000-4000-8000-000000000013"
 name = "Generated Cliff Pine Grove 13"
 
 [entities.transform]
-position = [-57.6736, 19.0712, -192.0581]
-rotation = [0, -3.0722, 0]
-scale = [3.7289, 4.4469, 3.7289]
+position = [-30.0502, 19.4875, -197.5034]
+rotation = [0, -3.0653, 0]
+scale = [4.1983, 4.4499, 4.1983]
 
 [entities.model]
 resource = "7b000000-0000-4000-8000-00000000000d"
@@ -673,9 +673,9 @@ id = "7b200000-0000-4000-8000-000000000014"
 name = "Generated Cliff Pine Grove 14"
 
 [entities.transform]
-position = [-31.8137, 18.634, -179.0746]
-rotation = [0, -2.3847, 0]
-scale = [4.7719, 4.7576, 4.7719]
+position = [86.5933, 16.1718, -195.6575]
+rotation = [0, 0.3004, 0]
+scale = [4.1473, 5.1176, 4.1473]
 
 [entities.model]
 resource = "7b000000-0000-4000-8000-00000000000d"
@@ -687,9 +687,9 @@ id = "7b200000-0000-4000-8000-000000000015"
 name = "Generated Cliff Pine Grove 15"
 
 [entities.transform]
-position = [-45.2069, 18.1066, -165.5311]
-rotation = [0, -2.6202, 0]
-scale = [5.453, 5.76, 5.453]
+position = [38.8188, 15.9261, -187.1819]
+rotation = [0, 3.0829, 0]
+scale = [3.8695, 3.9024, 3.8695]
 
 [entities.model]
 resource = "7b000000-0000-4000-8000-00000000000d"
@@ -701,9 +701,9 @@ id = "7b200000-0000-4000-8000-000000000016"
 name = "Generated Cliff Pine Grove 16"
 
 [entities.transform]
-position = [25.2379, 15.4443, -183.3169]
-rotation = [0, 0.1194, 0]
-scale = [3.9381, 4.4743, 3.9381]
+position = [-86.4428, 19.8992, -193.1681]
+rotation = [0, -0.022, 0]
+scale = [4.3019, 4.6212, 4.3019]
 
 [entities.model]
 resource = "7b000000-0000-4000-8000-00000000000d"
@@ -715,9 +715,9 @@ id = "7b200000-0000-4000-8000-000000000017"
 name = "Generated Cliff Pine Grove 17"
 
 [entities.transform]
-position = [43.442, 15.642, -186.7268]
-rotation = [0, 0.1195, 0]
-scale = [5.0938, 4.6143, 5.0938]
+position = [100.4414, 16.3005, -199.4869]
+rotation = [0, -2.6828, 0]
+scale = [3.6591, 3.743, 3.6591]
 
 [entities.model]
 resource = "7b000000-0000-4000-8000-00000000000d"
@@ -731,9 +731,9 @@ id = "7b200000-0000-4000-8000-000000000018"
 name = "Generated Cliff Pine Grove 18"
 
 [entities.transform]
-position = [-30.4454, 26.2165, -36.4709]
-rotation = [0, -1.7668, 0]
-scale = [4.8526, 5.6348, 4.8526]
+position = [-86.5703, 18.0869, -138.2267]
+rotation = [0, -2.4284, 0]
+scale = [4.9124, 5.3968, 4.9124]
 
 [entities.model]
 resource = "7b000000-0000-4000-8000-00000000000d"
@@ -745,9 +745,9 @@ id = "7b200000-0000-4000-8000-000000000019"
 name = "Generated Cliff Pine Grove 19"
 
 [entities.transform]
-position = [70.05, 17.5083, -200.5556]
-rotation = [0, -3.0034, 0]
-scale = [4.6197, 4.7235, 4.6197]
+position = [48.9893, 16.7433, -193.2015]
+rotation = [0, 0.1484, 0]
+scale = [5.549, 5.3876, 5.549]
 
 [entities.model]
 resource = "7b000000-0000-4000-8000-00000000000d"
@@ -759,9 +759,9 @@ id = "7b200000-0000-4000-8000-00000000001a"
 name = "Generated Cliff Pine Grove 20"
 
 [entities.transform]
-position = [58.0634, 17.0084, -195.8858]
-rotation = [0, -2.9775, 0]
-scale = [4.5901, 4.665, 4.5901]
+position = [-72.1264, 19.5762, -192.7778]
+rotation = [0, -3.0528, 0]
+scale = [5.1022, 4.6213, 5.1022]
 
 [entities.model]
 resource = "7b000000-0000-4000-8000-00000000000d"
@@ -773,9 +773,9 @@ id = "7b200000-0000-4000-8000-00000000001b"
 name = "Generated Cliff Pine Grove 21"
 
 [entities.transform]
-position = [53.6192, 14.8871, -185.3584]
-rotation = [0, -2.9, 0]
-scale = [4.634, 5.5279, 4.634]
+position = [-50.1601, 18.9223, -168.447]
+rotation = [0, 0.6035, 0]
+scale = [5.1608, 5.4632, 5.1608]
 
 [entities.model]
 resource = "7b000000-0000-4000-8000-00000000000d"
@@ -787,9 +787,9 @@ id = "7b200000-0000-4000-8000-00000000001c"
 name = "Generated Cliff Pine Grove 22"
 
 [entities.transform]
-position = [-0.0398, 21.9469, -196.033]
-rotation = [0, 2.9924, 0]
-scale = [5.2786, 5.5329, 5.2786]
+position = [49.2313, 15.1651, -185.6275]
+rotation = [0, -3.0311, 0]
+scale = [4.8815, 5.4971, 4.8815]
 
 [entities.model]
 resource = "7b000000-0000-4000-8000-00000000000d"
@@ -801,9 +801,9 @@ id = "7b200000-0000-4000-8000-00000000001d"
 name = "Generated Cliff Pine Grove 23"
 
 [entities.transform]
-position = [91.5215, 17.2235, -201.7566]
-rotation = [0, -2.8793, 0]
-scale = [3.8467, 3.7904, 3.8467]
+position = [61.4659, 15.7762, -191.5319]
+rotation = [0, 0.0924, 0]
+scale = [4.2611, 3.9334, 4.2611]
 
 [entities.model]
 resource = "7b000000-0000-4000-8000-00000000000d"
@@ -815,9 +815,9 @@ id = "7b200000-0000-4000-8000-00000000001e"
 name = "Generated Cliff Pine Grove 24"
 
 [entities.transform]
-position = [-51.4044, 18.9994, -168.3085]
-rotation = [0, 0.6404, 0]
-scale = [4.3421, 5.0105, 4.3421]
+position = [65.3012, 17.0808, -196.9947]
+rotation = [0, 0.0757, 0]
+scale = [5.2754, 5.5618, 5.2754]
 
 [entities.model]
 resource = "7b000000-0000-4000-8000-00000000000d"
@@ -829,9 +829,9 @@ id = "7b200000-0000-4000-8000-00000000001f"
 name = "Generated Cliff Pine Grove 25"
 
 [entities.transform]
-position = [78.8537, 16.5681, -196.6122]
-rotation = [0, 0.1413, 0]
-scale = [4.482, 4.3653, 4.482]
+position = [26.5892, 29.5481, -68.2064]
+rotation = [0, 1.7087, 0]
+scale = [4.688, 5.6684, 4.688]
 
 [entities.model]
 resource = "7b000000-0000-4000-8000-00000000000d"
@@ -845,9 +845,9 @@ id = "7b200000-0000-4000-8000-000000000020"
 name = "Generated Cliff Pine Grove 26"
 
 [entities.transform]
-position = [30.4881, 17.3558, -193.7709]
-rotation = [0, 0.0856, 0]
-scale = [3.6022, 4.1798, 3.6022]
+position = [22.5763, 17.1931, -191.6791]
+rotation = [0, -2.8644, 0]
+scale = [4.3166, 4.2517, 4.3166]
 
 [entities.model]
 resource = "7b000000-0000-4000-8000-00000000000d"
@@ -859,9 +859,9 @@ id = "7b200000-0000-4000-8000-000000000021"
 name = "Generated Cliff Pine Grove 27"
 
 [entities.transform]
-position = [-26.5474, 19.5007, -197.4633]
-rotation = [0, -3.1137, 0]
-scale = [5.5764, 5.061, 5.5764]
+position = [-52.2221, 18.3193, -161.7776]
+rotation = [0, 0.6319, 0]
+scale = [4.4292, 4.7589, 4.4292]
 
 [entities.model]
 resource = "7b000000-0000-4000-8000-00000000000d"
@@ -873,9 +873,9 @@ id = "7b200000-0000-4000-8000-000000000022"
 name = "Generated Cliff Pine Grove 28"
 
 [entities.transform]
-position = [-65.3468, 21.3647, -155.1011]
-rotation = [0, 0.6249, 0]
-scale = [4.0838, 3.9806, 4.0838]
+position = [24.1047, 24.8258, -50.9513]
+rotation = [0, -1.4376, 0]
+scale = [3.7193, 4.0932, 3.7193]
 
 [entities.model]
 resource = "7b000000-0000-4000-8000-00000000000d"
@@ -887,9 +887,9 @@ id = "7b200000-0000-4000-8000-000000000023"
 name = "Generated Cliff Pine Grove 29"
 
 [entities.transform]
-position = [57.7683, 13.5223, -180.3771]
-rotation = [0, 3.1252, 0]
-scale = [3.9158, 4.1956, 3.9158]
+position = [-93.6956, 18.4237, -134.843]
+rotation = [0, -2.4398, 0]
+scale = [3.931, 4.18, 3.931]
 
 [entities.model]
 resource = "7b000000-0000-4000-8000-00000000000d"
@@ -901,9 +901,9 @@ id = "7b200000-0000-4000-8000-000000000024"
 name = "Generated Cliff Pine Grove 30"
 
 [entities.transform]
-position = [-45.8386, 19.0098, -171.5211]
-rotation = [0, 0.6765, 0]
-scale = [5.3576, 4.8068, 5.3576]
+position = [-44.4512, 17.1984, -159.8159]
+rotation = [0, 0.7677, 0]
+scale = [4.4683, 4.6978, 4.4683]
 
 [entities.model]
 resource = "7b000000-0000-4000-8000-00000000000d"
@@ -915,9 +915,9 @@ id = "7b200000-0000-4000-8000-000000000025"
 name = "Generated Cliff Pine Grove 31"
 
 [entities.transform]
-position = [27.1968, 25.8128, -31.6834]
-rotation = [0, 1.5491, 0]
-scale = [4.644, 4.5257, 4.644]
+position = [18.7861, 27.6911, -85.986]
+rotation = [0, -1.5104, 0]
+scale = [5.2055, 5.6436, 5.2055]
 
 [entities.model]
 resource = "7b000000-0000-4000-8000-00000000000d"
@@ -929,9 +929,9 @@ id = "7b200000-0000-4000-8000-000000000026"
 name = "Generated Cliff Pine Grove 32"
 
 [entities.transform]
-position = [-58.3091, 18.2487, -155.8095]
-rotation = [0, 0.5886, 0]
-scale = [4.276, 4.0573, 4.276]
+position = [46.2152, 17.7279, -198.138]
+rotation = [0, 0.0228, 0]
+scale = [4.1696, 4.1043, 4.1696]
 
 [entities.model]
 resource = "7b000000-0000-4000-8000-00000000000d"
@@ -943,9 +943,9 @@ id = "7b200000-0000-4000-8000-000000000027"
 name = "Generated Cliff Pine Grove 33"
 
 [entities.transform]
-position = [64.0689, 17.5941, -199.676]
-rotation = [0, 0.3384, 0]
-scale = [4.3053, 4.3392, 4.3053]
+position = [30.5524, 15.8165, -186.1642]
+rotation = [0, -0.0645, 0]
+scale = [3.9288, 3.9466, 3.9288]
 
 [entities.model]
 resource = "7b000000-0000-4000-8000-00000000000d"
@@ -959,9 +959,9 @@ id = "7b200000-0000-4000-8000-000000000028"
 name = "Generated Cliff Pine Grove 34"
 
 [entities.transform]
-position = [-30.0231, 31.3192, -129.9668]
-rotation = [0, 1.2565, 0]
-scale = [4.7504, 4.5186, 4.7504]
+position = [21.6423, 28.2588, -76.2632]
+rotation = [0, -1.43, 0]
+scale = [4.2483, 4.4456, 4.2483]
 
 [entities.model]
 resource = "7b000000-0000-4000-8000-00000000000d"
@@ -973,9 +973,9 @@ id = "7b200000-0000-4000-8000-000000000029"
 name = "Generated Cliff Pine Grove 35"
 
 [entities.transform]
-position = [97.5439, 17.3132, -203.3987]
-rotation = [0, -2.9374, 0]
-scale = [3.5691, 3.8745, 3.5691]
+position = [-20.6388, 26.1237, -70.8911]
+rotation = [0, 1.432, 0]
+scale = [3.5792, 3.9566, 3.5792]
 
 [entities.model]
 resource = "7b000000-0000-4000-8000-00000000000d"
@@ -987,9 +987,9 @@ id = "7b200000-0000-4000-8000-00000000002a"
 name = "Generated Cliff Pine Grove 36"
 
 [entities.transform]
-position = [-75.6, 18.5482, -148.3835]
-rotation = [0, -2.9088, 0]
-scale = [3.9172, 4.1279, 3.9172]
+position = [-50.0822, 16.862, -156.4644]
+rotation = [0, 0.2401, 0]
+scale = [5.2099, 5.1241, 5.2099]
 
 [entities.model]
 resource = "7b000000-0000-4000-8000-00000000000d"
@@ -1001,9 +1001,9 @@ id = "7b200000-0000-4000-8000-00000000002b"
 name = "Generated Cliff Pine Grove 37"
 
 [entities.transform]
-position = [-64.2537, 19.773, -195.8731]
-rotation = [0, -2.927, 0]
-scale = [4.1999, 4.925, 4.1999]
+position = [-28.1963, 18.7824, -183.04]
+rotation = [0, -2.6085, 0]
+scale = [4.1393, 4.6774, 4.1393]
 
 [entities.model]
 resource = "7b000000-0000-4000-8000-00000000000d"
@@ -1015,9 +1015,9 @@ id = "7b200000-0000-4000-8000-00000000002c"
 name = "Generated Cliff Pine Grove 38"
 
 [entities.transform]
-position = [24.4126, 24.9739, -16.8112]
-rotation = [0, -1.4943, 0]
-scale = [4.5705, 5.3994, 4.5705]
+position = [-44.0746, 18.4562, -168.9649]
+rotation = [0, -2.6542, 0]
+scale = [3.9633, 4.0701, 3.9633]
 
 [entities.model]
 resource = "7b000000-0000-4000-8000-00000000000d"
@@ -1029,9 +1029,9 @@ id = "7b200000-0000-4000-8000-00000000002d"
 name = "Generated Cliff Pine Grove 39"
 
 [entities.transform]
-position = [-40.6466, 18.7871, -173.5009]
-rotation = [0, -2.4385, 0]
-scale = [5.3106, 5.7318, 5.3106]
+position = [26.1668, 25.3093, -37.0025]
+rotation = [0, -1.724, 0]
+scale = [4.1972, 4.6376, 4.1972]
 
 [entities.model]
 resource = "7b000000-0000-4000-8000-00000000000d"
@@ -1043,9 +1043,9 @@ id = "7b200000-0000-4000-8000-00000000002e"
 name = "Generated Cliff Pine Grove 40"
 
 [entities.transform]
-position = [22.4675, 24.352, -10.0882]
-rotation = [0, -1.4916, 0]
-scale = [4.1483, 4.7342, 4.1483]
+position = [14.8396, 17.2057, -190.1397]
+rotation = [0, 0.135, 0]
+scale = [5.5987, 5.212, 5.5987]
 
 [entities.model]
 resource = "7b000000-0000-4000-8000-00000000000d"
@@ -1079,7 +1079,7 @@ rotation = [-0.03, 1.2, 0.035]
 scale = [1.05, 4.6, 0.9]
 
 [entities.model]
-resource = "7b000000-0000-4000-8000-000000000003"
+resource = "7b000000-0000-4000-8000-00000000000e"
 
 [entities.shadow_caster]
 [entities.shadow_receiver]
@@ -1094,7 +1094,7 @@ rotation = [-0.04, 0.28, 0.025]
 scale = [0.28, 5.1, 0.3]
 
 [entities.model]
-resource = "7b000000-0000-4000-8000-000000000004"
+resource = "7b000000-0000-4000-8000-000000000012"
 
 [entities.shadow_caster]
 [entities.shadow_receiver]
@@ -1109,7 +1109,7 @@ rotation = [0.05, -0.43, -0.035]
 scale = [0.24, 4.3, 0.25]
 
 [entities.model]
-resource = "7b000000-0000-4000-8000-000000000004"
+resource = "7b000000-0000-4000-8000-000000000013"
 
 [entities.shadow_caster]
 [entities.shadow_receiver]
@@ -1152,7 +1152,7 @@ rotation = [0.035, 2.62, -0.025]
 scale = [0.5, 1.05, 0.42]
 
 [entities.model]
-resource = "7b000000-0000-4000-8000-000000000004"
+resource = "7b000000-0000-4000-8000-000000000010"
 
 [entities.shadow_receiver]
 
@@ -1166,7 +1166,7 @@ rotation = [-0.02, -0.72, 0.045]
 scale = [0.38, 1.3, 0.42]
 
 [entities.model]
-resource = "7b000000-0000-4000-8000-000000000004"
+resource = "7b000000-0000-4000-8000-000000000012"
 
 [entities.shadow_receiver]
 
@@ -1180,7 +1180,7 @@ rotation = [0.04, 1.88, -0.03]
 scale = [0.58, 1.6, 0.54]
 
 [entities.model]
-resource = "7b000000-0000-4000-8000-000000000004"
+resource = "7b000000-0000-4000-8000-000000000013"
 
 [entities.shadow_receiver]
 
@@ -1292,7 +1292,7 @@ rotation = [0, 2.72, 0]
 scale = [1.45, 0.58, 1.6]
 
 [entities.model]
-resource = "7b000000-0000-4000-8000-000000000004"
+resource = "7b000000-0000-4000-8000-000000000010"
 
 [entities.shadow_receiver]
 
@@ -1306,7 +1306,7 @@ rotation = [0, 0.38, 0]
 scale = [1.8, 0.7, 1.9]
 
 [entities.model]
-resource = "7b000000-0000-4000-8000-000000000004"
+resource = "7b000000-0000-4000-8000-000000000011"
 
 [entities.shadow_receiver]
 
@@ -1320,7 +1320,7 @@ rotation = [0, 2.95, 0]
 scale = [1.65, 0.68, 1.8]
 
 [entities.model]
-resource = "7b000000-0000-4000-8000-000000000004"
+resource = "7b000000-0000-4000-8000-000000000010"
 
 [entities.shadow_receiver]
 
@@ -1334,7 +1334,7 @@ rotation = [0, 3.14159, 0]
 scale = [0.72, 1, 0.72]
 
 [entities.model]
-resource = "7b000000-0000-4000-8000-000000000004"
+resource = "7b000000-0000-4000-8000-000000000012"
 
 [entities.shadow_receiver]
 
@@ -1348,7 +1348,7 @@ rotation = [0, 0, 0]
 scale = [1.15, 1, 1.3]
 
 [entities.model]
-resource = "7b000000-0000-4000-8000-000000000004"
+resource = "7b000000-0000-4000-8000-000000000011"
 
 [entities.shadow_receiver]
 
@@ -1362,7 +1362,7 @@ rotation = [0, 3.14159, 0]
 scale = [1.25, 1, 1.25]
 
 [entities.model]
-resource = "7b000000-0000-4000-8000-000000000004"
+resource = "7b000000-0000-4000-8000-000000000013"
 
 [entities.shadow_receiver]
 
@@ -1404,7 +1404,7 @@ rotation = [0.04, -1.42, -0.03]
 scale = [0.68, 3.2, 0.72]
 
 [entities.model]
-resource = "7b000000-0000-4000-8000-000000000003"
+resource = "7b000000-0000-4000-8000-00000000000f"
 
 [entities.shadow_receiver]
 
@@ -1418,7 +1418,7 @@ rotation = [0.06, 1.08, -0.04]
 scale = [0.62, 0.92, 0.58]
 
 [entities.model]
-resource = "7b000000-0000-4000-8000-000000000004"
+resource = "7b000000-0000-4000-8000-000000000012"
 
 [entities.shadow_receiver]
 
@@ -1432,7 +1432,7 @@ rotation = [0.08, -2.48, 0.02]
 scale = [0.48, 0.7, 0.52]
 
 [entities.model]
-resource = "7b000000-0000-4000-8000-000000000004"
+resource = "7b000000-0000-4000-8000-000000000013"
 
 [entities.shadow_receiver]
 

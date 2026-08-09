@@ -41,18 +41,26 @@ The ordinary test suite must remain independent of external downloads. Tests tha
 
 Sponza is a manifest bundle: every file has an individual byte count and SHA-256, while setup downloads up to six files concurrently. The verified files are copied into ignored `examples/sponza/assets/` state. Neither the bundle nor its 393 MiB uncompressed Scrapbot import product belongs in Git or engine distributions.
 
-## Poly Haven Coastal Cliff 04 and Virtual Wilds
+## Poly Haven coastal collection and Virtual Wilds
 
 - Local path: `downloads/gltf/VirtualWilds/`
 - Upstream: [Poly Haven models](https://polyhaven.com/models)
 - Purpose: high-density photogrammetry import, generated LODs, virtual-geometry paging, bounded residency, and temporal streaming development
-- Pinned shape: 6 models, 2,058,625 vertices, 3,536,980 source triangles, and 9,112 streamable photogrammetry pages
+- Pinned shape: 12 models, 4,500,306 vertices, 8,312,406 source triangles, and 21,380 streamable photogrammetry pages
 - Licensing: CC0
 
 The bundle contains [Coastal Cliff 04](https://polyhaven.com/a/coastal_cliff_04), [Coast Rocks
 01](https://polyhaven.com/a/coast_rocks_01), and [Coast Rocks
 05](https://polyhaven.com/a/coast_rocks_05) by Rob Tuytel. [Boulder
 01](https://polyhaven.com/a/boulder_01) is by Rico Cilliers.
+
+[Coastal Cliff 01](https://polyhaven.com/a/coastal_cliff_01), [Coast Line
+01](https://polyhaven.com/a/coast_line_01), [Coast Line
+02](https://polyhaven.com/a/coast_line_02), [Coast Rocks
+02](https://polyhaven.com/a/coast_rocks_02), and [Coast Rocks
+03](https://polyhaven.com/a/coast_rocks_03) credit Rob Tuytel for photography and processing and
+Rico Cilliers for cleanup. [Coastal Cliff
+02](https://polyhaven.com/a/coastal_cliff_02) is by Rob Tuytel.
 
 [Dead Tree Trunk 02](https://polyhaven.com/a/dead_tree_trunk_02) was photographed by Jenelle van
 Heerden and processed by Rico Cilliers.
@@ -77,7 +85,7 @@ Run `mise test-sponza` for the explicit heavyweight import contract. `mise test-
 additionally imports it and captures a bounded WGPU frame. Launch the persistent example with
 `mise scrapbot run examples/sponza --editor`.
 
-Run `mise test-virtual-wilds` for the pinned six-model import contract.
+Run `mise test-virtual-wilds` for the pinned twelve-model import contract.
 `mise test-virtual-wilds-gpu` additionally drives the camera long enough to require detail-page
 reads, checks the 192 MiB residency bound, and captures consecutive WGPU frames. Its editor-camera
 residency tour crosses several high-detail regions, returns to the cliff, and preserves frames both
