@@ -53,7 +53,10 @@ streaming improves genuinely fine detail rather than revealing the asset level b
 
 Terminal pages stay pinned for the resource lifetime. Additional bootstrap refinements are loaded
 for the first frame but remain evictable, so loading many assets does not turn the per-asset startup
-allowance into an unbounded permanent GPU-memory floor.
+allowance into an unbounded permanent GPU-memory floor. The WGPU backend also caps optional
+bootstrap detail across all streamed resources at three quarters of the configured page budget.
+Mandatory fallback remains uncapped; the remainder is working space for the first camera and later
+movement.
 
 ## Bounded import memory
 

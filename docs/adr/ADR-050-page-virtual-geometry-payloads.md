@@ -89,13 +89,18 @@ alignment required by classic per-batch slices. The bounded layout guard therefo
 records that culling can actually emit instead of reserving 64 records for every cluster of a
 single-instance model.
 
-Bootstrap-tail pages and complete resources that fit the remaining budget are loaded while
-the Geometry cache is established. Refinement reads for larger imported resources run on a
-dedicated I/O worker. The render thread schedules exact immutable product ranges, continues drawing
-the nearest resident fallback, and consumes completed payloads without waiting on file I/O.
+Bootstrap-tail pages and complete resources that fit the remaining budget are loaded while the
+Geometry cache is established. Mandatory terminal pages are never capped. Across streamed
+resources, optional camera-independent bootstrap detail may consume at most three quarters of the
+configured residency budget. This preserves a working set for the first camera instead of starting
+at the eviction threshold.
+
+Refinement reads for larger imported resources run on a dedicated I/O worker. The render thread
+schedules exact immutable product ranges, continues drawing the nearest resident fallback, and
+consumes completed payloads without waiting on file I/O.
 
 Requests are deduplicated and prioritized by projected error. Admission and eviction remain group
-atomic. Ordinary frames admit at most 512 KiB and 16 groups. The configured budget counts both
+atomic. Ordinary frames admit at most 512 KiB and four groups. The configured budget counts both
 aligned vertex and index residency; only mandatory terminal fallback data may raise effective
 residency above it.
 
@@ -133,7 +138,9 @@ imported product without blocking a frame. Procedural Geometry exercises the sam
 residency machinery through a memory source. Resources that fit retain a faster canonical GPU
 representation; resources that do not fit begin with a useful bounded bootstrap tail and use
 self-contained pages without changing public APIs. The tail improves the first rendered frame but
-does not accumulate as a permanently pinned per-asset memory tax.
+does not accumulate as a permanently pinned per-asset memory tax. Global bootstrap admission also
+leaves explicit streaming headroom, preventing per-asset startup allowances from filling the whole
+project budget before camera demand is known.
 
 Structured render statistics expose total/resident/pinned/prefetched pages; complete payload budget
 and resident bytes; demand and prefetch requests; prefetch uploads, hits, and reclamations; request

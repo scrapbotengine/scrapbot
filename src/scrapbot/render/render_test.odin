@@ -1,6 +1,7 @@
 package render
 
 import ecs "../ecs"
+import geometry "../geometry"
 import resources "../resources"
 import shared "../shared"
 import ui "../ui"
@@ -3657,6 +3658,62 @@ test_wgpu_virtual_page_shadow_proxy_uses_terminal_frontier :: proc(t: ^testing.T
 	}
 }
 
+@(test)
+test_wgpu_virtual_bootstrap_reserves_global_streaming_headroom :: proc(t: ^testing.T) {
+	groups := [4]resources.Geometry_Cluster_Group {
+		{cluster_offset = 0, cluster_count = 1, page_offset = 0, page_count = 1, error = 1},
+		{cluster_offset = 1, cluster_count = 1, page_offset = 1, page_count = 1, error = 2},
+		{cluster_offset = 2, cluster_count = 1, page_offset = 2, page_count = 1, error = 3},
+		{
+			cluster_offset = 3,
+			cluster_count = 1,
+			page_offset = 3,
+			page_count = 1,
+			error = 3.4028235e38,
+		},
+	}
+	clusters := [4]resources.Geometry_Cluster {
+		{group = 0, refined_group = -1, page = 0},
+		{group = 1, refined_group = 0, page = 1},
+		{group = 2, refined_group = 1, page = 2},
+		{group = 3, refined_group = 2, page = 3},
+	}
+	pages := [4]resources.Geometry_Cluster_Page {
+		{bootstrap = true},
+		{bootstrap = true},
+		{bootstrap = true},
+		{pinned = true, bootstrap = true},
+	}
+	records := [4]geometry.Page_Payload_Record {
+		{vertex_count = 1, index_count = 1},
+		{vertex_count = 1, index_count = 1},
+		{vertex_count = 1, index_count = 1},
+		{vertex_count = 1, index_count = 1},
+	}
+	resource := resources.Geometry {
+		cluster_groups = groups[:],
+		clusters = clusters[:],
+		cluster_pages = pages[:],
+		page_payload_records = records[:],
+	}
+	page_bytes := wgpu_virtual_page_allocation_bytes(&resource, 0)
+	budget :=
+		((page_bytes * 2) * WGPU_VIRTUAL_GEOMETRY_BOOTSTRAP_BUDGET_DENOMINATOR +
+			WGPU_VIRTUAL_GEOMETRY_BOOTSTRAP_BUDGET_NUMERATOR -
+			1) /
+		WGPU_VIRTUAL_GEOMETRY_BOOTSTRAP_BUDGET_NUMERATOR
+	selected := wgpu_select_virtual_bootstrap_pages(&resource, 0, budget)
+	defer delete(selected)
+	testing.expect_value(t, len(selected), 2)
+	testing.expect_value(t, selected[0], u32(2))
+	testing.expect_value(t, selected[1], u32(3))
+
+	reserved := wgpu_select_virtual_bootstrap_pages(&resource, page_bytes, budget)
+	defer delete(reserved)
+	testing.expect_value(t, len(reserved), 1)
+	testing.expect_value(t, reserved[0], u32(3))
+}
+
 test_count_frame_system :: proc(data: rawptr, world: ^World, delta_seconds: f32) -> string {
 	ecs.advance_time(&world.time, delta_seconds)
 	count := cast(^int)data
@@ -4086,9 +4143,23 @@ test_dynamic_resolution_requires_sustained_unique_gpu_samples :: proc(t: ^testin
 	testing.expect_value(t, scale, f32(1))
 	scale = dynamic_resolution_scale(&state, camera, true, 1, 20)
 	testing.expect_value(t, scale, f32(1))
-	scale = dynamic_resolution_scale(&state, camera, true, 2, 20)
-	testing.expect_value(t, scale, f32(1))
-	scale = dynamic_resolution_scale(&state, camera, true, 3, 20)
+	for serial in 2 ..= u64(DYNAMIC_RESOLUTION_CHANGE_COOLDOWN_SAMPLES) {
+		scale = dynamic_resolution_scale(&state, camera, true, serial, 20)
+		testing.expect_value(t, scale, f32(1))
+	}
+	for serial in u64(
+		DYNAMIC_RESOLUTION_CHANGE_COOLDOWN_SAMPLES + 1,
+	) ..< u64(DYNAMIC_RESOLUTION_CHANGE_COOLDOWN_SAMPLES + DYNAMIC_RESOLUTION_OVER_BUDGET_SAMPLES) {
+		scale = dynamic_resolution_scale(&state, camera, true, serial, 20)
+		testing.expect_value(t, scale, f32(1))
+	}
+	scale = dynamic_resolution_scale(
+		&state,
+		camera,
+		true,
+		u64(DYNAMIC_RESOLUTION_CHANGE_COOLDOWN_SAMPLES + DYNAMIC_RESOLUTION_OVER_BUDGET_SAMPLES),
+		20,
+	)
 	testing.expect_value(t, scale, f32(0.95))
 	testing.expect_value(t, state.cooldown_samples, DYNAMIC_RESOLUTION_CHANGE_COOLDOWN_SAMPLES)
 }
@@ -4113,10 +4184,14 @@ test_dynamic_resolution_degrades_for_sustained_tail_pressure :: proc(t: ^testing
 	camera.dynamic_resolution = true
 	camera.dynamic_resolution_target_ms = 10
 	state: Frame_Budget_State
-	_ = dynamic_resolution_scale(&state, camera, true, 1, 9)
-	_ = dynamic_resolution_scale(&state, camera, true, 2, 18)
-	_ = dynamic_resolution_scale(&state, camera, true, 3, 9)
-	scale := dynamic_resolution_scale(&state, camera, true, 4, 9)
+	for serial in 1 ..= u64(DYNAMIC_RESOLUTION_CHANGE_COOLDOWN_SAMPLES) {
+		_ = dynamic_resolution_scale(&state, camera, true, serial, 9)
+	}
+	base := u64(DYNAMIC_RESOLUTION_CHANGE_COOLDOWN_SAMPLES)
+	_ = dynamic_resolution_scale(&state, camera, true, base + 1, 9)
+	_ = dynamic_resolution_scale(&state, camera, true, base + 2, 18)
+	_ = dynamic_resolution_scale(&state, camera, true, base + 3, 9)
+	scale := dynamic_resolution_scale(&state, camera, true, base + 4, 9)
 	testing.expect_value(t, scale, f32(0.95))
 	testing.expect_value(t, state.tail_gpu_ms, f64(0))
 	testing.expect_value(t, state.gpu_sample_count, 0)
@@ -4130,15 +4205,24 @@ test_dynamic_resolution_consumes_scene_span_and_respects_manual_bounds :: proc(t
 	camera.dynamic_resolution_min_scale = 0.7
 	camera.dynamic_resolution_target_ms = 10
 	state: Frame_Budget_State
-	for serial in 1 ..= u64(DYNAMIC_RESOLUTION_OVER_BUDGET_SAMPLES) {
+	for serial in 1 ..= u64(DYNAMIC_RESOLUTION_CHANGE_COOLDOWN_SAMPLES) {
+		_ = dynamic_resolution_scale(&state, camera, true, serial, 8)
+	}
+	for serial in u64(
+		DYNAMIC_RESOLUTION_CHANGE_COOLDOWN_SAMPLES + 1,
+	) ..= u64(DYNAMIC_RESOLUTION_CHANGE_COOLDOWN_SAMPLES + DYNAMIC_RESOLUTION_OVER_BUDGET_SAMPLES) {
 		scale := dynamic_resolution_scale(&state, camera, true, serial, 8)
 		testing.expect_value(t, scale, f32(0.8))
 	}
-	for serial in u64(4) ..= u64(6) {
+	pressure_start := u64(
+		DYNAMIC_RESOLUTION_CHANGE_COOLDOWN_SAMPLES + DYNAMIC_RESOLUTION_OVER_BUDGET_SAMPLES + 1,
+	)
+	for serial in pressure_start ..< pressure_start + u64(DYNAMIC_RESOLUTION_OVER_BUDGET_SAMPLES) {
 		_ = dynamic_resolution_scale(&state, camera, true, serial, 24)
 	}
 	testing.expect_value(t, state.effective_scale, f32(0.75))
-	for serial in u64(7) ..= u64(64) {
+	for serial in pressure_start +
+		u64(DYNAMIC_RESOLUTION_OVER_BUDGET_SAMPLES) ..= pressure_start + 96 {
 		_ = dynamic_resolution_scale(&state, camera, true, serial, 24)
 	}
 	testing.expect_value(t, state.effective_scale, f32(0.7))
@@ -4166,7 +4250,9 @@ test_dynamic_resolution_rejects_delayed_samples_from_previous_scale_generation :
 	renderer.gpu_timestamp_supported = true
 	_ = dynamic_resolution_scale(&renderer.dynamic_resolution, camera, true, 0, 0)
 	initial_generation := renderer.dynamic_resolution.generation
-	for serial in 1 ..= u64(DYNAMIC_RESOLUTION_OVER_BUDGET_SAMPLES) {
+	for serial in 1 ..= u64(
+		DYNAMIC_RESOLUTION_CHANGE_COOLDOWN_SAMPLES + DYNAMIC_RESOLUTION_OVER_BUDGET_SAMPLES,
+	) {
 		_ = dynamic_resolution_scale(&renderer.dynamic_resolution, camera, true, serial, 20)
 	}
 	testing.expect(t, renderer.dynamic_resolution.generation != initial_generation)
@@ -4193,8 +4279,18 @@ test_dynamic_resolution_batches_match_individual_sample_hysteresis :: proc(t: ^t
 	renderer.gpu_timestamp_supported = true
 	_ = dynamic_resolution_scale(&renderer.dynamic_resolution, camera, true, 0, 0)
 	generation := renderer.dynamic_resolution.generation
-	for frame_index in 0 ..< DYNAMIC_RESOLUTION_OVER_BUDGET_SAMPLES {
+	frame_index := 0
+	for frame_index < DYNAMIC_RESOLUTION_CHANGE_COOLDOWN_SAMPLES {
 		wgpu_dynamic_resolution_accumulate_sample(&renderer, generation, u64(frame_index), 20)
+		frame_index += 1
+		if renderer.gpu_timestamp_resolution_sample_count == WGPU_GPU_TIMESTAMP_FRAMES {
+			_ = wgpu_dynamic_resolution_scale(&renderer, camera, {})
+		}
+	}
+	for frame_index <
+	    DYNAMIC_RESOLUTION_CHANGE_COOLDOWN_SAMPLES + DYNAMIC_RESOLUTION_OVER_BUDGET_SAMPLES {
+		wgpu_dynamic_resolution_accumulate_sample(&renderer, generation, u64(frame_index), 20)
+		frame_index += 1
 	}
 	scale := wgpu_dynamic_resolution_scale(&renderer, camera, {})
 	testing.expect_value(t, scale, f32(0.95))
@@ -4249,7 +4345,9 @@ test_dynamic_resolution_resets_when_policy_owner_camera_changes :: proc(t: ^test
 	testing.expect(t, first_owner_ok)
 	testing.expect(t, second_owner_ok)
 	state: Frame_Budget_State
-	for serial in 1 ..= u64(DYNAMIC_RESOLUTION_OVER_BUDGET_SAMPLES) {
+	for serial in 1 ..= u64(
+		DYNAMIC_RESOLUTION_CHANGE_COOLDOWN_SAMPLES + DYNAMIC_RESOLUTION_OVER_BUDGET_SAMPLES,
+	) {
 		_ = dynamic_resolution_scale(&state, camera, true, serial, 20, first_owner)
 	}
 	testing.expect_value(t, state.effective_scale, f32(0.95))

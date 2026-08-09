@@ -19,6 +19,7 @@ This file tracks current actionable engineering work. The broad product roadmap 
 - [ ] Evaluate world-space AO, soft shadows, particles, and measured coarse-occlusion assistance as independent consumers of the incrementally scrolled world distance field. Retain HZB as primary visibility until profiles justify otherwise. See [ADR-055](adr/ADR-055-compile-mesh-distance-fields-offline.md).
 - [ ] Design baked/captured local reflection-probe resources, ECS volume components, probe selection/blending, and an editor bake workflow on top of global imported IBL.
 - [ ] Add GPU-native compressed texture products for imported images.
+- [ ] Add mip-resident texture streaming so projects can use 2K–8K source images without eagerly expanding every complete RGBA8 mip chain on the GPU.
 - [ ] Add sorted glTF `BLEND` transparency, richer PBR extensions, animation, skins, morph targets, and compressed geometry. (`OPAQUE`, `MASK`, alpha cutoffs, and double-sided materials are supported.)
 - [ ] Add a bounded GPU sort path for large transparent sets; project-shader transparency currently performs exact CPU back-to-front instance sorting.
 - [ ] Extend spectral surfaces into a reusable water resource/component with multiple frequency bands, current/deformation masks, caustics, underwater rendering, water-aware motion vectors, and scalable quality tiers.

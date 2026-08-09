@@ -36,6 +36,11 @@ one cooldown, and rejects delayed timestamp samples from the previous configurat
 policy or stable owner change resets all outputs together. Unsupported timestamp queries and
 disabled adaptation select authored maxima.
 
+Initialization uses the same cooldown. Samples inside a cooldown are discarded before they enter
+the filtered average or p95 window. They commonly include target allocation, pipeline warmup, or
+cache replacement and therefore do not describe the steady-state quality configuration. This also
+prevents a resize spike from triggering another resize in a self-sustaining quality staircase.
+
 ## Consequences
 
 - Quality changes are deterministic, reversible, and observable through renderer/profile diagnostics.

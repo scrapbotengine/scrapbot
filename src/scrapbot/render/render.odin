@@ -508,12 +508,25 @@ dynamic_resolution_scale :: proc "contextless" (
 		)
 		state.effective_post_quality = clamp(state.effective_post_quality, minimum_quality, 1)
 		frame_budget_reset_evidence(state)
-		state.cooldown_samples = 0
+		// Newly created render targets and pipelines can make the first few GPU
+		// timestamps dramatically more expensive than the settled frame. Treat
+		// startup exactly like a quality transition: let the new configuration
+		// settle before it contributes evidence to the controller.
+		state.cooldown_samples = DYNAMIC_RESOLUTION_CHANGE_COOLDOWN_SAMPLES
 	}
 	if !enabled || sample_serial == 0 || sample_serial == state.last_sample_serial {
 		return state.effective_scale
 	}
 	state.last_sample_serial = sample_serial
+	// A scale or quality transition recreates size-dependent targets. Samples
+	// collected during that cooldown describe allocation/cache warmup, not the
+	// steady-state configuration we are deciding whether to keep. Recording
+	// them poisoned the p95 window and caused a self-sustaining staircase from
+	// one resize spike to the next.
+	if state.cooldown_samples > 0 {
+		state.cooldown_samples -= 1
+		return state.effective_scale
+	}
 	if !state.has_filtered_sample {
 		state.filtered_gpu_ms = max(gpu_scene_ms, 0)
 		state.has_filtered_sample = true
@@ -522,10 +535,6 @@ dynamic_resolution_scale :: proc "contextless" (
 			(max(gpu_scene_ms, 0) - state.filtered_gpu_ms) * DYNAMIC_RESOLUTION_FILTER_ALPHA
 	}
 	frame_budget_record_gpu_sample(state, gpu_scene_ms)
-	if state.cooldown_samples > 0 {
-		state.cooldown_samples -= 1
-		return state.effective_scale
-	}
 	over_budget := state.tail_gpu_ms > f64(target) * DYNAMIC_RESOLUTION_OVER_BUDGET_RATIO
 	under_budget := state.tail_gpu_ms < f64(target) * DYNAMIC_RESOLUTION_UNDER_BUDGET_RATIO
 	if over_budget {

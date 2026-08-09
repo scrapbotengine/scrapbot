@@ -147,7 +147,9 @@ immutable product-range reads, and the configured combined payload budget. Outst
 fixed job and byte ceilings. Completed-but-unadmitted payloads have a separate bounded staging
 budget and age out when demand no longer owns them. A bounded, error-prioritized bootstrap tail is
 loaded before ordinary streaming begins. Only its mandatory terminal groups remain pinned;
-additional startup refinements may be reclaimed by the global residency policy.
+additional startup refinements may be reclaimed by the global residency policy. WGPU bounds those
+optional refinements across all caches to three quarters of the configured page budget and owns the
+remaining first-camera working set.
 
 Imported Geometry query positions and exact leaf topology remain resource-owned. Picking borrows
 them without allocation. A WGPU cache miss may request an owned canonical view reconstructed from

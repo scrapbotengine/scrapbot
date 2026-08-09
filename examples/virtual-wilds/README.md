@@ -1,5 +1,11 @@
 # Virtual Wilds
 
+Virtual Wilds combines high-detail Poly Haven geometry with deliberately lightweight 1K material
+images. The geometry products exercise virtual geometry, residency, batching, and culling; the 1K
+textures keep the current eager RGBA8 texture path within a reasonable startup and memory budget.
+Close-up material detail is therefore limited until Scrapbot supports GPU-compressed,
+mip-resident high-resolution textures.
+
 Virtual Wilds is Scrapbot's real-world virtual-geometry showcase. It builds a moving coastal route
 from twelve full-detail CC0 Poly Haven models.
 

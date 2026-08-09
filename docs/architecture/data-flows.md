@@ -56,7 +56,9 @@ Virtual Geometry that fits the remaining budget retains canonical vertex/index r
 expanded page indices. Larger resources allocate page-local vertex and index ranges only for
 resident pages. Their coarse-to-medium bootstrap tail is loaded before the cache becomes usable.
 Terminal groups cannot be evicted; additional bootstrap refinements join the ordinary global
-residency policy after upload.
+residency policy after upload. Optional bootstrap refinements stop at three quarters of the global
+page budget, while mandatory terminal pages remain uncapped. The reserved working set accepts
+first-camera demand without beginning ordinary rendering at the eviction threshold.
 
 GPU feedback identifies visible demand, bounded future-camera prefetch, and visible-use touches in
 separate bounded lanes.

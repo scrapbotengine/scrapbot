@@ -384,6 +384,11 @@ preload becomes one combined arena transfer. Residency mutations use persistent 
 and refinement-to-parent indices to patch only changed clusters and their direct dependents.
 Adjacent changes coalesce into bounded GPU writes; stable frames do no page work.
 
+At cache creation, every pinned terminal group remains resident as the correctness floor. Optional
+camera-independent bootstrap detail may consume at most three quarters of the global residency
+budget. The remainder is reserved for the first camera's exact demand so useful refinement does not
+immediately evict bootstrap data and begin a residency churn loop.
+
 All completed readbacks share those frame admission limits. After the group limit is spent, the CPU
 still applies resident touches but skips missing-page and staging construction for nonresident
 requests that cannot be admitted. Page assembly, feedback sorting, and metadata-patch scratch use

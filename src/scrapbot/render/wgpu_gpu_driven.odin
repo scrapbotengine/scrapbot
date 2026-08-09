@@ -225,6 +225,120 @@ wgpu_cached_virtual_geometry_bytes :: proc "contextless" (cache: ^WGPU_Geometry_
 	return bytes
 }
 
+wgpu_virtual_page_allocation_bytes :: proc "contextless" (
+	geometry: ^resources.Geometry,
+	page_index: int,
+) -> u64 {
+	if geometry == nil || page_index < 0 || page_index >= len(geometry.page_payload_records) {
+		return 0
+	}
+	record := geometry.page_payload_records[page_index]
+	return(
+		wgpu_align_arena_offset(
+			u64(record.vertex_count) * u64(size_of(resources.Vertex)),
+			u64(size_of(resources.Vertex)),
+		) +
+		wgpu_align_arena_offset(u64(record.index_count) * u64(size_of(u32)), u64(size_of(u32))) \
+	)
+}
+
+wgpu_select_virtual_bootstrap_pages :: proc(
+	geometry: ^resources.Geometry,
+	resident_bytes, budget_bytes: u64,
+	allocator := context.temp_allocator,
+) -> [dynamic]u32 {
+	selected_pages := make(
+		[dynamic]u32,
+		0,
+		len(geometry.cluster_pages) if geometry != nil else 0,
+		allocator,
+	)
+	if geometry == nil || len(geometry.cluster_groups) == 0 {
+		return selected_pages
+	}
+	selected_groups := make([]bool, len(geometry.cluster_groups), allocator)
+	defer delete(selected_groups, allocator)
+	selected_bytes: u64
+	for group, group_index in geometry.cluster_groups {
+		pinned := group.page_count > 0
+		for page_index in group.page_offset ..< group.page_offset + group.page_count {
+			pinned = pinned && geometry.cluster_pages[page_index].pinned
+		}
+		if !pinned {
+			continue
+		}
+		selected_groups[group_index] = true
+		for page_index in group.page_offset ..< group.page_offset + group.page_count {
+			append(&selected_pages, page_index)
+			selected_bytes += wgpu_virtual_page_allocation_bytes(geometry, int(page_index))
+		}
+	}
+	bootstrap_limit :=
+		budget_bytes *
+		WGPU_VIRTUAL_GEOMETRY_BOOTSTRAP_BUDGET_NUMERATOR /
+		WGPU_VIRTUAL_GEOMETRY_BOOTSTRAP_BUDGET_DENOMINATOR
+	// Mandatory terminal pages remain a correctness floor even on a budget too
+	// small to contain them. Optional detail never makes that overage worse.
+	if resident_bytes + selected_bytes >= bootstrap_limit {
+		slice.sort(selected_pages[:])
+		return selected_pages
+	}
+	for {
+		best_group := -1
+		best_error: f32 = -1
+		best_bytes: u64
+		for group, group_index in geometry.cluster_groups {
+			if selected_groups[group_index] || group.page_count == 0 {
+				continue
+			}
+			bootstrap := true
+			group_bytes: u64
+			for page_index in group.page_offset ..< group.page_offset + group.page_count {
+				bootstrap = bootstrap && geometry.cluster_pages[page_index].bootstrap
+				group_bytes += wgpu_virtual_page_allocation_bytes(geometry, int(page_index))
+			}
+			if !bootstrap ||
+			   group_bytes == 0 ||
+			   resident_bytes + selected_bytes + group_bytes > bootstrap_limit {
+				continue
+			}
+			has_parent := false
+			parents_selected := true
+			for cluster in geometry.clusters {
+				if cluster.refined_group != i32(group_index) {
+					continue
+				}
+				has_parent = true
+				if cluster.group < 0 ||
+				   int(cluster.group) >= len(selected_groups) ||
+				   !selected_groups[cluster.group] {
+					parents_selected = false
+					break
+				}
+			}
+			if !has_parent || !parents_selected {
+				continue
+			}
+			if best_group < 0 || group.error > best_error {
+				best_group = group_index
+				best_error = group.error
+				best_bytes = group_bytes
+			}
+		}
+		if best_group < 0 {
+			break
+		}
+		selected_groups[best_group] = true
+		group := geometry.cluster_groups[best_group]
+		for page_index in group.page_offset ..< group.page_offset + group.page_count {
+			append(&selected_pages, page_index)
+		}
+		selected_bytes += best_bytes
+	}
+	slice.sort(selected_pages[:])
+	return selected_pages
+}
+
 wgpu_cluster_group_residency :: proc "contextless" (
 	geometry: ^resources.Geometry,
 	cache: ^WGPU_Geometry_Cache,

@@ -44,6 +44,11 @@ WGPU_CLUSTER_COUNT_Z :: 24
 WGPU_CLUSTER_COUNT :: WGPU_CLUSTER_COUNT_X * WGPU_CLUSTER_COUNT_Y * WGPU_CLUSTER_COUNT_Z
 WGPU_CLUSTER_INITIAL_LIGHT_CAPACITY :: 256
 WGPU_VIRTUAL_GEOMETRY_BUDGET_BYTES :: u64(64 * 1024 * 1024)
+// Bootstrap detail must leave room for the first camera's exact working set.
+// Terminal fallback is never capped, but optional camera-independent detail
+// may consume at most three quarters of the configured residency budget.
+WGPU_VIRTUAL_GEOMETRY_BOOTSTRAP_BUDGET_NUMERATOR :: u64(3)
+WGPU_VIRTUAL_GEOMETRY_BOOTSTRAP_BUDGET_DENOMINATOR :: u64(4)
 WGPU_VIRTUAL_GEOMETRY_UPLOAD_BUDGET_BYTES :: u64(512 * 1024)
 WGPU_VIRTUAL_GEOMETRY_UPLOAD_GROUP_BUDGET :: 4
 WGPU_VIRTUAL_GEOMETRY_STAGED_PAYLOAD_BUDGET_BYTES :: u64(16 * 1024 * 1024)
@@ -2936,17 +2941,26 @@ wgpu_geometry_cache :: proc(
 				}
 			}
 			preload_geometry := preload_virtual_geometry
-			selected_pages := make(
-				[dynamic]u32,
-				0,
-				len(geometry.cluster_pages),
-				context.temp_allocator,
-			)
+			selected_pages: [dynamic]u32
 			for page, page_index in geometry.cluster_pages {
 				cluster_pages[page_index].pinned = page.pinned
-				if page.bootstrap || preload_geometry {
+			}
+			if preload_geometry {
+				selected_pages = make(
+					[dynamic]u32,
+					0,
+					len(geometry.cluster_pages),
+					context.temp_allocator,
+				)
+				for _, page_index in geometry.cluster_pages {
 					append(&selected_pages, u32(page_index))
 				}
+			} else {
+				selected_pages = wgpu_select_virtual_bootstrap_pages(
+					geometry,
+					renderer.virtual_geometry_resident_bytes,
+					renderer.virtual_geometry_budget_bytes,
+				)
 			}
 			page_vertex_bytes: u64
 			page_index_bytes: u64
