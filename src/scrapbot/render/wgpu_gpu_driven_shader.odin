@@ -1489,8 +1489,8 @@ struct Visibility_Counters {
 	virtual_page_prefetch_feedback_overflow: atomic<u32>,
 	shadow_visible_meshlets_by_cascade: array<atomic<u32>, 4>,
 	virtual_page_demand_feedback: array<Virtual_Page_Feedback, 32768>,
-	virtual_page_touch_feedback: array<Virtual_Page_Feedback, 4096>,
-	virtual_page_prefetch_feedback: array<Virtual_Page_Feedback, 4096>,
+	virtual_page_touch_feedback: array<Virtual_Page_Feedback, 16384>,
+	virtual_page_prefetch_feedback: array<Virtual_Page_Feedback, 16384>,
 	visible_batch_words: array<atomic<u32>, 16384>,
 };
 
@@ -1607,7 +1607,7 @@ fn append_virtual_page_feedback(
 		}
 	} else if ((flags & 2u) != 0u) {
 		feedback_index = atomicAdd(&counters.virtual_page_touch_feedback_count, 1u);
-		if (feedback_index < 4096u) {
+		if (feedback_index < 16384u) {
 			counters.virtual_page_touch_feedback[feedback_index] = Virtual_Page_Feedback(
 				meshlet.request_geometry_index,
 				meshlet.request_geometry_generation,
@@ -1620,7 +1620,7 @@ fn append_virtual_page_feedback(
 		}
 	} else {
 		feedback_index = atomicAdd(&counters.virtual_page_prefetch_feedback_count, 1u);
-		if (feedback_index < 4096u) {
+		if (feedback_index < 16384u) {
 			counters.virtual_page_prefetch_feedback[feedback_index] = Virtual_Page_Feedback(
 			meshlet.request_geometry_index,
 			meshlet.request_geometry_generation,

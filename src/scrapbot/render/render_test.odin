@@ -522,7 +522,7 @@ test_gpu_meshlet_cone_culling_requires_a_positive_uniform_transform :: proc(t: ^
 @(test)
 test_gpu_virtual_feedback_layout_preserves_lane_specific_capacity :: proc(t: ^testing.T) {
 	testing.expect_value(t, WGPU_VIRTUAL_PAGE_DEMAND_FEEDBACK_CAPACITY, 32_768)
-	testing.expect_value(t, WGPU_VIRTUAL_PAGE_FEEDBACK_CAPACITY, 4_096)
+	testing.expect_value(t, WGPU_VIRTUAL_PAGE_FEEDBACK_CAPACITY, 16_384)
 	testing.expect_value(
 		t,
 		offset_of(WGPU_GPU_Visibility_Counters, virtual_page_demand_feedback),
@@ -539,9 +539,17 @@ test_gpu_virtual_feedback_layout_preserves_lane_specific_capacity :: proc(t: ^te
 		t,
 		strings.contains(
 			WGPU_GPU_CULL_SHADER,
-			"virtual_page_touch_feedback: array<Virtual_Page_Feedback, 4096>",
+			"virtual_page_touch_feedback: array<Virtual_Page_Feedback, 16384>",
 		),
 	)
+	testing.expect(
+		t,
+		strings.contains(
+			WGPU_GPU_CULL_SHADER,
+			"virtual_page_prefetch_feedback: array<Virtual_Page_Feedback, 16384>",
+		),
+	)
+	testing.expect_value(t, strings.count(WGPU_GPU_CULL_SHADER, "feedback_index < 16384u"), 2)
 }
 
 @(test)

@@ -163,7 +163,11 @@ WGPU_GPU_Visibility_Counters :: struct {
 // dropping the tail would repeatedly starve groups that occur later in the
 // stable GPU traversal order. This remains a bounded 640 KiB lane.
 WGPU_VIRTUAL_PAGE_DEMAND_FEEDBACK_CAPACITY :: 32_768
-WGPU_VIRTUAL_PAGE_FEEDBACK_CAPACITY :: 4_096
+// Touch and prefetch feedback can exceed the number of resident pages while a
+// moving camera crosses several dense virtual assets. Keep the lane large
+// enough to preserve the complete working-set signal instead of silently
+// biasing residency toward whichever clusters append first.
+WGPU_VIRTUAL_PAGE_FEEDBACK_CAPACITY :: 16_384
 WGPU_GPU_Virtual_Page_Feedback :: struct {
 	geometry_index: u32,
 	geometry_generation: u32,
