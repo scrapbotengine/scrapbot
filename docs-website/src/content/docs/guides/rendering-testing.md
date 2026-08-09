@@ -243,13 +243,15 @@ Use either the procedural sun or one authored directional light when a scene nee
 
 ### Volumetric fog
 
-Add one `scrapbot.volumetric_fog` component to author global height and distance fog. A scalable compute pass integrates a fixed 16-sample camera ray, stops it at opaque depth or the authored distance bound, and evaluates exponential density around a world-space height plane. `resolution_scale` sizes that target from `0.25` to `1` of the camera render grid and defaults to `0.25`.
+Add one `scrapbot.volumetric_fog` component to author global height and distance fog. A scalable compute pass integrates 16–64 samples along each camera ray, stops at opaque depth or the authored distance bound, and evaluates exponential density around a world-space height plane. `resolution_scale` sizes that target from `0.25` to `1` of the camera render grid and defaults to `0.25`.
 
 The primary directional light supplies anisotropic in-scattering. Its four cascaded shadows filter that contribution, so sunbeams and occluded haze follow the same shadow geometry as opaque surfaces. Ambient scattering remains available in shadow and at night.
 
 `point_light_intensity` independently opts clustered point lights into the medium. Every ray step reuses its complete GPU-built view-frustum cluster; Scrapbot does not build or upload another fog-only light list.
 
-Fog is depth-aware reconstructed before TAA and bloom. A low-discrepancy sub-step offset rotates across the eight-frame temporal sequence inside a centered portion of each ray interval. TAA integrates those samples into smooth shafts without the bands produced by fixed midpoint slices or a conspicuous low-resolution pattern during camera motion. Remove the component or set `density = 0` to skip the fog dispatch. See [`scrapbot.volumetric_fog`](/reference/components/#scrapbotvolumetric_fog) for every field.
+Fog is depth-aware reconstructed before TAA and bloom. An integer-scrambled sequence decorrelates ray samples across fog texels and 256 frames. Surface fog reprojects from finite depth, while sky fog follows its world-space view direction. Structured low-resolution bands become fine variance that converges without leaving a sampling pattern in open sky. With unavailable or disabled history, the ray march uses a stable midpoint.
+
+Remove the component or set `density = 0` to skip the fog dispatch. See [`scrapbot.volumetric_fog`](/reference/components/#scrapbotvolumetric_fog) for every field.
 
 This implementation remains one global volume. It does not yet support local fog shapes or an authored ray-sample count.
 

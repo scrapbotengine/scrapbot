@@ -1685,7 +1685,7 @@ wgpu_profile_workload :: proc(
 			fog_width,
 			fog_height,
 			1,
-			u32(max(f32(4), f32(16) * adaptive_post_quality)),
+			u32(max(f32(16), f32(64) * adaptive_post_quality)),
 		),
 		temporal_aa = wgpu_profile_compute_workload(
 			true,

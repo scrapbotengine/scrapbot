@@ -1,0 +1,13 @@
+{
+  "width": 1280,
+  "height": 720,
+  "regions": [
+    {
+      "name": "open_sky_fog",
+      "rect": [520, 100, 300, 120],
+      "expect": {
+        "mean_neighbor_luminance_delta": [0.0, 0.0015]
+      }
+    }
+  ]
+}

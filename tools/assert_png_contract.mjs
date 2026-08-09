@@ -49,6 +49,16 @@ function regionMetrics(region) {
   let luminance = 0;
   let luminanceSquared = 0;
   let chroma = 0;
+  let neighborLuminanceDelta = 0;
+  let neighborCount = 0;
+  const luminanceAt = (column, row) => {
+    const offset = (row * image.width + column) * 4;
+    return (
+      0.2126 * srgbToLinear(image.pixels[offset]) +
+      0.7152 * srgbToLinear(image.pixels[offset + 1]) +
+      0.0722 * srgbToLinear(image.pixels[offset + 2])
+    );
+  };
   for (let row = y; row < y + height; row += 1) {
     for (let column = x; column < x + width; column += 1) {
       const offset = (row * image.width + column) * 4;
@@ -65,6 +75,18 @@ function regionMetrics(region) {
       luminance += sampleLuminance;
       luminanceSquared += sampleLuminance * sampleLuminance;
       chroma += (Math.max(red, green, blue) - Math.min(red, green, blue)) / 255;
+      if (column + 1 < x + width) {
+        neighborLuminanceDelta += Math.abs(
+          sampleLuminance - luminanceAt(column + 1, row),
+        );
+        neighborCount += 1;
+      }
+      if (row + 1 < y + height) {
+        neighborLuminanceDelta += Math.abs(
+          sampleLuminance - luminanceAt(column, row + 1),
+        );
+        neighborCount += 1;
+      }
     }
   }
   const meanLuminance = luminance / count;
@@ -76,6 +98,8 @@ function regionMetrics(region) {
     luminance_deviation: Math.sqrt(
       Math.max(luminanceSquared / count - meanLuminance ** 2, 0),
     ),
+    mean_neighbor_luminance_delta:
+      neighborCount > 0 ? neighborLuminanceDelta / neighborCount : 0,
     mean_chroma: chroma / count,
   };
 }

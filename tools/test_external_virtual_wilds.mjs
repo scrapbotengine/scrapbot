@@ -346,6 +346,23 @@ function main() {
         ],
       },
       {
+        name: "volumetric-fog",
+        captureStart: 52,
+        captureEnd: 59,
+        visualContract: "tests/fixtures/visual/virtual-wilds-volumetric-fog.json",
+        arguments: [
+          "--warmup",
+          "0",
+          "--frames",
+          "64",
+          "--capture-range",
+          "52:59",
+          "--editor",
+          "--ui-script",
+          "tests/fixtures/ui/virtual-wilds-volumetric-fog.json",
+        ],
+      },
+      {
         name: "transition",
         arguments: [
           "--warmup",
@@ -429,6 +446,37 @@ function main() {
         );
       }
       process.stdout.write(sequence.stdout);
+      if (sequenceConfig.visualContract) {
+        for (
+          let frame = sequenceConfig.captureStart;
+          frame <= sequenceConfig.captureEnd;
+          frame += 1
+        ) {
+          const visualCheck = spawnSync(
+            process.execPath,
+            [
+              join(repositoryRoot, "tools/assert_png_contract.mjs"),
+              join(
+                sequenceOut,
+                sequenceConfig.name,
+                "frames",
+                `frame-${String(frame).padStart(6, "0")}.png`,
+              ),
+              join(repositoryRoot, sequenceConfig.visualContract),
+            ],
+            {cwd: repositoryRoot, encoding: "utf8"},
+          );
+          if (visualCheck.error) {
+            throw visualCheck.error;
+          }
+          if (visualCheck.status !== 0) {
+            throw new Error(
+              visualCheck.stderr.trim() ||
+                `Virtual Wilds ${sequenceConfig.name} visual contract failed`,
+            );
+          }
+        }
+      }
       const profile = JSON.parse(
         readFileSync(join(sequenceOut, sequenceConfig.name, "profile.json"), "utf8"),
       );

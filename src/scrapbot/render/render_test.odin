@@ -3850,27 +3850,39 @@ test_volumetric_fog_shader_is_energy_normalized_shadowed_and_temporally_resolved
 	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "fog_point_light_radiance"))
 	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "cluster_light_counts"))
 	testing.expect(t, !strings.contains(WGPU_TEMPORAL_AA_SHADER, "FOG_MAX_POINT_LIGHTS_PER_STEP"))
-	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "let spatial_phase = fract"))
 	testing.expect(
 		t,
 		strings.contains(
 			WGPU_TEMPORAL_AA_SHADER,
-			"fract(dot(vec2<f32>(fog_texel), vec2<f32>(0.06711056, 0.00583715)))",
+			"fn fog_sample_phase(fog_texel: vec2<u32>, frame: u32)",
 		),
 	)
+	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "frame * 0xc2b2ae35u"))
 	testing.expect(
 		t,
-		!strings.contains(
+		strings.contains(
 			WGPU_TEMPORAL_AA_SHADER,
-			"fract(dot(vec2<f32>(pixel), vec2<f32>(0.06711056, 0.00583715)))",
+			"fog_sample_phase(fog_texel, u32(temporal.reflections.y))",
 		),
 	)
 	testing.expect(
 		t,
-		strings.contains(WGPU_TEMPORAL_AA_SHADER, "temporal.reflections.w * 0.754877666"),
+		strings.contains(
+			WGPU_TEMPORAL_AA_SHADER,
+			"temporal.features.x > 0.5 && temporal.parameters.z > 0.5",
+		),
 	)
-	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "mix(0.5, rotating_phase, 0.38)"))
-	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "f32(step) + temporal_phase"))
+	testing.expect(t, !strings.contains(WGPU_TEMPORAL_AA_SHADER, "let spatial_phase = fract"))
+	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "world_direction * 100000.0"))
+	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "stored_depth >= 0.999999"))
+	testing.expect(
+		t,
+		strings.contains(
+			WGPU_TEMPORAL_AA_SHADER,
+			"mix(fogged_color, history_sample.rgb, temporal.parameters.w)",
+		),
+	)
+	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "f32(step) + integration_phase"))
 	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "closest_depth_delta"))
 	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "fn rgb_to_ycocg"))
 	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "fn ycocg_to_rgb"))

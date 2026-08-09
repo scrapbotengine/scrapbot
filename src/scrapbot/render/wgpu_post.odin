@@ -1994,7 +1994,7 @@ wgpu_encode_bloom_and_composite :: proc(
 		},
 		reflections = {
 			1 if resolved_camera.screen_space_reflections else 0,
-			0,
+			f32(renderer.temporal_sample_index % 256),
 			0,
 			f32(renderer.temporal_sample_index % 8),
 		},
@@ -2013,7 +2013,7 @@ wgpu_encode_bloom_and_composite :: proc(
 		fog.ambient_intensity,
 		fog.light_intensity,
 		fog.point_light_intensity,
-		max(f32(4), f32(16) * adaptive_post_quality),
+		max(f32(16), f32(64) * adaptive_post_quality),
 	}
 	wgpu.QueueWriteBuffer(
 		renderer.queue,

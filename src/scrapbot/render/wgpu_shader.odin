@@ -791,7 +791,7 @@ struct Cluster_Uniform {
 @group(1) @binding(2) var<storage, read_write> cluster_light_indices: array<u32>;
 @group(1) @binding(3) var<uniform> cluster: Cluster_Uniform;
 
-const FOG_STEP_COUNT: u32 = 16u;
+const FOG_STEP_COUNT: u32 = 64u;
 const FOG_PHASE_NORMALIZATION: f32 = 0.07957747155;
 const TEMPORAL_WORKGROUP_WIDTH: u32 = 8u;
 const TEMPORAL_TILE_WIDTH: u32 = TEMPORAL_WORKGROUP_WIDTH + 2u;
@@ -1065,6 +1065,19 @@ fn fog_point_light_radiance(
 		temporal.fog_lighting.z;
 }
 
+fn fog_sample_phase(fog_texel: vec2<u32>, frame: u32) -> f32 {
+	var value =
+		fog_texel.x * 0x9e3779b9u ^
+		fog_texel.y * 0x85ebca6bu ^
+		frame * 0xc2b2ae35u;
+	value ^= value >> 16u;
+	value *= 0x7feb352du;
+	value ^= value >> 15u;
+	value *= 0x846ca68bu;
+	value ^= value >> 16u;
+	return f32(value & 0x00ffffffu) / 16777216.0;
+}
+
 fn integrate_volumetric_fog(
 	fog_texel: vec2<u32>,
 	pixel: vec2<i32>,
@@ -1094,21 +1107,16 @@ fn integrate_volumetric_fog(
 	let camera_position = temporal.inverse_view[3].xyz;
 	let active_step_count = clamp(u32(temporal.fog_lighting.w), 4u, FOG_STEP_COUNT);
 	let step_length = ray_distance / f32(active_step_count);
-	// Rotate a low-discrepancy sub-step offset through the temporal sample
-	// sequence. Generate the phase in the fog grid's own texel space: using
-	// representative full-resolution pixels here subsamples the sequence at
-	// low fog resolutions and aliases it into wide diagonal bands. TAA
-	// integrates these samples into smooth shafts without fixed depth slices.
-	let spatial_phase = fract(
-		52.9829189 *
-			fract(dot(vec2<f32>(fog_texel), vec2<f32>(0.06711056, 0.00583715))),
+	// Scramble both fog texel and a long frame sequence. This turns low-sample
+	// error into unstructured variance that finite-depth and sky history can
+	// integrate, without the short-cycle lattice left by interleaved gradients.
+	// Without valid TAA history, fall back to stable midpoint quadrature.
+	let temporal_phase = fog_sample_phase(fog_texel, u32(temporal.reflections.y));
+	let integration_phase = select(
+		0.5,
+		temporal_phase,
+		temporal.features.x > 0.5 && temporal.parameters.z > 0.5,
 	);
-	// Keep the rotating low-discrepancy sequence centered inside each ray
-	// interval. A full interval of spatial jitter exposes the half-resolution
-	// fog grid during camera motion before TAA can converge; the centered span
-	// preserves temporal coverage while bounding that variance.
-	let rotating_phase = fract(spatial_phase + temporal.reflections.w * 0.754877666);
-	let temporal_phase = mix(0.5, rotating_phase, 0.38);
 	var directional_radiance = vec3<f32>(0.0);
 	if (render.light_counts.x > 0u) {
 		let light_direction = normalize(-render.directional_direction_intensity[0].xyz);
@@ -1129,7 +1137,7 @@ fn integrate_volumetric_fog(
 	var transmittance = 1.0;
 	var scattering = vec3<f32>(0.0);
 	for (var step = 0u; step < active_step_count; step += 1u) {
-		let distance = (f32(step) + temporal_phase) * step_length;
+		let distance = (f32(step) + integration_phase) * step_length;
 		let world_position = camera_position + world_direction * distance;
 		let height_offset = world_position.y - temporal.fog_height_distance.x;
 		let height_density = clamp(
@@ -1478,10 +1486,52 @@ fn temporal_aa_cs(
 		temporal.features.x > 0.5 &&
 		temporal.parameters.z > 0.5
 	) {
-		let history_sample = textureLoad(history_color, pixel, 0);
-		let stored_depth = textureLoad(history_depth, pixel, 0).r;
-		if (virtual_transition_reactive(history_sample.a) && stored_depth < 0.999999) {
-			result = mix(fogged_color, history_sample.rgb, 0.9);
+		let sample_position = vec2<f32>(pixel) + vec2<f32>(0.5);
+		let viewport_uv = (sample_position - temporal.viewport.xy) / temporal.viewport.zw;
+		let ndc = viewport_uv * vec2<f32>(2.0, -2.0) + vec2<f32>(-1.0, 1.0);
+		let view_direction = normalize(vec3<f32>(
+			(ndc.x + temporal.parameters.x) / temporal.projection.x,
+			(ndc.y + temporal.parameters.y) / temporal.projection.y,
+			-1.0,
+		));
+		let world_direction = normalize(
+			(temporal.inverse_view * vec4<f32>(view_direction, 0.0)).xyz,
+		);
+		// A distant point preserves rotational parallax while making camera
+		// translation negligible, which is the correct reprojection model for
+		// the procedural sky and its finite-distance fog integral.
+		let sky_world_position = temporal.inverse_view[3].xyz + world_direction * 100000.0;
+		let previous_clip = temporal.previous_view_projection * vec4<f32>(sky_world_position, 1.0);
+		if (previous_clip.w > 0.0001) {
+			let previous_ndc = previous_clip.xy / previous_clip.w;
+			let previous_viewport_uv =
+				previous_ndc * vec2<f32>(0.5, -0.5) + vec2<f32>(0.5);
+			let previous_projected_pixel =
+				temporal.viewport.xy + previous_viewport_uv * temporal.viewport.zw;
+			let jitter_motion = vec2<f32>(
+				temporal.parameters.x * temporal.viewport.z * 0.5,
+				-temporal.parameters.y * temporal.viewport.w * 0.5,
+			);
+			let previous_pixel = previous_projected_pixel - jitter_motion;
+			let previous_pixel_i = vec2<i32>(floor(previous_pixel));
+			if (
+				all(previous_viewport_uv >= vec2<f32>(0.0)) &&
+				all(previous_viewport_uv <= vec2<f32>(1.0)) &&
+				inside_viewport(previous_pixel_i)
+			) {
+				let history_sample = textureSampleLevel(
+					history_color,
+					linear_sampler,
+					previous_pixel / vec2<f32>(dimensions),
+					0.0,
+				);
+				let stored_depth = textureLoad(history_depth, previous_pixel_i, 0).r;
+				if (stored_depth >= 0.999999) {
+					result = mix(fogged_color, history_sample.rgb, temporal.parameters.w);
+				} else if (virtual_transition_reactive(history_sample.a)) {
+					result = mix(fogged_color, history_sample.rgb, 0.9);
+				}
+			}
 		}
 	}
 	textureStore(

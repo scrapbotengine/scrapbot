@@ -226,11 +226,11 @@ point_light_intensity = 0.6
 | `light_intensity` | number | `1` | Primary directional-light scattering multiplier from `0` to `10`. |
 | `point_light_intensity` | number | `0` | Clustered point-light scattering multiplier from `0` to `10`. Zero disables local-light scattering. |
 
-The renderer integrates 16 stable midpoint samples per fog-target camera ray. Density varies exponentially with world height and stops at scene depth or `max_distance`. The first directional light contributes anisotropic in-scattering and is filtered through the same four shadow cascades used by opaque geometry.
+The renderer integrates 16–64 samples per fog-target camera ray according to adaptive post quality. Density varies exponentially with world height and stops at scene depth or `max_distance`. The first directional light contributes anisotropic in-scattering and is filtered through the same four shadow cascades used by opaque geometry.
 
 When enabled, each midpoint reads every relevant point light from the same GPU-built view-frustum cluster used by opaque surface lighting. Point-light scattering is currently unshadowed.
 
-Fog is depth-aware upsampled before temporal antialiasing and bloom. Its low-discrepancy sub-step offset rotates across the eight-frame temporal sequence, allowing TAA to integrate smooth shafts without exposing fixed ray-march slices. Local fog volumes, froxels, and explicit quality controls remain follow-up work.
+Fog is depth-aware upsampled before temporal antialiasing and bloom. An integer-scrambled 256-frame sequence feeds finite-depth and sky-direction reprojection without a persistent screen-space lattice. Invalid or disabled history uses midpoint sampling. Local fog volumes, froxels, and explicit authored quality controls remain follow-up work.
 
 Luau systems can query and write the complete payload after declaring `scrapbot.volumetric_fog` in their access lists. Presence enables the feature; removing the component or setting `density` to zero skips the fog dispatch. Changing `resolution_scale` explicitly invalidates the retained post targets; stable frames reuse them.
 
