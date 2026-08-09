@@ -1,7 +1,7 @@
 # FDR-008: Editor shell
 
 **Status:** Active
-**Last reviewed:** 2026-07-31
+**Last reviewed:** 2026-08-10
 
 ## Overview
 
@@ -47,6 +47,7 @@ The editor shell turns a running Scrapbot project into its own editing workspace
 - A drop on a Scene row's middle makes that row the new parent. A drop on its top or bottom insertion zone adopts the target's parent and places the source before or after it atomically. Empty-list space makes the entity a root.
 - A transformless child receives an identity Transform; a transformless parent contributes an identity spatial basis. The stopped-mode toolbar creates, duplicates, deletes, or explicitly keeps a selected runtime entity as authored scene data.
 - The Resources panel independently composes the same public filter-input, virtualized-list, and scroll-area contract around its pooled uniform rows. Filtering matches authored resource names case-insensitively without changing selection or registry state; scrolling lays out only the visible rows plus bounded overscan. Its fixed toolbar remains outside list row flow.
+- A selected Model resource offers **Add to Scene** while authoring is stopped. The action creates one named scene-origin model root five world units in front of the editor fly camera, selects it, and records creation as one undoable structural transaction. The root inherits project geometry policy and adds no implicit shadow components.
 - Systems lists every engine and project system participating in the frame. Its public filter matches row content case-insensitively, and uniform-row virtualization lays out only visible matches plus overscan.
 - Engine rows cover the editor camera, transform gizmo, ECS UI, picking, render preparation, and render submission. Scheduled project-Odin and Luau systems follow. Selection is retained for future debugger detail views but has no action yet.
 - Right-aligned average callback times use milliseconds with three decimal places. A mint, blue, or amber dot identifies Engine, Project Odin, or Luau provenance. A matching two-pixel bar grows leftward from the panel's right edge on an absolute scale where 10 ms fills the complete content width; it has no background track.
@@ -254,6 +255,12 @@ The editor shell turns a running Scrapbot project into its own editing workspace
 **Decision:** Represent each nested struct field or array element as one step in a bounded runtime reflection path. Compose container rows from the existing public table, text, and icon-button controls, recurse only while expanded, and route supported leaves through the same typed control and component-snapshot transaction paths as top-level fields.
 **Why:** Nested data should not require component-specific panel builders or a second editor-only widget system. Stable paths let pooled controls preserve identity and focus while whole-component validation, Undo/Redo, and persistence remain authoritative.
 **Tradeoff:** Fixed arrays expose their existing elements but cannot resize. Dynamic project/native schemas still need an explicit recursive type and mutation contract before the editor can honestly offer add, remove, or reorder actions.
+
+### 26. Place resource-backed scene roots through ordinary controls
+
+**Decision:** Let the selected Model preview expose an ordinary public button that creates a scene-origin Transform and Model root in front of the editor fly camera. Use the asset name, stable resource UUID, project geometry policy, selection, dirty tracking, and the existing structural history path. Offer the command only while stopped.
+**Why:** Hand-built scenes need a direct path from known project assets to persistent entities without copying UUIDs or assembling an empty entity component by component. Reusing the public button and existing authoring transaction keeps placement semantics in editor orchestration without creating a private widget or persistence path.
+**Tradeoff:** Initial placement uses a camera-relative focus distance rather than a surface hit, grid, or cursor. Drag placement, snapping, and multi-selection remain follow-up tools.
 
 ## Related
 

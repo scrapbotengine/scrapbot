@@ -119,6 +119,64 @@ editor_authoring_create_entity :: proc(
 	return world.entities[entity_index].id, true
 }
 
+editor_authoring_place_model :: proc(
+	state: ^State,
+	world: ^shared.World,
+	registry: ^resources.Registry,
+	resource_id: shared.Resource_UUID,
+) -> (
+	shared.Entity,
+	bool,
+) {
+	if !editor_authoring_available(state, world) || registry == nil {
+		return {}, false
+	}
+	handle, found := resources.model_handle_by_uuid(registry, resource_id)
+	if !found {
+		return {}, false
+	}
+	model, alive := resources.get_model(registry, handle)
+	if !alive || !model.authored {
+		return {}, false
+	}
+
+	position := shared.Vec3{0, 2, 1}
+	if camera_index, _, camera_found := ecs.editor_scene_camera_entity(world); camera_found {
+		camera_entity := world.entities[camera_index]
+		if camera_entity.transform_index >= 0 &&
+		   camera_entity.transform_index < len(world.transforms) {
+			camera_transform := world.transforms[camera_entity.transform_index]
+			position = shared.camera_vec3_add(
+				camera_transform.position,
+				shared.camera_vec3_mul(shared.camera_forward(camera_transform.rotation), 5),
+			)
+		}
+	}
+
+	id_buffer: [36]u8
+	resource := shared.resource_uuid_to_string(resource_id, id_buffer[:])
+	snapshot := new(ecs.Entity_Snapshot)
+	snapshot.origin = .Scene
+	snapshot.entity.id = shared.entity_uuid_generate()
+	snapshot.entity.name = ecs.clone_snapshot_string(model.name)
+	snapshot.entity.scene_order = ecs.next_scene_order_index(world)
+	snapshot.entity.has_transform = true
+	snapshot.entity.transform.position = position
+	snapshot.entity.transform.scale = {1, 1, 1}
+	snapshot.entity.has_model = true
+	snapshot.entity.model.resource = ecs.clone_snapshot_string(resource)
+	snapshot.entity.model.geometry_mode = .Inherit
+	entity_index, ok := ecs.apply_entity_snapshot(world, snapshot)
+	if !ok {
+		ecs.destroy_entity_snapshot(snapshot)
+		free(snapshot)
+		return {}, false
+	}
+	push_structural_change(state, snapshot.entity.id, nil, snapshot)
+	editor_authoring_select(state, world, entity_index)
+	return world.entities[entity_index].id, true
+}
+
 editor_authoring_duplicate_entity :: proc(
 	state: ^State,
 	world: ^shared.World,

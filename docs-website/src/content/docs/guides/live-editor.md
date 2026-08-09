@@ -225,6 +225,8 @@ Their previews use the public `scrapbot.ui_viewport` component and adaptive pool
 
 Drag a 3D preview to orbit, use the wheel to zoom, and click **Reset** to restore its view. Stable previews are revision-cached.
 
+While stopped, select a Model resource and click **Add to Scene** to create a persistent model root five world units in front of the editor fly camera. The new entity uses the Model's name, inherits the project's geometry policy, becomes the active selection, and participates in Undo, Redo, Save, and Revert. Add Shadow Caster or Shadow Receiver explicitly when the object needs them.
+
 Click **Reimport** to force only the selected importer, update its live registry entry, and reconcile model instances when necessary. This does not restart Luau, native Odin, or the scene world. **Reimport All** forces every imported declaration. Failed imports retain the prior atomic product and surface the error in the inspector.
 
 Discovered Bool, String, Number, Vec2, Vec3, Vec4, Color, and entity-UUID values select reusable public controls. Vector rows provide one input per axis, scalar and string rows use one full-width input, and Color fields use the public linear-RGBA picker with bounded or HDR behavior from their semantics.

@@ -1,6 +1,6 @@
 # Engine Components
 
-**Last verified:** 2026-08-03
+**Last verified:** 2026-08-10
 **Source of truth:** `src/scrapbot/component/registry.odin`  
 **Canonical public field reference:** `docs-website/src/content/docs/reference/components.md`
 
@@ -225,11 +225,11 @@ These entries deliberately omit exhaustive field/default documentation. Follow t
 
 - **Contract:** References one authored Model UUID plus an optional instance-level geometry-submission preference.
 - **Storage/lifecycle:** Authored UUID reference on the root; imported nodes and primitives are derived Runtime-origin ECS entities owned by that root.
-- **Producers:** Scene TOML, editor reflected authoring, resource/bootstrap reconciliation.
+- **Producers:** Scene TOML, editor reflected authoring, Model-preview placement, resource/bootstrap reconciliation.
 - **Consumers:** Model-instance reconciliation resolves entity, asset, and project submission policy, then ordinary transform hierarchy and render extraction consume derived Geometry/Material entities.
 - **Invalidation:** Model import/version, submission-policy replacement, or world replacement removes and recreates only the root's derived hierarchy with deterministic child UUIDs; ordinary frames do not scan model resources.
-- **Surfaces:** Public scene TOML, component membership queries, and editor inspection; generated children are not persistent source.
-- **Source/tests:** `asset_import/models.odin`, `resources/models.odin`, `scrapbot.odin`; `asset_import/models_test.odin`, `model_instance_test.odin`.
+- **Surfaces:** Public scene TOML, component membership queries, editor inspection, and stopped-mode resource placement; generated children are not persistent source.
+- **Source/tests:** `asset_import/models.odin`, `resources/models.odin`, `ui/editor_authoring.odin`, `scrapbot.odin`; `asset_import/models_test.odin`, `model_instance_test.odin`, `ui/ui_test.odin`.
 
 ### `scrapbot.shadow_caster`
 

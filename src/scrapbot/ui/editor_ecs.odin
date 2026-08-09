@@ -324,6 +324,16 @@ editor_ui_handle_activation :: proc(
 						}
 					}
 					return
+				case .Inspector_Preview_Place:
+					if state.editor_has_resource_selection {
+						_, _ = editor_authoring_place_model(
+							state,
+							world,
+							state.resource_registry,
+							state.editor_selected_resource,
+						)
+					}
+					return
 				case .Inspector_Panel_Action:
 					if state.component_registry == nil ||
 					   binding.reflected_component_id == shared.INVALID_COMPONENT_ID {
@@ -5353,6 +5363,7 @@ editor_ui_hide_asset_preview :: proc(world: ^shared.World) {
 	for binding in world.editor_uis {
 		if binding.role == .Inspector_Preview_Surface ||
 		   binding.role == .Inspector_Preview_Toolbar ||
+		   binding.role == .Inspector_Preview_Place ||
 		   binding.role == .Inspector_Preview_Reset ||
 		   binding.role == .Inspector_Preview_Hint {
 			editor_ui_set_hidden(world, binding.entity_index, true)
@@ -5378,13 +5389,14 @@ editor_ui_inspector_model_preview :: proc(
 	if builder == nil || registry == nil || model == nil {
 		return
 	}
-	editor_ui_inspector_preview_surface(builder, model.id)
+	editor_ui_inspector_preview_surface(builder, model.id, true, true)
 }
 
 editor_ui_inspector_preview_surface :: proc(
 	builder: ^Inspector_ECS_Builder,
 	resource: shared.Resource_UUID,
 	interactive := true,
+	placeable := false,
 ) {
 	theme := reduced_dark_theme()
 	editor_ui_begin_inspector_component(builder, "PREVIEW")
@@ -5444,6 +5456,31 @@ editor_ui_inspector_preview_surface :: proc(
 	}
 	editor_ui_set_hidden(builder.world, toolbar, !interactive)
 	toolbar_name := builder.world.entities[toolbar].name
+	place, place_found := editor_ui_entity(builder.world, .Inspector_Preview_Place, panel_slot)
+	if !place_found {
+		place_layout, place_button := theme_button(theme, .Primary)
+		place_layout.size = {128, 28}
+		place_layout.basis = 128
+		place = editor_ui_create_box(
+			builder.world,
+			fmt.tprintf("__scrapbot_editor_asset_preview_place_%d", panel_slot),
+			toolbar_name,
+			.Inspector_Preview_Place,
+			place_layout,
+			panel_slot,
+		)
+		button := place_button
+		button.text = "ADD TO SCENE"
+		button.size = EDITOR_TEXT_SIZE
+		_ = ecs.set_ui_button(builder.world, place, button)
+	} else {
+		editor_ui_set_parent(builder.world, place, toolbar_name)
+	}
+	editor_ui_set_hidden(
+		builder.world,
+		place,
+		!interactive || !placeable || !builder.state.editor_simulation_stopped,
+	)
 	reset, reset_found := editor_ui_entity(builder.world, .Inspector_Preview_Reset, panel_slot)
 	if !reset_found {
 		reset_layout, reset_button := theme_button(theme, .Quiet)

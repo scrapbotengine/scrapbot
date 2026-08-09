@@ -1,6 +1,6 @@
 # Major Data Flows
 
-**Last verified:** 2026-08-09
+**Last verified:** 2026-08-10
 
 ## Project load and world bootstrap
 
@@ -435,6 +435,8 @@ and not-allowed cursor intents distinguish compatible targets from dead space.
 Visible `ui_viewport` nodes additionally populate a compact retained target list. WGPU assigns each visible node an independently sized pooled target. Texture UUIDs use an aspect-preserving GPU pass; Model and Material UUIDs build isolated renderer-owned preview scenes; empty resource UUIDs render the retained active World. The UI shader samples those targets as ordinary clipped paint commands. Shared UI interaction mutates orbit/distance directly on the component; static resources redraw only when target state, quantized size/aspect, exact resource version, or relevant registry revisions change.
 
 The editor adds transient editor-origin entities but uses the same components and mechanics as project UI. Editor-only code binds selection, history, project meaning, and commands to generic UI interaction. An optional public root `scrapbot.ui_canvas` resolves the project's logical viewport, output scale/alignment, safe area, and clipping inside the free-aspect game viewport. Rendering, embedded viewports, pointer inversion, and semantic diagnostic rectangles share that exact transform so explicit stretch behaves consistently and every other mode remains spatially attached to interaction. Projects without a canvas retain the legacy top-left 1280×720 fit.
+
+Model previews add one editor-bound public button while stopped. Activation resolves the selected authored Model UUID, derives a position from the editor fly camera, and creates a scene-origin Transform/Model root through the same snapshot, selection, dirty-candidate, and structural-history path as other entity creation. Model-derived runtime children remain the ordinary change-driven reconciliation consumer; placement does not create a second asset-instantiation path.
 
 The interaction pass publishes activation, change, submission, cancellation, and drag/drop edges into a World-owned bounded ring. `scrapbot.ui_action` resolves from the exact control or nearest layout ancestor and supplies optional project semantics without changing control mechanics. Readers use monotonic sequences and never consume entries destructively; project Luau/native adapters filter editor-origin events, while editor orchestration reads the same history through its own cursor.
 

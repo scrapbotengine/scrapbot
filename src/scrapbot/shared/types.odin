@@ -1624,6 +1624,7 @@ Editor_UI_Role :: enum {
 	Inspector_Cell,
 	Inspector_Preview_Surface,
 	Inspector_Preview_Toolbar,
+	Inspector_Preview_Place,
 	Inspector_Preview_Reset,
 	Inspector_Preview_Hint,
 	Inspector_Input,

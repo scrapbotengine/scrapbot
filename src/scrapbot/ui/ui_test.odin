@@ -1,5 +1,6 @@
 package ui
 
+import asset_import "../asset_import"
 import component "../component"
 import ecs "../ecs"
 import resources "../resources"
@@ -8891,6 +8892,95 @@ test_editor_preview_reset_restores_camera_without_losing_target :: proc(t: ^test
 	testing.expect(t, updated.resource == resource)
 	testing.expect(t, updated.orbit == defaults.orbit)
 	testing.expect(t, updated.distance == defaults.distance)
+}
+
+@(test)
+test_editor_model_preview_places_an_undoable_scene_root_in_front_of_fly_camera :: proc(
+	t: ^testing.T,
+) {
+	world: shared.World
+	defer ecs.destroy_world(&world)
+	registry: resources.Registry
+	defer resources.destroy_registry(&registry)
+	resource_id, parsed := shared.resource_uuid_parse("a7000000-0000-4000-8000-000000000031")
+	testing.expect(t, parsed)
+	declaration := shared.Project_Resource {
+		id = resource_id,
+		kind = .Model,
+		name = "Handcrafted Cliff",
+		source = "resources/cliff.resource.toml",
+		model = {source = "assets/cliff.glb"},
+	}
+	product: asset_import.Model_Product
+	_, register_err := resources.register_project_model(&registry, declaration, &product)
+	testing.expect(t, register_err == "")
+
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	state.resource_registry = &registry
+	state.editor_visible = true
+	state.editor_simulation_stopped = true
+	state.editor_selected_resource = resource_id
+	state.editor_has_resource_selection = true
+	_, _, camera_ready := ecs.reconcile_editor_scene_camera(&world, true)
+	testing.expect(t, camera_ready)
+	testing.expect(t, ecs.set_editor_scene_camera_pose(&world, {10, 4, 8}, {}))
+
+	testing.expect(t, reconcile(state, &world, 1280, 720, resource_registry = &registry) == "")
+	place, place_found := editor_ui_entity(&world, .Inspector_Preview_Place, 0)
+	testing.expect(t, place_found)
+	if !place_found {
+		return
+	}
+	place_layout := world.ui_layouts[world.entities[place].ui_layout_index]
+	testing.expect(t, !place_layout.hidden)
+	editor_ui_handle_activation(state, &world, world.entities[place].id, {})
+
+	placed_index, placed := editor_selected_world_index(state, &world)
+	testing.expect(t, placed)
+	if !placed {
+		return
+	}
+	entity := world.entities[placed_index]
+	testing.expect_value(t, entity.name, "Handcrafted Cliff")
+	testing.expect(t, entity.origin == .Scene)
+	testing.expect(t, entity.transform_index >= 0)
+	testing.expect_value(
+		t,
+		world.transforms[entity.transform_index].position,
+		shared.Vec3{10, 4, 3},
+	)
+	id_buffer: [36]u8
+	testing.expect_value(
+		t,
+		entity.model_resource,
+		shared.resource_uuid_to_string(resource_id, id_buffer[:]),
+	)
+	testing.expect(t, entity.geometry_mode == .Inherit)
+	placed_id := entity.uuid
+	testing.expect(t, state.editor_scene_dirty)
+	testing.expect_value(t, state.editor_history_count, 1)
+
+	testing.expect(t, editor_undo(state, &world))
+	_, found_after_undo := ecs.entity_index_by_uuid(&world, placed_id)
+	testing.expect(t, !found_after_undo)
+	testing.expect(t, editor_redo(state, &world))
+	restored_index, restored := ecs.entity_index_by_uuid(&world, placed_id)
+	testing.expect(t, restored)
+	if restored {
+		testing.expect_value(t, world.entities[restored_index].name, "Handcrafted Cliff")
+		testing.expect_value(
+			t,
+			world.transforms[world.entities[restored_index].transform_index].position,
+			shared.Vec3{10, 4, 3},
+		)
+	}
+
+	state.editor_simulation_stopped = false
+	_, placed_while_running := editor_authoring_place_model(state, &world, &registry, resource_id)
+	testing.expect(t, !placed_while_running)
 }
 @(test)
 test_editor_viewport_is_clamped_to_a_small_physical_target :: proc(t: ^testing.T) {
