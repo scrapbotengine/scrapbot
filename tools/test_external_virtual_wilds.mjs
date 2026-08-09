@@ -7,6 +7,11 @@ import { isVirtualGeometryErrorTier } from "./test_render_sequence.mjs";
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const project = join(repositoryRoot, "examples/virtual-wilds");
 const importedDirectory = join(project, ".scrapbot/imported");
+// The null backend reports the 20 authored material batches. The WGPU backend
+// may split those into a few additional resident primitive batches while pages
+// stream in, especially for the six-primitive fir asset. Keep that expansion
+// bounded without pretending the two counters describe the same thing.
+const maxResidentGpuBatches = 32;
 const framegrabArgument = process.argv.indexOf("--framegrab");
 const framegrab =
   framegrabArgument >= 0 ? process.argv[framegrabArgument + 1] : undefined;
@@ -64,17 +69,17 @@ const models = [
   },
   {
     id: "7b000000-0000-4000-8000-00000000000d",
-    source: "assets/pine_sapling_small/pine_sapling_small_1k.gltf",
+    source: "assets/fir_sapling/fir_sapling_1k.gltf",
     nodes: 3,
     meshes: 3,
     primitives: 6,
     materials: 2,
     textures: 6,
-    vertices: 406356,
-    indices: 1194432,
-    lods: 0,
-    clusters: 9560,
-    groups: 642,
+    vertices: 515299,
+    indices: 1299063,
+    lods: 18,
+    clusters: 21896,
+    groups: 1528,
   },
   {
     id: "7b000000-0000-4000-8000-00000000000e",
@@ -201,7 +206,7 @@ function main() {
     "--json",
   ]);
   if (
-    simulated.result?.renderables !== 515 ||
+    simulated.result?.renderables !== 347 ||
     simulated.result?.draw_batches !== 20
   ) {
     throw new Error(
@@ -220,7 +225,7 @@ function main() {
     );
     const expectedLods = expected.lods ?? 3;
     if (
-      metadata.schema !== "scrapbot.model.v18.distance-fields" ||
+      metadata.schema !== "scrapbot.model.v19.texture-transform" ||
       metadata.source !== expected.source ||
       metadata.node_count !== (expected.nodes ?? 1) ||
       metadata.mesh_count !== (expected.meshes ?? 1) ||
@@ -273,7 +278,7 @@ function main() {
     ]);
     const stats = rendered.result?.render_stats;
     if (
-      rendered.result?.renderables !== 515 ||
+      rendered.result?.renderables !== 347 ||
       rendered.result?.draw_batches !== 20 ||
       stats?.virtual_geometry !== true ||
       stats?.virtual_geometry_compacted !== true ||
@@ -327,7 +332,7 @@ function main() {
         ],
       },
       {
-        name: "grounded-pines",
+        name: "grounded-firs",
         arguments: [
           "--warmup",
           "0",
@@ -337,7 +342,7 @@ function main() {
           "80:84",
           "--editor",
           "--ui-script",
-          "tests/fixtures/ui/virtual-wilds-grounded-pines.json",
+          "tests/fixtures/ui/virtual-wilds-grounded-firs.json",
         ],
       },
       {
@@ -478,7 +483,8 @@ function main() {
       if (
         profile.frames?.some(
           (frame) =>
-            frame.render?.draw_batches !== 20 ||
+            frame.render?.draw_batches <= 0 ||
+            frame.render?.draw_batches > maxResidentGpuBatches ||
             frame.render?.virtual_geometry_compacted !== true ||
             !isVirtualGeometryErrorTier(
               frame.render?.virtual_geometry_error_pixels,

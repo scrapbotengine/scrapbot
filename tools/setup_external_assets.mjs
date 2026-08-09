@@ -96,10 +96,15 @@ async function downloadAsset(asset, destination) {
 
 async function ensurePlacement(asset, source, placement) {
   const destination = placementPath(asset, placement);
+  const expected = {
+    ...asset,
+    bytes: asset.placement_bytes ?? asset.bytes,
+    sha256: asset.placement_sha256 ?? asset.sha256,
+  };
   if (destination === source) {
     throw new Error(`${asset.id}: placement duplicates its download path`);
   }
-  if (await assetIsCurrent(asset, destination)) {
+  if (await assetIsCurrent(expected, destination)) {
     if (!asset.quiet) {
       console.log(`[external-assets] ready ${asset.id} at ${placement}`);
     }
@@ -112,8 +117,41 @@ async function ensurePlacement(asset, source, placement) {
   mkdirSync(dirname(destination), { recursive: true });
   const temporary = `${destination}.install`;
   rmSync(temporary, { force: true });
-  copyFileSync(source, temporary);
-  if (!(await assetIsCurrent(asset, temporary))) {
+  if (asset.placement_replacements === undefined) {
+    copyFileSync(source, temporary);
+  } else {
+    if (
+      !Array.isArray(asset.placement_replacements) ||
+      asset.placement_replacements.length === 0 ||
+      !Number.isSafeInteger(asset.placement_bytes) ||
+      typeof asset.placement_sha256 !== "string"
+    ) {
+      throw new Error(
+        `${asset.id}: transformed placements require replacements, bytes, and SHA-256`,
+      );
+    }
+    let bytes = readFileSync(source);
+    for (const replacement of asset.placement_replacements) {
+      const from = Buffer.from(replacement.from ?? "", "utf8");
+      const to = Buffer.from(replacement.to ?? "", "utf8");
+      if (from.length === 0) {
+        throw new Error(`${asset.id}: placement replacement must be non-empty`);
+      }
+      const offset = bytes.indexOf(from);
+      if (offset < 0 || bytes.indexOf(from, offset + from.length) >= 0) {
+        throw new Error(
+          `${asset.id}: placement replacement must match exactly once`,
+        );
+      }
+      bytes = Buffer.concat([
+        bytes.subarray(0, offset),
+        to,
+        bytes.subarray(offset + from.length),
+      ]);
+    }
+    writeFileSync(temporary, bytes);
+  }
+  if (!(await assetIsCurrent(expected, temporary))) {
     rmSync(temporary, { force: true });
     throw new Error(`${asset.id}: placed bytes failed verification`);
   }

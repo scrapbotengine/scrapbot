@@ -62,6 +62,10 @@ stronger recent working set, prefetch never displaces demand residency, and each
 keeps its direct parent fallback available until the child is released. Residency changes patch
 only affected cluster ranges. The budget counts both vertex and index residency.
 
+Admission is capped at four hierarchy groups and 512 KiB per frame. This bounds CPU upload work
+during camera motion; excess refinement remains queued while the pinned coarse frontier stays
+complete.
+
 On portable compact paths, page vertices and indices must also fit inside the adapter's storage
 binding window. Scrapbot defers a refinement that cannot receive legal ranges and keeps its coarse
 fallback visible. A large configured payload budget can therefore improve native indexed paths

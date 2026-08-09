@@ -389,52 +389,64 @@
           "sha256": "0810cf6e89d89bb6eb065b4d2e2855288f5dcbd2c15c6e40ab90d462021b50aa"
         },
         {
-          "path": "pine_sapling_small/pine_sapling_small_1k.gltf",
-          "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/pine_sapling_small/pine_sapling_small_1k.gltf",
-          "bytes": 11442,
-          "sha256": "f358c01926861dd082f32dba60f7c9fba232b585a985cf38c0d2229eecf4bc48"
+          "path": "fir_sapling/fir_sapling_1k.gltf",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/fir_sapling/fir_sapling_1k.gltf",
+          "bytes": 10979,
+          "sha256": "a9466ca9d8c5b9b2eeeeafd3ce426f8912dcbd98a7281bad8c734833eb35b186",
+          "placement_bytes": 11033,
+          "placement_sha256": "d0ac5418bee78955ed2963a9a5e63588e29dda4c6fd928861f16faa42f6e02cd",
+          "placement_replacements": [
+            {
+              "from": "textures/fir_sapling_twigs_diff_1k.jpg",
+              "to": "textures/fir_sapling_twigs_diff_1k.png"
+            },
+            {
+              "from": "      \"name\": \"fir_sapling_twigs\",",
+              "to": "      \"alphaMode\": \"MASK\",\n      \"alphaCutoff\": 0.25,\n      \"name\": \"fir_sapling_twigs\","
+            }
+          ]
         },
         {
-          "path": "pine_sapling_small/pine_sapling_small.bin",
-          "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/pine_sapling_small/pine_sapling_small.bin",
-          "bytes": 17771796,
-          "sha256": "b4d2fc73d53f1d8717eb5ef9a2c66957d2a53152787e543aace88fcd6fca94ef"
+          "path": "fir_sapling/fir_sapling.bin",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/fir_sapling/fir_sapling.bin",
+          "bytes": 21677180,
+          "sha256": "efdebfae6ee4b3ea20c7a85eb9f798ff4953259a3616bcff0b7e580b00f34f40"
         },
         {
-          "path": "pine_sapling_small/textures/pine_sapling_small_bark_arm_1k.jpg",
-          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/pine_sapling_small/pine_sapling_small_bark_arm_1k.jpg",
-          "bytes": 801278,
-          "sha256": "336a4680cd571b6076b67afee2310b290b8900d9d126eb39ec1ae92e95be2ea9"
+          "path": "fir_sapling/textures/fir_sapling_branches_arm_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_sapling/fir_sapling_branches_arm_1k.jpg",
+          "bytes": 793567,
+          "sha256": "44c32b056b78c1046aeeb44c973a1d1352ea12d0d7ef2425527555f1256a0964"
         },
         {
-          "path": "pine_sapling_small/textures/pine_sapling_small_bark_diff_1k.jpg",
-          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/pine_sapling_small/pine_sapling_small_bark_diff_1k.jpg",
-          "bytes": 725265,
-          "sha256": "5c76836b01c3536fa0e24207b67bf4f3315b53ebe2b4ecc6f08dfcf3f8d74929"
+          "path": "fir_sapling/textures/fir_sapling_branches_diff_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_sapling/fir_sapling_branches_diff_1k.jpg",
+          "bytes": 776633,
+          "sha256": "46d216526b6203dbd5dc3cfce5e49d7a4cc1770da2420faab45adf33671c7de4"
         },
         {
-          "path": "pine_sapling_small/textures/pine_sapling_small_bark_nor_gl_1k.jpg",
-          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/pine_sapling_small/pine_sapling_small_bark_nor_gl_1k.jpg",
-          "bytes": 1016849,
-          "sha256": "05c46455531781b6cf18cae0648cf627f60ee942adaa8bcbfd1592fc2506a9e0"
+          "path": "fir_sapling/textures/fir_sapling_branches_nor_gl_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_sapling/fir_sapling_branches_nor_gl_1k.jpg",
+          "bytes": 1137599,
+          "sha256": "dbe474f6cd593d51a19fb92a627ad900b9ab47dabd1bf60117a2cf9d110f79ea"
         },
         {
-          "path": "pine_sapling_small/textures/pine_sapling_small_twig_arm_1k.jpg",
-          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/pine_sapling_small/pine_sapling_small_twig_arm_1k.jpg",
-          "bytes": 394056,
-          "sha256": "2eb0aa44124b5a4ae9401e00b23b3c916f4c3f421616ce1bb932f248fc061288"
+          "path": "fir_sapling/textures/fir_sapling_twigs_arm_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_sapling/fir_sapling_twigs_arm_1k.jpg",
+          "bytes": 300249,
+          "sha256": "d1ec27a55bb67bfe5fa2c8a41a545dc71769934b142db56ad7c703d4146e1770"
         },
         {
-          "path": "pine_sapling_small/textures/pine_sapling_small_twig_diff_1k.jpg",
-          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/pine_sapling_small/pine_sapling_small_twig_diff_1k.jpg",
-          "bytes": 477942,
-          "sha256": "54af7d6fb664b5a38bcb118b557bc50e01e86ec54d6f1a573c3e32c649a53362"
+          "path": "fir_sapling/textures/fir_sapling_twigs_diff_1k.png",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/png/1k/fir_sapling/fir_sapling_twigs_diff_1k.png",
+          "bytes": 1400815,
+          "sha256": "c29cb18884dc4cd24a72d0e39f01c1baeadb798d0fe3d196d82b8cb11b18f061"
         },
         {
-          "path": "pine_sapling_small/textures/pine_sapling_small_twig_nor_gl_1k.jpg",
-          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/pine_sapling_small/pine_sapling_small_twig_nor_gl_1k.jpg",
-          "bytes": 692711,
-          "sha256": "76af87821d7ff00e25768d5d97a449394fe64a21ae55d099da7f5ed46d9098c8"
+          "path": "fir_sapling/textures/fir_sapling_twigs_nor_gl_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_sapling/fir_sapling_twigs_nor_gl_1k.jpg",
+          "bytes": 474717,
+          "sha256": "34928b2a9d1f722d2f64a7da468c790ecaca9b89c00ac0878a9e0bad26748368"
         }
       ]
     },

@@ -16,7 +16,7 @@ Asset imports turn artist-authored texture, model, HDR environment, and SVG icon
 - Model resources import the selected glTF 2.0 `.gltf` or `.glb` scene and only its reachable nodes, meshes, materials, and images. Supported data includes triangle geometry, TRS node transforms, metallic-roughness material factors, normal and occlusion strengths, emissive factors, opaque and alpha-cutout materials, double-sided surfaces, and base-color, metallic-roughness, normal, occlusion, and emissive images. Images may be embedded in GLB buffer views, encoded as base64 data URIs, or stored at safe relative paths beside the model.
 - Model import generates up to three deterministic meshoptimizer LODs per eligible primitive by default. Project recipes control descending triangle ratios and projected screen-radius thresholds or disable generation. Small and topology-constrained primitives may retain fewer levels.
 - Every imported primitive and generated LOD persists its crack-aware cluster hierarchy and deterministic page table in the Model product. Hierarchy reduction accounts for normals and UVs, protects texture seams during permissive fallback, and refuses attribute-blind fallback. Runtime registration validates and clones that product-owned hierarchy instead of rebuilding it.
-- Every imported primitive compiles a padded mesh distance field through a temporary BVH. Model v18 stores signed 16-bit samples for watertight meshes and conservative unsigned samples for open or non-manifold geometry in a separate range-addressable chunk.
+- Every imported primitive compiles a padded mesh distance field through a temporary BVH. Model v19 stores signed 16-bit samples for watertight meshes and conservative unsigned samples for open or non-manifold geometry in a separate range-addressable chunk.
 - Runtime Geometry retains each validated field descriptor and product range. WGPU loads, packs, and uploads samples only for a requesting GPU consumer; the `distance_field` camera debug view exercises that path without causing eager startup residency.
 - The `world_distance_field` debug view composes requested instance fields into three snapped 32³ GPU clipmap cascades. Camera-cell movement retains overlap and seeds only exposed slabs in affected cascades; topology and Transform invalidation rebuild completely. Rebuild, scroll, exposed-voxel, dispatch, and upload counters expose the actual cache path before gameplay effects consume it.
 - Import diagnostics report field count and payload size. Cache-hit catalog loading validates descriptors without reading samples.
@@ -31,7 +31,7 @@ Asset imports turn artist-authored texture, model, HDR environment, and SVG icon
 - The editor's resource browser lists textures, environments, and models alongside materials. Its inspector exposes the source dependency, product kind and byte size, warnings/errors, and current import state. Environment inspection reports the derived cube-map shape, and the scene's `scrapbot.world_environment` component selects lighting/background resources for ordinary world and model/material preview rendering. Textures render directly on the GPU with aspect-preserving fit. Models render their imported hierarchy, while Materials render on an isolated lit icosphere preview scene. All previews use the public ECS viewport component and independently sized pooled targets; interactive 3D previews support orbit, zoom, and reset.
 - Reimport updates a live resource slot in place and reconciles affected model roots. Generated Geometry and Material products that disappear from a replaced or removed Model are retired with generation bumps, so stale handles cannot remain usable.
 - Shadow caster/receiver markers authored on a Model root are inherited by its generated primitive entities when that model instance reconciles. Imported geometry therefore remains on the ordinary renderer and shadow-marker path instead of needing model-specific shadow submission.
-- Imported models initially exclude animation, skins, morph targets, compressed geometry, non-UV0 texture mappings, texture transforms, blended transparency, and advanced material extensions; unsupported required glTF features reachable from the selected scene fail clearly.
+- Imported models exclude animation, skins, morph targets, compressed geometry, non-UV0 texture mappings, blended transparency, and advanced material extensions. A shared `KHR_texture_transform` on UV0 is baked into imported vertices. Unsupported required glTF features reachable from the selected scene fail clearly.
 
 ## Design Decisions
 
@@ -145,7 +145,7 @@ own chunk relationships.
 
 ### 15. Split and stream large Model products
 
-**Decision:** Model v18 separates material images, pinned coarse pages, evictable detail pages,
+**Decision:** Model v19 separates material images, pinned coarse pages, evictable detail pages,
 quantized mesh distance fields, and the runtime catalog into five product chunks. Build the product
 with the common sequential writer; spool detail pages temporarily and emit the descriptor catalog
 only after exact ranges are known.
@@ -162,6 +162,9 @@ the evictable detail chunk.
 
 The v18 fingerprint adds one independently addressable distance-field range per primitive. The
 catalog stores descriptors, never bulk voxel samples. See ADR-055.
+
+The v19 fingerprint adds deterministic `KHR_texture_transform` baking. Every material texture must
+use the same effective UV0 transform so one shared vertex stream remains sufficient for every pass.
 
 **Why:** Runtime startup should not walk gigabytes of payload bytes to discover a catalog. Import
 should not require enough spare memory for both the decoded source model and a second complete

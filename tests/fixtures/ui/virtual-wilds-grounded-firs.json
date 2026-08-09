@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
-  "timeout_frames": 90,
+  "timeout_frames": 120,
   "actions": [
     {
       "action": "set_editor_camera",
-      "position": {"x": 2.0, "y": 29.0, "z": -8.0},
-      "rotation": {"x": 0.18, "y": 1.570796, "z": 0.0}
+      "position": {"x": -26.8, "y": 23.0, "z": -180.0},
+      "rotation": {"x": -0.05, "y": 0.0, "z": 0.0}
     },
     {"action": "wait", "frames": 80}
   ]

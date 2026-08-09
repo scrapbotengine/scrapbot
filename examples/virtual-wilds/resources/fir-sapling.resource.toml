@@ -1,0 +1,9 @@
+id = "7b000000-0000-4000-8000-00000000000d"
+type = "scrapbot.model"
+name = "Fir Sapling"
+
+[model]
+source = "assets/fir_sapling/fir_sapling_1k.gltf"
+generate_lods = true
+lod_ratios = [0.45, 0.18, 0.06]
+lod_screen_radii = [0.22, 0.08, 0.025]

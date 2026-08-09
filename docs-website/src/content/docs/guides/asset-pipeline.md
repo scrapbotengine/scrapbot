@@ -85,7 +85,7 @@ stdout.
 
 ## Compression boundary
 
-Model v18 also compiles one padded mesh distance field per primitive. Watertight meshes retain
+Model v19 also compiles one padded mesh distance field per primitive. Watertight meshes retain
 signed distances; open or non-manifold meshes retain conservative unsigned surface distances. The
 samples use signed 16-bit quantization and live in their own chunk, so runtime catalog loading
 validates their descriptors without reading the voxel payload. Import progress reports both the
@@ -110,7 +110,7 @@ replacement, topology changes, and relevant instance/Transform dirtiness still t
 rebuild. Renderer diagnostics distinguish full rebuilds from scrolls and report exposed voxels.
 This is currently a diagnostic foundation; HZB still owns production occlusion.
 
-The chunk directory can describe encoded data, but Model v18 stores its chunks uncompressed.
+The chunk directory can describe encoded data, but Model v19 stores its chunks uncompressed.
 Compression must preserve the runtime access pattern:
 
 - catalogs and images may use whole-chunk codecs when measurement justifies eager decoding;

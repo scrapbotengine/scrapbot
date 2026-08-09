@@ -27,7 +27,7 @@ const cliffSources = new Map([
 const resources = {
   rocks: "7b000000-0000-4000-8000-00000000000b",
   boulder: "7b000000-0000-4000-8000-00000000000c",
-  pine: "7b000000-0000-4000-8000-00000000000d",
+  fir: "7b000000-0000-4000-8000-00000000000d",
 };
 
 function configuredCount(name, fallback) {
@@ -45,7 +45,7 @@ function configuredCount(name, fallback) {
 const counts = {
   rocks: configuredCount("VIRTUAL_WILDS_ROCKS", 1),
   boulders: configuredCount("VIRTUAL_WILDS_BOULDERS", 5),
-  pines: configuredCount("VIRTUAL_WILDS_PINES", 40),
+  firs: configuredCount("VIRTUAL_WILDS_FIRS", 12),
 };
 
 let state = 0x51a7f00d;
@@ -166,7 +166,7 @@ function loadCliffGeometry(resource) {
   };
 }
 
-function groundedPinePlacements(source, count) {
+function groundedFirPlacements(source, count) {
   if (count === 0) return [];
   const groundNames = [
     "Western Canyon Wall",
@@ -248,16 +248,16 @@ function groundedPinePlacements(source, count) {
     [candidates[index], candidates[swapIndex]] = [candidates[swapIndex], candidates[index]];
   }
   const selected = [];
-  const minimumSpacing = 5.5;
+  const minimumSpacing = 12;
   for (const candidate of candidates) {
-    const scale = between(3.8, 5.4);
+    const scale = between(3.2, 4.2);
     const scaleX = scale * between(0.9, 1.1);
     const yaw = between(-Math.PI, Math.PI);
     const childRootsAreGrounded = [1, 2].every((childOffset) => {
       const x = candidate[0] + Math.cos(yaw) * scaleX * childOffset;
       const z = candidate[2] - Math.sin(yaw) * scaleX * childOffset;
       const ground = nearbyGround(x, z);
-      return ground !== undefined && Math.abs(ground[1] - candidate[1]) <= 0.25;
+      return ground !== undefined && Math.abs(ground[1] - candidate[1]) <= 0.45;
     });
     if (
       childRootsAreGrounded &&
@@ -274,7 +274,7 @@ function groundedPinePlacements(source, count) {
       if (selected.length === count) return selected;
     }
   }
-  throw new Error(`only found ${selected.length} grounded pine sites for ${count} groves`);
+  throw new Error(`only found ${selected.length} grounded fir sites for ${count} groves`);
 }
 
 let entityIndex = 1;
@@ -341,20 +341,20 @@ for (let index = 0; index < counts.boulders; index += 1) {
 
 const source = readFileSync(scenePath, "utf8");
 
-// Every photogrammetry pine root contains three distinct alpha-masked trees.
+// Every photogrammetry fir root contains three distinct trees.
 // Their primary roots are sampled directly from upward-facing triangles on the
 // same transformed cliff meshes the renderer consumes. A grove is admitted
 // only when neighboring surface samples also support both offset child roots.
-const pinePlacements = groundedPinePlacements(source, counts.pines);
-for (let index = 0; index < pinePlacements.length; index += 1) {
-  const placement = pinePlacements[index];
+const firPlacements = groundedFirPlacements(source, counts.firs);
+for (let index = 0; index < firPlacements.length; index += 1) {
+  const placement = firPlacements[index];
   addEntity({
-    name: `Generated Cliff Pine Grove ${index + 1}`,
-    resource: resources.pine,
+    name: `Generated Cliff Fir Grove ${index + 1}`,
+    resource: resources.fir,
     position: placement.position,
     rotation: placement.rotation,
     scale: placement.scale,
-    shadowCaster: index % 8 === 0,
+    shadowCaster: index % 6 === 0,
   });
 }
 

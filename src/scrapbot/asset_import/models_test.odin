@@ -258,6 +258,49 @@ make_model_test_project :: proc(t: ^testing.T) -> string {
 }
 
 @(test)
+test_model_texture_transform_is_baked_into_uv_zero :: proc(t: ^testing.T) {
+	transform := cgltf.texture_transform {
+		offset = {0.25, -0.5},
+		rotation = f32(math.PI / 2),
+		scale = {2, 3},
+	}
+	actual := model_transform_uv({0.5, 0.25}, transform)
+	testing.expectf(
+		t,
+		math.abs(actual.x - -0.5) < 0.0001,
+		"expected transformed U -0.5, got %v",
+		actual.x,
+	)
+	testing.expectf(
+		t,
+		math.abs(actual.y - 0.5) < 0.0001,
+		"expected transformed V 0.5, got %v",
+		actual.y,
+	)
+}
+
+@(test)
+test_model_material_rejects_mixed_texture_transforms :: proc(t: ^testing.T) {
+	texture := cgltf.texture{}
+	material := cgltf.material {
+		normal_texture = {texture = &texture},
+		has_pbr_metallic_roughness = true,
+		pbr_metallic_roughness = {
+			base_color_texture = {
+				texture = &texture,
+				has_transform = true,
+				transform = {offset = {0.25, 0}, scale = {1, 1}},
+			},
+		},
+	}
+	testing.expect(t, validate_model_material_texture_transforms(&material) != "")
+	material.normal_texture.has_transform = true
+	material.normal_texture.transform =
+		material.pbr_metallic_roughness.base_color_texture.transform
+	testing.expect_value(t, validate_model_material_texture_transforms(&material), "")
+}
+
+@(test)
 test_external_model_image_does_not_take_ownership_of_source_directory :: proc(t: ^testing.T) {
 	root, temp_err := os.make_directory_temp("", "scrapbot-model-image-*", context.allocator)
 	testing.expect(t, temp_err == nil)

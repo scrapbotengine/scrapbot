@@ -46,7 +46,7 @@ Sponza is a manifest bundle: every file has an individual byte count and SHA-256
 - Local path: `downloads/gltf/VirtualWilds/`
 - Upstream: [Poly Haven models](https://polyhaven.com/models)
 - Purpose: high-density photogrammetry import, generated LODs, virtual-geometry paging, bounded residency, and temporal streaming development
-- Pinned shape: 12 models, 4,500,306 vertices, 8,312,406 source triangles, and 21,380 streamable photogrammetry pages
+- Pinned shape: 12 models, 4,609,249 vertices, 8,347,283 source triangles, and 22,266 streamable photogrammetry pages
 - Licensing: CC0
 
 The bundle contains [Coastal Cliff 04](https://polyhaven.com/a/coastal_cliff_04), [Coast Rocks
@@ -65,8 +65,13 @@ Rico Cilliers for cleanup. [Coastal Cliff
 [Dead Tree Trunk 02](https://polyhaven.com/a/dead_tree_trunk_02) was photographed by Jenelle van
 Heerden and processed by Rico Cilliers.
 
-[Pine Sapling Small](https://polyhaven.com/a/pine_sapling_small) supplies three alpha-masked tree
-variations for grounded cliff groves. The scene generator samples their roots directly from
+[Fir Sapling](https://polyhaven.com/a/fir_sapling), photographed by Rob Tuytel and
+modeled by Rico Cilliers, supplies three full tree variations for grounded cliff groves. Its glTF
+delivery loses the foliage alpha channel by referencing a JPEG. Fixture setup deterministically
+selects Poly Haven's matching RGBA PNG and changes that foliage material from `BLEND` to `MASK`.
+The importer then bakes the asset's shared `KHR_texture_transform` into `TEXCOORD_0`.
+
+The scene generator samples the fir roots directly from
 upward-facing triangles of the transformed cliff scans and validates the complete three-tree
 footprint against neighboring surface samples.
 

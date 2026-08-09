@@ -15,8 +15,8 @@ checksum-verified files and places them under `assets/`. Scrapbot compiles them 
 versioned runtime products on first use.
 
 Use the camera's `virtual_geometry`, `meshlets`, and `lod` debug views to inspect the selected
-cluster frontier. The photogrammetry models contain 8,312,406 source triangles and compile into
-21,380 streamable cluster pages. The 192 MiB residency budget is intentionally smaller than that
+cluster frontier. The photogrammetry models contain 8,347,283 unique source triangles and compile
+into 22,266 streamable cluster pages. The 192 MiB residency budget is intentionally smaller than that
 complete detail set.
 
 The camera tour therefore exercises visible page demand, predictive prefetch, and eviction while
@@ -63,13 +63,14 @@ The layered topology makes the landscape denser while giving absorption, refract
 intersection foam real underwater surfaces.
 
 A project-local Luau scatter system adds 220 shared low-poly rocks using the public procedural
-Geometry, Material, ECS spawn, and Transform APIs. The authored landscape generator places 40
-three-tree Poly Haven pine groves across the canyon walls. It samples upward-facing triangles from
+Geometry, Material, ECS spawn, and Transform APIs. The authored landscape generator places twelve
+three-tree Poly Haven fir groves across the canyon walls. It samples upward-facing triangles from
 the transformed cliff scans themselves, embeds each grove's primary root into the rendered
 surface, and admits the grove only when nearby samples support both offset child trunks.
 
-The result is 120 detailed trees and 515 renderables in a compact shared-batch workload. Most
-instances sit outside the narrow camera corridor, making frustum and Hi-Z telemetry meaningful.
+The result is 36 full, detailed firs and 347 renderables in a compact shared-batch workload. This
+replaces 120 sparse saplings while reducing instantiated tree source geometry by roughly 89%.
+Most instances sit outside the narrow camera corridor, making frustum and Hi-Z telemetry meaningful.
 
 The ordinary public `scrapbot.volumetric_fog` component adds shadowed blue-gray coastal haze. A
 low sun cuts across the flooded canyon.

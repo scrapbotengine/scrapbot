@@ -13,12 +13,12 @@ import "core:path/filepath"
 import "core:strings"
 import cgltf "vendor:cgltf"
 
-MODEL_IMPORTER_SCHEMA :: "scrapbot.model.v18.distance-fields"
-MODEL_CATALOG_MAGIC :: [8]u8{'S', 'B', 'M', 'C', 'A', 'T', '1', '8'}
-MODEL_IMAGE_CHUNK_MAGIC :: [8]u8{'S', 'B', 'M', 'I', 'M', 'G', '1', '8'}
-MODEL_COARSE_CHUNK_MAGIC :: [8]u8{'S', 'B', 'M', 'C', 'R', 'S', '1', '8'}
-MODEL_DETAIL_CHUNK_MAGIC :: [8]u8{'S', 'B', 'M', 'D', 'T', 'L', '1', '8'}
-MODEL_DISTANCE_FIELD_CHUNK_MAGIC :: [8]u8{'S', 'B', 'M', 'S', 'D', 'F', '1', '8'}
+MODEL_IMPORTER_SCHEMA :: "scrapbot.model.v19.texture-transform"
+MODEL_CATALOG_MAGIC :: [8]u8{'S', 'B', 'M', 'C', 'A', 'T', '1', '9'}
+MODEL_IMAGE_CHUNK_MAGIC :: [8]u8{'S', 'B', 'M', 'I', 'M', 'G', '1', '9'}
+MODEL_COARSE_CHUNK_MAGIC :: [8]u8{'S', 'B', 'M', 'C', 'R', 'S', '1', '9'}
+MODEL_DETAIL_CHUNK_MAGIC :: [8]u8{'S', 'B', 'M', 'D', 'T', 'L', '1', '9'}
+MODEL_DISTANCE_FIELD_CHUNK_MAGIC :: [8]u8{'S', 'B', 'M', 'S', 'D', 'F', '1', '9'}
 MODEL_PRODUCT_CHUNK_COUNT :: 5
 MODEL_READER_BUFFER_SIZE :: 64 * 1024
 
@@ -321,11 +321,10 @@ validate_model_uri :: proc(uri, kind: string) -> string {
 }
 
 validate_supported_static_gltf :: proc(data: ^cgltf.data) -> string {
-	if len(data.extensions_required) > 0 {
-		return fmt.tprintf(
-			"required extension '%s' is not supported",
-			string(data.extensions_required[0]),
-		)
+	for extension in data.extensions_required {
+		if string(extension) != "KHR_texture_transform" {
+			return fmt.tprintf("required extension '%s' is not supported", string(extension))
+		}
 	}
 	if len(data.animations) > 0 {
 		return "animations are not supported yet"
@@ -383,6 +382,9 @@ validate_supported_static_gltf :: proc(data: ^cgltf.data) -> string {
 			); err != "" {
 				return err
 			}
+		}
+		if err := validate_model_material_texture_transforms(&material); err != "" {
+			return err
 		}
 		if err := validate_model_texture_view(material.normal_texture, "normal"); err != "" {
 			return err
@@ -471,13 +473,103 @@ model_scene_selection :: proc(data: ^cgltf.data) -> Model_Scene_Selection {
 }
 
 validate_model_texture_view :: proc(view: cgltf.texture_view, kind: string) -> string {
-	if view.texture != nil && (view.texcoord != 0 || view.has_transform) {
+	texcoord := view.texcoord
+	if view.has_transform && view.transform.has_texcoord {
+		texcoord = view.transform.texcoord
+	}
+	if view.texture != nil && texcoord != 0 {
 		return fmt.tprintf(
-			"%s texture coordinates and transforms other than TEXCOORD_0 are not supported yet",
+			"%s texture coordinates other than TEXCOORD_0 are not supported yet",
 			kind,
 		)
 	}
 	return ""
+}
+
+validate_model_material_texture_transforms :: proc(material: ^cgltf.material) -> string {
+	views := [5]cgltf.texture_view {
+		material.normal_texture,
+		material.occlusion_texture,
+		material.emissive_texture,
+		{},
+		{},
+	}
+	if material.has_pbr_metallic_roughness {
+		views[3] = material.pbr_metallic_roughness.base_color_texture
+		views[4] = material.pbr_metallic_roughness.metallic_roughness_texture
+	}
+	canonical: cgltf.texture_transform
+	has_canonical := false
+	for view in views {
+		if view.texture == nil {
+			continue
+		}
+		transform := model_texture_view_transform(view)
+		if !has_canonical {
+			canonical = transform
+			has_canonical = true
+			continue
+		}
+		if transform != canonical {
+			return "all textures used by one material must share the same KHR_texture_transform"
+		}
+	}
+	return ""
+}
+
+model_texture_view_transform :: proc(view: cgltf.texture_view) -> cgltf.texture_transform {
+	texcoord := view.texcoord
+	transform := cgltf.texture_transform {
+		scale = {1, 1},
+	}
+	if view.has_transform {
+		transform = view.transform
+		if transform.has_texcoord {
+			texcoord = transform.texcoord
+		}
+	}
+	transform.texcoord = texcoord
+	transform.has_texcoord = false
+	return transform
+}
+
+model_material_uv_transform :: proc(material: ^cgltf.material) -> (cgltf.texture_transform, bool) {
+	if material == nil {
+		return {}, false
+	}
+	views := [5]cgltf.texture_view {
+		material.normal_texture,
+		material.occlusion_texture,
+		material.emissive_texture,
+		{},
+		{},
+	}
+	if material.has_pbr_metallic_roughness {
+		views[3] = material.pbr_metallic_roughness.base_color_texture
+		views[4] = material.pbr_metallic_roughness.metallic_roughness_texture
+	}
+	for view in views {
+		if view.texture != nil {
+			transform := model_texture_view_transform(view)
+			is_identity :=
+				transform.offset == [2]f32{} &&
+				transform.rotation == 0 &&
+				transform.scale == [2]f32{1, 1}
+			return transform, !is_identity
+		}
+	}
+	return {}, false
+}
+
+model_transform_uv :: proc(uv: shared.Vec2, transform: cgltf.texture_transform) -> shared.Vec2 {
+	rotation_cos := math.cos(transform.rotation)
+	rotation_sin := math.sin(transform.rotation)
+	u := uv.x * transform.scale[0]
+	v := uv.y * transform.scale[1]
+	return {
+		transform.offset[0] + rotation_cos * u - rotation_sin * v,
+		transform.offset[1] + rotation_sin * u + rotation_cos * v,
+	}
 }
 
 model_import_hash :: proc(
@@ -1014,6 +1106,7 @@ build_model_primitive :: proc(
 	result: Model_Primitive,
 	err: string,
 ) {
+	uv_transform, has_uv_transform := model_material_uv_transform(primitive.material)
 	position: ^cgltf.accessor
 	normal: ^cgltf.accessor
 	uv: ^cgltf.accessor
@@ -1087,7 +1180,14 @@ build_model_primitive :: proc(
 				destroy_model_primitive(&result)
 				return {}, "failed to decode TEXCOORD_0 accessor"
 			}
-			result.vertices[vertex_index].uv = {uv_value[0], uv_value[1]}
+			if has_uv_transform {
+				result.vertices[vertex_index].uv = model_transform_uv(
+					{uv_value[0], uv_value[1]},
+					uv_transform,
+				)
+			} else {
+				result.vertices[vertex_index].uv = {uv_value[0], uv_value[1]}
+			}
 		}
 		if tangent != nil {
 			tangent_value: [4]f32

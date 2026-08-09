@@ -265,7 +265,9 @@ WGPU renders these through its shared GGX material path. Authored tangent vector
 
 Masked alpha is applied consistently to the color, depth-prepass, and directional-shadow passes. Double-sided materials disable back-face culling and shade back faces with an inverted surface normal.
 
-`BLEND` materials fail import until Scrapbot has sorted transparent rendering. Animation, skins, morph targets, matrix-authored nodes, Draco/required extensions, non-UV0 texture mappings, texture transforms, KTX2/Basis images, and advanced material extensions are not supported yet.
+`BLEND` materials fail import until Scrapbot has sorted transparent rendering. `KHR_texture_transform` is supported for `TEXCOORD_0` and is baked into imported vertices; every texture used by one material must share the same transform.
+
+Animation, skins, morph targets, matrix-authored nodes, Draco and other unsupported required extensions, non-UV0 texture mappings, KTX2/Basis images, and advanced material extensions are not supported yet.
 
 Generated icosphere LOD resources store one stable geometry identity plus up to four tessellation levels:
 
