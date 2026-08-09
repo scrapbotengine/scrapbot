@@ -1870,6 +1870,20 @@ test_wgpu_hiz_status_explains_every_reuse_gate :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_wgpu_hiz_refinement_uses_current_depth_when_history_is_unusable :: proc(t: ^testing.T) {
+	testing.expect(t, wgpu_hiz_refinement_needed(true, false))
+	testing.expect(t, !wgpu_hiz_refinement_needed(true, true))
+	testing.expect(t, !wgpu_hiz_refinement_needed(false, false))
+	testing.expect_value(t, wgpu_initial_cull_phase(true, false), WGPU_GPU_Cull_Phase.Enabled)
+	testing.expect_value(
+		t,
+		wgpu_initial_cull_phase(true, true),
+		WGPU_GPU_Cull_Phase.Coarse_Occluder,
+	)
+	testing.expect_value(t, wgpu_initial_cull_phase(false, false), WGPU_GPU_Cull_Phase.Disabled)
+}
+
+@(test)
 test_wgpu_hiz_rejects_unsafe_large_sphere_projections :: proc(t: ^testing.T) {
 	camera := Vec3{0, 3.9, 14}
 	testing.expect(t, !wgpu_hiz_sphere_projection_safe({0, 8.35, -19, 23.38}, camera))

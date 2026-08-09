@@ -570,6 +570,8 @@ wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
 		renderer.gpu_meshlet_indirect_buffer,
 		renderer.gpu_meshlet_shadow_indirect_buffer,
 		renderer.gpu_cull_uniform_buffer,
+		renderer.gpu_cull_initial_uniform_buffer,
+		renderer.gpu_cull_refine_uniform_buffer,
 		renderer.gpu_render_uniform_buffer,
 		renderer.gpu_point_light_buffer,
 		renderer.gpu_cluster_count_buffer,

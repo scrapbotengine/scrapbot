@@ -63,7 +63,9 @@ WGPU_GPU_Timestamp_Phase :: enum u32 {
 	Instance_Expansion,
 	Clustered_Lighting,
 	Cull,
+	Cull_Refine,
 	Shadow,
+	Depth_Occluder,
 	Depth,
 	World,
 	HiZ,
@@ -887,6 +889,7 @@ WGPU_Renderer :: struct {
 	gpu_hiz_occlusion_enabled: bool,
 	gpu_hiz_occlusion_status: shared.HiZ_Occlusion_Status,
 	gpu_hiz_requested: bool,
+	gpu_hiz_refinement_requested: bool,
 	gpu_distance_field_debug_shader: wgpu.ShaderModule,
 	gpu_distance_field_debug_pipeline: wgpu.RenderPipeline,
 	gpu_distance_field_debug_pipeline_layout: wgpu.PipelineLayout,
@@ -946,6 +949,8 @@ WGPU_Renderer :: struct {
 	gpu_meshlet_world_bind_group: wgpu.BindGroup,
 	gpu_meshlet_shadow_bind_groups: [WGPU_SHADOW_CASCADE_COUNT]wgpu.BindGroup,
 	gpu_cull_uniform_buffer: wgpu.Buffer,
+	gpu_cull_initial_uniform_buffer: wgpu.Buffer,
+	gpu_cull_refine_uniform_buffer: wgpu.Buffer,
 	gpu_render_uniform_buffer: wgpu.Buffer,
 	gpu_point_light_buffer: wgpu.Buffer,
 	gpu_cluster_count_buffer: wgpu.Buffer,
@@ -957,6 +962,7 @@ WGPU_Renderer :: struct {
 	gpu_cluster_bind_group_layout: wgpu.BindGroupLayout,
 	gpu_cluster_bind_group: wgpu.BindGroup,
 	gpu_cluster_dispatch_count: u64,
+	gpu_cull_pass_count: u64,
 	gpu_clustered_light_count: int,
 	gpu_point_light_capacity: int,
 	gpu_cluster_light_capacity: int,
@@ -1519,11 +1525,12 @@ wgpu_profile_workload :: proc(
 		if renderer.gpu_compact_submission_active {
 			workgroups += workgroups_per_lane
 		}
+		pass_count := max(renderer.gpu_cull_pass_count, u64(1))
 		cull = {
 			enabled = true,
-			passes = 1,
-			workgroups = workgroups,
-			invocations = workgroups * 64,
+			passes = u32(pass_count),
+			workgroups = workgroups * pass_count,
+			invocations = workgroups * pass_count * 64,
 			instances = u64(renderer.gpu_slot_count),
 		}
 	}
@@ -1652,7 +1659,7 @@ wgpu_profile_workload :: proc(
 			enabled = geometry_draws > 0,
 			width = viewport_width,
 			height = viewport_height,
-			passes = 1,
+			passes = 2 if renderer.gpu_hiz_refinement_requested else 1,
 			draws = geometry_draws,
 			invocations = compact_vertex_invocations,
 			instances = visible_instances,
@@ -3462,14 +3469,6 @@ wgpu_encode_render_pass :: proc(
 		return err
 	}
 	record_system_profile_phase(config, .Render_World, world_start)
-	if renderer.gpu_hiz_requested {
-		if err := wgpu_encode_hiz_pyramid(renderer, encoder, render_depth_view); err != "" {
-			return err
-		}
-	} else {
-		renderer.gpu_hiz_valid = false
-		renderer.gpu_hiz_occlusion_enabled = false
-	}
 	if err := wgpu_encode_hiz_debug_view(renderer, encoder, layout.render_viewport); err != "" {
 		return err
 	}
@@ -3737,6 +3736,7 @@ wgpu_encode_depth_prepass :: proc(
 	batches: []WGPU_Draw_Batch,
 	registry: ^resources.Registry,
 	viewport: ui.Rect,
+	timestamp_phase: WGPU_GPU_Timestamp_Phase = .Depth,
 ) -> string {
 	depth_attachment := wgpu.RenderPassDepthStencilAttachment {
 		view = depth_view,
@@ -3746,7 +3746,7 @@ wgpu_encode_depth_prepass :: proc(
 		stencilLoadOp = .Undefined,
 		stencilStoreOp = .Undefined,
 	}
-	timestamps, timestamps_enabled := wgpu_gpu_pass_timestamps(renderer, .Depth)
+	timestamps, timestamps_enabled := wgpu_gpu_pass_timestamps(renderer, timestamp_phase)
 	timestamps_ptr: ^wgpu.PassTimestampWrites
 	if timestamps_enabled {
 		timestamps_ptr = &timestamps
@@ -3910,6 +3910,33 @@ wgpu_encode_depth_prepass :: proc(
 		batch_index = span.next_batch
 	}
 	wgpu.RenderPassEncoderEnd(pass)
+	return ""
+}
+
+wgpu_encode_visibility_refinement :: proc(
+	renderer: ^WGPU_Renderer,
+	encoder: wgpu.CommandEncoder,
+	render_depth_view: wgpu.TextureView,
+	batch_count: int,
+	compute_culling: bool,
+) -> string {
+	if !renderer.gpu_hiz_requested {
+		renderer.gpu_hiz_valid = false
+		renderer.gpu_hiz_occlusion_enabled = false
+		renderer.gpu_hiz_refinement_requested = false
+		return ""
+	}
+	if err := wgpu_encode_hiz_pyramid(renderer, encoder, render_depth_view); err != "" {
+		return err
+	}
+	if !compute_culling || !renderer.gpu_hiz_refinement_requested {
+		return ""
+	}
+	if err := wgpu_encode_gpu_culling(renderer, encoder, batch_count, .Enabled, .Cull_Refine);
+	   err != "" {
+		return err
+	}
+	renderer.gpu_hiz_occlusion_status = .Active
 	return ""
 }
 
@@ -4404,8 +4431,14 @@ wgpu_draw_frame :: proc(
 	); err != "" {
 		return false, false, err
 	}
+	renderer.gpu_cull_pass_count = 0
 	if !config.cpu_culling {
-		if err = wgpu_encode_gpu_culling(renderer, encoder, batch_count); err != "" {
+		initial_phase := wgpu_initial_cull_phase(
+			renderer.gpu_hiz_occlusion_enabled,
+			renderer.gpu_hiz_refinement_requested,
+		)
+		if err = wgpu_encode_gpu_culling(renderer, encoder, batch_count, initial_phase);
+		   err != "" {
 			return false, false, err
 		}
 	}
@@ -4426,6 +4459,30 @@ wgpu_draw_frame :: proc(
 		return false, false, err
 	}
 	record_system_profile_phase(config, .Render_Cull, cull_start)
+	depth_phase := WGPU_GPU_Timestamp_Phase.Depth
+	if renderer.gpu_hiz_refinement_requested {
+		depth_phase = .Depth_Occluder
+	}
+	if err = wgpu_encode_depth_prepass(
+		renderer,
+		encoder,
+		render_depth_view,
+		batches[:batch_count],
+		config.resource_registry,
+		layout.render_viewport,
+		depth_phase,
+	); err != "" {
+		return false, false, err
+	}
+	if err = wgpu_encode_visibility_refinement(
+		renderer,
+		encoder,
+		render_depth_view,
+		batch_count,
+		!config.cpu_culling,
+	); err != "" {
+		return false, false, err
+	}
 	shadow_start := time.tick_now()
 	if err = wgpu_encode_shadow_pass(
 		renderer,
@@ -4434,15 +4491,17 @@ wgpu_draw_frame :: proc(
 		config.resource_registry,
 	); err != "" { return false, false, err }
 	record_system_profile_phase(config, .Render_Shadow, shadow_start)
-	if err = wgpu_encode_depth_prepass(
-		renderer,
-		encoder,
-		render_depth_view,
-		batches[:batch_count],
-		config.resource_registry,
-		layout.render_viewport,
-	); err != "" {
-		return false, false, err
+	if renderer.gpu_hiz_refinement_requested {
+		if err = wgpu_encode_depth_prepass(
+			renderer,
+			encoder,
+			render_depth_view,
+			batches[:batch_count],
+			config.resource_registry,
+			layout.render_viewport,
+		); err != "" {
+			return false, false, err
+		}
 	}
 	if err = wgpu_encode_render_pass(
 		renderer,
@@ -4724,8 +4783,14 @@ wgpu_render_offscreen_frame :: proc(
 	); err != "" {
 		return err
 	}
+	renderer.gpu_cull_pass_count = 0
 	if !config.cpu_culling {
-		if err := wgpu_encode_gpu_culling(renderer, encoder, batch_count); err != "" {
+		initial_phase := wgpu_initial_cull_phase(
+			renderer.gpu_hiz_occlusion_enabled,
+			renderer.gpu_hiz_refinement_requested,
+		)
+		if err := wgpu_encode_gpu_culling(renderer, encoder, batch_count, initial_phase);
+		   err != "" {
 			return err
 		}
 	}
@@ -4734,6 +4799,30 @@ wgpu_render_offscreen_frame :: proc(
 		return err
 	}
 	record_system_profile_phase(config, .Render_Cull, cull_start)
+	depth_phase := WGPU_GPU_Timestamp_Phase.Depth
+	if renderer.gpu_hiz_refinement_requested {
+		depth_phase = .Depth_Occluder
+	}
+	if err := wgpu_encode_depth_prepass(
+		renderer,
+		encoder,
+		render_depth_view,
+		batches[:batch_count],
+		config.resource_registry,
+		layout.render_viewport,
+		depth_phase,
+	); err != "" {
+		return err
+	}
+	if err := wgpu_encode_visibility_refinement(
+		renderer,
+		encoder,
+		render_depth_view,
+		batch_count,
+		!config.cpu_culling,
+	); err != "" {
+		return err
+	}
 	shadow_start := time.tick_now()
 	if err := wgpu_encode_shadow_pass(
 		renderer,
@@ -4742,15 +4831,17 @@ wgpu_render_offscreen_frame :: proc(
 		config.resource_registry,
 	); err != "" { return err }
 	record_system_profile_phase(config, .Render_Shadow, shadow_start)
-	if err := wgpu_encode_depth_prepass(
-		renderer,
-		encoder,
-		render_depth_view,
-		batches[:batch_count],
-		config.resource_registry,
-		layout.render_viewport,
-	); err != "" {
-		return err
+	if renderer.gpu_hiz_refinement_requested {
+		if err := wgpu_encode_depth_prepass(
+			renderer,
+			encoder,
+			render_depth_view,
+			batches[:batch_count],
+			config.resource_registry,
+			layout.render_viewport,
+		); err != "" {
+			return err
+		}
 	}
 	if err := wgpu_encode_render_pass(
 		renderer,

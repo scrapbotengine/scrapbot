@@ -192,7 +192,9 @@ The nearest cascade is current every frame. Farther cascades retain stabilized p
 
 The layers retain 2048² capacity. A quantized active viewport bounds raster work without reallocating bindings. Cascade stabilization, receiver bias, PCF atlas remapping, and shadow hierarchy detail all use the same active resolution.
 
-Frustum and LOD work uses the unjittered camera. TAA's eight projection samples remain within a quarter pixel. Retained history lives on the stable output grid, so reprojection uses unjittered current/previous camera matrices and removes the current sample offset before sampling history. A matching depth is selected from the local 2×2 history footprint, while YCoCg variance clipping limits stale color. Retained Hi-Z depth tracks the exact jittered projection that produced it and expands projected bounds by one pixel to remain conservative across TAA samples.
+Frustum and LOD work uses the unjittered camera. TAA's eight projection samples remain within a quarter pixel. Retained history lives on the stable output grid, so reprojection uses unjittered current/previous camera matrices and removes the current sample offset before sampling history. A matching depth is selected from the local 2×2 history footprint, while YCoCg variance clipping limits stale color.
+
+Retained Hi-Z depth tracks the exact camera projection that produced it and expands projected bounds by one pixel to remain conservative across TAA samples. An unchanged camera may use that pyramid directly. Camera motion or other retained-history invalidation instead selects a complete coarse virtual frontier, renders current-camera occluder depth, builds the pyramid, and refines detailed visibility in the same command buffer. The renderer then clears coarse depth and writes final detailed depth, so the proxy frontier is never observable color or retained scene depth.
 
 ### Postprocessing
 

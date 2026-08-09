@@ -255,6 +255,8 @@ remain ceilings and floors; adapters without timestamp queries select maxima.
 
 WGPU derives one output layout and one effective world-render layout after that control step. The world, depth, Hi-Z, and post chain use the scaled layout. Final composition maps the complete scaled grid back onto the native output target. The native-resolution UI pass then paints project UI, editor-world overlays clipped to the Game viewport, and editor chrome in that order. Editor tabs and panels therefore occlude gizmos and camera visualizers when they cover the Game surface.
 
+Settled-camera visibility reuses the exact retained Hi-Z pyramid and emits one detailed cull/depth stream. When the camera or target changes, previous depth is not eligible for rejection. The GPU instead emits a complete coarse virtual frontier, renders current-camera occluder depth, builds current Hi-Z, and overwrites visibility with a detailed refinement cull. Shadows consume the refined visibility, then a second cleared depth pass writes only that detailed result immediately before world shading. Both paths remain entirely GPU-produced; no selected clusters are read back to the CPU.
+
 When the camera selects Hi-Z inspection, WGPU builds the ordinary current-frame pyramid and then samples the requested mip directly into the HDR world target. The debug pass expands each stored texel to its exact screen footprint; selecting another mip changes only the compact render uniform.
 
 When the camera selects Occlusion Queries, the GPU culler appends exact query evidence into the meshlet diagnostic tail. Object rejection writes one record. Surviving objects write one record for each meshlet whose Hi-Z test executes. The overlay consumes the same GPU records through one indirect line draw.

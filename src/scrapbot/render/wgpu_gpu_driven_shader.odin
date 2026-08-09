@@ -1669,6 +1669,15 @@ fn cull_virtual_transition_progress(start_token: u32) -> f32 {
 	return clamp(f32(cull.virtual_feedback_epoch - start) / duration, 0.0, 1.0);
 }
 
+const COARSE_OCCLUDER_ERROR_PIXELS = 64.0;
+
+fn virtual_camera_error_pixels() -> f32 {
+	if (cull.padding.x == 2u) {
+		return max(cull.virtual_error_pixels, COARSE_OCCLUDER_ERROR_PIXELS);
+	}
+	return cull.virtual_error_pixels;
+}
+
 fn virtual_cluster_selected(
 	instance: GPU_Instance,
 	meshlet: Meshlet_Info,
@@ -1684,13 +1693,13 @@ fn virtual_cluster_selected(
 		instance,
 		meshlet.group_bounds,
 		meshlet.group_error,
-		cull.virtual_error_pixels,
+		virtual_camera_error_pixels(),
 	);
 	let refined_progress = virtual_frontier_progress(
 		instance,
 		meshlet.refined_bounds,
 		meshlet.refined_error,
-		cull.virtual_error_pixels,
+		virtual_camera_error_pixels(),
 	);
 	if (group_progress > 0.0 && refined_progress > 0.0 && meshlet.refined_resident == 0u) {
 		if (emit_feedback && meshlet.request_enabled != 0u) {
@@ -1771,13 +1780,13 @@ fn virtual_cluster_blended(instance: GPU_Instance, meshlet: Meshlet_Info) -> boo
 		instance,
 		meshlet.group_bounds,
 		meshlet.group_error,
-		cull.virtual_error_pixels,
+		virtual_camera_error_pixels(),
 	);
 	let refined_progress = virtual_frontier_progress(
 		instance,
 		meshlet.refined_bounds,
 		meshlet.refined_error,
-		cull.virtual_error_pixels,
+		virtual_camera_error_pixels(),
 	);
 	return (meshlet.has_coarse_parent != 0u && group_progress > 0.0 && group_progress < 1.0) ||
 		(meshlet.refined_resident != 0u && refined_progress > 0.0 && refined_progress < 1.0);
@@ -1800,7 +1809,7 @@ fn prefetch_virtual_cluster(
 	}
 	if (current_frontier &&
 		virtual_projected_error(instance, meshlet.refined_bounds, meshlet.refined_error) >
-		cull.virtual_error_pixels
+		virtual_camera_error_pixels()
 	) {
 		return;
 	}
@@ -1809,7 +1818,7 @@ fn prefetch_virtual_cluster(
 		meshlet.group_bounds,
 		meshlet.group_error,
 		cull.predictive_camera_position.xyz,
-	) > cull.virtual_error_pixels;
+	) > virtual_camera_error_pixels();
 	let predicted_error = virtual_projected_error_from(
 		instance,
 		meshlet.refined_bounds,
@@ -1823,7 +1832,7 @@ fn prefetch_virtual_cluster(
 		// metadata refresh span several frames; waiting until 75% leaves too
 		// little runway for ordinary camera motion and exposes coarse-to-fine
 		// topology snaps in the current view.
-		predicted_error > cull.virtual_error_pixels * 0.5 &&
+		predicted_error > virtual_camera_error_pixels() * 0.5 &&
 		predictive_sphere_visible(world_virtual_bounds(instance, meshlet.refined_bounds))
 	) {
 		atomicAdd(&counters.virtual_page_prefetch_count, 1u);
@@ -1900,7 +1909,7 @@ const OCCLUSION_FLOATING_POINT_BIAS = 9.536743e-7;
 
 fn camera_sphere_occlusion(bounds: vec4<f32>) -> Occlusion_Result {
 	var result: Occlusion_Result;
-	if (cull.hiz_enabled == 0u || cull.hiz_mip_count == 0u) {
+	if (cull.hiz_enabled == 0u || cull.hiz_mip_count == 0u || cull.padding.x == 0u) {
 		return result;
 	}
 	let camera_offset = bounds.xyz - cull.camera_position.xyz;

@@ -1155,6 +1155,28 @@ WGPU_Compact_Cull_Bind_Group_Mode :: enum {
 	Shadow,
 }
 
+WGPU_GPU_Cull_Phase :: enum u32 {
+	Disabled,
+	Enabled,
+	Coarse_Occluder,
+}
+
+wgpu_hiz_refinement_needed :: proc "contextless" (requested, reusable: bool) -> bool {
+	return requested && !reusable
+}
+
+wgpu_initial_cull_phase :: proc "contextless" (
+	occlusion_enabled, refinement_requested: bool,
+) -> WGPU_GPU_Cull_Phase {
+	if refinement_requested {
+		return .Coarse_Occluder
+	}
+	if occlusion_enabled {
+		return .Enabled
+	}
+	return .Disabled
+}
+
 wgpu_make_compact_cull_bind_group :: proc(
 	renderer: ^WGPU_Renderer,
 	batch_buffer: wgpu.Buffer,
@@ -1978,6 +2000,18 @@ wgpu_create_gpu_driven_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 		{.Uniform, .CopyDst},
 		u64(size_of(WGPU_GPU_Cull_Uniform)),
 	)
+	renderer.gpu_cull_initial_uniform_buffer = wgpu_create_gpu_buffer(
+		renderer,
+		"Scrapbot GPU Initial Culling Uniform",
+		{.CopySrc, .CopyDst},
+		u64(size_of(WGPU_GPU_Cull_Uniform)),
+	)
+	renderer.gpu_cull_refine_uniform_buffer = wgpu_create_gpu_buffer(
+		renderer,
+		"Scrapbot GPU Refined Culling Uniform",
+		{.CopySrc, .CopyDst},
+		u64(size_of(WGPU_GPU_Cull_Uniform)),
+	)
 	renderer.gpu_render_uniform_buffer = wgpu_create_gpu_buffer(
 		renderer,
 		"Scrapbot GPU Render Uniform",
@@ -2034,6 +2068,8 @@ wgpu_create_gpu_driven_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 	   renderer.gpu_meshlet_indirect_buffer == nil ||
 	   renderer.gpu_meshlet_shadow_indirect_buffer == nil ||
 	   renderer.gpu_cull_uniform_buffer == nil ||
+	   renderer.gpu_cull_initial_uniform_buffer == nil ||
+	   renderer.gpu_cull_refine_uniform_buffer == nil ||
 	   renderer.gpu_render_uniform_buffer == nil ||
 	   renderer.gpu_visibility_counter_buffer == nil {
 		return "failed to allocate GPU-driven renderer buffers"
@@ -4758,13 +4794,17 @@ wgpu_prepare_gpu_draw_batches :: proc(
 		renderer.gpu_previous_view_projection,
 		view_projection,
 	)
+	renderer.gpu_hiz_refinement_requested = wgpu_hiz_refinement_needed(
+		renderer.gpu_hiz_requested,
+		hiz_reusable,
+	)
 	renderer.gpu_current_view_projection = view_projection
-	renderer.gpu_hiz_occlusion_enabled = hiz_reusable
+	renderer.gpu_hiz_occlusion_enabled = hiz_reusable || renderer.gpu_hiz_refinement_requested
 	cull_uniform := WGPU_GPU_Cull_Uniform {
 		camera_planes = wgpu_extract_frustum_planes(view_projection),
 		predictive_camera_planes = wgpu_extract_frustum_planes(predictive_view_projection),
 		view_projection = view_projection,
-		hiz_view_projection = renderer.gpu_previous_depth_view_projection,
+		hiz_view_projection = view_projection if renderer.gpu_hiz_refinement_requested else renderer.gpu_previous_depth_view_projection,
 		viewport = {viewport.x, viewport.y, viewport.width, viewport.height},
 		camera_position = {camera_position.x, camera_position.y, camera_position.z, 1},
 		predictive_camera_position = {
@@ -4776,7 +4816,7 @@ wgpu_prepare_gpu_draw_batches :: proc(
 		slot_count = u32(slot_count),
 		batch_count = u32(cache.batch_count),
 		hiz_mip_count = u32(renderer.gpu_hiz_mip_count),
-		hiz_enabled = 1 if hiz_reusable else 0,
+		hiz_enabled = 1 if renderer.gpu_hiz_occlusion_enabled else 0,
 		shadow_visible_stride = u32(renderer.gpu_visible_buffer_capacity),
 		meshlet_enabled = 1 if renderer.gpu_meshlet_submission_active else 0,
 		meshlet_shadow_visible_stride = u32(renderer.gpu_meshlet_visible_buffer_capacity),
@@ -4808,13 +4848,28 @@ wgpu_prepare_gpu_draw_batches :: proc(
 			shadow_cascades.matrices[cascade_index],
 		)
 	}
+	cull_uniform._padding[0] = u32(
+		wgpu_initial_cull_phase(
+			renderer.gpu_hiz_occlusion_enabled,
+			renderer.gpu_hiz_refinement_requested,
+		),
+	)
 	if wgpu_retain_cull_uniform(renderer, cull_uniform) {
 		wgpu.QueueWriteBuffer(
 			renderer.queue,
-			renderer.gpu_cull_uniform_buffer,
+			renderer.gpu_cull_initial_uniform_buffer,
 			0,
 			&cull_uniform,
 			uint(size_of(cull_uniform)),
+		)
+		refine_uniform := cull_uniform
+		refine_uniform._padding[0] = u32(WGPU_GPU_Cull_Phase.Enabled)
+		wgpu.QueueWriteBuffer(
+			renderer.queue,
+			renderer.gpu_cull_refine_uniform_buffer,
+			0,
+			&refine_uniform,
+			uint(size_of(refine_uniform)),
 		)
 	}
 	return cache.batches[:cache.batch_count], cache.batch_count, ""
@@ -4858,11 +4913,26 @@ wgpu_encode_gpu_culling :: proc(
 	renderer: ^WGPU_Renderer,
 	encoder: wgpu.CommandEncoder,
 	batch_count: int,
+	cull_phase: WGPU_GPU_Cull_Phase = .Enabled,
+	timestamp_phase: WGPU_GPU_Timestamp_Phase = .Cull,
 ) -> string {
 	if batch_count <= 0 || renderer.gpu_slot_count <= 0 {
 		renderer.gpu_visibility_counters = {}
 		return ""
 	}
+	uniform_buffer := renderer.gpu_cull_initial_uniform_buffer
+	if cull_phase == .Enabled {
+		uniform_buffer = renderer.gpu_cull_refine_uniform_buffer
+	}
+	wgpu.CommandEncoderCopyBufferToBuffer(
+		encoder,
+		uniform_buffer,
+		0,
+		renderer.gpu_cull_uniform_buffer,
+		0,
+		u64(size_of(WGPU_GPU_Cull_Uniform)),
+	)
+	renderer.gpu_cull_pass_count += 1
 	debug_view := shared.Render_Debug_View(renderer.gpu_render_uniform.debug.x)
 	capture_debug_evidence :=
 		(renderer.live_debug_visibility_capture ||
@@ -4941,7 +5011,7 @@ wgpu_encode_gpu_culling :: proc(
 			)
 		}
 	}
-	cull_timestamps, cull_timestamps_enabled := wgpu_gpu_pass_timestamps(renderer, .Cull)
+	cull_timestamps, cull_timestamps_enabled := wgpu_gpu_pass_timestamps(renderer, timestamp_phase)
 	cull_timestamps_ptr: ^wgpu.PassTimestampWrites
 	if cull_timestamps_enabled {
 		cull_timestamps_ptr = &cull_timestamps

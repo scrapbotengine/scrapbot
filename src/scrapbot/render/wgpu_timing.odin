@@ -323,10 +323,12 @@ wgpu_gpu_timing_consume_readbacks :: proc(renderer: ^WGPU_Renderer) {
 				scene = scene_ms,
 				instance_expansion = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Instance_Expansion)],
 				clustered_lighting = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Clustered_Lighting)],
-				cull = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Cull)],
+				cull = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Cull)] +
+				renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Cull_Refine)],
 				shadow = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Shadow)],
 				shadow_cascades = renderer.gpu_timestamp_shadow_cascade_ms,
-				depth = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Depth)],
+				depth = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Depth)] +
+				renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Depth_Occluder)],
 				world = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.World)],
 				hiz = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.HiZ)],
 				temporal_aa = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Temporal_AA)],
@@ -527,10 +529,14 @@ wgpu_publish_gpu_timing :: proc(renderer: ^WGPU_Renderer, stats: ^Render_Stats) 
 		renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Instance_Expansion)]
 	stats.gpu_clustered_lighting_ms =
 		renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Clustered_Lighting)]
-	stats.gpu_cull_ms = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Cull)]
+	stats.gpu_cull_ms =
+		renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Cull)] +
+		renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Cull_Refine)]
 	stats.gpu_shadow_ms = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Shadow)]
 	stats.gpu_shadow_cascade_ms = renderer.gpu_timestamp_shadow_cascade_ms
-	stats.gpu_depth_ms = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Depth)]
+	stats.gpu_depth_ms =
+		renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Depth)] +
+		renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.Depth_Occluder)]
 	stats.gpu_world_ms = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.World)]
 	stats.gpu_hiz_ms = renderer.gpu_timestamp_phase_ms[int(WGPU_GPU_Timestamp_Phase.HiZ)]
 	stats.gpu_temporal_aa_ms =

@@ -1,6 +1,6 @@
 # Engine Systems
 
-**Last verified:** 2026-08-08
+**Last verified:** 2026-08-09
 **Canonical names:** `engine_system_profile_name` in `src/scrapbot/scrapbot.odin`  
 **Execution boundaries:** `run_frame_system` in `src/scrapbot/render/render.odin` and WGPU frame encoding in `src/scrapbot/render/wgpu.odin`
 
@@ -86,19 +86,19 @@ These are the engine-owned rows published to the editor's Systems panel. They ar
 
 ### `scrapbot.render.cull`
 
-- **Phase/order:** First WGPU render-encoding phase after preparation.
-- **Inputs:** GPU instance/draw database, camera frustum/projection, retained hierarchy groups and cluster commands, previous valid Hi-Z state, LOD/visibility configuration.
+- **Phase/order:** First WGPU render-encoding phase after preparation. A reusable settled-camera pyramid produces one cull. Otherwise eligible frames encode coarse occluder cull/depth, current Hi-Z construction, and one detailed refinement cull before shadows, final depth, and world shading.
+- **Inputs:** GPU instance/draw database, camera frustum/projection, retained hierarchy groups and cluster commands, retained or current-frame Hi-Z state, LOD/visibility configuration.
 - **Outputs:** A geometric-error camera frontier with adjacent-level overlap, compact visibility streams, indirect arguments, rejection and LOD counters, explicit candidate/camera/shadow record-overflow counters, asynchronous page feedback, admission state, blended-cluster counts, and next-pass state. The active camera target is one pixel at authored maximum quality and follows bounded adaptive tiers after world scale reaches its floor.
 - **Feedback bound:** Demand, visible-touch, and predictive-prefetch feedback are independently bounded. Completed requests admit complete page groups with a fresh current-frame grace window before sampled visible-use touches govern eviction.
 - **Stable-frame behavior:** Does not rebuild membership, hierarchy products, shared geometry arenas, or submission policy; it encodes bounded GPU work over retained draw capacity. A compact queue advances only live admission handoffs, and completed start tokens do not keep obsolete parents selected.
 - **Submission:** Native multi-draw adapters share arena-global command ranges. Other indirect-first-instance adapters append selected ordinary or virtual meshlet records into four triangle-count lanes per compatible material span. Conventional compact shadows use the same lanes; virtual shadows use canonical indexed geometry when resident, page-local lanes under streaming pressure, or a pinned-root coarse proxy for fallback. Compact and classic culling own disjoint commands.
-- **Transitions and diagnostics:** Adjacent complete opaque levels overlap through ordinary depth testing, with an internal HDR marker guiding TAA tolerance. Diagnostics may force the detailed native/emulated branch. Hi-Z projects a sphere-enclosing cube, samples a mip covering that complete footprint, uses the nearest projected corner depth, and skips unsafe near-plane or large near-field bounds. CPU-reference mode is an explicit whole-primitive substitute.
+- **Transitions and diagnostics:** Adjacent complete opaque levels overlap through ordinary depth testing, with an internal HDR marker guiding TAA tolerance. Diagnostics may force the detailed native/emulated branch. Hi-Z projects a sphere-enclosing cube, samples a mip covering that complete footprint, uses the nearest projected corner depth, and skips unsafe near-plane or large near-field bounds. Camera motion never tests against stale depth: a complete coarse virtual frontier seeds current depth, then the refined visibility stream clears and replaces that depth before world shading. CPU-reference mode is an explicit whole-primitive substitute.
 - **Boundary:** WGPU compute/encoding phase with CPU fallback for reference testing.
 - **Source/tests:** `render/wgpu_visibility.odin`, `render/wgpu_hiz.odin`, `render/wgpu_gpu_driven.odin`; `render/render_test.odin`, `render/wgpu_math.odin` reference tests.
 
 ### `scrapbot.render.shadow`
 
-- **Phase/order:** After visibility preparation and before depth/world shading.
+- **Phase/order:** After current-camera visibility refinement and before final depth and world shading.
 - **Inputs:** Four stabilized directional-light views, per-cascade GPU/CPU-reference shadow-visible indirect draws, retained canonical or pinned-root proxy templates, retained geometry/material pipeline state.
 - **Outputs:** Four-layer directional shadow depth texture consumed by receivers through cascade selection, PCF, and 10% adjacent-cascade transition bands.
 - **Stable-frame behavior:** Reuses pipelines, buffers, and batch membership. The near layer refreshes every frame; far layers retain their stabilized matrices and depth contents between 2/4/8-frame updates. An ordinary frame refreshes at most two layers.
@@ -108,9 +108,9 @@ These are the engine-owned rows published to the editor's Systems panel. They ar
 
 ### `scrapbot.render.world`
 
-- **Phase/order:** After shadow encoding and before HDR postprocessing.
+- **Phase/order:** Current-camera occluder depth and optional visibility refinement precede shadow encoding; the final depth pass then runs immediately before world shading and HDR postprocessing.
 - **Inputs:** Visible indirect draws, camera/light uniforms, geometry/material caches, shadow/depth resources.
-- **Outputs:** Depth, HDR world-color, compact surface-data, and indirect-diffuse targets plus timing/query state needed by later phases.
+- **Outputs:** Final detailed depth, HDR world-color, compact surface-data, and indirect-diffuse targets plus timing/query state needed by later phases. Coarse motion depth is transient Hi-Z input and is cleared before these outputs.
 - **Stable-frame behavior:** Reuses retained draw databases, resource caches, pipelines, and unchanged instance buffers.
 - **Boundary:** WGPU depth/world render-pass encoding.
 - **Source/tests:** `render/wgpu.odin`, `render/wgpu_shader.odin`, `render/wgpu_gpu_driven.odin`; `render/render_test.odin`, WGPU smoke/framegrab tests.

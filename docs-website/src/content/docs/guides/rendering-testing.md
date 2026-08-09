@@ -160,7 +160,9 @@ This is a policy, capability, or memory fallback, not a different project-facing
 The compact path is what prevents an adapter without native multi-draw from turning fixed cluster
 ranges into thousands of CPU-encoded calls.
 
-Pass `--cpu-culling` to run the same bounding-sphere tests, screen-radius LOD selection, and compaction on the CPU while retaining WGPU storage-buffer shaders and indirect draws. This is useful as a correctness oracle and compatibility diagnostic; compute culling remains the default. Hi-Z rejection is GPU-only and therefore disabled on the reference path. The compute path also disables previous-frame Hi-Z rejection whenever the camera or a persistent instance record changes, then rebuilds the pyramid from the current conservative frustum result.
+Pass `--cpu-culling` to run the same bounding-sphere tests, screen-radius LOD selection, and compaction on the CPU while retaining WGPU storage-buffer shaders and indirect draws. This is useful as a correctness oracle and compatibility diagnostic; compute culling remains the default. Hi-Z rejection is GPU-only and therefore disabled on the reference path.
+
+The compute path never applies previous-camera Hi-Z after camera motion. With stable instance data, it renders a complete coarse virtual frontier into transient current-camera depth, builds Hi-Z, and reruns detailed visibility before clearing and writing final depth. Persistent instance changes retain the conservative frustum-only fallback for that frame.
 
 Run `mise test-gpu` for the complete bounded GPU regression suite. It drives a greater-than-64-batch stress scene through compute and CPU visibility. It also verifies adaptive Hi-Z rejection plus asynchronous timestamps and counters.
 

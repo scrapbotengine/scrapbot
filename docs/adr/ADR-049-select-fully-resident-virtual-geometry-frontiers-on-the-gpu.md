@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-31
 
-**Updated:** 2026-08-08
+**Updated:** 2026-08-09
 
 ## Context
 
@@ -84,6 +84,21 @@ policy from making geometry coarser merely because the camera approaches a dense
 Frame-budget scaling belongs to the coordinated quality controller in ADR-052. Its render-scale
 changes alter the physical viewport height used by projected-error selection, so virtual Geometry
 tracks actual output resolution without owning a second, hidden quality controller.
+
+Camera motion cannot safely reuse the previous camera's Hi-Z pyramid: newly revealed surfaces may
+have stale occluders at the same screen coordinates. Disabling occlusion for the whole moving frame,
+however, makes dense scenes shade every frustum-visible cluster. WGPU therefore uses a current-frame
+two-stage path whenever retained Hi-Z history is unavailable but the scene is otherwise eligible:
+
+1. select a complete coarse hierarchy frontier and render an occluder-only depth prepass;
+2. build Hi-Z from that current-camera depth;
+3. rerun detailed hierarchy and occlusion selection against the current pyramid; and
+4. clear and render the final detailed depth before world shading.
+
+The coarse frontier is never a color input and cannot become authored visual quality. Rendering the
+final depth again prevents differences between the coarse and detailed surfaces from clipping world
+geometry. A settled camera keeps the single-cull, single-depth path and reuses its exact retained
+pyramid.
 
 Native multi-draw adapters also use the hierarchy for shadows before applying cascade sphere and
 normal-cone tests. The portable path uses the camera-selected object LOD for conservative cascade
