@@ -9,19 +9,15 @@ const scenePath = resolve(
 );
 const beginMarker = "# BEGIN GENERATED LANDSCAPE INSTANCES";
 const endMarker = "# END GENERATED LANDSCAPE INSTANCES";
+const cliffSourcePath = resolve(
+  repositoryRoot,
+  "examples/virtual-wilds/assets/coastal_cliff_04/coastal_cliff_04_1k.gltf",
+);
 
 const resources = {
   rocks: "7b000000-0000-4000-8000-00000000000b",
   boulder: "7b000000-0000-4000-8000-00000000000c",
-  heroPine: "7b000000-0000-4000-8000-00000000000d",
-  forestPines: [
-    "7b000000-0000-4000-8000-00000000000e",
-    "7b000000-0000-4000-8000-00000000000f",
-    "7b000000-0000-4000-8000-000000000010",
-    "7b000000-0000-4000-8000-000000000011",
-    "7b000000-0000-4000-8000-000000000012",
-    "7b000000-0000-4000-8000-000000000013",
-  ],
+  pine: "7b000000-0000-4000-8000-00000000000d",
 };
 
 function configuredCount(name, fallback) {
@@ -39,8 +35,7 @@ function configuredCount(name, fallback) {
 const counts = {
   rocks: configuredCount("VIRTUAL_WILDS_ROCKS", 1),
   boulders: configuredCount("VIRTUAL_WILDS_BOULDERS", 5),
-  heroPines: configuredCount("VIRTUAL_WILDS_HERO_PINES", 5),
-  forestPines: configuredCount("VIRTUAL_WILDS_FOREST_PINES", 560),
+  pines: configuredCount("VIRTUAL_WILDS_PINES", 40),
 };
 
 let state = 0x51a7f00d;
@@ -62,6 +57,203 @@ function format(value) {
 
 function vector(values) {
   return `[${values.map(format).join(", ")}]`;
+}
+
+function sceneTransform(source, entityName) {
+  const block = source
+    .split("[[entities]]")
+    .find((candidate) => candidate.includes(`name = "${entityName}"`));
+  if (!block) {
+    throw new Error(`Virtual Wilds ground entity ${entityName} is missing`);
+  }
+  const readVector = (field) => {
+    const match = block.match(new RegExp(`^${field} = (\\[[^\\n]+\\])$`, "m"));
+    if (!match) {
+      throw new Error(`${entityName} has no ${field} transform field`);
+    }
+    return JSON.parse(match[1]);
+  };
+  return {
+    position: readVector("position"),
+    rotation: readVector("rotation"),
+    scale: readVector("scale"),
+  };
+}
+
+function transformPoint(point, transform) {
+  let [x, y, z] = point.map((value, axis) => value * transform.scale[axis]);
+  const [rx, ry, rz] = transform.rotation;
+  [y, z] = [y * Math.cos(rx) - z * Math.sin(rx), y * Math.sin(rx) + z * Math.cos(rx)];
+  [x, z] = [x * Math.cos(ry) + z * Math.sin(ry), -x * Math.sin(ry) + z * Math.cos(ry)];
+  [x, y] = [x * Math.cos(rz) - y * Math.sin(rz), x * Math.sin(rz) + y * Math.cos(rz)];
+  return [
+    x + transform.position[0],
+    y + transform.position[1],
+    z + transform.position[2],
+  ];
+}
+
+function subtract(left, right) {
+  return left.map((value, axis) => value - right[axis]);
+}
+
+function cross(left, right) {
+  return [
+    left[1] * right[2] - left[2] * right[1],
+    left[2] * right[0] - left[0] * right[2],
+    left[0] * right[1] - left[1] * right[0],
+  ];
+}
+
+function length(value) {
+  return Math.hypot(...value);
+}
+
+function readAccessor(gltf, binary, accessorIndex) {
+  const accessor = gltf.accessors[accessorIndex];
+  const view = gltf.bufferViews[accessor.bufferView];
+  const componentBytes = {5121: 1, 5123: 2, 5125: 4, 5126: 4}[accessor.componentType];
+  const components = {SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4}[accessor.type];
+  if (!componentBytes || !components) {
+    throw new Error(`unsupported glTF accessor ${accessor.componentType}/${accessor.type}`);
+  }
+  const stride = view.byteStride ?? componentBytes * components;
+  const base = (view.byteOffset ?? 0) + (accessor.byteOffset ?? 0);
+  const data = new DataView(binary.buffer, binary.byteOffset, binary.byteLength);
+  const readComponent = (offset) => {
+    if (accessor.componentType === 5121) return data.getUint8(offset);
+    if (accessor.componentType === 5123) return data.getUint16(offset, true);
+    if (accessor.componentType === 5125) return data.getUint32(offset, true);
+    return data.getFloat32(offset, true);
+  };
+  return {
+    count: accessor.count,
+    read(index) {
+      const offset = base + index * stride;
+      if (components === 1) return readComponent(offset);
+      return Array.from(
+        { length: components },
+        (_, component) => readComponent(offset + component * componentBytes),
+      );
+    },
+  };
+}
+
+function loadCliffGeometry() {
+  const gltf = JSON.parse(readFileSync(cliffSourcePath, "utf8"));
+  const binaryPath = resolve(dirname(cliffSourcePath), gltf.buffers[0].uri);
+  const binary = readFileSync(binaryPath);
+  const primitive = gltf.meshes[0].primitives[0];
+  return {
+    positions: readAccessor(gltf, binary, primitive.attributes.POSITION),
+    indices: readAccessor(gltf, binary, primitive.indices),
+  };
+}
+
+function groundedPinePlacements(source, count) {
+  if (count === 0) return [];
+  const geometry = loadCliffGeometry();
+  const groundNames = [
+    "Western Canyon Wall",
+    "Western Canyon Reach",
+    "Outer Headland",
+    "Near Great Cliff",
+    "Cove Gate Cliff",
+    "Far Great Cliff",
+    "Drowned Horizon Ridge",
+  ];
+  const grounds = groundNames.map((name) => sceneTransform(source, name));
+  const candidates = [];
+  for (const ground of grounds) {
+    for (let index = 0; index < geometry.indices.count; index += 3) {
+      const a = transformPoint(geometry.positions.read(geometry.indices.read(index)), ground);
+      const b = transformPoint(geometry.positions.read(geometry.indices.read(index + 1)), ground);
+      const c = transformPoint(geometry.positions.read(geometry.indices.read(index + 2)), ground);
+      const normalArea = cross(subtract(b, a), subtract(c, a));
+      const doubleArea = length(normalArea);
+      if (doubleArea <= 0.000001 || normalArea[1] / doubleArea < 0.9) continue;
+      const centroid = a.map((value, axis) => (value + b[axis] + c[axis]) / 3);
+      if (centroid[1] < 1.5 || centroid[2] < -230 || centroid[2] > 45) continue;
+      // Area-weighted triangle admission keeps the offline scatter independent
+      // of source tessellation density while retaining only a bounded candidate set.
+      const admission = Math.min(1, doubleArea * 0.55);
+      if (random() > admission) continue;
+      const root = Math.sqrt(random());
+      const blend = random();
+      const weights = [1 - root, root * (1 - blend), root * blend];
+      const point = a.map(
+        (value, axis) => value * weights[0] + b[axis] * weights[1] + c[axis] * weights[2],
+      );
+      const normal = normalArea.map((value) => value / doubleArea);
+      candidates.push(point.map((value, axis) => value - normal[axis] * 0.025));
+    }
+  }
+  const groundCellSize = 3;
+  const groundCells = new Map();
+  const groundCellKey = (x, z) =>
+    `${Math.floor(x / groundCellSize)},${Math.floor(z / groundCellSize)}`;
+  for (const point of candidates) {
+    const key = groundCellKey(point[0], point[2]);
+    const cell = groundCells.get(key) ?? [];
+    cell.push(point);
+    groundCells.set(key, cell);
+  }
+  const nearbyGround = (x, z) => {
+    const cellX = Math.floor(x / groundCellSize);
+    const cellZ = Math.floor(z / groundCellSize);
+    let nearest = undefined;
+    let nearestDistanceSquared = 1.25 ** 2;
+    for (let offsetX = -1; offsetX <= 1; offsetX += 1) {
+      for (let offsetZ = -1; offsetZ <= 1; offsetZ += 1) {
+        const cell = groundCells.get(`${cellX + offsetX},${cellZ + offsetZ}`) ?? [];
+        for (const point of cell) {
+          const dx = point[0] - x;
+          const dz = point[2] - z;
+          const distanceSquared = dx * dx + dz * dz;
+          if (distanceSquared < nearestDistanceSquared) {
+            nearest = point;
+            nearestDistanceSquared = distanceSquared;
+          }
+        }
+      }
+    }
+    return nearest;
+  };
+
+  // Fisher-Yates gives us a deterministic permutation without relying on a
+  // non-transitive random sort comparator.
+  for (let index = candidates.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(random() * (index + 1));
+    [candidates[index], candidates[swapIndex]] = [candidates[swapIndex], candidates[index]];
+  }
+  const selected = [];
+  const minimumSpacing = 5.5;
+  for (const candidate of candidates) {
+    const scale = between(3.8, 5.4);
+    const scaleX = scale * between(0.9, 1.1);
+    const yaw = between(-Math.PI, Math.PI);
+    const childRootsAreGrounded = [1, 2].every((childOffset) => {
+      const x = candidate[0] + Math.cos(yaw) * scaleX * childOffset;
+      const z = candidate[2] - Math.sin(yaw) * scaleX * childOffset;
+      const ground = nearbyGround(x, z);
+      return ground !== undefined && Math.abs(ground[1] - candidate[1]) <= 0.25;
+    });
+    if (
+      childRootsAreGrounded &&
+      selected.every((other) => {
+        const offset = subtract(candidate, other.position);
+        return offset[0] * offset[0] + offset[2] * offset[2] >= minimumSpacing ** 2;
+      })
+    ) {
+      selected.push({
+        position: candidate,
+        rotation: [0, yaw, 0],
+        scale: [scaleX, scale * between(0.94, 1.14), scaleX],
+      });
+      if (selected.length === count) return selected;
+    }
+  }
+  throw new Error(`only found ${selected.length} grounded pine sites for ${count} groves`);
 }
 
 let entityIndex = 1;
@@ -126,57 +318,25 @@ for (let index = 0; index < counts.boulders; index += 1) {
   });
 }
 
-// Each photogrammetry pine root contains three distinct saplings. A small hero
-// grove brings alpha-masked needles close to the route without multiplying its
-// 398k-triangle source into an unbounded GPU submission table.
-for (let index = 0; index < counts.heroPines; index += 1) {
-  const side = index % 2 === 0 ? -1 : 1;
-  const lateral = between(11, 17);
-  const scale = between(4.5, 6.4);
-  addEntity({
-    name: `Generated Hero Pine Grove ${index + 1}`,
-    resource: resources.heroPine,
-    position: [
-      side * lateral,
-      2.4 + (lateral - 11) * 0.22 + between(-0.25, 0.35),
-      4 - index * 42 + between(-4, 4),
-    ],
-    rotation: [between(-0.025, 0.025), between(-Math.PI, Math.PI), between(-0.02, 0.02)],
-    scale: [
-      scale * between(0.88, 1.12),
-      scale * between(0.9, 1.18),
-      scale * between(0.88, 1.12),
-    ],
-    shadowCaster: index % 3 === 0,
-  });
-}
-
-// Hundreds of tiny CC0 forest-kit models form the distant canopy. They remain
-// ordinary model components: shared resources, transforms, batching, frustum
-// culling, and sparse shadows all flow through the same public engine path.
-for (let index = 0; index < counts.forestPines; index += 1) {
-  const side = index % 2 === 0 ? -1 : 1;
-  const lateral = between(42, 78);
-  const scale = between(4.8, 9.2);
-  addEntity({
-    name: `Generated Forest Pine ${index + 1}`,
-    resource: resources.forestPines[index % resources.forestPines.length],
-    position: [
-      side * lateral + Math.sin(index * 2.399963) * 7,
-      18 + (lateral - 42) * 0.28 + between(-0.5, 0.7),
-      between(-215, 45),
-    ],
-    rotation: [between(-0.035, 0.035), between(-Math.PI, Math.PI), between(-0.03, 0.03)],
-    scale: [
-      scale * between(0.82, 1.18),
-      scale * between(0.9, 1.25),
-      scale * between(0.82, 1.18),
-    ],
-    shadowCaster: index % 24 === 0,
-  });
-}
-
 const source = readFileSync(scenePath, "utf8");
+
+// Every photogrammetry pine root contains three distinct alpha-masked trees.
+// Their primary roots are sampled directly from upward-facing triangles on the
+// same transformed cliff meshes the renderer consumes. A grove is admitted
+// only when neighboring surface samples also support both offset child roots.
+const pinePlacements = groundedPinePlacements(source, counts.pines);
+for (let index = 0; index < pinePlacements.length; index += 1) {
+  const placement = pinePlacements[index];
+  addEntity({
+    name: `Generated Cliff Pine Grove ${index + 1}`,
+    resource: resources.pine,
+    position: placement.position,
+    rotation: placement.rotation,
+    scale: placement.scale,
+    shadowCaster: index % 8 === 0,
+  });
+}
+
 const begin = source.indexOf(beginMarker);
 const end = source.indexOf(endMarker);
 if (begin < 0 || end < begin) {

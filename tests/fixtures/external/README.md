@@ -46,7 +46,7 @@ Sponza is a manifest bundle: every file has an individual byte count and SHA-256
 - Local path: `downloads/gltf/VirtualWilds/`
 - Upstream: [Poly Haven models](https://polyhaven.com/models)
 - Purpose: high-density photogrammetry import, generated LODs, virtual-geometry paging, bounded residency, and temporal streaming development
-- Pinned shape: 34 downloads, 12 models, 2,062,257 vertices, 3,538,080 source triangles, and 9,435 streamable photogrammetry pages
+- Pinned shape: 6 models, 2,058,625 vertices, 3,536,980 source triangles, and 9,112 streamable photogrammetry pages
 - Licensing: CC0
 
 The bundle contains [Coastal Cliff 04](https://polyhaven.com/a/coastal_cliff_04), [Coast Rocks
@@ -58,11 +58,9 @@ The bundle contains [Coastal Cliff 04](https://polyhaven.com/a/coastal_cliff_04)
 Heerden and processed by Rico Cilliers.
 
 [Pine Sapling Small](https://polyhaven.com/a/pine_sapling_small) supplies three alpha-masked tree
-variations for the example's hero groves.
-
-[Kenney's Nature Kit](https://kenney.nl/assets/nature-kit) supplies six lightweight pine variants.
-Its official CC0 archive is pinned as a whole, then six glTF members are checksum-verified after a
-length-preserving repair of the archive's invalid duplicated scene-root reference.
+variations for grounded cliff groves. The scene generator samples their roots directly from
+upward-facing triangles of the transformed cliff scans and validates the complete three-tree
+footprint against neighboring surface samples.
 
 `mise setup-assets` copies the complete verified bundle into ignored `examples/virtual-wilds/assets/`
 state. It also copies only Coastal Cliff 04 into `examples/virtual-geometry-cliff/assets/` for the
@@ -79,7 +77,7 @@ Run `mise test-sponza` for the explicit heavyweight import contract. `mise test-
 additionally imports it and captures a bounded WGPU frame. Launch the persistent example with
 `mise scrapbot run examples/sponza --editor`.
 
-Run `mise test-virtual-wilds` for the pinned twelve-model import contract.
+Run `mise test-virtual-wilds` for the pinned six-model import contract.
 `mise test-virtual-wilds-gpu` additionally drives the camera long enough to require detail-page
 reads, checks the 192 MiB residency bound, and captures consecutive WGPU frames. Its editor-camera
 residency tour crosses several high-detail regions, returns to the cliff, and preserves frames both

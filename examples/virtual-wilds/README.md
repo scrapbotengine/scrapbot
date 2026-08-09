@@ -1,7 +1,7 @@
 # Virtual Wilds
 
 Virtual Wilds is Scrapbot's real-world virtual-geometry showcase. It builds a moving coastal route
-from six full-detail CC0 Poly Haven models plus six lightweight CC0 Kenney forest models.
+from six full-detail CC0 Poly Haven models.
 
 Install the ignored source fixtures, then launch the editor:
 
@@ -16,7 +16,7 @@ versioned runtime products on first use.
 
 Use the camera's `virtual_geometry`, `meshlets`, and `lod` debug views to inspect the selected
 cluster frontier. The photogrammetry models contain 3,536,980 source triangles and compile into
-9,435 streamable cluster pages. The 192 MiB residency budget is intentionally smaller than that
+9,112 streamable cluster pages. The 192 MiB residency budget is intentionally smaller than that
 complete detail set.
 
 The camera tour therefore exercises visible page demand, predictive prefetch, and eviction while
@@ -60,11 +60,13 @@ landscape denser while giving absorption, refraction, and intersection foam real
 topology.
 
 A project-local Luau scatter system adds 220 shared low-poly rocks using the public procedural
-Geometry, Material, ECS spawn, and Transform APIs. The authored landscape generator stages five
-three-tree Poly Haven hero groves near the route, then deploys 560 tiny Kenney pine models as distant
-canopy belts. The result is 575 trees and 1,425 renderables while retaining a compact shared-batch
-workload. Most instances sit outside the narrow camera corridor, making frustum and Hi-Z telemetry
-meaningful.
+Geometry, Material, ECS spawn, and Transform APIs. The authored landscape generator places 40
+three-tree Poly Haven pine groves across the canyon walls. It samples upward-facing triangles from
+the transformed cliff scans themselves, embeds each grove's primary root into the rendered
+surface, and admits the grove only when nearby samples support both offset child trunks.
+
+The result is 120 detailed trees and 515 renderables in a compact shared-batch workload. Most
+instances sit outside the narrow camera corridor, making frustum and Hi-Z telemetry meaningful.
 
 The ordinary public `scrapbot.volumetric_fog` component adds shadowed blue-gray coastal haze. A
 low sun cuts across the flooded canyon.
@@ -84,7 +86,6 @@ The water shader adapts Stefan Gustavson and Ian McEwan's
 `419175a270862ce7ae692038fafafb42ec0427e9`. psrdnoise is distributed under the MIT License; the
 required copyright and permission notice is retained in `shaders/coastal-water.wgsl`.
 
-All scanned assets are from [Poly Haven](https://polyhaven.com/) and licensed CC0. The distant
-forest uses [Kenney's Nature Kit](https://kenney.nl/assets/nature-kit), also licensed CC0. See
+All scanned assets are from [Poly Haven](https://polyhaven.com/) and licensed CC0. See
 [`tests/fixtures/external/README.md`](../../tests/fixtures/external/README.md) for pinned sources,
 authors, and fixture policy.

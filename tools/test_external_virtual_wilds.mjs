@@ -76,90 +76,6 @@ const models = [
     clusters: 9560,
     groups: 642,
   },
-  {
-    id: "7b000000-0000-4000-8000-00000000000e",
-    source: "assets/kenney-nature/tree_pineDefaultA.glb",
-    nodes: 2,
-    primitives: 2,
-    materials: 2,
-    textures: 0,
-    vertices: 784,
-    indices: 690,
-    lods: 0,
-    clusters: 7,
-    groups: 2,
-    virtual: false,
-  },
-  {
-    id: "7b000000-0000-4000-8000-00000000000f",
-    source: "assets/kenney-nature/tree_pineDefaultB.glb",
-    nodes: 2,
-    primitives: 2,
-    materials: 2,
-    textures: 0,
-    vertices: 832,
-    indices: 738,
-    lods: 0,
-    clusters: 7,
-    groups: 2,
-    virtual: false,
-  },
-  {
-    id: "7b000000-0000-4000-8000-000000000010",
-    source: "assets/kenney-nature/tree_pineTallA_detailed.glb",
-    nodes: 2,
-    primitives: 2,
-    materials: 2,
-    textures: 0,
-    vertices: 448,
-    indices: 402,
-    lods: 0,
-    clusters: 4,
-    groups: 2,
-    virtual: false,
-  },
-  {
-    id: "7b000000-0000-4000-8000-000000000011",
-    source: "assets/kenney-nature/tree_pineTallB_detailed.glb",
-    nodes: 2,
-    primitives: 2,
-    materials: 2,
-    textures: 0,
-    vertices: 544,
-    indices: 498,
-    lods: 0,
-    clusters: 5,
-    groups: 2,
-    virtual: false,
-  },
-  {
-    id: "7b000000-0000-4000-8000-000000000012",
-    source: "assets/kenney-nature/tree_pineTallC_detailed.glb",
-    nodes: 2,
-    primitives: 2,
-    materials: 2,
-    textures: 0,
-    vertices: 488,
-    indices: 462,
-    lods: 0,
-    clusters: 5,
-    groups: 2,
-    virtual: false,
-  },
-  {
-    id: "7b000000-0000-4000-8000-000000000013",
-    source: "assets/kenney-nature/tree_pineTallD_detailed.glb",
-    nodes: 2,
-    primitives: 2,
-    materials: 2,
-    textures: 0,
-    vertices: 536,
-    indices: 510,
-    lods: 0,
-    clusters: 6,
-    groups: 2,
-    virtual: false,
-  },
 ];
 
 function runScrapbot(args) {
@@ -222,7 +138,7 @@ function main() {
     imported.result?.imported !== models.length ||
     imported.result?.products !== models.length
   ) {
-    throw new Error("expected a fresh twelve-model Virtual Wilds import");
+    throw new Error("expected a fresh six-model Virtual Wilds import");
   }
   runScrapbot(["check", project, "--json"]);
   const simulated = runScrapbot([
@@ -237,8 +153,8 @@ function main() {
     "--json",
   ]);
   if (
-    simulated.result?.renderables !== 1425 ||
-    simulated.result?.draw_batches !== 26
+    simulated.result?.renderables !== 515 ||
+    simulated.result?.draw_batches !== 14
   ) {
     throw new Error(
       "Virtual Wilds did not preserve its high-instance shared-batch workload",
@@ -309,8 +225,8 @@ function main() {
     ]);
     const stats = rendered.result?.render_stats;
     if (
-      rendered.result?.renderables !== 1425 ||
-      rendered.result?.draw_batches !== 26 ||
+      rendered.result?.renderables !== 515 ||
+      rendered.result?.draw_batches !== 14 ||
       stats?.virtual_geometry !== true ||
       stats?.virtual_geometry_compacted !== true ||
       stats?.meshlet_visible_capacity > 1048576 ||
@@ -360,6 +276,20 @@ function main() {
           "--editor",
           "--ui-script",
           "tests/fixtures/ui/virtual-wilds-volumetric-fog.json",
+        ],
+      },
+      {
+        name: "grounded-pines",
+        arguments: [
+          "--warmup",
+          "0",
+          "--frames",
+          "90",
+          "--capture-range",
+          "80:84",
+          "--editor",
+          "--ui-script",
+          "tests/fixtures/ui/virtual-wilds-grounded-pines.json",
         ],
       },
       {
@@ -500,7 +430,7 @@ function main() {
       if (
         profile.frames?.some(
           (frame) =>
-            frame.render?.draw_batches !== 26 ||
+            frame.render?.draw_batches !== 14 ||
             frame.render?.virtual_geometry_compacted !== true ||
             !isVirtualGeometryErrorTier(
               frame.render?.virtual_geometry_error_pixels,

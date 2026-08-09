@@ -1,7 +1,0 @@
-id = "7b000000-0000-4000-8000-000000000011"
-type = "scrapbot.model"
-name = "Kenney Pine Tall B"
-
-[model]
-source = "assets/kenney-nature/tree_pineTallB_detailed.glb"
-generate_lods = false

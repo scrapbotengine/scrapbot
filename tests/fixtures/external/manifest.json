@@ -259,59 +259,6 @@
       ]
     },
     {
-      "id": "kenney-nature-kit",
-      "path": "archives/kenney_nature-kit.zip",
-      "url": "https://kenney.nl/media/pages/assets/nature-kit/37ac38a37b-1677698939/kenney_nature-kit.zip",
-      "bytes": 10537521,
-      "sha256": "fa7974a0d342bfe63c38664ba9f8ec1a4aab8ea25f099bdc56870e33588c4d9d",
-      "source": "https://kenney.nl/assets/nature-kit",
-      "license": "CC0",
-      "archive_members": [
-        {
-          "path": "Models/GLTF format/tree_pineDefaultA.glb",
-          "placement": "examples/virtual-wilds/assets/kenney-nature/tree_pineDefaultA.glb",
-          "bytes": 17220,
-          "sha256": "744e840445f30141fc0097fb1e0b5c81365c80634fe3141391dadaa0a0a07046",
-          "byte_replacements": [{ "from": "\"scenes\":[{\"nodes\":[1]}]", "to": "\"scenes\":[{\"nodes\":[0]}]" }]
-        },
-        {
-          "path": "Models/GLTF format/tree_pineDefaultB.glb",
-          "placement": "examples/virtual-wilds/assets/kenney-nature/tree_pineDefaultB.glb",
-          "bytes": 18180,
-          "sha256": "bb504167326883119e7a85ddfc97311e9f9529a4acd03cfbfa43a47eba6be08e",
-          "byte_replacements": [{ "from": "\"scenes\":[{\"nodes\":[1]}]", "to": "\"scenes\":[{\"nodes\":[0]}]" }]
-        },
-        {
-          "path": "Models/GLTF format/tree_pineTallA_detailed.glb",
-          "placement": "examples/virtual-wilds/assets/kenney-nature/tree_pineTallA_detailed.glb",
-          "bytes": 10708,
-          "sha256": "9a64bd14b6722a01048ccd78dd51f63aac4bc750934ccdaf876db21dee790ea7",
-          "byte_replacements": [{ "from": "\"scenes\":[{\"nodes\":[1]}]", "to": "\"scenes\":[{\"nodes\":[0]}]" }]
-        },
-        {
-          "path": "Models/GLTF format/tree_pineTallB_detailed.glb",
-          "placement": "examples/virtual-wilds/assets/kenney-nature/tree_pineTallB_detailed.glb",
-          "bytes": 12632,
-          "sha256": "624fb6895fbc2e0ec0d6a2a8410b597055b426055aaa9d28ed8ee63f89c135e0",
-          "byte_replacements": [{ "from": "\"scenes\":[{\"nodes\":[1]}]", "to": "\"scenes\":[{\"nodes\":[0]}]" }]
-        },
-        {
-          "path": "Models/GLTF format/tree_pineTallC_detailed.glb",
-          "placement": "examples/virtual-wilds/assets/kenney-nature/tree_pineTallC_detailed.glb",
-          "bytes": 11588,
-          "sha256": "84f87e5aeaed31729b5826536944602b28b5feb64c7702bd0f255d7bea77194e",
-          "byte_replacements": [{ "from": "\"scenes\":[{\"nodes\":[1]}]", "to": "\"scenes\":[{\"nodes\":[0]}]" }]
-        },
-        {
-          "path": "Models/GLTF format/tree_pineTallD_detailed.glb",
-          "placement": "examples/virtual-wilds/assets/kenney-nature/tree_pineTallD_detailed.glb",
-          "bytes": 12548,
-          "sha256": "197742a4e3fa2e3b3aef196566a725a11ea124a0d2a979785364db2f820d575f",
-          "byte_replacements": [{ "from": "\"scenes\":[{\"nodes\":[1]}]", "to": "\"scenes\":[{\"nodes\":[0]}]" }]
-        }
-      ]
-    },
-    {
       "id": "khronos-sponza",
       "path": "gltf/Sponza",
       "base_url": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/2bac6f8c57bf471df0d2a1e8a8ec023c7801dddf/Models/Sponza/glTF",
