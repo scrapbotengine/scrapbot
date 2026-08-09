@@ -230,7 +230,7 @@ The renderer integrates 16–64 samples per fog-target camera ray according to a
 
 When enabled, each midpoint reads every relevant point light from the same GPU-built view-frustum cluster used by opaque surface lighting. Point-light scattering is currently unshadowed.
 
-Fog is depth-aware upsampled before temporal antialiasing and bloom. An integer-scrambled 256-frame sequence feeds finite-depth and sky-direction reprojection without a persistent screen-space lattice. Invalid or disabled history uses midpoint sampling. Local fog volumes, froxels, and explicit authored quality controls remain follow-up work.
+Fog resolves dedicated scattering/transmittance history before depth-aware upsampling, temporal antialiasing, and bloom. An integer-scrambled 256-frame sequence feeds finite-surface and finite-medium background reprojection. Depth, motion, and radiometric confidence reject stale history, avoiding both a persistent sampling lattice and camera-motion shadow trails. Invalid, disabled, or newly enabled history uses midpoint sampling. Local fog volumes, froxels, and explicit authored quality controls remain follow-up work.
 
 Luau systems can query and write the complete payload after declaring `scrapbot.volumetric_fog` in their access lists. Presence enables the feature; removing the component or setting `density` to zero skips the fog dispatch. Changing `resolution_scale` explicitly invalidates the retained post targets; stable frames reuse them.
 

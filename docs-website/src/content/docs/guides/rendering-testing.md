@@ -249,7 +249,9 @@ The primary directional light supplies anisotropic in-scattering. Its four casca
 
 `point_light_intensity` independently opts clustered point lights into the medium. Every ray step reuses its complete GPU-built view-frustum cluster; Scrapbot does not build or upload another fog-only light list.
 
-Fog is depth-aware reconstructed before TAA and bloom. An integer-scrambled sequence decorrelates ray samples across fog texels and 256 frames. Surface fog reprojects from finite depth, while sky fog follows its world-space view direction. Structured low-resolution bands become fine variance that converges without leaving a sampling pattern in open sky. With unavailable or disabled history, the ray march uses a stable midpoint.
+Fog resolves a dedicated scattering/transmittance history before reconstruction, TAA, and bloom. An integer-scrambled sequence decorrelates ray samples across fog texels and 256 frames. Surface fog reprojects from finite depth; background fog uses a finite representative point inside the medium.
+
+Previous depth rejects disocclusions. Current scattering bounds stale radiance, while camera motion and lighting change reduce history weight. This converges low-resolution variance without leaving a sampling lattice or dragging old shadow shafts through the sky. With unavailable, disabled, or newly enabled history, the ray march uses a stable midpoint.
 
 Remove the component or set `density = 0` to skip the fog dispatch. See [`scrapbot.volumetric_fog`](/reference/components/#scrapbotvolumetric_fog) for every field.
 
@@ -267,7 +269,7 @@ AO attenuates only indirect diffuse light. It does not dirty direct lights, spec
 
 Enabled SSR marches a reflected view ray through scene depth and samples HDR color only at confirmed on-screen hits. Confidence fades rough, distant, uncertain, and screen-edge hits.
 
-Fog, AO, and SSR join the current HDR signal before temporal resolution. Enabled TAA uses an eight-sample projection-jitter sequence bounded to a quarter pixel. History lives on a stable output grid and is camera-reprojected with the sample offset removed. A local depth match and YCoCg variance clipping reject invalid history without making a motionless view follow the jitter pattern.
+Resolved fog, AO, and SSR join the current HDR signal before surface temporal resolution. Enabled TAA uses an eight-sample projection-jitter sequence bounded to a quarter pixel. Scene-color history lives on a stable output grid and is camera-reprojected with the sample offset removed. A local depth match and YCoCg variance clipping reject invalid surface history without making a motionless view follow the jitter pattern.
 
 TAA alternates two retained HDR color/depth pairs between current output and previous history. This avoids copying full-resolution history every frame. When TAA is off, the renderer removes projection jitter and history sampling. Optional fast AA then uses only the current resolved frame. Resize, world replacement, depth replacement, camera cuts, and TAA mode changes invalidate temporal history.
 

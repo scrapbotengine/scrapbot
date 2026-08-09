@@ -141,7 +141,9 @@ The active camera controls a `0.5`–`1` world render-grid ceiling/floor, option
 
 One optional authored `scrapbot.volumetric_fog` component supplies a global exponential height medium and an independent `0.25`–`1` target-resolution scale, defaulting to `0.25`. A separately timestamped compute pass integrates 16–64 samples up to scene depth or the authored distance bound. The coordinated frame-budget policy selects the step count.
 
-The full-resolution temporal pass depth-aware reconstructs scattering and transmittance from the actual retained-target dimensions. Fog-texel coordinates and a 256-frame sequence feed an integer-scrambled ray offset. Finite surfaces reproject by world position; sky fog reprojects by world-space ray direction. Structured low-resolution bands become temporally convergent variance instead of a persistent lattice. Invalid or disabled history uses a stable midpoint.
+Fog owns a dedicated ping-pong scattering/transmittance history at its authored target scale. Fog-texel coordinates and a 256-frame sequence feed an integer-scrambled ray offset. Finite surfaces reproject by world position; background samples reproject a finite point inside the medium.
+
+Previous depth rejects disocclusions. A current-radiance neighborhood bounds retained scattering, and motion plus shading-change confidence shorten history before old shadow shafts can trail behind camera movement. Invalid, disabled, or newly enabled history uses a stable midpoint. The full-resolution temporal pass then depth-aware reconstructs the resolved fog into current scene color without accumulating background fog a second time.
 
 Ambient scattering is unshadowed. Anisotropic primary-directional scattering uses a 2×2 UV-space filter and the same cascade transition bands as opaque geometry. Projects may independently opt clustered point lights into the medium. Absence or zero density skips the ray-march dispatch.
 
@@ -160,7 +162,7 @@ The editor fly view inherits the project camera's render policy. WGPU consumes a
 **Tradeoff:** These techniques deliberately exchange completeness, precision, latency, memory, and configurability for bounded real-time work:
 
 - Screen-space effects cannot see off-screen or occluded sources. SSR uses a bounded linear march and fades rough reflections instead of tracing Hi-Z or filtering them. Lower quality tiers preserve reach by trading intersection precision for fewer steps.
-- Camera-only temporal reprojection lacks exact motion for animated objects. Previous-depth rejection and neighborhood clamping bound history error until per-object motion vectors exist.
+- Camera-only surface reprojection lacks exact motion for animated objects. Previous-depth rejection and neighborhood clamping bound surface-history error until per-object motion vectors exist. Fog history is independently bounded by depth, motion, and radiometric confidence.
 - Fog is one global 4–16-step volume, and every step evaluates its complete clustered point-light list. Local volumes and froxels remain follow-up work.
 - Automatic exposure uses a bounded sparse meter rather than a full histogram and exposes only bounds, speed, and compensation.
 - Lens flares are screen-space and therefore see only bright energy present in the rendered viewport. Procedural dirt is deterministic and asset-free, but cannot reproduce a photographed lens texture.

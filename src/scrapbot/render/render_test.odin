@@ -3873,15 +3873,27 @@ test_volumetric_fog_shader_is_energy_normalized_shadowed_and_temporally_resolved
 		),
 	)
 	testing.expect(t, !strings.contains(WGPU_TEMPORAL_AA_SHADER, "let spatial_phase = fract"))
-	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "world_direction * 100000.0"))
+	testing.expect(
+		t,
+		strings.contains(WGPU_TEMPORAL_AA_SHADER, "fn resolve_volumetric_fog_history"),
+	)
+	testing.expect(
+		t,
+		strings.contains(WGPU_TEMPORAL_AA_SHADER, "temporal.fog_height_distance.z * 0.5"),
+	)
 	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "stored_depth >= 0.999999"))
 	testing.expect(
 		t,
 		strings.contains(
 			WGPU_TEMPORAL_AA_SHADER,
-			"mix(fogged_color, history_sample.rgb, temporal.parameters.w)",
+			"let motion_confidence = exp2(-motion_pixels * 0.5)",
 		),
 	)
+	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "shading_confidence"))
+	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "temporal.reflections.z <= 0.5"))
+	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "rectified_history"))
+	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "history_weight = 0.94"))
+	testing.expect(t, !strings.contains(WGPU_TEMPORAL_AA_SHADER, "world_direction * 100000.0"))
 	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "f32(step) + integration_phase"))
 	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "closest_depth_delta"))
 	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "fn rgb_to_ycocg"))
@@ -3898,6 +3910,14 @@ test_volumetric_fog_shader_is_energy_normalized_shadowed_and_temporally_resolved
 	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "jitter_motion"))
 	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "mix(fogged_color, history"))
 	testing.expect(t, !strings.contains(WGPU_TEMPORAL_AA_SHADER, "43758.5453"))
+}
+
+@(test)
+test_volumetric_fog_owns_independent_ping_pong_history :: proc(t: ^testing.T) {
+	renderer: WGPU_Renderer
+	testing.expect_value(t, len(renderer.volumetric_fog_textures), 2)
+	testing.expect_value(t, len(renderer.volumetric_fog_views), 2)
+	testing.expect_value(t, len(renderer.volumetric_fog_bind_groups), 2)
 }
 
 @(test)

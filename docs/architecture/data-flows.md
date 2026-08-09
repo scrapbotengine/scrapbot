@@ -225,7 +225,11 @@ One optional `scrapbot.volumetric_fog` component supplies a global exponential h
 
 Each sample uses the first directional light and a 2×2 UV-space filtered lookup into the same four shadow cascades as opaque rendering. Both paths cross-fade the final 10% of each cascade into its successor and fade the final cascade to unshadowed. Opt-in local scattering reads every relevant point light from the existing GPU-built cluster for that sample; there is no duplicate light list.
 
-The ray march integer-scrambles fog-texel coordinates with a 256-frame sequence. Finite-depth surfaces reproject through their world position, while background fog reprojects through its world-space ray direction. Structured low-resolution bands therefore become temporally convergent variance rather than a persistent screen-space lattice. Invalid or disabled temporal history uses deterministic midpoint sampling. The fog target is retained and recreated only when its scale or another post-target dependency changes. Local fog volumes remain follow-up work.
+The ray march integer-scrambles fog-texel coordinates with a 256-frame sequence. A dedicated pair of scattering/transmittance targets owns fog history independently of scene-color TAA. Finite-depth samples reproject through their world position; background samples use a finite representative point inside the medium instead of treating the sky as infinitely distant.
+
+Depth disagreement rejects disoccluded history. Radiometric rectification bounds retained scattering around the current integration, while screen motion and shading change reduce its weight. These gates turn structured low-resolution bands into convergent variance without allowing old shadow shafts to trail behind a moving camera. Invalid, disabled, or newly enabled history uses deterministic midpoint sampling.
+
+Fog targets are retained and recreated only when their scale or another post-target dependency changes. Local fog volumes remain follow-up work.
 
 ### Instances and materials
 
@@ -257,7 +261,7 @@ When the camera selects Occlusion Queries, the GPU culler appends exact query ev
 
 Freezing leaves the last valid diagnostic range and indirect count resident while ordinary visibility continues to use current safety gates. Disabling freeze resumes replacement. Leaving the view invalidates the evidence.
 
-Global volumetric fog is scene-owned rather than camera-owned. It composes before temporal resolution and bloom, stops at scene depth or its authored distance bound, and becomes a shader no-op when absent or at zero density.
+Global volumetric fog is scene-owned rather than camera-owned. It resolves its own temporal scattering/transmittance history, then composes into current scene color before surface TAA and bloom. It stops at scene depth or its authored distance bound and becomes a shader no-op when absent or at zero density.
 
 Vignette, lens flare, and lens dirt are independent scene-owned singleton components. The final composite derives bounded chromatic ghosts and a halo from the bloom bright-pass, optionally modulates that optical energy with deterministic procedural dirt, then tone maps once. Vignette frames the tone-mapped result before fixed dithering. Disabled bloom suppresses flare and dirt; non-lit debug views suppress all three; adaptive post quality reduces the effective ghost count without mutating authored values.
 

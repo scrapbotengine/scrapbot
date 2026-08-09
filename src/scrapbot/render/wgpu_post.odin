@@ -1084,17 +1084,21 @@ wgpu_release_post_targets :: proc(renderer: ^WGPU_Renderer) {
 			renderer.temporal_depth_textures[index] = nil
 		}
 	}
-	if renderer.volumetric_fog_bind_group != nil {
-		wgpu.BindGroupRelease(renderer.volumetric_fog_bind_group)
-		renderer.volumetric_fog_bind_group = nil
+	for index in 0 ..< len(renderer.volumetric_fog_bind_groups) {
+		if renderer.volumetric_fog_bind_groups[index] != nil {
+			wgpu.BindGroupRelease(renderer.volumetric_fog_bind_groups[index])
+			renderer.volumetric_fog_bind_groups[index] = nil
+		}
 	}
-	if renderer.volumetric_fog_view != nil {
-		wgpu.TextureViewRelease(renderer.volumetric_fog_view)
-		renderer.volumetric_fog_view = nil
-	}
-	if renderer.volumetric_fog_texture != nil {
-		wgpu.TextureRelease(renderer.volumetric_fog_texture)
-		renderer.volumetric_fog_texture = nil
+	for index in 0 ..< len(renderer.volumetric_fog_textures) {
+		if renderer.volumetric_fog_views[index] != nil {
+			wgpu.TextureViewRelease(renderer.volumetric_fog_views[index])
+			renderer.volumetric_fog_views[index] = nil
+		}
+		if renderer.volumetric_fog_textures[index] != nil {
+			wgpu.TextureRelease(renderer.volumetric_fog_textures[index])
+			renderer.volumetric_fog_textures[index] = nil
+		}
 	}
 	if renderer.volumetric_fog_dummy_view != nil {
 		wgpu.TextureViewRelease(renderer.volumetric_fog_dummy_view)
@@ -1179,6 +1183,7 @@ wgpu_release_post_targets :: proc(renderer: ^WGPU_Renderer) {
 	renderer.post_depth_view = nil
 	renderer.temporal_output_index = 0
 	renderer.temporal_history_valid = false
+	renderer.volumetric_fog_history_valid = false
 	renderer.automatic_exposure_valid = false
 }
 
@@ -1434,16 +1439,19 @@ wgpu_ensure_post_targets :: proc(
 	}
 	volumetric_fog_width := wgpu_post_scaled_dimension(width, volumetric_fog_resolution_scale)
 	volumetric_fog_height := wgpu_post_scaled_dimension(height, volumetric_fog_resolution_scale)
-	renderer.volumetric_fog_texture, renderer.volumetric_fog_view, err = wgpu_create_post_texture(
-		renderer,
-		"Scrapbot Volumetric Fog",
-		volumetric_fog_width,
-		volumetric_fog_height,
-		.RGBA16Float,
-		{.TextureBinding, .StorageBinding},
-	)
-	if err != "" {
-		return err
+	for index in 0 ..< len(renderer.volumetric_fog_textures) {
+		renderer.volumetric_fog_textures[index], renderer.volumetric_fog_views[index], err =
+			wgpu_create_post_texture(
+				renderer,
+				"Scrapbot Volumetric Fog History",
+				volumetric_fog_width,
+				volumetric_fog_height,
+				.RGBA16Float,
+				{.TextureBinding, .StorageBinding},
+			)
+		if err != "" {
+			return err
+		}
 	}
 	ambient_occlusion_width := wgpu_post_scaled_dimension(
 		width,
@@ -1546,7 +1554,7 @@ wgpu_ensure_post_targets :: proc(
 			},
 			{binding = 13, textureView = renderer.shadow_array_view},
 			{binding = 14, sampler = renderer.shadow_sampler},
-			{binding = 15, textureView = renderer.volumetric_fog_view},
+			{binding = 15, textureView = renderer.volumetric_fog_views[output_index]},
 			{binding = 16, textureView = renderer.volumetric_fog_dummy_view},
 		}
 		renderer.temporal_aa_bind_groups[output_index] = wgpu.DeviceCreateBindGroup(
@@ -1562,26 +1570,45 @@ wgpu_ensure_post_targets :: proc(
 			return "failed to create temporal AA bind group"
 		}
 	}
-	volumetric_fog_entries := temporal_entries
-	volumetric_fog_entries[15] = {
-		binding = 15,
-		textureView = renderer.volumetric_fog_dummy_view,
-	}
-	volumetric_fog_entries[16] = {
-		binding = 16,
-		textureView = renderer.volumetric_fog_view,
-	}
-	renderer.volumetric_fog_bind_group = wgpu.DeviceCreateBindGroup(
-		renderer.device,
-		&wgpu.BindGroupDescriptor {
-			label = "Scrapbot Volumetric Fog Bind Group",
-			layout = renderer.temporal_aa_bind_group_layout,
-			entryCount = uint(len(volumetric_fog_entries)),
-			entries = raw_data(volumetric_fog_entries[:]),
-		},
-	)
-	if renderer.volumetric_fog_bind_group == nil {
-		return "failed to create volumetric fog bind group"
+	for output_index in 0 ..< len(renderer.volumetric_fog_views) {
+		history_index := 1 - output_index
+		volumetric_fog_entries := temporal_entries
+		volumetric_fog_entries[3] = {
+			binding = 3,
+			textureView = renderer.temporal_color_views[history_index],
+		}
+		volumetric_fog_entries[4] = {
+			binding = 4,
+			textureView = renderer.temporal_depth_views[history_index],
+		}
+		volumetric_fog_entries[5] = {
+			binding = 5,
+			textureView = renderer.temporal_color_views[output_index],
+		}
+		volumetric_fog_entries[6] = {
+			binding = 6,
+			textureView = renderer.temporal_depth_views[output_index],
+		}
+		volumetric_fog_entries[15] = {
+			binding = 15,
+			textureView = renderer.volumetric_fog_views[history_index],
+		}
+		volumetric_fog_entries[16] = {
+			binding = 16,
+			textureView = renderer.volumetric_fog_views[output_index],
+		}
+		renderer.volumetric_fog_bind_groups[output_index] = wgpu.DeviceCreateBindGroup(
+			renderer.device,
+			&wgpu.BindGroupDescriptor {
+				label = "Scrapbot Volumetric Fog History Bind Group",
+				layout = renderer.temporal_aa_bind_group_layout,
+				entryCount = uint(len(volumetric_fog_entries)),
+				entries = raw_data(volumetric_fog_entries[:]),
+			},
+		)
+		if renderer.volumetric_fog_bind_groups[output_index] == nil {
+			return "failed to create volumetric fog bind group"
+		}
 	}
 
 	for temporal_index in 0 ..< len(renderer.temporal_color_views) {
@@ -1995,7 +2022,7 @@ wgpu_encode_bloom_and_composite :: proc(
 		reflections = {
 			1 if resolved_camera.screen_space_reflections else 0,
 			f32(renderer.temporal_sample_index % 256),
-			0,
+			1 if renderer.volumetric_fog_history_valid else 0,
 			f32(renderer.temporal_sample_index % 8),
 		},
 	}
@@ -2045,7 +2072,7 @@ wgpu_encode_bloom_and_composite :: proc(
 		wgpu.ComputePassEncoderSetBindGroup(
 			volumetric_fog_pass,
 			0,
-			renderer.volumetric_fog_bind_group,
+			renderer.volumetric_fog_bind_groups[temporal_output_index],
 		)
 		wgpu.ComputePassEncoderSetBindGroup(
 			volumetric_fog_pass,
@@ -2278,6 +2305,8 @@ wgpu_encode_bloom_and_composite :: proc(
 	renderer.temporal_previous_view_projection = renderer.temporal_current_view_projection
 	renderer.temporal_previous_projection = renderer.temporal_current_projection
 	renderer.temporal_history_valid = resolved_camera.temporal_antialiasing
+	renderer.volumetric_fog_history_valid =
+		resolved_camera.temporal_antialiasing && fog.density > 0
 	renderer.temporal_output_index = 1 - temporal_output_index
 	if resolved_camera.temporal_antialiasing {
 		renderer.temporal_sample_index += 1

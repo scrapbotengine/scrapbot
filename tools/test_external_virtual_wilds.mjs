@@ -363,6 +363,23 @@ function main() {
         ],
       },
       {
+        name: "volumetric-fog-motion",
+        captureStart: 30,
+        captureEnd: 76,
+        visualContract: "tests/fixtures/visual/virtual-wilds-volumetric-fog.json",
+        arguments: [
+          "--warmup",
+          "0",
+          "--frames",
+          "88",
+          "--capture-range",
+          "30:76",
+          "--editor",
+          "--ui-script",
+          "tests/fixtures/ui/virtual-wilds-volumetric-fog-motion.json",
+        ],
+      },
+      {
         name: "transition",
         arguments: [
           "--warmup",

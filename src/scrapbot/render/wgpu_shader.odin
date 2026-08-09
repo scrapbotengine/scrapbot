@@ -1300,6 +1300,123 @@ fn current_neighborhood_from_tile(local_pixel: vec2<u32>) -> array<vec3<f32>, 2>
 	);
 }
 
+fn volumetric_fog_history_coordinate(pixel: vec2<i32>, depth: f32) -> vec3<f32> {
+	let dimensions = vec2<i32>(textureDimensions(current_depth));
+	var world_position = vec4<f32>(0.0);
+	if (depth < 0.999999) {
+		let view_position = reconstruct_view_position(pixel, depth);
+		world_position = temporal.inverse_view * vec4<f32>(view_position, 1.0);
+	} else {
+		let sample_position = vec2<f32>(pixel) + vec2<f32>(0.5);
+		let viewport_uv = (sample_position - temporal.viewport.xy) / temporal.viewport.zw;
+		let ndc = viewport_uv * vec2<f32>(2.0, -2.0) + vec2<f32>(-1.0, 1.0);
+		let view_direction = normalize(vec3<f32>(
+			(ndc.x + temporal.parameters.x) / temporal.projection.x,
+			(ndc.y + temporal.parameters.y) / temporal.projection.y,
+			-1.0,
+		));
+		let world_direction = normalize(
+			(temporal.inverse_view * vec4<f32>(view_direction, 0.0)).xyz,
+		);
+		// Fog is a finite medium, not an infinitely distant sky. Reproject a
+		// representative point inside the integrated ray so translation moves
+		// history instead of dragging old lighting through the viewport.
+		let history_distance = max(temporal.fog_height_distance.z * 0.5, 1.0);
+		world_position = vec4<f32>(
+			temporal.inverse_view[3].xyz + world_direction * history_distance,
+			1.0,
+		);
+	}
+	let previous_clip = temporal.previous_view_projection * world_position;
+	if (previous_clip.w <= 0.0001) {
+		return vec3<f32>(0.0);
+	}
+	let previous_ndc = previous_clip.xy / previous_clip.w;
+	let previous_viewport_uv = previous_ndc * vec2<f32>(0.5, -0.5) + vec2<f32>(0.5);
+	if (
+		any(previous_viewport_uv < vec2<f32>(0.0)) ||
+		any(previous_viewport_uv > vec2<f32>(1.0))
+	) {
+		return vec3<f32>(0.0);
+	}
+	let previous_projected_pixel =
+		temporal.viewport.xy + previous_viewport_uv * temporal.viewport.zw;
+	let jitter_motion = vec2<f32>(
+		temporal.parameters.x * temporal.viewport.z * 0.5,
+		-temporal.parameters.y * temporal.viewport.w * 0.5,
+	);
+	let previous_pixel = previous_projected_pixel - jitter_motion;
+	let previous_pixel_i = vec2<i32>(floor(previous_pixel));
+	if (!inside_viewport(previous_pixel_i)) {
+		return vec3<f32>(0.0);
+	}
+	let stored_depth = textureLoad(history_depth, previous_pixel_i, 0).r;
+	if (depth >= 0.999999) {
+		if (stored_depth < 0.999999) {
+			return vec3<f32>(0.0);
+		}
+	} else {
+		if (stored_depth >= 0.999999) {
+			return vec3<f32>(0.0);
+		}
+		let expected_linear_depth = previous_clip.w;
+		let stored_linear_depth =
+			temporal.previous_projection.w /
+			(stored_depth + temporal.previous_projection.z);
+		let depth_tolerance = max(0.02, expected_linear_depth * 0.02);
+		if (abs(stored_linear_depth - expected_linear_depth) > depth_tolerance) {
+			return vec3<f32>(0.0);
+		}
+	}
+	return vec3<f32>(previous_pixel / vec2<f32>(dimensions), 1.0);
+}
+
+fn resolve_volumetric_fog_history(
+	fog_texel: vec2<u32>,
+	pixel: vec2<i32>,
+	depth: f32,
+	current: vec4<f32>,
+) -> vec4<f32> {
+	if (
+		temporal.features.x <= 0.5 ||
+		temporal.parameters.z <= 0.5 ||
+		temporal.reflections.z <= 0.5
+	) {
+		return current;
+	}
+	let history_coordinate = volumetric_fog_history_coordinate(pixel, depth);
+	if (history_coordinate.z <= 0.5) {
+		return current;
+	}
+	let history = textureSampleLevel(
+		volumetric_fog,
+		linear_sampler,
+		history_coordinate.xy,
+		0.0,
+	);
+	let fog_dimensions = vec2<f32>(textureDimensions(volumetric_fog_output));
+	let history_texel = history_coordinate.xy * fog_dimensions;
+	let motion_pixels = length(history_texel - (vec2<f32>(fog_texel) + vec2<f32>(0.5)));
+	let scattering_scale = max(length(current.rgb) + length(history.rgb), 0.1);
+	let scattering_change = length(history.rgb - current.rgb) / scattering_scale;
+	let transmission_change = abs(history.a - current.a) * 2.0;
+	let shading_change = max(scattering_change, transmission_change);
+
+	// Rectification limits how much stale radiance can survive even when the
+	// reprojected coordinate is geometrically valid. The confidence terms then
+	// shorten history under motion and lighting change instead of applying one
+	// global, trail-prone weight to every fog sample.
+	let scattering_span = max(vec3<f32>(0.015), abs(current.rgb) * 0.2);
+	let rectified_history = vec4<f32>(
+		clamp(history.rgb, current.rgb - scattering_span, current.rgb + scattering_span),
+		clamp(history.a, current.a - 0.025, current.a + 0.025),
+	);
+	let motion_confidence = exp2(-motion_pixels * 0.5);
+	let shading_confidence = exp2(-shading_change * 6.0);
+	let history_weight = 0.94 * motion_confidence * shading_confidence;
+	return mix(current, rectified_history, history_weight);
+}
+
 @compute @workgroup_size(8, 8)
 fn volumetric_fog_cs(@builtin(global_invocation_id) invocation: vec3<u32>) {
 	let dimensions = textureDimensions(volumetric_fog_output);
@@ -1316,10 +1433,11 @@ fn volumetric_fog_cs(@builtin(global_invocation_id) invocation: vec3<u32>) {
 		full_dimensions - vec2<i32>(1),
 	);
 	let depth = textureLoad(current_depth, pixel, 0);
+	let current = integrate_volumetric_fog(invocation.xy, pixel, depth);
 	textureStore(
 		volumetric_fog_output,
 		vec2<i32>(invocation.xy),
-		integrate_volumetric_fog(invocation.xy, pixel, depth),
+		resolve_volumetric_fog_history(invocation.xy, pixel, depth, current),
 	);
 }
 
@@ -1476,60 +1594,6 @@ fn temporal_aa_cs(
 						history_weight = max(history_weight, 0.9);
 					}
 					result = mix(fogged_color, history, history_weight);
-				}
-			}
-		}
-	}
-	if (
-		inside_viewport(pixel) &&
-		depth >= 0.999999 &&
-		temporal.features.x > 0.5 &&
-		temporal.parameters.z > 0.5
-	) {
-		let sample_position = vec2<f32>(pixel) + vec2<f32>(0.5);
-		let viewport_uv = (sample_position - temporal.viewport.xy) / temporal.viewport.zw;
-		let ndc = viewport_uv * vec2<f32>(2.0, -2.0) + vec2<f32>(-1.0, 1.0);
-		let view_direction = normalize(vec3<f32>(
-			(ndc.x + temporal.parameters.x) / temporal.projection.x,
-			(ndc.y + temporal.parameters.y) / temporal.projection.y,
-			-1.0,
-		));
-		let world_direction = normalize(
-			(temporal.inverse_view * vec4<f32>(view_direction, 0.0)).xyz,
-		);
-		// A distant point preserves rotational parallax while making camera
-		// translation negligible, which is the correct reprojection model for
-		// the procedural sky and its finite-distance fog integral.
-		let sky_world_position = temporal.inverse_view[3].xyz + world_direction * 100000.0;
-		let previous_clip = temporal.previous_view_projection * vec4<f32>(sky_world_position, 1.0);
-		if (previous_clip.w > 0.0001) {
-			let previous_ndc = previous_clip.xy / previous_clip.w;
-			let previous_viewport_uv =
-				previous_ndc * vec2<f32>(0.5, -0.5) + vec2<f32>(0.5);
-			let previous_projected_pixel =
-				temporal.viewport.xy + previous_viewport_uv * temporal.viewport.zw;
-			let jitter_motion = vec2<f32>(
-				temporal.parameters.x * temporal.viewport.z * 0.5,
-				-temporal.parameters.y * temporal.viewport.w * 0.5,
-			);
-			let previous_pixel = previous_projected_pixel - jitter_motion;
-			let previous_pixel_i = vec2<i32>(floor(previous_pixel));
-			if (
-				all(previous_viewport_uv >= vec2<f32>(0.0)) &&
-				all(previous_viewport_uv <= vec2<f32>(1.0)) &&
-				inside_viewport(previous_pixel_i)
-			) {
-				let history_sample = textureSampleLevel(
-					history_color,
-					linear_sampler,
-					previous_pixel / vec2<f32>(dimensions),
-					0.0,
-				);
-				let stored_depth = textureLoad(history_depth, previous_pixel_i, 0).r;
-				if (stored_depth >= 0.999999) {
-					result = mix(fogged_color, history_sample.rgb, temporal.parameters.w);
-				} else if (virtual_transition_reactive(history_sample.a)) {
-					result = mix(fogged_color, history_sample.rgb, 0.9);
 				}
 			}
 		}
