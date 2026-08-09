@@ -1,6 +1,6 @@
 # Resources and Registries
 
-**Last verified:** 2026-08-08
+**Last verified:** 2026-08-09
 **Persistent declarations:** `shared.Project_Resource` and `project.load_project_resources`  
 **Runtime authority:** `resources.Registry`
 
@@ -59,7 +59,7 @@ The recursive project loader rejects duplicate UUIDs. Scene validation resolves 
 - Content replacement increments the entry version. LOD membership, addition, disappearance, or other batch-shape changes also increment `geometry_topology_revision`.
 - Registration builds deterministic meshoptimizer meshlets plus a crack-aware cluster-LOD hierarchy when no compiled hierarchy is supplied. Imported catalogs derive compatibility meshlets from the hierarchy's exact leaves without decoding canonical geometry. Both use at most 64 vertices and 124 triangles per cluster.
 - Geometry owns local vertex/triangle streams, conservative spheres, normal cones, hierarchy groups, monotonic simplification errors, refined-group links, deterministic group-aligned page identities, maximum depth, and canonical source counts. Hierarchy construction locks source boundary loops by canonical position so simplification cannot enlarge open regions.
-- Every page has one self-contained canonical-vertex subset and page-local expanded index stream. Imported Geometry owns validated ranges in its immutable Model product plus a position-only query proxy. Model v19 keeps every terminal refinement-DAG frontier page in its pinned coarse chunk, including regions that stop before the hierarchy's global maximum depth, and keeps only refinable pages in its evictable detail chunk.
+- Every page has one self-contained canonical-vertex subset and page-local expanded index stream. Imported Geometry owns validated ranges in its immutable Model product plus a position-only query proxy. Model v21 keeps every terminal refinement-DAG frontier page pinned, including regions that stop before the hierarchy's global maximum depth. It stores those pages and a bounded evictable bootstrap tail in the coarse chunk; later refinements remain independently addressable in the detail chunk.
 - Each imported base primitive retains a validated quantized distance-field descriptor whose samples remain in their independent chunk until requested. Runtime registration clones the descriptor onto Geometry; generated LOD entries do not duplicate it. Cache-hit loading does not decode complete render vertices, source indices, or distance samples.
 - WGPU is the only current field consumer. Its per-Geometry packed buffer feeds both the local slice diagnostic and the debug-requested three-cascade world composition; the Registry neither owns clipmap state nor observes camera movement.
 - Other producers own equivalent in-memory bytes and retain their canonical arrays because they have no persistent fallback product. Clone, replacement, generated-LOD registration, retirement, and destruction move or release the proxy, source contract, and distance-field descriptor with the Geometry entry.
@@ -102,8 +102,12 @@ The recursive project loader rejects duplicate UUIDs. Scene validation resolves 
 ### Texture, Model, Environment, and Icon Set imports
 
 - `asset_import.ensure_project_imports` fingerprints source/dependency bytes plus an importer schema and writes products atomically under `.scrapbot/imported/`.
-- The common asset-product envelope owns format identity, product kind, and a bounded directory of typed, indexed, non-overlapping chunks. Importer schemas own chunk contents. Its reusable sequential writer reserves and patches the directory while payloads stream to disk, then synchronizes the completed file before atomic installation.
-- Model v19 has independent material-image, pinned-coarse-page, evictable-detail-page, quantized-distance-field, and catalog chunks. Terminal group error, rather than one global hierarchy depth, classifies the complete non-evictable fallback frontier. Import streams coarse pages and signed 16-bit distance samples directly, uses a temporary detail-page spool, copies detail bytes with a fixed buffer, and emits the catalog one primitive record at a time. The importer bakes one shared `KHR_texture_transform` per material into UV0. The reader validates all page and field descriptor ranges against their expected chunks before registry publication; the field loader performs a bounded positional read only on demand.
+- The common asset-product envelope owns format identity, product kind, and a bounded directory of typed, indexed, non-overlapping chunks. Importer schemas own chunk contents.
+- The reusable sequential writer reserves and patches the chunk directory while payloads stream to disk. It synchronizes the completed file before atomic installation.
+- Model products separate material images, pinned resident pages, evictable detail pages, quantized distance fields, and the catalog.
+- Terminal group error identifies mandatory fallback roots. Hierarchy construction extends them with a 1/32 payload target, 256 KiB minimum, and 2 MiB maximum of reachable error-prioritized refinements.
+- Import streams resident pages and signed 16-bit distance samples directly. It spools detail pages temporarily, copies them with a fixed buffer, and emits the catalog one primitive at a time.
+- The importer bakes one shared `KHR_texture_transform` per material into UV0. The reader validates page and field ranges against their expected chunks before publication; the field loader performs bounded positional reads only on demand.
 - Texture products contain validated RGBA8 mip chains.
 - Icon Set products contain a deterministic linear RGBA8 MTSDF atlas plus symbolic names and normalized UV rectangles. The importer fingerprints every recursively discovered SVG, normalizes supported monochrome geometry through the pinned compiler, and atomically retains the last valid atlas on failure.
 - Environment products contain:

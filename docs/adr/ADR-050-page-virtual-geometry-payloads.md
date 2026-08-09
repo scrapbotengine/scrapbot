@@ -1,7 +1,7 @@
 # ADR-050: Page virtual Geometry payloads
 
 **Date:** 2026-07-31
-**Updated:** 2026-08-06
+**Updated:** 2026-08-09
 
 ## Context
 
@@ -22,7 +22,16 @@ The engine-owned `geometry` package builds deterministic, group-aligned pages. E
 - vertex and index counts plus a byte range in its source.
 
 Pages never split a hierarchy group. Clusters retain their page identity and page-local index
-offset. The coarsest hierarchy depth is pinned as the guaranteed fallback frontier.
+offset. Every terminal refinement-DAG group is pinned as the guaranteed fallback. Hierarchy
+construction then grows an eagerly loaded bootstrap tail from those roots by admitting reachable
+complete groups in descending geometric-error order.
+
+The extra tail targets 1/32 of the hierarchy payload, with a 256 KiB minimum and 2 MiB maximum per
+hierarchy. Terminal fallback bytes are mandatory and do not consume that allowance. A group that
+does not fit remains streamable together with every descendant reachable only through it. This
+makes the bootstrap set ancestor-closed without using a camera, example identity, elapsed time, or
+backend capability during asset construction. Bootstrap refinements are ordinary evictable
+residency after their first upload; only terminal groups remain pinned under global pressure.
 
 All Geometry producers use one resource contract. Imported Geometry points at byte ranges in a
 versioned Model product. Procedural, Luau, native, and built-in Geometry own the same payloads in
@@ -68,10 +77,11 @@ portable compact submission uses page-local vertices and indices for both camera
 The retained root-page proxy remains a fallback; its presence does not force streamed resources
 back onto classic cascade submission.
 
-Cache creation also rebases the pinned coarse pages into one indexed compatibility proxy. It is
+Cache creation also rebases the complete terminal frontier into one indexed compatibility proxy.
+The proxy references only permanently pinned vertices, never evictable bootstrap refinements. It is
 used by shadows where applicable and by world/depth classic submission whenever the detailed
-visibility layout is unavailable. The proxy makes capacity fallback a quality reduction rather
-than an empty draw without retaining or reconstructing the complete canonical payload.
+visibility layout is unavailable. Capacity fallback is therefore a quality reduction rather than
+an empty or multiply overdrawn hierarchy.
 
 Meshlet and hierarchy-cluster visibility ranges use exact instance cardinality. They are addressed
 as indices inside one shared storage binding and do not inherit the 256-byte dynamic-binding
@@ -79,14 +89,15 @@ alignment required by classic per-batch slices. The bounded layout guard therefo
 records that culling can actually emit instead of reserving 64 records for every cluster of a
 single-instance model.
 
-Pinned bootstrap pages and complete resources that fit the remaining budget are loaded while the
-Geometry cache is established. Refinement reads for larger imported resources run on a dedicated
-I/O worker. The render thread schedules exact immutable product ranges, continues drawing the
-nearest resident fallback, and consumes completed payloads without waiting on file I/O.
+Bootstrap-tail pages and complete resources that fit the remaining budget are loaded while
+the Geometry cache is established. Refinement reads for larger imported resources run on a
+dedicated I/O worker. The render thread schedules exact immutable product ranges, continues drawing
+the nearest resident fallback, and consumes completed payloads without waiting on file I/O.
 
 Requests are deduplicated and prioritized by projected error. Admission and eviction remain group
 atomic. Ordinary frames admit at most 512 KiB and 16 groups. The configured budget counts both
-aligned vertex and index residency; pinned fallback data may raise effective residency above it.
+aligned vertex and index residency; only mandatory terminal fallback data may raise effective
+residency above it.
 
 Eviction removes a group from logical residency immediately, but its page ranges remain physically
 retired until a completed visibility readback fences their last submitted use. Streaming cannot
@@ -120,7 +131,9 @@ read, payload construction, arena upload, or meshlet-layout rewrite.
 Fine Geometry vertices and indices can now be absent from GPU memory and loaded directly from an
 imported product without blocking a frame. Procedural Geometry exercises the same page layout and
 residency machinery through a memory source. Resources that fit retain a faster canonical GPU
-representation; resources that do not fit use self-contained pages without changing public APIs.
+representation; resources that do not fit begin with a useful bounded bootstrap tail and use
+self-contained pages without changing public APIs. The tail improves the first rendered frame but
+does not accumulate as a permanently pinned per-asset memory tax.
 
 Structured render statistics expose total/resident/pinned/prefetched pages; complete payload budget
 and resident bytes; demand and prefetch requests; prefetch uploads, hits, and reclamations; request

@@ -9,6 +9,10 @@ CLUSTER_MAX_TRIANGLES :: 124
 CLUSTER_PAGE_TARGET_BYTES :: 64 * 1024
 CLUSTER_PAGE_TARGET_INDICES :: CLUSTER_PAGE_TARGET_BYTES / size_of(u32)
 CLUSTER_TERMINAL_ERROR_THRESHOLD :: f32(1.0e30)
+CLUSTER_BOOTSTRAP_TAIL_FRACTION_NUMERATOR :: u64(1)
+CLUSTER_BOOTSTRAP_TAIL_FRACTION_DENOMINATOR :: u64(32)
+CLUSTER_BOOTSTRAP_TAIL_MIN_EXTRA_BYTES :: u64(256 * 1024)
+CLUSTER_BOOTSTRAP_TAIL_MAX_EXTRA_BYTES :: u64(2 * 1024 * 1024)
 
 Page_Payload_Record :: struct {
 	offset: u64,
@@ -50,6 +54,7 @@ Cluster_Page :: struct {
 	cluster_count: u32,
 	index_count: u32,
 	pinned: bool,
+	bootstrap: bool,
 }
 
 Hierarchy :: struct {
@@ -176,11 +181,147 @@ build_hierarchy :: proc(
 		}
 	}
 	build_cluster_pages(&hierarchy, allocator)
+	mark_cluster_bootstrap_tail(&hierarchy, vertex_stride, allocator)
 	if validation_err := validate_hierarchy(&hierarchy, vertex_count); validation_err != "" {
 		destroy_hierarchy(&hierarchy, allocator)
 		return {}, validation_err
 	}
 	return hierarchy, ""
+}
+
+cluster_page_payload_size :: proc "contextless" (
+	hierarchy: ^Hierarchy,
+	page_index: int,
+	vertex_stride: int,
+	marks: []u32,
+	token: u32,
+) -> u64 {
+	if hierarchy == nil ||
+	   page_index < 0 ||
+	   page_index >= len(hierarchy.pages) ||
+	   vertex_stride <= 0 {
+		return 0
+	}
+	page := hierarchy.pages[page_index]
+	unique_vertex_count: u64
+	cluster_end := int(page.cluster_offset + page.cluster_count)
+	for cluster in hierarchy.clusters[int(page.cluster_offset):cluster_end] {
+		vertex_end := int(cluster.vertex_offset + cluster.vertex_count)
+		for canonical_index in hierarchy.vertices[int(cluster.vertex_offset):vertex_end] {
+			if int(canonical_index) >= len(marks) || marks[canonical_index] == token {
+				continue
+			}
+			marks[canonical_index] = token
+			unique_vertex_count += 1
+		}
+	}
+	return unique_vertex_count * u64(vertex_stride) + u64(page.index_count) * u64(size_of(u32))
+}
+
+mark_cluster_bootstrap_tail :: proc(
+	hierarchy: ^Hierarchy,
+	vertex_stride: int,
+	allocator := context.allocator,
+) {
+	if hierarchy == nil ||
+	   len(hierarchy.groups) == 0 ||
+	   len(hierarchy.pages) == 0 ||
+	   len(hierarchy.vertices) == 0 ||
+	   vertex_stride <= 0 {
+		return
+	}
+	canonical_vertex_count := 0
+	for canonical_index in hierarchy.vertices {
+		canonical_vertex_count = max(canonical_vertex_count, int(canonical_index) + 1)
+	}
+	marks := make([]u32, canonical_vertex_count, allocator)
+	defer delete(marks, allocator)
+	page_sizes := make([]u64, len(hierarchy.pages), allocator)
+	defer delete(page_sizes, allocator)
+	total_bytes: u64
+	bootstrap_bytes: u64
+	for &page, page_index in hierarchy.pages {
+		group := hierarchy.groups[hierarchy.clusters[page.cluster_offset].group]
+		page.pinned = cluster_group_is_terminal(group)
+		page.bootstrap = page.pinned
+		page_sizes[page_index] = cluster_page_payload_size(
+			hierarchy,
+			page_index,
+			vertex_stride,
+			marks,
+			u32(page_index + 1),
+		)
+		total_bytes += page_sizes[page_index]
+		if page.pinned {
+			bootstrap_bytes += page_sizes[page_index]
+		}
+	}
+	extra_budget := clamp(
+		total_bytes *
+		CLUSTER_BOOTSTRAP_TAIL_FRACTION_NUMERATOR /
+		CLUSTER_BOOTSTRAP_TAIL_FRACTION_DENOMINATOR,
+		CLUSTER_BOOTSTRAP_TAIL_MIN_EXTRA_BYTES,
+		CLUSTER_BOOTSTRAP_TAIL_MAX_EXTRA_BYTES,
+	)
+	target_bytes := min(total_bytes, bootstrap_bytes + extra_budget)
+	group_pinned := make([]bool, len(hierarchy.groups), allocator)
+	defer delete(group_pinned, allocator)
+	group_reachable := make([]bool, len(hierarchy.groups), allocator)
+	defer delete(group_reachable, allocator)
+	for group, group_index in hierarchy.groups {
+		group_pinned[group_index] = cluster_group_is_terminal(group)
+	}
+	for parent, parent_index in hierarchy.groups {
+		if !group_pinned[parent_index] {
+			continue
+		}
+		cluster_end := int(parent.cluster_offset + parent.cluster_count)
+		for cluster in hierarchy.clusters[int(parent.cluster_offset):cluster_end] {
+			if cluster.refined_group >= 0 {
+				group_reachable[cluster.refined_group] = true
+			}
+		}
+	}
+	for bootstrap_bytes < target_bytes {
+		best_group := -1
+		best_error: f32 = -1
+		best_bytes: u64
+		for group, group_index in hierarchy.groups {
+			if group_pinned[group_index] {
+				continue
+			}
+			if !group_reachable[group_index] {
+				continue
+			}
+			group_bytes: u64
+			for page_index in group.page_offset ..< group.page_offset + group.page_count {
+				group_bytes += page_sizes[page_index]
+			}
+			if group_bytes == 0 || bootstrap_bytes + group_bytes > target_bytes {
+				continue
+			}
+			if best_group < 0 || group.error > best_error {
+				best_group = group_index
+				best_error = group.error
+				best_bytes = group_bytes
+			}
+		}
+		if best_group < 0 {
+			break
+		}
+		group_pinned[best_group] = true
+		group := hierarchy.groups[best_group]
+		cluster_end := int(group.cluster_offset + group.cluster_count)
+		for cluster in hierarchy.clusters[int(group.cluster_offset):cluster_end] {
+			if cluster.refined_group >= 0 {
+				group_reachable[cluster.refined_group] = true
+			}
+		}
+		for page_index in group.page_offset ..< group.page_offset + group.page_count {
+			hierarchy.pages[page_index].bootstrap = true
+		}
+		bootstrap_bytes += best_bytes
+	}
 }
 
 build_cluster_pages :: proc(hierarchy: ^Hierarchy, allocator := context.allocator) {
@@ -200,6 +341,7 @@ build_cluster_pages :: proc(hierarchy: ^Hierarchy, allocator := context.allocato
 			page := Cluster_Page {
 				cluster_offset = u32(cluster_cursor),
 				pinned = cluster_group_is_terminal(group),
+				bootstrap = cluster_group_is_terminal(group),
 			}
 			for cluster_cursor < cluster_end {
 				cluster := &hierarchy.clusters[cluster_cursor]
@@ -311,11 +453,47 @@ validate_hierarchy :: proc(hierarchy: ^Hierarchy, canonical_vertex_count: int) -
 			return "cluster hierarchy page index count is invalid"
 		}
 	}
-	for group in hierarchy.groups {
+	pinned_groups := make([]bool, len(hierarchy.groups), context.temp_allocator)
+	bootstrap_groups := make([]bool, len(hierarchy.groups), context.temp_allocator)
+	for group, group_index in hierarchy.groups {
+		group_pinned := true
+		group_bootstrap := true
 		for page in hierarchy.pages[int(group.page_offset):int(group.page_offset + group.page_count)] {
-			if page.pinned != cluster_group_is_terminal(group) {
+			if page.pinned != hierarchy.pages[group.page_offset].pinned {
 				return "cluster hierarchy pinned page is invalid"
 			}
+			if page.bootstrap != hierarchy.pages[group.page_offset].bootstrap {
+				return "cluster hierarchy bootstrap page is invalid"
+			}
+			group_pinned = group_pinned && page.pinned
+			group_bootstrap = group_bootstrap && page.bootstrap
+		}
+		if cluster_group_is_terminal(group) && !group_pinned {
+			return "cluster hierarchy terminal page is not pinned"
+		}
+		if group_pinned && !group_bootstrap {
+			return "cluster hierarchy pinned page is not bootstrapped"
+		}
+		pinned_groups[group_index] = group_pinned
+		bootstrap_groups[group_index] = group_bootstrap
+	}
+	bootstrap_refinements := make([]bool, len(hierarchy.groups), context.temp_allocator)
+	for parent, parent_index in hierarchy.groups {
+		if !bootstrap_groups[parent_index] {
+			continue
+		}
+		cluster_end := int(parent.cluster_offset + parent.cluster_count)
+		for cluster in hierarchy.clusters[int(parent.cluster_offset):cluster_end] {
+			if cluster.refined_group >= 0 {
+				bootstrap_refinements[cluster.refined_group] = true
+			}
+		}
+	}
+	for group, group_index in hierarchy.groups {
+		if bootstrap_groups[group_index] &&
+		   !cluster_group_is_terminal(group) &&
+		   !bootstrap_refinements[group_index] {
+			return "cluster hierarchy bootstrap refinement is unreachable"
 		}
 	}
 	return ""

@@ -2944,7 +2944,7 @@ wgpu_geometry_cache :: proc(
 			)
 			for page, page_index in geometry.cluster_pages {
 				cluster_pages[page_index].pinned = page.pinned
-				if page.pinned || preload_geometry {
+				if page.bootstrap || preload_geometry {
 					append(&selected_pages, u32(page_index))
 				}
 			}
@@ -3019,11 +3019,14 @@ wgpu_geometry_cache :: proc(
 					return nil,
 						"pinned virtual-geometry indices exceed the device storage-binding window"
 				}
-				shadow_indices := wgpu_rebase_virtual_page_indices(
-					page_upload.indices,
-					page_upload.vertex_offsets,
-					page_upload.index_offsets,
+				shadow_indices := wgpu_build_virtual_terminal_frontier_indices(
+					geometry,
+					selected_pages[:],
+					&page_upload,
 				)
+				if len(shadow_indices) == 0 {
+					return nil, "pinned virtual-geometry frontier is empty"
+				}
 				shadow_index_bytes := u64(len(shadow_indices)) * u64(size_of(u32))
 				shadow_index_range = wgpu_arena_allocate(
 					&renderer.geometry_index_arena.allocator,
@@ -3078,11 +3081,6 @@ wgpu_geometry_cache :: proc(
 			renderer.virtual_geometry_page_upload_count += u64(len(selected_pages))
 			renderer.virtual_geometry_page_upload_bytes +=
 				page_vertex_bytes + page_index_bytes + shadow_index_range.size
-			for group in geometry.cluster_groups {
-				if preload_geometry || group.depth == geometry.cluster_max_depth {
-					renderer.virtual_geometry_group_upload_count += 1
-				}
-			}
 			for &group, group_index in cluster_groups {
 				resource_group := geometry.cluster_groups[group_index]
 				group.resident = true
@@ -3092,6 +3090,11 @@ wgpu_geometry_cache :: proc(
 				group.resident_since_frame = renderer.profile_frame_index if group.resident else 0
 				group.active = group.resident
 				group.transition_complete = group.resident
+			}
+			for group in cluster_groups {
+				if group.resident {
+					renderer.virtual_geometry_group_upload_count += 1
+				}
 			}
 			for group, group_index in cluster_groups {
 				if group.resident {

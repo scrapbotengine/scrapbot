@@ -96,6 +96,9 @@ test_cluster_pages_pin_every_terminal_group :: proc(t: ^testing.T) {
 	testing.expect(t, hierarchy.pages[0].pinned)
 	testing.expect(t, !hierarchy.pages[1].pinned)
 	testing.expect(t, hierarchy.pages[2].pinned)
+	testing.expect(t, hierarchy.pages[0].bootstrap)
+	testing.expect(t, !hierarchy.pages[1].bootstrap)
+	testing.expect(t, hierarchy.pages[2].bootstrap)
 }
 
 @(test)
@@ -139,5 +142,98 @@ test_open_mesh_boundaries_survive_the_terminal_frontier :: proc(t: ^testing.T) {
 		for vertex in boundary_vertices {
 			testing.expect(t, test_terminal_frontier_contains_vertex(&hierarchy, vertex))
 		}
+	}
+}
+
+@(test)
+test_resident_tail_refines_terminal_frontier_within_byte_cap :: proc(t: ^testing.T) {
+	GRID_SIZE :: 64
+	vertices, indices := test_open_grid_hierarchy(GRID_SIZE, -1, -1)
+	defer delete(vertices)
+	defer delete(indices)
+
+	hierarchy, hierarchy_err := build_hierarchy(
+		indices,
+		raw_data(vertices),
+		len(vertices),
+		size_of(Test_Hierarchy_Vertex),
+	)
+	defer destroy_hierarchy(&hierarchy)
+	testing.expectf(t, hierarchy_err == "", "hierarchy build failed: %s", hierarchy_err)
+	if hierarchy_err != "" {
+		return
+	}
+
+	marks := make([]u32, len(vertices), context.temp_allocator)
+	terminal_bytes: u64
+	bootstrap_bytes: u64
+	bootstrap_refinement_count := 0
+	for group in hierarchy.groups {
+		for page_index in group.page_offset ..< group.page_offset + group.page_count {
+			page_bytes := cluster_page_payload_size(
+				&hierarchy,
+				int(page_index),
+				size_of(Test_Hierarchy_Vertex),
+				marks,
+				page_index + 1,
+			)
+			if cluster_group_is_terminal(group) {
+				terminal_bytes += page_bytes
+			}
+			if hierarchy.pages[page_index].bootstrap {
+				bootstrap_bytes += page_bytes
+				if !cluster_group_is_terminal(group) {
+					bootstrap_refinement_count += 1
+				}
+			}
+		}
+	}
+	testing.expect(t, bootstrap_refinement_count > 0)
+	testing.expect(t, bootstrap_bytes >= terminal_bytes)
+	testing.expect(t, bootstrap_bytes <= terminal_bytes + CLUSTER_BOOTSTRAP_TAIL_MAX_EXTRA_BYTES)
+	testing.expect_value(t, validate_hierarchy(&hierarchy, len(vertices)), "")
+
+	for group in hierarchy.groups {
+		if cluster_group_is_terminal(group) {
+			continue
+		}
+		for page_index in group.page_offset ..< group.page_offset + group.page_count {
+			hierarchy.pages[page_index].bootstrap = false
+		}
+	}
+	unreachable_group := -1
+	for group, group_index in hierarchy.groups {
+		if cluster_group_is_terminal(group) {
+			continue
+		}
+		has_terminal_parent := false
+		for parent in hierarchy.groups {
+			if !cluster_group_is_terminal(parent) {
+				continue
+			}
+			cluster_end := int(parent.cluster_offset + parent.cluster_count)
+			for cluster in hierarchy.clusters[int(parent.cluster_offset):cluster_end] {
+				if cluster.refined_group == i32(group_index) {
+					has_terminal_parent = true
+					break
+				}
+			}
+		}
+		if !has_terminal_parent {
+			unreachable_group = group_index
+			break
+		}
+	}
+	testing.expect(t, unreachable_group >= 0)
+	if unreachable_group >= 0 {
+		group := hierarchy.groups[unreachable_group]
+		for page_index in group.page_offset ..< group.page_offset + group.page_count {
+			hierarchy.pages[page_index].bootstrap = true
+		}
+		testing.expect_value(
+			t,
+			validate_hierarchy(&hierarchy, len(vertices)),
+			"cluster hierarchy bootstrap refinement is unreachable",
+		)
 	}
 }

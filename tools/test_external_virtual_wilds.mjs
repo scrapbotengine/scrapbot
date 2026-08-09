@@ -225,7 +225,7 @@ function main() {
     );
     const expectedLods = expected.lods ?? 3;
     if (
-      metadata.schema !== "scrapbot.model.v19.texture-transform" ||
+      metadata.schema !== "scrapbot.model.v21.bootstrap-resident-tail" ||
       metadata.source !== expected.source ||
       metadata.node_count !== (expected.nodes ?? 1) ||
       metadata.mesh_count !== (expected.meshes ?? 1) ||

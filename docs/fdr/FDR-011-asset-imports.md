@@ -13,10 +13,11 @@ Asset imports turn artist-authored texture, model, HDR environment, and SVG icon
 - Environment resources import 2:1 Radiance `.hdr` sources. The importer preserves a source-resolution linear RGBA16F panorama for an opt-in background and builds separate diffuse irradiance and roughness-prefiltered specular cubes. Panorama lookup is bilinear and seam-wrapped, while deterministic 256-sample GGX integration suppresses structured reflection noise; ordinary frames never decode or reconvolve the source panorama.
 - Icon-set resources recursively import monochrome SVG symbols from one source directory. The importer normalizes supported paths, primitives, transforms, groups, and strokes into filled outlines, rejects unsupported SVG paint/effect features, and emits a deterministic MTSDF atlas plus symbol metadata. Runtime and packaged builds consume only that product.
 - Material resources reference reusable Texture resources by UUID rather than embedding source paths.
+- Imported virtual Geometry is immediately usable at a bounded coarse-to-medium quality. Streaming improves fine detail after startup instead of constructing the recognizable model over visible frames.
 - Model resources import the selected glTF 2.0 `.gltf` or `.glb` scene and only its reachable nodes, meshes, materials, and images. Supported data includes triangle geometry, TRS node transforms, metallic-roughness material factors, normal and occlusion strengths, emissive factors, opaque and alpha-cutout materials, double-sided surfaces, and base-color, metallic-roughness, normal, occlusion, and emissive images. Images may be embedded in GLB buffer views, encoded as base64 data URIs, or stored at safe relative paths beside the model.
 - Model import generates up to three deterministic meshoptimizer LODs per eligible primitive by default. Project recipes control descending triangle ratios and projected screen-radius thresholds or disable generation. Small and topology-constrained primitives may retain fewer levels.
 - Every imported primitive and generated LOD persists its crack-aware cluster hierarchy and deterministic page table in the Model product. Hierarchy reduction accounts for normals and UVs, protects texture seams during permissive fallback, and refuses attribute-blind fallback. Runtime registration validates and clones that product-owned hierarchy instead of rebuilding it.
-- Every imported primitive compiles a padded mesh distance field through a temporary BVH. Model v19 stores signed 16-bit samples for watertight meshes and conservative unsigned samples for open or non-manifold geometry in a separate range-addressable chunk.
+- Every imported primitive compiles a padded mesh distance field through a temporary BVH. Model v21 stores signed 16-bit samples for watertight meshes and conservative unsigned samples for open or non-manifold geometry in a separate range-addressable chunk.
 - Runtime Geometry retains each validated field descriptor and product range. WGPU loads, packs, and uploads samples only for a requesting GPU consumer; the `distance_field` camera debug view exercises that path without causing eager startup residency.
 - The `world_distance_field` debug view composes requested instance fields into three snapped 32³ GPU clipmap cascades. Camera-cell movement retains overlap and seeds only exposed slabs in affected cascades; topology and Transform invalidation rebuild completely. Rebuild, scroll, exposed-voxel, dispatch, and upload counters expose the actual cache path before gameplay effects consume it.
 - Import diagnostics report field count and payload size. Cache-hit catalog loading validates descriptors without reading samples.
@@ -145,14 +146,17 @@ own chunk relationships.
 
 ### 15. Split and stream large Model products
 
-**Decision:** Model v19 separates material images, pinned coarse pages, evictable detail pages,
+**Decision:** Model v21 separates material images, bootstrap coarse pages, evictable detail pages,
 quantized mesh distance fields, and the runtime catalog into five product chunks. Build the product
 with the common sequential writer; spool detail pages temporarily and emit the descriptor catalog
 only after exact ranges are known.
 
-The pinned chunk contains every terminal refinement-DAG group, not merely groups at the global
-maximum hierarchy depth. Different regions may stop simplifying at different depths; evicting any
-such terminal group would remove that region's last drawable fallback.
+The bootstrap chunk contains every terminal refinement-DAG group plus an automatic startup tail.
+Different regions may stop simplifying at different depths; evicting a terminal group would remove
+that region's last drawable fallback. Additional groups are chosen by geometric error under an
+asset-relative target and hard byte cap. A group becomes resident only through an already-resident
+parent, so the initial model remains complete. Additional tail groups become evictable after the
+first upload; terminal groups remain permanently pinned.
 
 Hierarchy simplification also locks every topological boundary loop by canonical position. Coarser
 frontiers may reduce interior detail but cannot enlarge source openings by moving their borders.
@@ -165,6 +169,11 @@ catalog stores descriptors, never bulk voxel samples. See ADR-055.
 
 The v19 fingerprint adds deterministic `KHR_texture_transform` baking. Every material texture must
 use the same effective UV0 transform so one shared vertex stream remains sufficient for every pass.
+
+The v20 fingerprint added the automatic Geometry startup tail.
+
+The v21 fingerprint separates permanent terminal pinning from eager bootstrap residency. It also
+versions the hierarchy catalog and chunk magics because each page now records both properties.
 
 **Why:** Runtime startup should not walk gigabytes of payload bytes to discover a catalog. Import
 should not require enough spare memory for both the decoded source model and a second complete

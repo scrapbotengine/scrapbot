@@ -14,7 +14,7 @@ Scrapbot separates authoritative project/runtime state from derived indexes, cac
 | Entity identity and component values | `shared.World` / `ecs` | Active runtime authority | Typed ECS mutation, deferred command application, playback restore, or world replacement. |
 | Frame time | `world.time` | Current runtime resource | Advanced once per permitted simulation step. |
 | Geometry/material/environment/icon-set descriptions and handles | `resources.Registry` | Runtime shared-resource authority | Generational handles plus content/topology versions. Geometry content includes LOD metadata, source- or exact-leaf-derived meshlets, a crack-aware cluster hierarchy with monotonic group errors, and a file-or-memory page source. Imported Geometry retains canonical counts and a position-only query proxy instead of complete CPU render vertices/source indices. Those structures rebuild only with that exact Geometry version, never on stable frames. See [Resource render state](#resource-render-state). |
-| Texture/Model/Environment/Icon Set imported products | `asset_import` products plus `resources.Registry` | Derived from authored UUID recipes and asset/dependency contents | Ensured at import/check/build/run or asset hot reload; schema/content/settings fingerprints reuse unchanged products and atomic writes preserve last-good files. The common product envelope validates kind and chunk ranges before type-specific decoding. Model LOD, hierarchy, distance-field compilation, and shared `KHR_texture_transform` UV baking run only on invalidation. Model v19 reads its bounded catalog, fetches images from the image chunk, pins the complete terminal refinement-DAG frontier, retains other detail-page ranges, and retains quantized distance-field descriptors without decoding either bulk payload. Generated semantic handles update at registration, while model-root revisions reconcile derived ECS children at bootstrap/reload or an explicit structural edit. |
+| Texture/Model/Environment/Icon Set imported products | `asset_import` products plus `resources.Registry` | Derived from authored UUID recipes and asset/dependency contents | Ensured at import/check/build/run or asset hot reload; schema/content/settings fingerprints reuse unchanged products and atomic writes preserve last-good files. The common product envelope validates kind and chunk ranges before type-specific decoding. Model LOD, hierarchy, distance-field compilation, and shared `KHR_texture_transform` UV baking run only on invalidation. Model v21 reads its bounded catalog, fetches images from the image chunk, pins the complete terminal refinement-DAG frontier, eagerly exposes the evictable bootstrap tail, retains other detail-page ranges, and retains quantized distance-field descriptors without decoding either bulk payload. Generated semantic handles update at registration, while model-root revisions reconcile derived ECS children at bootstrap/reload or an explicit structural edit. |
 | Authoring history and dirty UUID candidates | Editor UI state | In-memory authoring authority until Save/Revert | One transaction per completed gesture or structural operation; playback mutations remain disposable. |
 | UI theme palettes, metrics, typography, and named recipes | Shared UI composition contract plus UUID-backed `resources.Registry.ui_themes` | Ephemeral composition input with versioned lookup, not retained UI authority | Scene parsing, Luau resolution, UUID-specific native host resolution, and editor composition consume the same engine-owned recipe vocabulary before typed ECS attachment or update. The resolved `ui_*` values are authoritative for layout and paint; the registry revision refreshes resource inspection only. No theme identity, ancestry cascade, stable-frame traversal, or renderer-side style store remains. |
 | Retained UI hierarchy, authored canvas transform, intrinsic text lines, flex lines, popup rectangles, dock tabs, panel/split/control gestures, layout, interaction, and paint commands | `ui.State` | Derived from public UI ECS components and active font metrics | Structural dirty queue plus independent project/editor layout and paint revisions. Intrinsic measurement, bounded basis/grow/shrink line packing, and direct-child dock-tab/stack-order resolution run only for an invalidated domain; the exact text breaks feed paint. The optional root `ui_canvas` slot is cached per origin; its revision resolves the logical viewport, output scale/alignment, and safe area once for all downstream consumers. Popup placement derives from the live anchor/viewport only after affected ECS open, anchor, or constraint changes. Dock transfers update authoritative item parent/active UUID; edge drops create authoritative public stack/dock topology and preserve the replaced sibling order; panel drops update authoritative parent/stack order. All reuse ordinary invalidation, and stable frames retain bounded gesture state without a World scan. |
@@ -145,7 +145,9 @@ Hierarchy metadata and each Geometry's file-or-memory page source are resource-o
 canonical fast-path or page-local vertex/index arena ranges, residency, visible-use age, pending
 immutable product-range reads, and the configured combined payload budget. Outstanding reads have
 fixed job and byte ceilings. Completed-but-unadmitted payloads have a separate bounded staging
-budget and age out when demand no longer owns them. Coarsest streamed pages are pinned.
+budget and age out when demand no longer owns them. A bounded, error-prioritized bootstrap tail is
+loaded before ordinary streaming begins. Only its mandatory terminal groups remain pinned;
+additional startup refinements may be reclaimed by the global residency policy.
 
 Imported Geometry query positions and exact leaf topology remain resource-owned. Picking borrows
 them without allocation. A WGPU cache miss may request an owned canonical view reconstructed from
@@ -159,18 +161,21 @@ history; cuts, world changes, missing history, and stable cameras disable predic
 file-backed refinement on one renderer-owned I/O worker; handle/generation/version-tagged
 completions are discarded when stale. Demand-first, group-atomic admission uses one ordered eviction
 plan per feedback batch, protects stronger recent demand, and never lets speculative prefetch evict
-demand residency. Geometry cache groups distinguish memory residency from drawable activation.
+demand residency.
+
+Geometry cache groups distinguish memory residency from drawable activation.
 Newly complete groups pass a bounded demand-aware settling window and require every direct parent
 to remain resident, active, and transition-complete before entering a 16-frame admission handoff.
-The GPU combines that temporal
-progress with its steady projected-error overlap and depth-tests complete child/parent surfaces in
+The GPU combines that temporal progress with its steady projected-error overlap and depth-tests complete child/parent surfaces in
 world and depth passes. Native and portable compact shadows select their resident hierarchy
-frontier directly. Streamed portable resources retain a pinned-root indexed proxy for capability
-or capacity fallback. The internal HDR alpha channel carries a
+frontier directly. Streamed portable resources retain an indexed proxy of the complete terminal
+frontier for capability or capacity fallback.
+
+The internal HDR alpha channel carries a
 transition reactive marker, and temporal history encodes that marker alongside the existing
 bloom-enable bit. The temporal resolver owns its depth-tolerance adjustment. Completion is the
-point at which the child becomes the logical refinement. Active
-refinements retain their direct coarse parents until release.
+point at which the child becomes the logical refinement. Active refinements retain their direct
+coarse parents until release.
 
 Feedback consumption shares fixed byte and group admission budgets across every readback completed in
 one frame. Resident touches always update recency. Once the group budget is exhausted, nonresident
@@ -232,7 +237,7 @@ renderer's shared zero field.
 
 Changing the Shader version releases only that Shader's spectral state and render pipeline. Resizing the scene target rebuilds only per-Shader scene/depth bind groups; the spectral field survives.
 
-Virtual Geometry caches additionally own any root-page shadow-proxy index range. The proxy aliases
+Virtual Geometry caches additionally own any terminal-frontier shadow-proxy index range. The proxy aliases
 the already-pinned page-vertex allocation, is rebuilt only with that Geometry version, and is
 released with the cache. It does not create another vertex authority or stable-frame upload.
 

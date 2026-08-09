@@ -13,12 +13,12 @@ import "core:path/filepath"
 import "core:strings"
 import cgltf "vendor:cgltf"
 
-MODEL_IMPORTER_SCHEMA :: "scrapbot.model.v19.texture-transform"
-MODEL_CATALOG_MAGIC :: [8]u8{'S', 'B', 'M', 'C', 'A', 'T', '1', '9'}
-MODEL_IMAGE_CHUNK_MAGIC :: [8]u8{'S', 'B', 'M', 'I', 'M', 'G', '1', '9'}
-MODEL_COARSE_CHUNK_MAGIC :: [8]u8{'S', 'B', 'M', 'C', 'R', 'S', '1', '9'}
-MODEL_DETAIL_CHUNK_MAGIC :: [8]u8{'S', 'B', 'M', 'D', 'T', 'L', '1', '9'}
-MODEL_DISTANCE_FIELD_CHUNK_MAGIC :: [8]u8{'S', 'B', 'M', 'S', 'D', 'F', '1', '9'}
+MODEL_IMPORTER_SCHEMA :: "scrapbot.model.v21.bootstrap-resident-tail"
+MODEL_CATALOG_MAGIC :: [8]u8{'S', 'B', 'M', 'C', 'A', 'T', '2', '0'}
+MODEL_IMAGE_CHUNK_MAGIC :: [8]u8{'S', 'B', 'M', 'I', 'M', 'G', '2', '0'}
+MODEL_COARSE_CHUNK_MAGIC :: [8]u8{'S', 'B', 'M', 'C', 'R', 'S', '2', '0'}
+MODEL_DETAIL_CHUNK_MAGIC :: [8]u8{'S', 'B', 'M', 'D', 'T', 'L', '2', '0'}
+MODEL_DISTANCE_FIELD_CHUNK_MAGIC :: [8]u8{'S', 'B', 'M', 'S', 'D', 'F', '2', '0'}
 MODEL_PRODUCT_CHUNK_COUNT :: 5
 MODEL_READER_BUFFER_SIZE :: 64 * 1024
 
@@ -1880,7 +1880,7 @@ model_stream_page_payloads :: proc(
 		start := int(source_record.offset)
 		payload := payloads.bytes[start:start + int(source_record.size)]
 		record := source_record
-		if hierarchy.pages[page_index].pinned {
+		if hierarchy.pages[page_index].bootstrap {
 			record.offset = writer.offset
 			if !asset_product_stream_write(writer, payload) {
 				return detail_cursor, "failed to stream imported model coarse page"
@@ -1915,7 +1915,7 @@ model_rebase_page_records :: proc(
 	detail_base: u64,
 ) {
 	for &record, page_index in records {
-		if !hierarchy.pages[page_index].pinned {
+		if !hierarchy.pages[page_index].bootstrap {
 			record.offset += detail_base
 		}
 	}
@@ -2110,6 +2110,7 @@ model_write_hierarchy :: proc(bytes: ^[dynamic]u8, hierarchy: geometry.Hierarchy
 		model_write_u32(bytes, page.cluster_count)
 		model_write_u32(bytes, page.index_count)
 		model_write_u32(bytes, 1 if page.pinned else 0)
+		model_write_u32(bytes, 1 if page.bootstrap else 0)
 	}
 	for vertex in hierarchy.vertices {
 		model_write_u32(bytes, vertex)
@@ -2657,7 +2658,7 @@ model_read_page_payloads :: proc(
 			u64(record.vertex_count) * u64(size_of(Model_Vertex)) +
 			u64(record.index_count) * u64(size_of(u32))
 		expected_chunk := detail_chunk
-		if hierarchy.pages[page_index].pinned {
+		if hierarchy.pages[page_index].bootstrap {
 			expected_chunk = coarse_chunk
 		}
 		if !ok ||
@@ -2804,11 +2805,16 @@ model_read_hierarchy :: proc(
 		if ok {
 			pinned, ok = model_read_u32(reader)
 		}
-		if !ok || pinned > 1 {
+		bootstrap: u32
+		if ok {
+			bootstrap, ok = model_read_u32(reader)
+		}
+		if !ok || pinned > 1 || bootstrap > 1 {
 			geometry.destroy_hierarchy(hierarchy)
 			return false
 		}
 		page.pinned = pinned == 1
+		page.bootstrap = bootstrap == 1
 	}
 	for &vertex in hierarchy.vertices {
 		vertex, ok = model_read_u32(reader)

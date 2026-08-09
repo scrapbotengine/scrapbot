@@ -23,9 +23,10 @@ scene parse + schema validation + resource UUID resolution
 Native components register before Luau executes, so scripts can retrieve native handles. Asset import completes before runtime resource registration. Scene validation uses the combined engine/native/Luau registry.
 
 Before bootstrap, Model import simplifies eligible primitive index streams, compacts each retained
-level, and builds its crack-aware hierarchy. The sequential product writer emits material images,
-pinned coarse pages, and evictable detail pages before writing a descriptor catalog containing the
-LOD chain, position-only query data, hierarchy, and exact payload ranges.
+level, and builds its crack-aware hierarchy. It expands every mandatory terminal group into a
+bounded, error-prioritized, ancestor-closed bootstrap tail. The sequential product writer emits
+material images, bootstrap-tail pages, and deferred detail pages before writing a descriptor
+catalog containing the LOD chain, position-only query data, hierarchy, and exact payload ranges.
 
 Runtime loading validates the product kind, chunk directory, chunk headers, and every catalog
 range. It buffers only catalog fields, reads material images from the image chunk, publishes
@@ -42,7 +43,7 @@ accepts a validated compact catalog and file-backed page ranges for imported mod
 same hierarchy and in-memory page payloads for other producers. Imported entries retain canonical
 counts and a position-only query proxy without ever decoding complete CPU render vertices or source
 indices during a cache-hit bootstrap. Canonical vertex IDs, exact leaf topology, monotonic group
-errors, page identities, page-source records, and pinned fallback flags remain versioned with the
+errors, page identities, page-source records, and pin/bootstrap flags remain versioned with the
 Geometry entry.
 
 Picking iterates exact leaf triangles against resident vertex positions or the query proxy. A
@@ -53,7 +54,9 @@ owned view. WGPU releases that view immediately after the invalidated Geometry v
 WGPU consumes ordinary Geometry versions into aligned shared vertex/index ranges. A complete
 Virtual Geometry that fits the remaining budget retains canonical vertex/index ranges plus
 expanded page indices. Larger resources allocate page-local vertex and index ranges only for
-resident pages, with the coarsest pages pinned.
+resident pages. Their coarse-to-medium bootstrap tail is loaded before the cache becomes usable.
+Terminal groups cannot be evicted; additional bootstrap refinements join the ordinary global
+residency policy after upload.
 
 GPU feedback identifies visible demand, bounded future-camera prefetch, and visible-use touches in
 separate bounded lanes.
@@ -100,8 +103,8 @@ target; both paths remain governed by the same frame-budget controller.
 Conventional portable meshlets use compact camera and shadow streams. Fully resident portable
 virtual resources retain classic indexed shadows. Streamed resources prefer page-local compact
 shadows so camera and cascade submission select from the same resident hierarchy. They also build
-one coarse indexed shadow proxy from their already-pinned root pages; its rebased index range
-aliases the pinned vertex allocation and remains available for capability or capacity fallback.
+one indexed shadow proxy from the complete terminal frontier; its rebased index range aliases only
+permanently pinned vertex allocations and remains available for capability or capacity fallback.
 Classic and compact culling never write the same shadow indirect command.
 Adapters without indirect-first-instance keep whole-primitive submission.
 

@@ -80,12 +80,20 @@ test_model_offline_lods_are_deterministic_compact_and_round_trip :: proc(t: ^tes
 	testing.expectf(t, hierarchy_err == "", "hierarchy build failed: %s", hierarchy_err)
 	testing.expect(t, len(primitive.hierarchy.pages) > 0)
 	pinned_pages := 0
-	for page in primitive.hierarchy.pages {
-		if page.pinned {
-			pinned_pages += 1
+	bootstrap_refinement_pages := 0
+	for group in primitive.hierarchy.groups {
+		for page_index in group.page_offset ..< group.page_offset + group.page_count {
+			if primitive.hierarchy.pages[page_index].pinned {
+				pinned_pages += 1
+			}
+			if primitive.hierarchy.pages[page_index].bootstrap &&
+			   !geometry.cluster_group_is_terminal(group) {
+				bootstrap_refinement_pages += 1
+			}
 		}
 	}
 	testing.expect(t, pinned_pages > 0)
+	testing.expect(t, bootstrap_refinement_pages > 0)
 	model: Model_Product
 	mesh := Model_Mesh{}
 	mesh.key, _ = strings.clone("mesh:grid")
@@ -198,7 +206,7 @@ test_model_offline_lods_are_deterministic_compact_and_round_trip :: proc(t: ^tes
 			)
 			testing.expect(t, record.offset + record.size <= u64(len(encoded)))
 			expected_chunk := detail_chunk
-			if decoded_primitive.hierarchy.pages[page_index].pinned {
+			if decoded_primitive.hierarchy.pages[page_index].bootstrap {
 				expected_chunk = coarse_chunk
 			}
 			testing.expect(t, model_chunk_contains(expected_chunk, record.offset, record.size))
@@ -213,6 +221,11 @@ test_model_offline_lods_are_deterministic_compact_and_round_trip :: proc(t: ^tes
 			len(decoded_primitive.hierarchy.clusters),
 			len(model.meshes[0].primitives[0].hierarchy.clusters),
 		)
+		for page, page_index in decoded_primitive.hierarchy.pages {
+			source_page := model.meshes[0].primitives[0].hierarchy.pages[page_index]
+			testing.expect_value(t, page.pinned, source_page.pinned)
+			testing.expect_value(t, page.bootstrap, source_page.bootstrap)
+		}
 		testing.expect_value(t, len(decoded.meshes[0].primitives[0].lods), 3)
 		decoded_lod := decoded.meshes[0].primitives[0].lods[2]
 		source_lod := model.meshes[0].primitives[0].lods[2]

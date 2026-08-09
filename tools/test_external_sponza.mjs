@@ -80,7 +80,7 @@ function main() {
     readFileSync(join(importedDirectory, metadataName), "utf8"),
   );
   if (
-    metadata.schema !== "scrapbot.model.v19.texture-transform" ||
+    metadata.schema !== "scrapbot.model.v21.bootstrap-resident-tail" ||
     metadata.node_count !== 1 ||
     metadata.mesh_count !== 1 ||
     metadata.primitive_count !== 103 ||

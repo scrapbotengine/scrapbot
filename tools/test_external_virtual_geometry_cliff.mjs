@@ -63,7 +63,7 @@ function main() {
 
   const metadata = JSON.parse(readFileSync(modelMetadata, "utf8"));
   const expected = {
-    schema: "scrapbot.model.v19.texture-transform",
+    schema: "scrapbot.model.v21.bootstrap-resident-tail",
     source: "assets/coastal_cliff_04/coastal_cliff_04_1k.gltf",
     node_count: 1,
     mesh_count: 1,

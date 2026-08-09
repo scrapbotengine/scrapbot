@@ -517,7 +517,7 @@ test_nonresident_geometry_reconstructs_every_exact_leaf_page :: proc(t: ^testing
 	}
 	pages := [2]Geometry_Cluster_Page {
 		{cluster_offset = 0, cluster_count = 1, index_count = 3},
-		{cluster_offset = 1, cluster_count = 1, index_count = 3, pinned = true},
+		{cluster_offset = 1, cluster_count = 1, index_count = 3, pinned = true, bootstrap = true},
 	}
 	cluster_vertices := [6]u32{0, 1, 2, 1, 3, 2}
 	cluster_triangles := [6]u8{0, 1, 2, 0, 1, 2}
@@ -656,7 +656,9 @@ test_registered_geometry_builds_bounded_meshlets :: proc(t: ^testing.T) {
 		page_start := int(group.page_offset)
 		page_end := int(group.page_offset + group.page_count)
 		for page in geometry.cluster_pages[page_start:page_end] {
-			testing.expect_value(t, page.pinned, geometry_package.cluster_group_is_terminal(group))
+			if geometry_package.cluster_group_is_terminal(group) {
+				testing.expect(t, page.pinned)
+			}
 			testing.expect(t, page.index_count > 0)
 			testing.expect(t, page.index_count <= 64 * 1024 / size_of(u32))
 		}

@@ -857,6 +857,82 @@ wgpu_rebase_virtual_page_indices :: proc(
 	return result
 }
 
+wgpu_virtual_group_is_pinned :: proc "contextless" (
+	geometry: ^resources.Geometry,
+	group_index: i32,
+) -> bool {
+	if geometry == nil || group_index < 0 || int(group_index) >= len(geometry.cluster_groups) {
+		return false
+	}
+	group := geometry.cluster_groups[group_index]
+	if group.page_count == 0 ||
+	   int(group.page_offset + group.page_count) > len(geometry.cluster_pages) {
+		return false
+	}
+	for page_index in group.page_offset ..< group.page_offset + group.page_count {
+		if !geometry.cluster_pages[page_index].pinned {
+			return false
+		}
+	}
+	return true
+}
+
+wgpu_build_virtual_terminal_frontier_indices :: proc(
+	geometry: ^resources.Geometry,
+	page_indices: []u32,
+	upload: ^WGPU_Virtual_Page_Upload,
+	allocator := context.temp_allocator,
+) -> []u32 {
+	if geometry == nil ||
+	   upload == nil ||
+	   len(upload.vertex_offsets) != len(page_indices) + 1 ||
+	   len(upload.index_offsets) != len(page_indices) + 1 {
+		return nil
+	}
+	page_selections := make([]int, len(geometry.cluster_pages), context.temp_allocator)
+	for &selection in page_selections {
+		selection = -1
+	}
+	for page_index, selection_index in page_indices {
+		if int(page_index) >= len(page_selections) {
+			return nil
+		}
+		page_selections[page_index] = selection_index
+	}
+	pinned_groups := make([]bool, len(geometry.cluster_groups), context.temp_allocator)
+	for _, group_index in geometry.cluster_groups {
+		pinned_groups[group_index] = wgpu_virtual_group_is_pinned(geometry, i32(group_index))
+	}
+	result := make([dynamic]u32, 0, len(upload.indices), allocator)
+	for cluster in geometry.clusters {
+		if cluster.group < 0 ||
+		   int(cluster.group) >= len(pinned_groups) ||
+		   !pinned_groups[cluster.group] ||
+		   (cluster.refined_group >= 0 &&
+				   int(cluster.refined_group) < len(pinned_groups) &&
+				   pinned_groups[cluster.refined_group]) ||
+		   int(cluster.page) >= len(page_selections) {
+			continue
+		}
+		selection_index := page_selections[cluster.page]
+		if selection_index < 0 {
+			continue
+		}
+		index_start :=
+			int(upload.index_offsets[selection_index] / u64(size_of(u32))) +
+			int(cluster.page_index_offset)
+		index_end := index_start + int(cluster.triangle_count * 3)
+		if index_start < 0 || index_end > len(upload.indices) {
+			return nil
+		}
+		vertex_base := u32(upload.vertex_offsets[selection_index] / u64(size_of(resources.Vertex)))
+		for index in upload.indices[index_start:index_end] {
+			append(&result, index + vertex_base)
+		}
+	}
+	return result[:]
+}
+
 wgpu_align_visible_capacity :: proc(count: u32) -> u32 {
 	return(
 		((max(count, 1) + WGPU_VISIBLE_ALIGNMENT - 1) / WGPU_VISIBLE_ALIGNMENT) *

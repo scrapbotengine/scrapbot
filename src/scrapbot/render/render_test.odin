@@ -3611,6 +3611,52 @@ test_wgpu_virtual_page_shadow_proxy_rebases_page_local_indices :: proc(t: ^testi
 	}
 }
 
+@(test)
+test_wgpu_virtual_page_shadow_proxy_uses_terminal_frontier :: proc(t: ^testing.T) {
+	groups := [2]resources.Geometry_Cluster_Group {
+		{cluster_offset = 0, cluster_count = 1, page_offset = 0, page_count = 1},
+		{
+			cluster_offset = 1,
+			cluster_count = 2,
+			page_offset = 1,
+			page_count = 1,
+			error = 3.4028235e38,
+		},
+	}
+	clusters := [3]resources.Geometry_Cluster {
+		{triangle_count = 1, group = 0, refined_group = -1, page = 0},
+		{triangle_count = 1, group = 1, refined_group = 0, page = 1},
+		{triangle_count = 1, group = 1, refined_group = -1, page = 1, page_index_offset = 3},
+	}
+	pages := [2]resources.Geometry_Cluster_Page {
+		{cluster_offset = 0, cluster_count = 1, index_count = 3, bootstrap = true},
+		{cluster_offset = 1, cluster_count = 2, index_count = 6, pinned = true, bootstrap = true},
+	}
+	geometry := resources.Geometry {
+		cluster_groups = groups[:],
+		clusters = clusters[:],
+		cluster_pages = pages[:],
+	}
+	page_indices := []u32{0, 1}
+	upload := WGPU_Virtual_Page_Upload {
+		indices = []u32{0, 1, 2, 0, 1, 2, 3, 4, 5},
+		vertex_offsets = []u64 {
+			0,
+			u64(3 * size_of(resources.Vertex)),
+			u64(9 * size_of(resources.Vertex)),
+		},
+		index_offsets = []u64{0, 3 * size_of(u32), 9 * size_of(u32)},
+	}
+	frontier := wgpu_build_virtual_terminal_frontier_indices(&geometry, page_indices, &upload)
+	// The bootstrapped refinement participates in the first world frame but is
+	// evictable, so the permanent shadow proxy remains on the terminal group.
+	expected := []u32{3, 4, 5, 6, 7, 8}
+	testing.expect_value(t, len(frontier), len(expected))
+	for value, index in frontier {
+		testing.expect_value(t, value, expected[index])
+	}
+}
+
 test_count_frame_system :: proc(data: rawptr, world: ^World, delta_seconds: f32) -> string {
 	ecs.advance_time(&world.time, delta_seconds)
 	count := cast(^int)data

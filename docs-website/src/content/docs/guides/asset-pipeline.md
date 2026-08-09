@@ -31,10 +31,10 @@ schemas version the contents of each chunk independently from the common envelop
 
 ## Model products
 
-Model schema v15 divides one `.model.bin` product into four regions:
+The current Model product divides one `.model.bin` file into independently addressable regions:
 
 1. Material image mip payloads.
-2. Pinned coarse Geometry pages used as the always-resident fallback.
+2. Bootstrap-tail Geometry pages, including the permanently pinned terminal fallback.
 3. Evictable detail Geometry pages requested by virtual-Geometry feedback.
 4. A catalog containing materials, nodes, LODs, hierarchy data, query positions, and payload ranges.
 
@@ -46,10 +46,19 @@ At startup, Scrapbot reads the catalog and material images. It registers ordinar
 and Material resources while retaining validated file ranges for page payloads. The rendering
 backend asks the shared asynchronous page reader for detail only when visibility feedback needs it.
 
+The bootstrap tail always contains every mandatory terminal fallback and then adds reachable
+refinements in descending geometric-error order. Its extra data targets 1/32 of each hierarchy,
+with a 256 KiB minimum and 2 MiB maximum. The initial model is therefore complete and recognizable;
+streaming improves genuinely fine detail rather than revealing the asset level by level.
+
+Terminal pages stay pinned for the resource lifetime. Additional bootstrap refinements are loaded
+for the first frame but remain evictable, so loading many assets does not turn the per-asset startup
+allowance into an unbounded permanent GPU-memory floor.
+
 ## Bounded import memory
 
 Large Model products are written sequentially instead of being assembled as one giant byte array.
-Pinned pages stream directly into the final product. Detail pages use a temporary disk spool so
+Bootstrap pages stream directly into the final product. Detail pages use a temporary disk spool so
 they can form one contiguous chunk without rebuilding them or retaining all of them in RAM.
 
 Peak serialization memory is therefore bounded by:
@@ -85,7 +94,7 @@ stdout.
 
 ## Compression boundary
 
-Model v19 also compiles one padded mesh distance field per primitive. Watertight meshes retain
+Model v21 also compiles one padded mesh distance field per primitive. Watertight meshes retain
 signed distances; open or non-manifold meshes retain conservative unsigned surface distances. The
 samples use signed 16-bit quantization and live in their own chunk, so runtime catalog loading
 validates their descriptors without reading the voxel payload. Import progress reports both the
@@ -110,7 +119,7 @@ replacement, topology changes, and relevant instance/Transform dirtiness still t
 rebuild. Renderer diagnostics distinguish full rebuilds from scrolls and report exposed voxels.
 This is currently a diagnostic foundation; HZB still owns production occlusion.
 
-The chunk directory can describe encoded data, but Model v19 stores its chunks uncompressed.
+The chunk directory can describe encoded data, but Model v21 stores its chunks uncompressed.
 Compression must preserve the runtime access pattern:
 
 - catalogs and images may use whole-chunk codecs when measurement justifies eager decoding;

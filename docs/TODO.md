@@ -4,6 +4,7 @@ This file tracks current actionable engineering work. The broad product roadmap 
 
 ## Rendering
 
+- [ ] Calibrate resident-Geometry tail quality and byte caps across representative scanned, hard-surface, foliage, and multi-primitive assets.
 - [ ] Calibrate the automatic Conventional/Virtual Geometry crossover across qualified adapter classes and representative asset shapes while preserving ADR-054's stable layered policy.
 - [ ] Partition or bound portable compact submission so visibility-table pressure cannot globally disable virtual submission or leave streamed resources undrawable; add an over-cap mixed-batch GPU fixture.
 - [ ] Partition geometry storage bindings or use relative page offsets so portable vertex pulling can use residency beyond the currently correctness-bounded single-binding prefix; measure and reduce fragmentation-driven detail deferrals.
@@ -12,7 +13,7 @@ This file tracks current actionable engineering work. The broad product roadmap 
 - [ ] Gate foreground and depth completeness in both the synthetic virtual-geometry lab and the external single-cliff regression across compact GPU and full-index reference captures.
 - [ ] Maintain a repeatable 60 Hz adaptive-quality baseline matrix across representative integrated/discrete GPUs; record settled world, shadow, and post tiers. See [ADR-052](adr/ADR-052-coordinate-adaptive-render-quality-from-one-frame-budget.md).
 - [ ] Evaluate exact portable cluster compaction or a non-vertex-pulling path when triangle-lane utilization and same-adapter profiles still miss the frame budget; preserve zero-hole fallback behavior.
-- [ ] Compress Model v19 catalogs, material images, distance fields, and virtual-Geometry pages with independently decodable records; measure import time, product size, startup, and streaming cost on `impossible-archive` unhinged.
+- [ ] Compress Model v21 catalogs, material images, distance fields, and virtual-Geometry pages with independently decodable records; measure import time, product size, startup, and streaming cost on `impossible-archive` unhinged.
 - [ ] Strip source assets from exported games and package the same validated runtime products used by development runs.
 - [ ] Re-evaluate Metal multi-draw and benchmark virtual geometry after wgpu's native ICB paths land ([issue #61](https://github.com/scrapbotengine/scrapbot/issues/61)).
 - [ ] Evaluate world-space AO, soft shadows, particles, and measured coarse-occlusion assistance as independent consumers of the incrementally scrolled world distance field. Retain HZB as primary visibility until profiles justify otherwise. See [ADR-055](adr/ADR-055-compile-mesh-distance-fields-offline.md).
