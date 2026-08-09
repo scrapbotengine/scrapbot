@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "timeout_frames": 120,
+  "actions": [
+    {
+      "action": "set_editor_camera",
+      "position": {"x": 1.1, "y": 2.0, "z": 6.0},
+      "rotation": {"x": 0.0, "y": 0.0, "z": 0.0}
+    },
+    {"action": "click", "target": {"text": "VIEW / CAMERA", "origin": "editor"}},
+    {"action": "click", "target": {"text": "WORLD DISTANCE FIELD", "origin": "editor"}},
+    {"action": "wait", "frames": 8},
+    {"action": "expect", "target": {"text": "VIEW / WORLD DISTANCE FIELD", "origin": "editor"}, "expect": "visible"},
+    {"action": "capture", "target": {"name": "__scrapbot_editor_viewport", "origin": "editor"}, "padding": 4}
+  ]
+}

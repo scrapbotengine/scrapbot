@@ -3252,6 +3252,8 @@ test_profile_reports_per_frame_counter_deltas_after_warmup :: proc(t: ^testing.T
 	stats.instance_uploads += 2
 	stats.instance_upload_bytes += 96
 	stats.world_distance_field_rebuilds += 1
+	stats.world_distance_field_scrolls += 2
+	stats.world_distance_field_scroll_voxels += 2048
 	stats.world_distance_field_dispatches += 7
 	stats.world_distance_field_upload_bytes += 1796
 	stats.geometry_arena_uploads += 3
@@ -3280,6 +3282,8 @@ test_profile_reports_per_frame_counter_deltas_after_warmup :: proc(t: ^testing.T
 	testing.expect_value(t, first.instance_uploads, u64(2))
 	testing.expect_value(t, first.instance_upload_bytes, u64(96))
 	testing.expect_value(t, first.world_distance_field_rebuilds, u64(1))
+	testing.expect_value(t, first.world_distance_field_scrolls, u64(2))
+	testing.expect_value(t, first.world_distance_field_scroll_voxels, u64(2048))
 	testing.expect_value(t, first.world_distance_field_dispatches, u64(7))
 	testing.expect_value(t, first.world_distance_field_upload_bytes, u64(1796))
 	testing.expect_value(t, first.geometry_arena_uploads, u64(3))
@@ -4273,7 +4277,9 @@ test_world_distance_field_clipmap_centers_snap_independently_per_cascade :: proc
 }
 
 @(test)
-test_world_distance_field_clipmap_rebuilds_only_for_relevant_changes :: proc(t: ^testing.T) {
+test_world_distance_field_clipmap_plans_full_rebuilds_and_incremental_scrolls :: proc(
+	t: ^testing.T,
+) {
 	render_list: Render_List
 	render_list.topology_revision = 4
 	centers := wgpu_distance_field_clipmap_centers({3.9, -0.1, 17.2})
@@ -4290,20 +4296,52 @@ test_world_distance_field_clipmap_rebuilds_only_for_relevant_changes :: proc(t: 
 		centers = centers,
 		viewport = viewport,
 	}
-	testing.expect(
-		t,
-		!wgpu_distance_field_clipmap_needs_rebuild(state, &render_list, 7, centers, viewport),
-	)
+	stable := wgpu_distance_field_clipmap_update(state, &render_list, 7, centers, viewport)
+	testing.expect(t, !stable.needed)
 	append(&render_list.dirty_transform_slots, 3)
 	defer delete(render_list.dirty_transform_slots)
-	testing.expect(
-		t,
-		wgpu_distance_field_clipmap_needs_rebuild(state, &render_list, 7, centers, viewport),
-	)
+	dirty := wgpu_distance_field_clipmap_update(state, &render_list, 7, centers, viewport)
+	testing.expect(t, dirty.needed)
+	testing.expect(t, dirty.full_rebuild)
+	testing.expect_value(t, dirty.cascade_mask, WGPU_DISTANCE_FIELD_CLIPMAP_ALL_CASCADES)
 	clear(&render_list.dirty_transform_slots)
-	moved_centers := wgpu_distance_field_clipmap_centers({4.1, -0.1, 17.2})
+	moved_centers := wgpu_distance_field_clipmap_centers({2.9, -0.1, 17.2})
+	moved := wgpu_distance_field_clipmap_update(state, &render_list, 7, moved_centers, viewport)
+	testing.expect(t, moved.needed)
+	testing.expect(t, !moved.full_rebuild)
+	testing.expect_value(t, moved.cascade_mask, u32(1))
+	testing.expect_value(
+		t,
+		wgpu_distance_field_clipmap_selected_cascade_count(moved.cascade_mask),
+		u32(1),
+	)
+	testing.expect_value(t, moved.shifts[0], [3]i32{-1, 0, 0})
+	testing.expect_value(t, moved.exposed_voxels, u32(1_024))
+
+	large_centers := wgpu_distance_field_clipmap_centers({64.1, -0.1, 17.2})
+	large := wgpu_distance_field_clipmap_update(state, &render_list, 7, large_centers, viewport)
+	testing.expect(t, large.full_rebuild)
+}
+
+@(test)
+test_world_distance_field_clipmap_shader_scrolls_only_selected_exposed_slabs :: proc(
+	t: ^testing.T,
+) {
+	testing.expect(t, strings.contains(WGPU_DISTANCE_FIELD_CLIPMAP_SHADER, "fn shift_seeds"))
+	testing.expect(t, strings.contains(WGPU_DISTANCE_FIELD_CLIPMAP_SHADER, "fn cell_is_exposed"))
 	testing.expect(
 		t,
-		wgpu_distance_field_clipmap_needs_rebuild(state, &render_list, 7, moved_centers, viewport),
+		strings.contains(WGPU_DISTANCE_FIELD_CLIPMAP_SHADER, "!cascade_selected(cascade"),
+	)
+	testing.expect(
+		t,
+		strings.contains(WGPU_DISTANCE_FIELD_CLIPMAP_SHADER, "raster_uniform.control.z != 0u"),
+	)
+	testing.expect(
+		t,
+		strings.contains(
+			WGPU_DISTANCE_FIELD_CLIPMAP_SHADER,
+			"CASCADE_VOXELS * propagate_uniform.control.w",
+		),
 	)
 }

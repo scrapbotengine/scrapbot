@@ -56,11 +56,15 @@ The WGPU backend can compose requested mesh fields into three camera-relative wo
 samples seed the clipmaps through retained GPU instance transforms, and a five-step jump-flood
 pass derives unsigned world-space surface distance without a CPU voxel rebuild.
 
-The initial clipmap consumer is the `world_distance_field` debug view. It rebuilds only when its
-snapped centers, viewport, world topology, Geometry topology, or relevant instance/Transform dirty
-queues change. Stable debug frames retain the buffers and issue no clipmap upload or dispatch.
-Incremental toroidal updates and production AO, shadow, particle, or visibility consumers remain
-later slices.
+The initial clipmap consumer is the `world_distance_field` debug view. Topology, Geometry,
+viewport, instance, or Transform invalidation performs a complete correctness-first rebuild.
+Camera movement is incremental: each moved cascade scrolls its retained seed coordinates, rejects
+seeds that left the volume, rasterizes only the newly exposed slabs, and jump-floods only the
+selected cascades. A move smaller than one coarse-cascade voxel leaves that cascade untouched.
+
+The scroll must produce the same distance image as a fresh rebuild at the destination pose. Stable
+debug frames retain the buffers and issue no clipmap upload or dispatch. Production AO, shadow,
+particle, or visibility consumers remain later slices.
 
 HZB remains the primary visibility mechanism until a same-workload profile proves that
 distance-assisted coarse rejection is cheaper and equally safe.

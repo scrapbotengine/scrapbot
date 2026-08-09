@@ -78,6 +78,8 @@ Profile_Counter_Deltas :: struct {
 	instance_expand_dispatches: u64,
 	instance_expanded_slots: u64,
 	world_distance_field_rebuilds: u64,
+	world_distance_field_scrolls: u64,
+	world_distance_field_scroll_voxels: u64,
 	world_distance_field_dispatches: u64,
 	world_distance_field_upload_bytes: u64,
 	ui_vertex_rebuilds: u64,
@@ -423,6 +425,14 @@ profile_counter_deltas :: proc(current, previous: Render_Stats) -> Profile_Count
 		world_distance_field_rebuilds = profile_counter_delta(
 			current.world_distance_field_rebuilds,
 			previous.world_distance_field_rebuilds,
+		),
+		world_distance_field_scrolls = profile_counter_delta(
+			current.world_distance_field_scrolls,
+			previous.world_distance_field_scrolls,
+		),
+		world_distance_field_scroll_voxels = profile_counter_delta(
+			current.world_distance_field_scroll_voxels,
+			previous.world_distance_field_scroll_voxels,
 		),
 		world_distance_field_dispatches = profile_counter_delta(
 			current.world_distance_field_dispatches,

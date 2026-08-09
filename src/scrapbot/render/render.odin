@@ -185,6 +185,8 @@ Render_Stats :: struct {
 	geometry_arena_growths: u64,
 	world_distance_field: bool,
 	world_distance_field_rebuilds: u64,
+	world_distance_field_scrolls: u64,
+	world_distance_field_scroll_voxels: u64,
 	world_distance_field_instances: int,
 	world_distance_field_geometries: int,
 	world_distance_field_voxels: int,

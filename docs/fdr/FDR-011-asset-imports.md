@@ -1,7 +1,7 @@
 # FDR-011: Asset imports
 
 **Status:** In Progress
-**Last reviewed:** 2026-08-08
+**Last reviewed:** 2026-08-09
 
 ## Overview
 
@@ -18,7 +18,7 @@ Asset imports turn artist-authored texture, model, HDR environment, and SVG icon
 - Every imported primitive and generated LOD persists its crack-aware cluster hierarchy and deterministic page table in the Model product. Hierarchy reduction accounts for normals and UVs, protects texture seams during permissive fallback, and refuses attribute-blind fallback. Runtime registration validates and clones that product-owned hierarchy instead of rebuilding it.
 - Every imported primitive compiles a padded mesh distance field through a temporary BVH. Model v18 stores signed 16-bit samples for watertight meshes and conservative unsigned samples for open or non-manifold geometry in a separate range-addressable chunk.
 - Runtime Geometry retains each validated field descriptor and product range. WGPU loads, packs, and uploads samples only for a requesting GPU consumer; the `distance_field` camera debug view exercises that path without causing eager startup residency.
-- The `world_distance_field` debug view composes requested instance fields into three snapped 32³ GPU clipmap cascades. It exposes the actual world-cache path, rebuild and dispatch counters, and stable-frame reuse before gameplay effects consume that cache.
+- The `world_distance_field` debug view composes requested instance fields into three snapped 32³ GPU clipmap cascades. Camera-cell movement retains overlap and seeds only exposed slabs in affected cascades; topology and Transform invalidation rebuild completely. Rebuild, scroll, exposed-voxel, dispatch, and upload counters expose the actual cache path before gameplay effects consume it.
 - Import diagnostics report field count and payload size. Cache-hit catalog loading validates descriptors without reading samples.
 - A Model recipe may prefer `auto`, `conventional`, or `virtual` submission. The preference is runtime policy metadata: products retain both canonical geometry and the hierarchy/page representation, so changing it neither discards geometry nor requires a distinct importer path.
 - Imported images become owned mipmapped texture payloads on the Model's generated Material resources. Each texture slot preserves its glTF minification, magnification, mip, and U/V wrap policy. The WGPU material path renders them with GGX direct lighting, authored tangent-space normal mapping with a derivative fallback, ambient diffuse/specular response, HDR emission, bloom, and tone mapping.

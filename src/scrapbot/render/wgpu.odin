@@ -892,6 +892,7 @@ WGPU_Renderer :: struct {
 	gpu_distance_field_debug_pipeline_layout: wgpu.PipelineLayout,
 	gpu_distance_field_debug_bind_group_layout: wgpu.BindGroupLayout,
 	gpu_distance_field_clipmap_shader: wgpu.ShaderModule,
+	gpu_distance_field_clipmap_shift_pipeline: wgpu.ComputePipeline,
 	gpu_distance_field_clipmap_raster_pipeline: wgpu.ComputePipeline,
 	gpu_distance_field_clipmap_propagate_pipeline: wgpu.ComputePipeline,
 	gpu_distance_field_clipmap_finalize_pipeline: wgpu.ComputePipeline,

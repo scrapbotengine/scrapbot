@@ -104,8 +104,10 @@ projection of the nearest cascade: bright cyan is near represented geometry and 
 away.
 
 Clipmap centers snap to 1, 4, and 16-unit voxel grids. An unchanged debug frame reuses the retained
-result without another upload or compute dispatch. Camera cell crossings, viewport changes,
-Geometry replacement, topology changes, and relevant instance/Transform dirtiness rebuild it.
+result without another upload or compute dispatch. A camera cell crossing scrolls retained seeds
+and rasterizes only the exposed slab in each affected cascade. Viewport changes, Geometry
+replacement, topology changes, and relevant instance/Transform dirtiness still trigger a complete
+rebuild. Renderer diagnostics distinguish full rebuilds from scrolls and report exposed voxels.
 This is currently a diagnostic foundation; HZB still owns production occlusion.
 
 The chunk directory can describe encoded data, but Model v18 stores its chunks uncompressed.
