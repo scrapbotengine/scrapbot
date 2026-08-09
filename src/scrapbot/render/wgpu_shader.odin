@@ -1066,6 +1066,7 @@ fn fog_point_light_radiance(
 }
 
 fn integrate_volumetric_fog(
+	fog_texel: vec2<u32>,
 	pixel: vec2<i32>,
 	depth: f32,
 ) -> vec4<f32> {
@@ -1094,11 +1095,13 @@ fn integrate_volumetric_fog(
 	let active_step_count = clamp(u32(temporal.fog_lighting.w), 4u, FOG_STEP_COUNT);
 	let step_length = ray_distance / f32(active_step_count);
 	// Rotate a low-discrepancy sub-step offset through the temporal sample
-	// sequence. TAA integrates these samples into smooth shafts without the
-	// fixed depth slices produced by midpoint-only ray marching.
+	// sequence. Generate the phase in the fog grid's own texel space: using
+	// representative full-resolution pixels here subsamples the sequence at
+	// low fog resolutions and aliases it into wide diagonal bands. TAA
+	// integrates these samples into smooth shafts without fixed depth slices.
 	let spatial_phase = fract(
 		52.9829189 *
-			fract(dot(vec2<f32>(pixel), vec2<f32>(0.06711056, 0.00583715))),
+			fract(dot(vec2<f32>(fog_texel), vec2<f32>(0.06711056, 0.00583715))),
 	);
 	// Keep the rotating low-discrepancy sequence centered inside each ray
 	// interval. A full interval of spatial jitter exposes the half-resolution
@@ -1308,7 +1311,7 @@ fn volumetric_fog_cs(@builtin(global_invocation_id) invocation: vec3<u32>) {
 	textureStore(
 		volumetric_fog_output,
 		vec2<i32>(invocation.xy),
-		integrate_volumetric_fog(pixel, depth),
+		integrate_volumetric_fog(invocation.xy, pixel, depth),
 	);
 }
 

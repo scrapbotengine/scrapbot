@@ -3849,6 +3849,20 @@ test_volumetric_fog_shader_is_energy_normalized_shadowed_and_temporally_resolved
 	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "let spatial_phase = fract"))
 	testing.expect(
 		t,
+		strings.contains(
+			WGPU_TEMPORAL_AA_SHADER,
+			"fract(dot(vec2<f32>(fog_texel), vec2<f32>(0.06711056, 0.00583715)))",
+		),
+	)
+	testing.expect(
+		t,
+		!strings.contains(
+			WGPU_TEMPORAL_AA_SHADER,
+			"fract(dot(vec2<f32>(pixel), vec2<f32>(0.06711056, 0.00583715)))",
+		),
+	)
+	testing.expect(
+		t,
 		strings.contains(WGPU_TEMPORAL_AA_SHADER, "temporal.reflections.w * 0.754877666"),
 	)
 	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "mix(0.5, rotating_phase, 0.38)"))
