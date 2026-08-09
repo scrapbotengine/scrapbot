@@ -1378,6 +1378,10 @@ wgpu_initial_cull_phase :: proc "contextless" (
 	return .Disabled
 }
 
+wgpu_cull_phase_uses_occlusion :: proc "contextless" (phase: WGPU_GPU_Cull_Phase) -> bool {
+	return phase == .Enabled
+}
+
 wgpu_make_compact_cull_bind_group :: proc(
 	renderer: ^WGPU_Renderer,
 	batch_buffer: wgpu.Buffer,
@@ -5049,12 +5053,16 @@ wgpu_prepare_gpu_draw_batches :: proc(
 			shadow_cascades.matrices[cascade_index],
 		)
 	}
-	cull_uniform._padding[0] = u32(
-		wgpu_initial_cull_phase(
-			renderer.gpu_hiz_occlusion_enabled,
-			renderer.gpu_hiz_refinement_requested,
-		),
+	initial_cull_phase := wgpu_initial_cull_phase(
+		renderer.gpu_hiz_occlusion_enabled,
+		renderer.gpu_hiz_refinement_requested,
 	)
+	cull_uniform._padding[0] = u32(initial_cull_phase)
+	// A coarse current-camera depth pass exists specifically because retained
+	// Hi-Z history is not reusable. It must be frustum-only: sampling the old
+	// pyramid with the new view projection can reject visible occluders and
+	// poison the refinement pyramid built from this pass.
+	cull_uniform.hiz_enabled = 1 if wgpu_cull_phase_uses_occlusion(initial_cull_phase) else 0
 	if wgpu_retain_cull_uniform(renderer, cull_uniform) {
 		wgpu.QueueWriteBuffer(
 			renderer.queue,
@@ -5065,6 +5073,7 @@ wgpu_prepare_gpu_draw_batches :: proc(
 		)
 		refine_uniform := cull_uniform
 		refine_uniform._padding[0] = u32(WGPU_GPU_Cull_Phase.Enabled)
+		refine_uniform.hiz_enabled = 1
 		wgpu.QueueWriteBuffer(
 			renderer.queue,
 			renderer.gpu_cull_refine_uniform_buffer,

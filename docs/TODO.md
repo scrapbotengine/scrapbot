@@ -53,6 +53,7 @@ This file tracks current actionable engineering work. The broad product roadmap 
 
 ## Testing And Diagnostics
 
+- [ ] Restore deterministic transition coverage in the virtual-geometry pressure GPU fixture after startup residency eliminated its hard-coded transition window.
 - [ ] Auto-enable live debug whenever the windowed editor shell is visible, including the default source-project launch.
 - [ ] Add scoped screen-space regions and a per-pixel geometry-identity image to live-debug captures when visibility records alone cannot isolate overlapping clusters ([ADR-053](adr/ADR-053-expose-live-debugging-through-a-transport-independent-service.md)).
 - [ ] Replace map-per-record visibility CBOR with a versioned compact record-array schema; preserve the summary decoder and measure multi-frame artifact size before changing the transport contract ([ADR-053](adr/ADR-053-expose-live-debugging-through-a-transport-independent-service.md)).

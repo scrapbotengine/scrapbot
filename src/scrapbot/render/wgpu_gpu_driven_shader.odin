@@ -1909,7 +1909,7 @@ const OCCLUSION_FLOATING_POINT_BIAS = 9.536743e-7;
 
 fn camera_sphere_occlusion(bounds: vec4<f32>) -> Occlusion_Result {
 	var result: Occlusion_Result;
-	if (cull.hiz_enabled == 0u || cull.hiz_mip_count == 0u || cull.padding.x == 0u) {
+	if (cull.hiz_enabled == 0u || cull.hiz_mip_count == 0u) {
 		return result;
 	}
 	let camera_offset = bounds.xyz - cull.camera_position.xyz;

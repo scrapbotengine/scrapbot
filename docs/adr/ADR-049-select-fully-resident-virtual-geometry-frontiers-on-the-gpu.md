@@ -98,15 +98,18 @@ have stale occluders at the same screen coordinates. Disabling occlusion for the
 however, makes dense scenes shade every frustum-visible cluster. WGPU therefore uses a current-frame
 two-stage path whenever retained Hi-Z history is unavailable but the scene is otherwise eligible:
 
-1. select a complete coarse hierarchy frontier and render an occluder-only depth prepass;
+1. select a complete coarse hierarchy frontier using frustum tests only and render an
+   occluder-only depth prepass;
 2. build Hi-Z from that current-camera depth;
 3. rerun detailed hierarchy and occlusion selection against the current pyramid; and
 4. clear and render the final detailed depth before world shading.
 
-The coarse frontier is never a color input and cannot become authored visual quality. Rendering the
-final depth again prevents differences between the coarse and detailed surfaces from clipping world
-geometry. A settled camera keeps the single-cull, single-depth path and reuses its exact retained
-pyramid.
+The coarse pass must not sample retained Hi-Z: its view projection belongs to the new camera while
+the retained depth still belongs to the old camera. Mixing them can reject visible occluders and
+poison the current pyramid. The coarse frontier is never a color input and cannot become authored
+visual quality. Rendering the final depth again prevents differences between the coarse and detailed
+surfaces from clipping world geometry. A settled camera keeps the single-cull, single-depth path and
+reuses its exact retained pyramid.
 
 Native multi-draw adapters also use the hierarchy for shadows before applying cascade sphere and
 normal-cone tests. The portable path uses the camera-selected object LOD for conservative cascade

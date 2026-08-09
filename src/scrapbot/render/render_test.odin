@@ -1890,6 +1890,16 @@ test_wgpu_hiz_refinement_uses_current_depth_when_history_is_unusable :: proc(t: 
 		WGPU_GPU_Cull_Phase.Coarse_Occluder,
 	)
 	testing.expect_value(t, wgpu_initial_cull_phase(false, false), WGPU_GPU_Cull_Phase.Disabled)
+	testing.expect(t, wgpu_cull_phase_uses_occlusion(.Enabled))
+	testing.expect(t, !wgpu_cull_phase_uses_occlusion(.Coarse_Occluder))
+	testing.expect(t, !wgpu_cull_phase_uses_occlusion(.Disabled))
+	testing.expect(
+		t,
+		!strings.contains(
+			WGPU_GPU_CULL_SHADER,
+			"cull.hiz_mip_count == 0u || cull.padding.x == 0u",
+		),
+	)
 }
 
 @(test)
