@@ -78,9 +78,11 @@ surface. TAA receives a transition marker so it can reject incompatible history 
 depth and silhouette changes.
 
 Residency pressure never changes that target. If requested detail does not fit, Scrapbot keeps the
-resident parent drawable and prioritizes or evicts complete groups. At maximum quality, the target
-is one pixel. Dynamic resolution first reduces the viewport-local render grid; after reaching its
-authored scale floor, the same frame-budget controller may select 2, 4, 8, or 16 pixels. The
+resident parent drawable and prioritizes or evicts complete groups. Native indexed submission uses
+a one-pixel maximum-quality target. Portable compact submission starts at two pixels when virtual
+batches are active because its padded vertex-pulling lanes have a different measured cost/quality
+crossover. Dynamic resolution first reduces the viewport-local render grid; after reaching its
+authored scale floor, the same frame-budget controller may select coarser power-of-two tiers. The
 camera's adaptive-quality floor bounds the coarsest permitted tier.
 
 A newly streamed child also does not replace its parent in one frame. It first passes a bounded
@@ -598,7 +600,9 @@ expected cost at a HiDPI physical resolution.
 `counter_deltas` turns cumulative upload, rebuild, dispatch, resize, redraw, cache-hit, geometry-
 arena mutation, and virtual page/group totals into the work attributable to that frame. Stable
 measured rows should report zero geometry arena uploads, growths, page/group uploads, drawable
-group activations, evictions, and deferred admissions.
+group activations, evictions, and deferred admissions. Virtual-geometry metadata upload count and
+bytes expose the queue writes used to patch changed cluster records, indirect templates, and debug
+identities; they remain zero when residency and activation are stable.
 
 GPU timestamps arrive asynchronously. Scrapbot tags every readback with its originating frame and merges it into that exact row. Check `gpu_timing_valid` before using a row.
 
@@ -617,7 +621,12 @@ adaptive_quality_minimum = 0.25
 
 The manual scale is the ceiling, not a second multiplier. WGPU processes every completed scene-span timestamp sample once, filters the result, and advances at most one step on a shared quality ladder. Delayed samples from an old quality generation or active project camera are discarded.
 
-The ladder coordinates 5% world-resolution steps, 2048²/1024²/512² directional-shadow tiers, and a normalized post factor. The post factor scales the authored AO and SSR quality ceilings and volumetric-fog ray count. `adaptive_quality_minimum` bounds the last two outputs. Quality returns in the exact reverse order only after sustained headroom, preventing adjacent tiers from fighting each other.
+The ladder coordinates 5% world-resolution steps, 2048²/1024²/512² directional-shadow tiers,
+virtual-geometry projected-error tiers, and a normalized post factor. Native indexed virtual
+submission starts at one pixel; portable compact virtual submission starts at two pixels. The post
+factor scales the authored AO and SSR quality ceilings and volumetric-fog ray count.
+`adaptive_quality_minimum` bounds the last outputs. Quality returns in the exact reverse order only
+after sustained headroom, preventing adjacent tiers from fighting each other.
 
 Every step shares one cooldown and measurement generation. Scale changes reject temporal history and resize only scale-dependent targets; shadow and post-only changes retain those targets. Backends without timestamps stay at authored maxima.
 

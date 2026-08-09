@@ -91,6 +91,8 @@ Renderer_Snapshot :: struct {
 	virtual_geometry_page_uploads: u64,
 	virtual_geometry_page_evictions: u64,
 	virtual_geometry_group_uploads: u64,
+	virtual_geometry_metadata_uploads: u64,
+	virtual_geometry_metadata_upload_bytes: u64,
 	virtual_geometry_group_activations: u64,
 	virtual_geometry_transitioning_groups: u32,
 	virtual_geometry_group_evictions: u64,

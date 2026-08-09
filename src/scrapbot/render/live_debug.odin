@@ -117,6 +117,9 @@ publish_live_debug_render_stats :: proc(
 	destination.virtual_geometry_page_uploads = stats.virtual_geometry_page_uploads
 	destination.virtual_geometry_page_evictions = stats.virtual_geometry_page_evictions
 	destination.virtual_geometry_group_uploads = stats.virtual_geometry_group_uploads
+	destination.virtual_geometry_metadata_uploads = stats.virtual_geometry_metadata_uploads
+	destination.virtual_geometry_metadata_upload_bytes =
+		stats.virtual_geometry_metadata_upload_bytes
 	destination.virtual_geometry_group_activations = stats.virtual_geometry_group_activations
 	destination.virtual_geometry_transitioning_groups = stats.virtual_geometry_transitioning_groups
 	destination.virtual_geometry_group_evictions = stats.virtual_geometry_group_evictions

@@ -83,7 +83,8 @@ use shared-buffer capacity outside that window.
 Page pressure does not mutate the camera's projected-error target. Deferred detail keeps its
 resident parent drawable. The coordinated render-quality controller owns both render-scale and
 bounded projected-error changes. The active viewport height feeds that frontier calculation, while
-the authored adaptive-quality floor limits how far its one-pixel maximum-quality target may relax.
+the authored adaptive-quality floor limits how far the backend path's maximum-quality target may
+relax.
 
 Capable adapters retain meshlet metadata and arena-global indirect templates. Virtual Geometry
 also selects the desired resident hierarchy frontier and draws a coarse fallback while refinement
@@ -91,7 +92,10 @@ is missing. Native multi-draw consumes meshlet commands directly. Other indirect
 adapters compact batch-local instance candidates, then test ordinary meshlets or hierarchy
 clusters in parallel into four bounded triangle-count lanes per compatible material span before
 vertex-pulling from the arenas. Empty lanes submit no command. Compact triangle and padded vertex-
-invocation counters expose the remaining portable-path waste without readback-driven submission.
+invocation counters expose the remaining portable-path waste without readback-driven submission. A
+portable virtual batch resolves the shared projected-error target against a two-pixel maximum-
+quality floor before the culler selects its frontier. Native indexed batches retain the one-pixel
+target; both paths remain governed by the same frame-budget controller.
 
 Conventional portable meshlets use compact camera and shadow streams. Fully resident portable
 virtual resources retain classic indexed shadows. Streamed resources prefer page-local compact

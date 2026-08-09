@@ -262,6 +262,17 @@ wgpu_meshlet_batch_submission :: proc "contextless" (meshlet_count, instance_cou
 	return meshlet_count > 0 && instance_count >= WGPU_MESHLET_MIN_BATCH_INSTANCES
 }
 
+wgpu_effective_virtual_error_pixels :: proc "contextless" (renderer: ^WGPU_Renderer) -> f32 {
+	if renderer == nil {
+		return FRAME_BUDGET_VIRTUAL_ERROR_MINIMUM
+	}
+	error_pixels := renderer.dynamic_resolution.effective_virtual_error_pixels
+	if renderer.gpu_compact_submission_active && renderer.gpu_virtual_batch_count > 0 {
+		return max(error_pixels, WGPU_PORTABLE_COMPACT_VIRTUAL_ERROR_MINIMUM)
+	}
+	return error_pixels
+}
+
 wgpu_virtual_shadow_error_pixels :: proc "contextless" (
 	camera_error_pixels: f32,
 	cascade_index: int,
@@ -4535,7 +4546,7 @@ wgpu_prepare_gpu_draw_batches :: proc(
 	}
 	uniform.camera_clip = {camera.near, camera.far, 0, 0}
 	uniform.virtual_geometry = {
-		renderer.dynamic_resolution.effective_virtual_error_pixels,
+		wgpu_effective_virtual_error_pixels(renderer),
 		f32(max(viewport.height, 1)),
 		WGPU_VIRTUAL_GEOMETRY_BLEND_LOW_SCALE,
 		WGPU_VIRTUAL_GEOMETRY_BLEND_HIGH_SCALE,
@@ -4824,7 +4835,7 @@ wgpu_prepare_gpu_draw_batches :: proc(
 		meshlet_debug_record_offset = 0,
 		debug_view = u32(camera.debug_view),
 		meshlet_force_enabled = 1 if renderer.gpu_meshlet_force_enabled else 0,
-		virtual_error_pixels = renderer.dynamic_resolution.effective_virtual_error_pixels,
+		virtual_error_pixels = wgpu_effective_virtual_error_pixels(renderer),
 		projection_y = projection[5],
 		virtual_feedback_epoch = u32(renderer.profile_frame_index),
 		virtual_transition_frames = u32(WGPU_VIRTUAL_GROUP_TRANSITION_FRAMES),

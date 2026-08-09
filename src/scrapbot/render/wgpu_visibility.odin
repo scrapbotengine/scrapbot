@@ -511,19 +511,23 @@ wgpu_refresh_geometry_group_state :: proc(
 			last_local := int(dirty_clusters[run_end - 1]) + 1
 			first_meshlet := int(batch.meshlet_draw_offset) + first_local
 			last_meshlet := int(batch.meshlet_draw_offset) + last_local
+			info_bytes := uint((last_meshlet - first_meshlet) * size_of(WGPU_GPU_Meshlet_Info))
 			wgpu.QueueWriteBuffer(
 				renderer.queue,
 				renderer.gpu_meshlet_info_buffer,
 				u64(first_meshlet) * u64(size_of(WGPU_GPU_Meshlet_Info)),
 				raw_data(renderer.gpu_meshlet_infos[first_meshlet:last_meshlet]),
-				uint((last_meshlet - first_meshlet) * size_of(WGPU_GPU_Meshlet_Info)),
+				info_bytes,
+			)
+			template_bytes := uint(
+				(last_meshlet - first_meshlet) * size_of(WGPU_Draw_Indexed_Indirect),
 			)
 			wgpu.QueueWriteBuffer(
 				renderer.queue,
 				renderer.gpu_meshlet_indirect_template_buffer,
 				u64(first_meshlet) * u64(size_of(WGPU_Draw_Indexed_Indirect)),
 				raw_data(renderer.gpu_meshlet_indirect_templates[first_meshlet:last_meshlet]),
-				uint((last_meshlet - first_meshlet) * size_of(WGPU_Draw_Indexed_Indirect)),
+				template_bytes,
 			)
 			identity_count := (last_local - first_local) * int(per_meshlet_capacity)
 			identities := make([]u32, identity_count, context.temp_allocator)
@@ -538,13 +542,17 @@ wgpu_refresh_geometry_group_state :: proc(
 			identity_offset :=
 				u64(batch.meshlet_visible_offset + u32(first_local) * per_meshlet_capacity) *
 				u64(size_of(u32))
+			identity_bytes := uint(len(identities) * size_of(u32))
 			wgpu.QueueWriteBuffer(
 				renderer.queue,
 				renderer.gpu_meshlet_identity_buffer,
 				identity_offset,
 				raw_data(identities),
-				uint(len(identities) * size_of(u32)),
+				identity_bytes,
 			)
+			renderer.virtual_geometry_metadata_upload_count += 3
+			renderer.virtual_geometry_metadata_upload_bytes +=
+				u64(info_bytes) + u64(template_bytes) + u64(identity_bytes)
 			run_offset = run_end
 		}
 	}
@@ -1313,6 +1321,15 @@ wgpu_process_virtual_page_feedback :: proc(
 			}
 			continue
 		}
+		// Readbacks can complete in a burst, but upload admission is deliberately
+		// bounded across the whole frame. Once that group budget is spent, avoid
+		// rebuilding missing-page lists and staging views for requests that cannot
+		// possibly be admitted this frame. Resident touches above still run so
+		// eviction recency remains correct.
+		if remaining_upload_groups^ <= 0 {
+			renderer.virtual_geometry_deferred_group_count += 1
+			continue
+		}
 		page_offset, page_count, range_ok := wgpu_virtual_group_page_range(
 			geometry,
 			request.group_index,
@@ -1375,7 +1392,7 @@ wgpu_process_virtual_page_feedback :: proc(
 				continue
 			}
 		}
-		if remaining_upload_groups^ <= 0 || allocation_bytes > remaining_upload_bytes^ {
+		if allocation_bytes > remaining_upload_bytes^ {
 			renderer.virtual_geometry_deferred_group_count += 1
 			continue
 		}
@@ -1685,8 +1702,7 @@ wgpu_publish_visibility :: proc(renderer: ^WGPU_Renderer, stats: ^Render_Stats) 
 	stats.virtual_rejected_clusters = renderer.gpu_visibility_counters.virtual_rejected_clusters
 	stats.virtual_geometry_page_budget_bytes = renderer.virtual_geometry_budget_bytes
 	stats.virtual_geometry_page_resident_bytes = renderer.virtual_geometry_resident_bytes
-	stats.virtual_geometry_error_pixels =
-		renderer.dynamic_resolution.effective_virtual_error_pixels
+	stats.virtual_geometry_error_pixels = wgpu_effective_virtual_error_pixels(renderer)
 	stats.virtual_geometry_pages = renderer.virtual_geometry_page_count
 	stats.virtual_geometry_resident_pages = renderer.virtual_geometry_resident_page_count
 	stats.virtual_geometry_pinned_pages = renderer.virtual_geometry_pinned_page_count
@@ -1723,6 +1739,8 @@ wgpu_publish_visibility :: proc(renderer: ^WGPU_Renderer, stats: ^Render_Stats) 
 			u32(WGPU_VIRTUAL_PAGE_FEEDBACK_CAPACITY),
 		)
 	stats.virtual_geometry_group_uploads = renderer.virtual_geometry_group_upload_count
+	stats.virtual_geometry_metadata_uploads = renderer.virtual_geometry_metadata_upload_count
+	stats.virtual_geometry_metadata_upload_bytes = renderer.virtual_geometry_metadata_upload_bytes
 	stats.virtual_geometry_group_activations = renderer.virtual_geometry_group_activation_count
 	stats.virtual_geometry_transitioning_groups = u32(len(renderer.virtual_geometry_transitions))
 	stats.virtual_geometry_prefetch_group_uploads =

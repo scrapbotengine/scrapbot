@@ -60,7 +60,9 @@ submits a cluster exactly when:
 2. its refined group is absent or is at or below that threshold.
 
 That rule selects one complete frontier for camera rendering. The overlap temporarily broadens
-that frontier. Both opaque levels remain complete and depth-test normally because adjacent
+that frontier. Native indexed submission uses one pixel at maximum quality; portable compact
+submission uses its measured two-pixel floor. Both opaque levels remain complete and depth-test
+normally because adjacent
 simplifications do not guarantee identical pixel coverage around thin surfaces and silhouettes;
 complementary fragment discard can expose background where only one side has geometry. A
 transition-only reactive marker lets the temporal resolver retain compatible history across
@@ -76,10 +78,16 @@ the child's projected error would otherwise select the child alone. Both complet
 remain depth-testable until the handoff completes; residency and transition coverage cannot expose
 cluster-shaped gaps by removing or discarding the only surface at a pixel.
 
-Residency pressure never changes the one-pixel camera error target. Page admission may defer a
-requested refinement, but the compute culler continues to submit its resident parent. Eviction may
-release lower-priority detail only while preserving that drawable fallback chain. This keeps memory
-policy from making geometry coarser merely because the camera approaches a dense surface.
+Residency pressure never changes the camera error target. Page admission may defer a requested
+refinement, but the compute culler continues to submit its resident parent. Eviction may release
+lower-priority detail only while preserving that drawable fallback chain. This keeps memory policy
+from making geometry coarser merely because the camera approaches a dense surface.
+
+Native indexed multi-draw uses a one-pixel maximum-quality target. Portable compact submission
+uses a two-pixel maximum-quality floor when at least one virtual batch is active. Its padded
+vertex-pulling lanes otherwise spend substantial bandwidth on detail with little visible payoff.
+The coordinated frame-budget controller may raise either path's effective target through the same
+bounded power-of-two tiers; the portable floor does not create a second adaptive controller.
 
 Frame-budget scaling belongs to the coordinated quality controller in ADR-052. Its render-scale
 changes alter the physical viewport height used by projected-error selection, so virtual Geometry
@@ -128,6 +136,24 @@ per cluster. The portable camera path spends extra GPU culling and vertex-pullin
 stable CPU frame cost. Triangle-count lanes exchange several bounded indirect commands and
 additional atomic counters for less padded vertex work. Its indexed pinned-root shadow proxy
 preserves that CPU behavior while avoiding padded compact shadow records.
+
+On an Apple M4 Virtual Wilds profile at 1280×720, the portable two-pixel floor reduced selected
+compact vertex invocations by about 30%, world-pass p95 by about 23%, depth-pass p95 by about 30%,
+and GPU-frame p95 by about 13% against the same one-pixel path. Five consecutive camera-path
+captures remained visually stable, while the matched overview retained a 49 dB PSNR. These
+measurements justify the portable floor without changing native indexed quality or authored
+submission policy.
+
+The same adapter's 7,000-frame Virtual Wilds streaming profile exposed two independent scaling
+failures. Frame-temporary page and metadata scratch was never reclaimed, growing peak RSS beyond 8
+GiB until the process was killed. Reclaiming that arena at each frame boundary held 240-, 2,000-,
+and 7,000-frame runs between 1.41 and 1.44 GiB peak RSS.
+
+Completed visibility readbacks could also deliver thousands of requests after the frame's four-
+group admission budget was already spent. Skipping unusable missing-page and staging construction
+for those nonresident requests reduced the 7,000-frame CPU median from 4.05 to 1.31 ms and CPU p95
+from 24.72 to 17.56 ms. GPU p95 changed from 20.69 to 17.35 ms on that paired run; treat that
+secondary result as directional until the adapter baseline matrix establishes thermal variance.
 
 The first implementation is fully resident. Hierarchy metadata and every cluster index stream are
 uploaded with the Geometry version, so large resources can consume more index-arena memory than

@@ -37,7 +37,12 @@ Pluggable rendering backends allow Scrapbot to start with `wgpu-native` while ke
 - Every Geometry version owns bounded meshlets and a crack-aware, deterministically paged cluster hierarchy. Simplification preserves normal and UV discontinuities and never falls back to attribute-blind reduction.
 - Geometry submission resolves at stable topology boundaries from entity override, Model-resource preference, project default, and backend automatic policy. Conventional and Virtual instances of one Geometry can coexist in separate retained batches and caches.
 - Complete page sets that fit the remaining budget are admitted immediately; coarse pages remain pinned for streamed resources. The GPU selects resident detail, requests missing finer pages, and draws the nearest resident fallback before camera sphere, normal-cone, and Hi-Z tests.
-- Native multi-draw adapters retain one indirect command per ordinary meshlet or hierarchy cluster. Other indirect-first-instance adapters append selected instance/meshlet records into bounded camera and shadow streams and vertex-pull compatible material spans through four triangle-count lanes. Only nonempty lanes submit indirect commands.
+- Native multi-draw adapters retain one indirect command per ordinary meshlet or hierarchy cluster
+  and use a one-pixel maximum-quality virtual frontier. Other indirect-first-instance adapters
+  append selected instance/meshlet records into bounded camera and shadow streams and vertex-pull
+  compatible material spans through four triangle-count lanes. Only nonempty lanes submit indirect
+  commands. When virtual batches use this portable compact path, its maximum-quality frontier starts
+  at two pixels; adaptive quality may raise the shared effective target further under pressure.
 - Adapters without indirect-first-instance and `--cpu-culling` retain whole-primitive imported LOD selection. Streamed resources use the indexed proxy built from pinned coarse pages.
 - The active camera selects a backend-neutral debug view: lit output, material inputs, mapped world normals, logarithmic depth, retained meshlet identity, exact GPU-selected LOD, selected virtual-geometry clusters and hierarchy depth, object/meshlet visibility classification, one retained Hi-Z mip, or exact screen-space Hi-Z query footprints. Non-lit views skip presentation effects so diagnostics remain direct and stable.
 - Hi-Z false color and texel boundaries expose the exact conservative max-depth hierarchy without readback or rebuilding it. Occlusion Queries records each tested rectangle, selected mip, bound depth, sampled farthest depth, identity, and visible/culled decision in a bounded GPU-native stream.
@@ -368,13 +373,21 @@ the asynchronous readback boundary.
 Residency pressure does not modify the camera error target. Missing refinements retain their
 resident parent, while group-atomic eviction releases lower-priority detail without breaking the
 fallback chain. The coordinated frame-budget controller owns both render-scale and bounded
-projected-error changes. Maximum quality uses one pixel; lower authored adaptive-quality floors
-permit progressively coarser power-of-two tiers after render scale reaches its floor.
+projected-error changes. Native indexed submission uses a one-pixel maximum-quality target.
+Portable compact submission uses a measured two-pixel floor when virtual batches are active because
+its padded vertex-pulling lanes have a different cost/quality crossover. Lower authored
+adaptive-quality floors permit progressively coarser power-of-two tiers after render scale reaches
+its floor.
 
 Per-frame byte and group limits bound streaming work. One admitted group or complete-resource
 preload becomes one combined arena transfer. Residency mutations use persistent group-to-cluster
 and refinement-to-parent indices to patch only changed clusters and their direct dependents.
 Adjacent changes coalesce into bounded GPU writes; stable frames do no page work.
+
+All completed readbacks share those frame admission limits. After the group limit is spent, the CPU
+still applies resident touches but skips missing-page and staging construction for nonresident
+requests that cannot be admitted. Page assembly, feedback sorting, and metadata-patch scratch use
+the frame temporary allocator, which WGPU reclaims before the next surface or offscreen frame.
 
 Native multi-draw adapters submit the retained indexed-indirect command range for camera and
 shadow work. Other capable adapters compact selected `{instance slot, cluster index}` records into

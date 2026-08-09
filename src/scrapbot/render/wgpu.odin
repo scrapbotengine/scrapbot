@@ -48,6 +48,9 @@ WGPU_VIRTUAL_GEOMETRY_UPLOAD_BUDGET_BYTES :: u64(512 * 1024)
 WGPU_VIRTUAL_GEOMETRY_UPLOAD_GROUP_BUDGET :: 4
 WGPU_VIRTUAL_GEOMETRY_STAGED_PAYLOAD_BUDGET_BYTES :: u64(16 * 1024 * 1024)
 WGPU_VIRTUAL_GEOMETRY_MIN_ERROR_PIXELS :: f32(1)
+// Portable compact submission vertex-pulls a padded triangle lane. Do not spend
+// that path's bandwidth on hierarchy detail below its measured pixel payoff.
+WGPU_PORTABLE_COMPACT_VIRTUAL_ERROR_MINIMUM :: f32(2)
 WGPU_VIRTUAL_GROUP_ACTIVATION_GRACE_FRAMES :: u64(8)
 WGPU_VIRTUAL_GROUP_ACTIVATION_MAX_HOLD_FRAMES :: u64(32)
 WGPU_VIRTUAL_GROUP_TRANSITION_FRAMES :: u64(16)
@@ -1171,6 +1174,8 @@ WGPU_Renderer :: struct {
 	virtual_geometry_staged_payload_bytes: u64,
 	virtual_geometry_page_eviction_count: u64,
 	virtual_geometry_group_upload_count: u64,
+	virtual_geometry_metadata_upload_count: u64,
+	virtual_geometry_metadata_upload_bytes: u64,
 	virtual_geometry_group_activation_count: u64,
 	virtual_geometry_prefetch_group_upload_count: u64,
 	virtual_geometry_prefetch_hit_count: u64,
@@ -4238,6 +4243,10 @@ wgpu_draw_frame :: proc(
 	presented, should_quit: bool,
 	err: string,
 ) {
+	// Odin's default temporary allocator is an arena. Reclaim the previous
+	// frame before allocating this frame's extraction and streaming scratch.
+	free_all(context.temp_allocator)
+
 	drawable, configure_err := wgpu_configure_surface(renderer)
 	if configure_err != "" || !drawable {
 		return false, false, configure_err
@@ -4636,6 +4645,10 @@ wgpu_render_offscreen_frame :: proc(
 	height: u32 = 0,
 	config: ^Run_Config = nil,
 ) -> string {
+	// Headless rendering has the same frame-scoped scratch lifetime as the
+	// surface path and must not retain streaming payloads between frames.
+	free_all(context.temp_allocator)
+
 	active_frame_start := time.tick_now()
 	begin_system_profile_frame(config)
 	frame_start := begin_runtime_frame(config)

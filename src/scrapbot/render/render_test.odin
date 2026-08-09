@@ -2127,6 +2127,13 @@ test_wgpu_meshlet_submission_policy_amortizes_indirect_commands :: proc(t: ^test
 	testing.expect_value(t, wgpu_virtual_shadow_error_pixels(1, 2), f32(128))
 	testing.expect_value(t, wgpu_virtual_shadow_error_pixels(1, 3), f32(512))
 	testing.expect_value(t, wgpu_virtual_shadow_error_pixels(1, 99), f32(512))
+	renderer.dynamic_resolution.effective_virtual_error_pixels = 1
+	testing.expect_value(t, wgpu_effective_virtual_error_pixels(&renderer), f32(1))
+	renderer.gpu_compact_submission_active = true
+	renderer.gpu_virtual_batch_count = 1
+	testing.expect_value(t, wgpu_effective_virtual_error_pixels(&renderer), f32(2))
+	renderer.dynamic_resolution.effective_virtual_error_pixels = 4
+	testing.expect_value(t, wgpu_effective_virtual_error_pixels(&renderer), f32(4))
 
 	testing.expect(t, !wgpu_meshlet_debug_forces_submission(.Lit))
 	testing.expect(t, wgpu_meshlet_debug_forces_submission(.Meshlets))
@@ -3258,6 +3265,8 @@ test_profile_reports_per_frame_counter_deltas_after_warmup :: proc(t: ^testing.T
 		virtual_geometry_page_read_failures = 1,
 		virtual_geometry_page_evictions = 1,
 		virtual_geometry_group_uploads = 3,
+		virtual_geometry_metadata_uploads = 30,
+		virtual_geometry_metadata_upload_bytes = 4096,
 		virtual_geometry_group_activations = 2,
 		virtual_geometry_prefetch_group_uploads = 2,
 		virtual_geometry_prefetch_hits = 4,
@@ -3288,6 +3297,8 @@ test_profile_reports_per_frame_counter_deltas_after_warmup :: proc(t: ^testing.T
 	stats.virtual_geometry_page_read_failures += 2
 	stats.virtual_geometry_page_evictions += 1
 	stats.virtual_geometry_group_uploads += 1
+	stats.virtual_geometry_metadata_uploads += 6
+	stats.virtual_geometry_metadata_upload_bytes += 768
 	stats.virtual_geometry_group_activations += 1
 	stats.virtual_geometry_prefetch_group_uploads += 1
 	stats.virtual_geometry_prefetch_hits += 2
@@ -3318,6 +3329,8 @@ test_profile_reports_per_frame_counter_deltas_after_warmup :: proc(t: ^testing.T
 	testing.expect_value(t, first.virtual_geometry_page_read_failures, u64(2))
 	testing.expect_value(t, first.virtual_geometry_page_evictions, u64(1))
 	testing.expect_value(t, first.virtual_geometry_group_uploads, u64(1))
+	testing.expect_value(t, first.virtual_geometry_metadata_uploads, u64(6))
+	testing.expect_value(t, first.virtual_geometry_metadata_upload_bytes, u64(768))
 	testing.expect_value(t, first.virtual_geometry_group_activations, u64(1))
 	testing.expect_value(t, first.virtual_geometry_prefetch_group_uploads, u64(1))
 	testing.expect_value(t, first.virtual_geometry_prefetch_hits, u64(2))

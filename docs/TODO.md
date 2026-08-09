@@ -7,6 +7,7 @@ This file tracks current actionable engineering work. The broad product roadmap 
 - [ ] Calibrate the automatic Conventional/Virtual Geometry crossover across qualified adapter classes and representative asset shapes while preserving ADR-054's stable layered policy.
 - [ ] Partition or bound portable compact submission so visibility-table pressure cannot globally disable virtual submission or leave streamed resources undrawable; add an over-cap mixed-batch GPU fixture.
 - [ ] Partition geometry storage bindings or use relative page offsets so portable vertex pulling can use residency beyond the currently correctness-bounded single-binding prefix; measure and reduce fragmentation-driven detail deferrals.
+- [ ] Partition or clamp conventional shared geometry arenas to the adapter's maximum buffer size; the Virtual Wilds CPU-reference control currently requests a 512 MiB vertex arena on a 256 MiB adapter.
 - [ ] Deduplicate virtual-Geometry page feedback by group before bounded GPU readback, then shrink the temporary 32,768-record demand lane while preserving zero-overflow moving high-detail views.
 - [ ] Gate foreground and depth completeness in both the synthetic virtual-geometry lab and the external single-cliff regression across compact GPU and full-index reference captures.
 - [ ] Maintain a repeatable 60 Hz adaptive-quality baseline matrix across representative integrated/discrete GPUs; record settled world, shadow, and post tiers. See [ADR-052](adr/ADR-052-coordinate-adaptive-render-quality-from-one-frame-budget.md).
