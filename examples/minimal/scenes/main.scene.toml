@@ -2,6 +2,9 @@
 id = "10000000-0000-4000-8000-000000000001"
 name = "Main Camera"
 
+[entities.components.scrapbot.clock]
+speed = 1
+
 [entities.transform]
 position = [0, 2, 6]
 rotation = [-0.321751, 0, 0]

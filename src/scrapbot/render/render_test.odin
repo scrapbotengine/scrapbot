@@ -1442,15 +1442,47 @@ test_stopped_editor_simulation_only_runs_requested_step :: proc(t: ^testing.T) {
 	}
 	testing.expect(t, run_frame_system_unmeasured(&config, &world, 0.1) == "")
 	testing.expect(t, frame_count == 1 && world.time.frame_index == 1)
+	testing.expect(t, config.engine_time.frame_index == 1)
 	ui.editor_pause(state)
 	testing.expect(t, run_frame_system_unmeasured(&config, &world, 0.1) == "")
 	testing.expect(t, frame_count == 1 && world.time.frame_index == 1)
+	testing.expect(t, config.engine_time.frame_index == 2)
 	ui.editor_step(state)
 	testing.expect(t, run_frame_system_unmeasured(&config, &world, 0.1) == "")
 	testing.expect(t, frame_count == 2 && world.time.frame_index == 2)
 	testing.expect(t, world.time.delta_time == f32(1.0 / 60.0))
 	testing.expect(t, run_frame_system_unmeasured(&config, &world, 0.1) == "")
 	testing.expect(t, frame_count == 2 && world.time.frame_index == 2)
+	testing.expect(t, config.engine_time.frame_index == 4)
+	testing.expect(t, math.abs(config.engine_time.elapsed_time - 0.4) < 0.00001)
+}
+
+@(test)
+test_paused_editor_advances_engine_time_without_advancing_project_clock :: proc(t: ^testing.T) {
+	world: World
+	defer ecs.destroy_world(&world)
+	clock_entity, clock_ok := ecs.create_world_entity(&world, "Clock", {}, .Scene)
+	testing.expect(t, clock_ok)
+	clock := shared.Custom_Component {
+		name = "scrapbot.clock",
+	}
+	append(&clock.number_fields, shared.Named_Number{name = "speed", value = 0.5})
+	defer delete(clock.number_fields)
+	ecs.add_scene_custom_component(&world, clock_entity, clock)
+	state := new(ui.State)
+	defer free(state)
+	testing.expect(t, ui.init(state) == "")
+	defer ui.destroy(state)
+	config := Run_Config {
+		ui_state = state,
+	}
+
+	testing.expect(t, run_frame_system_unmeasured(&config, &world, 0.1) == "")
+	testing.expect(t, math.abs(world.time.elapsed_time - 0.05) < 0.00001)
+	ui.editor_pause(state)
+	testing.expect(t, run_frame_system_unmeasured(&config, &world, 0.1) == "")
+	testing.expect(t, math.abs(world.time.elapsed_time - 0.05) < 0.00001)
+	testing.expect(t, math.abs(config.engine_time.elapsed_time - 0.2) < 0.00001)
 }
 
 @(test)
@@ -4089,19 +4121,27 @@ test_post_effect_uniform_upload_is_change_driven :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_selection_outline_animation_uses_render_time_through_running_and_pause :: proc(
+test_selection_outline_animation_uses_engine_time_through_running_and_pause :: proc(
 	t: ^testing.T,
 ) {
-	renderer: WGPU_Renderer
-	stopped := wgpu_advance_editor_selection_outline(&renderer, 0.25, false)
+	stopped := wgpu_editor_selection_outline_uniform(0.25, false)
 	testing.expect_value(t, stopped, [4]f32{0, 0, 10, 7})
-	running := wgpu_advance_editor_selection_outline(&renderer, 0.25, true)
+	running := wgpu_editor_selection_outline_uniform(0.25, true)
 	testing.expect_value(t, running, [4]f32{0.25, 1, 10, 7})
-	paused := wgpu_advance_editor_selection_outline(&renderer, 0.25, true)
+	paused := wgpu_editor_selection_outline_uniform(0.5, true)
 	testing.expect_value(t, paused, [4]f32{0.5, 1, 10, 7})
-	stopped = wgpu_advance_editor_selection_outline(&renderer, 0.25, false)
+	stopped = wgpu_editor_selection_outline_uniform(0.75, false)
 	testing.expect_value(t, stopped, [4]f32{0, 0, 10, 7})
-	testing.expect(t, renderer.editor_selection_outline_time == 0)
+}
+
+@(test)
+test_engine_time_advances_independently_from_simulation :: proc(t: ^testing.T) {
+	engine_time: Engine_Time
+	advance_engine_time(&engine_time, 0.25)
+	advance_engine_time(&engine_time, 0.5)
+	testing.expect_value(t, engine_time.delta_time, f32(0.5))
+	testing.expect_value(t, engine_time.elapsed_time, f64(0.75))
+	testing.expect_value(t, engine_time.frame_index, u64(2))
 }
 
 @(test)

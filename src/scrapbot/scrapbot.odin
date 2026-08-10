@@ -1461,7 +1461,7 @@ step_frame_runtime :: proc(
 	if runtime == nil {
 		return ""
 	}
-	ecs.advance_time(&world.time, delta_seconds)
+	ecs.advance_project_time(world, delta_seconds)
 	return step_frame_runtime_parts(
 		&runtime.script_runtime,
 		&runtime.native_extensions,

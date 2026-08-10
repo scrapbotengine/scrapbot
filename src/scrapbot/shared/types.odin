@@ -1887,6 +1887,7 @@ World :: struct {
 	string_allocator: runtime.Allocator,
 	instance_uuid: Entity_UUID,
 	time: Time_Resource,
+	default_clock_uuid: Entity_UUID,
 	input_initialized: bool,
 	keyboard_input: Keyboard_Input_Component,
 	pointer_input: Pointer_Input_Component,

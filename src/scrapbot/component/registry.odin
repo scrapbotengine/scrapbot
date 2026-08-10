@@ -86,6 +86,7 @@ Field_Definition :: struct {
 	name: string,
 	field_type: Field_Type,
 	editor: Field_Editor_Options,
+	read_only: bool,
 }
 
 Definition :: struct {
@@ -127,6 +128,21 @@ init_registry :: proc(registry: ^Registry) {
 			Field_Definition{name = "position", field_type = .Vec2},
 			Field_Definition{name = "delta", field_type = .Vec2},
 			Field_Definition{name = "wheel", field_type = .Vec2},
+		},
+	)
+	register_engine_component(
+		registry,
+		"scrapbot.clock",
+		{
+			Field_Definition {
+				name = "speed",
+				field_type = .Number,
+				editor = {draggable = true, step = 0.1, has_minimum = true, minimum = 0},
+			},
+			Field_Definition{name = "delta_time", field_type = .Number, read_only = true},
+			Field_Definition{name = "smooth_delta_time", field_type = .Number, read_only = true},
+			Field_Definition{name = "elapsed_time", field_type = .Number, read_only = true},
+			Field_Definition{name = "frame_index", field_type = .Number, read_only = true},
 		},
 	)
 	register_engine_component(
@@ -1179,6 +1195,8 @@ engine_component_storage :: proc "contextless" (name: string) -> (Storage_Kind, 
 			return .Keyboard_Input, .Derived
 		case "scrapbot.pointer_input":
 			return .Pointer_Input, .Derived
+		case "scrapbot.clock":
+			return .Custom, .Authored
 		case "scrapbot.transform":
 			return .Transform, .Authored
 		case "scrapbot.camera":
@@ -1359,6 +1377,7 @@ find_definition_index :: proc "c" (registry: ^Registry, name: string) -> (index:
 validate_custom_component :: proc(
 	registry: ^Registry,
 	scene_component: Custom_Component,
+	allow_read_only_fields := false,
 ) -> string {
 	definition, found := find_definition(registry, scene_component.name)
 	if !found {
@@ -1373,16 +1392,31 @@ validate_custom_component :: proc(
 	}
 
 	for field in scene_component.number_fields {
-		if err := validate_custom_field(definition, scene_component.name, field.name, {.Number});
-		   err != "" { return err }
+		if err := validate_custom_field(
+			definition,
+			scene_component.name,
+			field.name,
+			{.Number},
+			allow_read_only_fields,
+		); err != "" { return err }
 	}
 	for field in scene_component.vec2_fields {
-		if err := validate_custom_field(definition, scene_component.name, field.name, {.Vec2});
-		   err != "" { return err }
+		if err := validate_custom_field(
+			definition,
+			scene_component.name,
+			field.name,
+			{.Vec2},
+			allow_read_only_fields,
+		); err != "" { return err }
 	}
 	for field in scene_component.vec3_fields {
-		if err := validate_custom_field(definition, scene_component.name, field.name, {.Vec3});
-		   err != "" { return err }
+		if err := validate_custom_field(
+			definition,
+			scene_component.name,
+			field.name,
+			{.Vec3},
+			allow_read_only_fields,
+		); err != "" { return err }
 	}
 	for field in scene_component.vec4_fields {
 		if err := validate_custom_field(
@@ -1390,6 +1424,7 @@ validate_custom_component :: proc(
 			scene_component.name,
 			field.name,
 			{.Vec4, .Color},
+			allow_read_only_fields,
 		); err != "" { return err }
 	}
 
@@ -1400,6 +1435,7 @@ validate_custom_field :: proc(
 	definition: Definition,
 	component_name, field_name: string,
 	accepted_types: bit_set[Field_Type],
+	allow_read_only := false,
 ) -> string {
 	field_definition, field_ok := lookup_field_definition(definition, field_name)
 	if !field_ok {
@@ -1419,6 +1455,13 @@ validate_custom_field :: proc(
 	if field_definition.field_type not_in accepted_types {
 		return fmt.tprintf(
 			`scene component "%s" field "%s" has the wrong value type`,
+			component_name,
+			field_name,
+		)
+	}
+	if field_definition.read_only && !allow_read_only {
+		return fmt.tprintf(
+			`scene component "%s" field "%s" is engine-managed and cannot be authored`,
 			component_name,
 			field_name,
 		)

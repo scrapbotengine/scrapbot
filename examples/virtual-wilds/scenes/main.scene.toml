@@ -2,6 +2,9 @@
 id = "7b100000-0000-4000-8000-000000000001"
 name = "Wilds Camera"
 
+[entities.components.scrapbot.clock]
+speed = 1
+
 [entities.transform]
 position = [0, 4.2, 9]
 rotation = [-0.08, 0, 0]

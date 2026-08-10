@@ -163,7 +163,7 @@ hot_reload_frame_system :: proc(data: rawptr, world: ^shared.World, delta_second
 	if state == nil {
 		return ""
 	}
-	ecs.advance_time(&world.time, delta_seconds)
+	ecs.advance_project_time(world, delta_seconds)
 
 	maybe_poll_hot_reload(state, world, delta_seconds)
 	return step_frame_runtime_parts(

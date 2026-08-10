@@ -17,6 +17,7 @@ export type Scrapbot = {
 	transform: ScrapbotTransformComponent,
 	keyboard_input: ScrapbotKeyboardInputComponent,
 	pointer_input: ScrapbotPointerInputComponent,
+	clock: ScrapbotClockComponent,
 	input: {
 		key_down: (key: string) -> boolean,
 		key_pressed: (key: string) -> boolean,
@@ -323,6 +324,20 @@ export type ReadonlyScrapbotPointerInput = {
 }
 
 export type ScrapbotPointerInputComponent = ScrapbotComponent<never, ReadonlyScrapbotPointerInput>
+
+export type ScrapbotClock = {
+	speed: number,
+}
+
+export type ReadonlyScrapbotClock = {
+	read speed: number,
+	read delta_time: number,
+	read smooth_delta_time: number,
+	read elapsed_time: number,
+	read frame_index: number,
+}
+
+export type ScrapbotClockComponent = ScrapbotComponent<ScrapbotClock, ReadonlyScrapbotClock>
 
 export type ScrapbotTransform = {
 	parent: string,

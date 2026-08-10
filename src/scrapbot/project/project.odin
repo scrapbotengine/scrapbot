@@ -81,6 +81,9 @@ resource = "%s"
 id = "%s"
 name = "Main Camera"
 
+[entities.components.scrapbot.clock]
+speed = 1
+
 [entities.transform]
 position = [0, 2, 6]
 rotation = [-0.321751, 0, 0]

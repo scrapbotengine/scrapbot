@@ -34,15 +34,23 @@ test_project_without_luau_initializes_native_command_storage :: proc(t: ^testing
 test_luau_system_receives_time_resource :: proc(t: ^testing.T) {
 	world: ecs.World
 	defer ecs.destroy_world(&world)
+	clock_entity, clock_ok := ecs.create_world_entity(&world, "Clock", {}, .Scene)
+	testing.expect(t, clock_ok)
+	clock := shared.Custom_Component {
+		name = "scrapbot.clock",
+	}
+	append(&clock.number_fields, shared.Named_Number{name = "speed", value = 0.5})
+	defer delete(clock.number_fields)
+	ecs.add_scene_custom_component(&world, clock_entity, clock)
 	runtime: Runtime
 	defer destroy_runtime(&runtime)
 	result := run_source(
 		&runtime,
 		`
 scrapbot.system(function(time: ScrapbotTime)
-	assert(time.delta_time == 0.125)
-	assert(time.smooth_delta_time == 0.125)
-	assert(time.elapsed_time == 0.125)
+	assert(time.delta_time == 0.0625)
+	assert(time.smooth_delta_time == 0.0625)
+	assert(time.elapsed_time == 0.0625)
 	assert(time.frame_index == 1)
 end)
 `,

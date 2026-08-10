@@ -22,6 +22,7 @@ export type Scrapbot = {
 	transform: ScrapbotTransformComponent,
 	keyboard_input: ScrapbotKeyboardInputComponent,
 	pointer_input: ScrapbotPointerInputComponent,
+	clock: ScrapbotClockComponent,
 	input: {
 		key_down: (key: string) -> boolean,
 		key_pressed: (key: string) -> boolean,
@@ -315,6 +316,9 @@ write_luau_component_type :: proc(builder: ^strings.Builder, definition: Definit
 	strings.write_string(builder, "{\n")
 	for i in 0 ..< definition.field_count {
 		field := definition.fields[i]
+		if field.read_only {
+			continue
+		}
 		optional := ""
 		if strings.has_prefix(definition.name, "scrapbot.ui_") || field.name == "geometry_mode" {
 			optional = "?"

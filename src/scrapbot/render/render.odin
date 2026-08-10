@@ -703,6 +703,23 @@ Run_Config :: struct {
 	input_override: ^shared.Input_Frame,
 	last_drawable_width: f32,
 	last_drawable_height: f32,
+	engine_time: Engine_Time,
+}
+
+Engine_Time :: struct {
+	delta_time: f32,
+	elapsed_time: f64,
+	frame_index: u64,
+}
+
+advance_engine_time :: proc "contextless" (engine_time: ^Engine_Time, delta_seconds: f32) {
+	if engine_time == nil {
+		return
+	}
+	delta := max(delta_seconds, 0)
+	engine_time.delta_time = delta
+	engine_time.elapsed_time += f64(delta)
+	engine_time.frame_index += 1
 }
 
 Renderer_Output_Mode :: enum {
@@ -1089,6 +1106,7 @@ run_frame_system_unmeasured :: proc(
 	drawable_width: f32 = 1280,
 	drawable_height: f32 = 720,
 ) -> string {
+	advance_engine_time(&config.engine_time, delta_seconds)
 	input_frame := platform.runtime_input_frame()
 	if config.input_override != nil {
 		input_frame = config.input_override^
@@ -1147,7 +1165,7 @@ run_frame_system_unmeasured :: proc(
 	simulation_delta, run_simulation := ui.consume_simulation_delta(config.ui_state, delta_seconds)
 	if run_simulation {
 		if config.frame_system == nil {
-			ecs.advance_time(&world.time, simulation_delta)
+			ecs.advance_project_time(world, simulation_delta)
 		} else if err := config.frame_system(config.frame_system_data, world, simulation_delta);
 		   err != "" { return err }
 	}

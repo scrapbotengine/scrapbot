@@ -743,8 +743,11 @@ validate_runtime_world :: proc(runtime: ^Runtime, world: ^World) -> string {
 			ecs.bind_custom_component_storage(world, storage.name, definition.id)
 		}
 		for scene_component in storage.components {
-			if err := component.validate_custom_component(&runtime.registry, scene_component);
-			   err != "" {
+			if err := component.validate_custom_component(
+				&runtime.registry,
+				scene_component,
+				true,
+			); err != "" {
 				return err
 			}
 		}

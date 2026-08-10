@@ -366,7 +366,7 @@ step_runtime :: proc(runtime: ^Runtime, world: ^World, delta_seconds: f32) -> st
 		return ""
 	}
 	runtime.world = world
-	ecs.advance_time(&world.time, delta_seconds)
+	ecs.advance_project_time(world, delta_seconds)
 	L := runtime.L
 	scheduled_systems: [MAX_SCRIPT_SYSTEMS]schedule.System
 	for system, index in runtime.systems[:runtime.system_count] {

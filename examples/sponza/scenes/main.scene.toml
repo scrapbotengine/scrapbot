@@ -2,6 +2,9 @@
 id = "5a100000-0000-4000-8000-000000000001"
 name = "World Environment"
 
+[entities.components.scrapbot.clock]
+speed = 1
+
 [entities.world_environment]
 lighting = "5a000000-0000-4000-8000-000000000002"
 lighting_intensity = 0.2

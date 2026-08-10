@@ -1,5 +1,6 @@
 package scrapbot
 
+import component "./component"
 import ecs "./ecs"
 import shared "./shared"
 import "core:fmt"
@@ -28,6 +29,8 @@ write_scene_world_entity :: proc(
 }
 
 write_scene_entity :: proc(builder: ^strings.Builder, entity: ^shared.Scene_Entity) {
+	registry: component.Registry
+	component.init_registry(&registry)
 	strings.write_string(builder, "[[entities]]\n")
 	write_scene_string(builder, "id", scene_uuid(entity.id))
 	write_scene_string(builder, "name", entity.name)
@@ -240,23 +243,44 @@ write_scene_entity :: proc(builder: ^strings.Builder, entity: ^shared.Scene_Enti
 	if entity.has_shadow_caster { write_scene_section(builder, "shadow_caster") }
 	if entity.has_shadow_receiver { write_scene_section(builder, "shadow_receiver") }
 	write_scene_ui_components(builder, entity)
-	for component in entity.custom_components {
+	for custom_component in entity.custom_components {
 		strings.write_string(builder, "\n[entities.components.")
-		strings.write_string(builder, component.name)
+		strings.write_string(builder, custom_component.name)
 		strings.write_string(builder, "]\n")
-		for field in component.number_fields {
+		definition, definition_found := component.find_definition(&registry, custom_component.name)
+		for field in custom_component.number_fields {
+			if definition_found && scene_component_field_is_read_only(definition, field.name) {
+				continue
+			}
 			write_scene_value(builder, field.name, scene_f32(field.value))
 		}
-		for field in component.vec2_fields {
+		for field in custom_component.vec2_fields {
+			if definition_found && scene_component_field_is_read_only(definition, field.name) {
+				continue
+			}
 			write_scene_value(builder, field.name, scene_vec2(field.value))
 		}
-		for field in component.vec3_fields {
+		for field in custom_component.vec3_fields {
+			if definition_found && scene_component_field_is_read_only(definition, field.name) {
+				continue
+			}
 			write_scene_value(builder, field.name, scene_vec3(field.value))
 		}
-		for field in component.vec4_fields {
+		for field in custom_component.vec4_fields {
+			if definition_found && scene_component_field_is_read_only(definition, field.name) {
+				continue
+			}
 			write_scene_value(builder, field.name, scene_vec4(field.value))
 		}
 	}
+}
+
+scene_component_field_is_read_only :: proc(
+	definition: component.Definition,
+	field_name: string,
+) -> bool {
+	field, found := component.lookup_field_definition(definition, field_name)
+	return found && field.read_only
 }
 
 write_scene_ui_components :: proc(builder: ^strings.Builder, entity: ^shared.Scene_Entity) {

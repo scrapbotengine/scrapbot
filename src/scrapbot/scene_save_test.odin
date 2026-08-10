@@ -108,6 +108,29 @@ test_scene_camera_serialization_persists_render_features :: proc(t: ^testing.T) 
 }
 
 @(test)
+test_scene_clock_serialization_omits_engine_managed_fields :: proc(t: ^testing.T) {
+	builder := strings.builder_make()
+	defer strings.builder_destroy(&builder)
+	clock := shared.Custom_Component {
+		name = "scrapbot.clock",
+	}
+	append(&clock.number_fields, shared.Named_Number{name = "speed", value = 0.5})
+	append(&clock.number_fields, shared.Named_Number{name = "elapsed_time", value = 42})
+	defer delete(clock.number_fields)
+	entity := shared.Scene_Entity {
+		id = shared.entity_uuid_from_engine_name("scene-save-clock"),
+		name = "Clock",
+	}
+	append(&entity.custom_components, clock)
+	defer delete(entity.custom_components)
+
+	write_scene_entity(&builder, &entity)
+	serialized := strings.to_string(builder)
+	testing.expect(t, strings.contains(serialized, "speed = 0.5"))
+	testing.expect(t, !strings.contains(serialized, "elapsed_time"))
+}
+
+@(test)
 test_scene_popup_serialization_preserves_disabled_configuration :: proc(t: ^testing.T) {
 	builder := strings.builder_make()
 	defer strings.builder_destroy(&builder)

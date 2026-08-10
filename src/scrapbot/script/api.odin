@@ -48,6 +48,8 @@ register_scrapbot_api :: proc(L: Lua_State) {
 	lua_setfield(L, -2, "keyboard_input")
 	push_registered_component_handle_by_name(L, "scrapbot.pointer_input")
 	lua_setfield(L, -2, "pointer_input")
+	push_registered_component_handle_by_name(L, "scrapbot.clock")
+	lua_setfield(L, -2, "clock")
 
 	lua_createtable(L, 0, 5)
 	lua_pushcclosurek(L, scrapbot_input_key_down, "scrapbot.input.key_down", 0, nil)

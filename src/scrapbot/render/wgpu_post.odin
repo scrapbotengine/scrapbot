@@ -66,22 +66,15 @@ wgpu_editor_feedback_uniform :: proc(
 	return {animation_time, 1, 10, 7}
 }
 
-wgpu_advance_editor_selection_outline :: proc(
-	renderer: ^WGPU_Renderer,
-	delta_time: f32,
+wgpu_editor_selection_outline_uniform :: proc(
+	engine_elapsed_time: f64,
 	animate_selection_outline: bool,
 ) -> [4]f32 {
-	if renderer == nil || !animate_selection_outline {
-		if renderer != nil {
-			renderer.editor_selection_outline_time = 0
-		}
+	if !animate_selection_outline {
 		return wgpu_editor_feedback_uniform(0, false)
 	}
-	renderer.editor_selection_outline_time = math.mod_f32(
-		renderer.editor_selection_outline_time + max(delta_time, 0),
-		1024,
-	)
-	return wgpu_editor_feedback_uniform(renderer.editor_selection_outline_time, true)
+	animation_time := f32(math.mod(engine_elapsed_time, 1024))
+	return wgpu_editor_feedback_uniform(animation_time, true)
 }
 
 wgpu_store_post_effects_uniform :: proc(
@@ -1895,6 +1888,7 @@ wgpu_encode_bloom_and_composite :: proc(
 	has_camera: bool,
 	world: ^shared.World,
 	delta_time: f32,
+	engine_elapsed_time: f64,
 	animate_selection_outline: bool,
 	render_feature_overrides: Render_Feature_Overrides,
 ) -> string {
@@ -2338,9 +2332,8 @@ wgpu_encode_bloom_and_composite :: proc(
 			lens_dirt.intensity,
 		},
 		dirt_parameters = {lens_dirt.scale, lens_dirt.contrast, lens_dirt.seed, 0},
-		editor_feedback = wgpu_advance_editor_selection_outline(
-			renderer,
-			delta_time,
+		editor_feedback = wgpu_editor_selection_outline_uniform(
+			engine_elapsed_time,
 			animate_selection_outline,
 		),
 	}

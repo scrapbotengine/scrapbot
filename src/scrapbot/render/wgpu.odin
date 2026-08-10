@@ -1164,7 +1164,6 @@ WGPU_Renderer :: struct {
 	editor_feedback_mask_view: wgpu.TextureView,
 	editor_feedback_mask_initialized: bool,
 	editor_feedback_mask_active: bool,
-	editor_selection_outline_time: f32,
 	bloom_textures: [WGPU_BLOOM_LEVELS]wgpu.Texture,
 	bloom_views: [WGPU_BLOOM_LEVELS]wgpu.TextureView,
 	bloom_compute_bind_groups: [2][WGPU_BLOOM_LEVELS]wgpu.BindGroup,
@@ -3574,6 +3573,7 @@ wgpu_encode_render_pass :: proc(
 		renderer.render_list.has_camera,
 		world,
 		delta_time,
+		config.engine_time.elapsed_time,
 		ui.editor_play_mode_active(ui_state) && len(renderer.gpu_editor_selected_slots) > 0,
 		config.render_feature_overrides,
 	); err != "" {

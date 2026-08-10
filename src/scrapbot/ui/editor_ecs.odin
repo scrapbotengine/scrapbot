@@ -4574,7 +4574,10 @@ editor_ui_inspector_reflected_value :: proc(
 		return
 	}
 	display_label := editor_ui_nested_label(label, depth)
-	read_only := definition.lifecycle != .Authored || !editor_reflected_value_is_writable(value)
+	read_only :=
+		definition.lifecycle != .Authored ||
+		field.read_only ||
+		!editor_reflected_value_is_writable(value)
 	path_value := path
 	path_slice := path_value[:path_count]
 	if editor_reflected_value_is_enum(value) {
@@ -4871,6 +4874,7 @@ editor_ui_inspector_custom_number :: proc(
 		.Number,
 		{},
 		definition.editor,
+		definition.read_only,
 	)
 }
 
@@ -4901,6 +4905,7 @@ editor_ui_inspector_custom_vector :: proc(
 		definition.field_type,
 		{},
 		definition.editor,
+		definition.read_only,
 	)
 }
 

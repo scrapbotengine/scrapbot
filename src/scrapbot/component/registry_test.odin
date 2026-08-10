@@ -90,6 +90,13 @@ test_registry_contains_engine_components :: proc(t: ^testing.T) {
 	testing.expect(t, keyboard.storage_kind == .Keyboard_Input)
 	testing.expect(t, pointer.storage_kind == .Pointer_Input)
 	testing.expect(t, !definition_is_authorable(keyboard) && !definition_is_authorable(pointer))
+	clock, clock_ok := find_definition(&registry, "scrapbot.clock")
+	testing.expect(t, clock_ok)
+	testing.expect(t, clock.storage_kind == .Custom && definition_is_authorable(clock))
+	testing.expect(t, clock.field_count == 5)
+	testing.expect(t, clock.fields[0].name == "speed" && !clock.fields[0].read_only)
+	testing.expect(t, clock.fields[1].name == "delta_time" && clock.fields[1].read_only)
+	testing.expect(t, clock.fields[4].name == "frame_index" && clock.fields[4].read_only)
 }
 
 @(test)
@@ -319,6 +326,23 @@ test_registry_validates_library_scene_component_fields :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_registry_rejects_authored_engine_managed_clock_fields :: proc(t: ^testing.T) {
+	registry: Registry
+	init_registry(&registry)
+	clock := shared.Custom_Component {
+		name = "scrapbot.clock",
+	}
+	append(&clock.number_fields, shared.Named_Number{name = "elapsed_time"})
+	defer delete(clock.number_fields)
+
+	testing.expect(
+		t,
+		validate_custom_component(&registry, clock) ==
+		`scene component "scrapbot.clock" field "elapsed_time" is engine-managed and cannot be authored`,
+	)
+}
+
+@(test)
 test_registry_rejects_unknown_namespaced_scene_components :: proc(t: ^testing.T) {
 	registry: Registry
 	init_registry(&registry)
@@ -360,6 +384,14 @@ test_luau_types_include_registered_components :: proc(t: ^testing.T) {
 	defer delete(text)
 
 	testing.expect(t, strings.contains(text, "export type ScrapbotTransform = {"))
+	testing.expect(t, strings.contains(text, "\tclock: ScrapbotClockComponent,"))
+	testing.expect(t, strings.contains(text, "export type ScrapbotClock = {\n\tspeed: number,"))
+	testing.expect(
+		t,
+		!strings.contains(text, "export type ScrapbotClock = {\n\tspeed: number,\n\tdelta_time"),
+	)
+	testing.expect(t, strings.contains(text, "export type ReadonlyScrapbotClock = {"))
+	testing.expect(t, strings.contains(text, "\tread elapsed_time: number,"))
 	testing.expect(t, strings.contains(text, "vec3: ScrapbotComponentField<Vec3, ReadonlyVec3>,"))
 	testing.expect(t, strings.contains(text, "\tposition: Vec3,"))
 	testing.expect(t, strings.contains(text, "export type ReadonlyScrapbotTransform = {"))
