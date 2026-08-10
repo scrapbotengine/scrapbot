@@ -138,6 +138,15 @@ test_canvas_safe_area_and_per_axis_alignment_share_generic_layout :: proc(t: ^te
 @(test)
 test_theme_recipes_resolve_to_ordinary_overridable_ui_values :: proc(t: ^testing.T) {
 	theme := reduced_dark_theme()
+	testing.expect_value(t, theme.metrics.radius_small, f32(2))
+	testing.expect_value(t, theme.metrics.radius, f32(3))
+	testing.expect_value(t, theme.metrics.radius_large, f32(6))
+	testing.expect_value(t, theme.metrics.padding_small, shared.Vec4{4, 8, 4, 8})
+	testing.expect_value(t, theme.metrics.padding_control, shared.Vec4{6, 8, 6, 8})
+	testing.expect_value(t, theme.metrics.padding_panel, shared.Vec4{8, 8, 8, 8})
+	testing.expect_value(t, theme.palette.region.x, theme.palette.region.y)
+	testing.expect_value(t, theme.palette.region.y, theme.palette.region.z)
+	testing.expect_value(t, theme.palette.control.x, theme.palette.control.y)
 	layout, button := theme_button(theme, .Primary)
 	button.text = "Launch"
 	layout.size.x = 240
@@ -4196,7 +4205,7 @@ test_editor_shell_is_an_editor_origin_ecs_ui_tree :: proc(t: ^testing.T) {
 				dock_space.tab_active_background,
 				reduced_dark_theme().palette.panel,
 			)
-			testing.expect_value(t, dock_space.content_padding, shared.Vec4{4, 4, 4, 4})
+			testing.expect_value(t, dock_space.content_padding, shared.Vec4{})
 		}
 	}
 	if viewport_node >= 0 {

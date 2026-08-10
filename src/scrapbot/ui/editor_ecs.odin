@@ -63,6 +63,7 @@ EDITOR_UI_RESOURCE_MENU_NAME :: "__scrapbot_editor_resource_menu"
 EDITOR_UI_RESOURCE_MENU_CONTENT_NAME :: "__scrapbot_editor_resource_menu_content"
 EDITOR_SIDEBAR_PADDING :: f32(8)
 EDITOR_SIDEBAR_SECTION_GAP :: f32(4)
+EDITOR_CHROME_HORIZONTAL_PADDING :: f32(12)
 EDITOR_SIDEBAR_CONTENT_MIN_HEIGHT :: f32(780)
 EDITOR_DOCK_TAB_HEIGHT :: f32(28)
 EDITOR_SIDEBAR_DOCK_ITEM_MIN_HEIGHT :: EDITOR_SIDEBAR_CONTENT_MIN_HEIGHT - EDITOR_DOCK_TAB_HEIGHT
@@ -1099,12 +1100,7 @@ editor_ui_add_dock_space :: proc(
 		value.content_background.w = 0
 	}
 	value.content_corner_radius = theme.metrics.radius_small
-	value.content_padding = {
-		theme.metrics.gap_small,
-		theme.metrics.gap_small,
-		theme.metrics.gap_small,
-		theme.metrics.gap_small,
-	}
+	value.content_padding = {0, 0, 0, 0}
 	value.tab_color = theme.palette.text_secondary
 	value.tab_active_color = theme.palette.text
 	value.tab_background = {
@@ -1255,7 +1251,12 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 	top_layout := theme_chrome_bar(theme)
 	top_layout.size = {1280, EDITOR_TOP_BAR_HEIGHT}
 	top_layout.fixed_in_fill = true
-	top_layout.padding = {11, 14, 11, 14}
+	top_layout.padding = {
+		11,
+		EDITOR_CHROME_HORIZONTAL_PADDING,
+		11,
+		EDITOR_CHROME_HORIZONTAL_PADDING,
+	}
 	top := editor_ui_create_box(world, EDITOR_UI_TOP_NAME, EDITOR_UI_ROOT_NAME, .None, top_layout)
 	editor_ui_add_hstack(world, top, {gap = 16})
 	brand := editor_ui_create_box(
@@ -1800,7 +1801,7 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 	)
 	warning_layout, _ := theme_button(theme, .Warning)
 	warning_layout.size = {370, 30}
-	warning_layout.padding = {5, 12, 5, 12}
+	warning_layout.padding = {4, 12, 4, 12}
 	warning_layout.fixed_in_fill = true
 	warning_layout.corner_radius = theme.metrics.radius
 	playback_warning_badge := editor_ui_create_box(
@@ -1841,7 +1842,7 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		.Debug_View_Menu,
 		{
 			size = {220, 294},
-			padding = {5, 5, 5, 5},
+			padding = {4, 4, 4, 4},
 			background = theme.palette.overlay,
 			corner_radius = theme.metrics.radius_large,
 			popup = true,
@@ -2176,7 +2177,12 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 	status_layout := theme_chrome_bar(theme)
 	status_layout.size = {1280, EDITOR_STATUS_BAR_HEIGHT}
 	status_layout.fixed_in_fill = true
-	status_layout.padding = {6, 14, 6, 14}
+	status_layout.padding = {
+		6,
+		EDITOR_CHROME_HORIZONTAL_PADDING,
+		6,
+		EDITOR_CHROME_HORIZONTAL_PADDING,
+	}
 	status := editor_ui_create_box(
 		world,
 		EDITOR_UI_STATUS_NAME,
@@ -2976,7 +2982,7 @@ editor_ui_ensure_inspector_panel_action :: proc(
 	theme := reduced_dark_theme()
 	layout, button := theme_button(theme, .Quiet)
 	layout.size = {22, 22}
-	layout.margin = {5, 5, 5, 5}
+	layout.margin = {3, 3, 3, 3}
 	layout.fixed_in_fill = true
 	action := editor_ui_create_box(world, name, parent, .Inspector_Panel_Action, layout, slot)
 	button.icon_set = shared.builtin_icon_set_uuid()

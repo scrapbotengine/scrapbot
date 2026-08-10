@@ -50,10 +50,11 @@ Themes intentionally do not mutate existing entities automatically. Restyling a 
 
 Scrapbot's editor uses the UI system's reduced dark recipe:
 
-- Almost-black canvas and region surfaces with small tonal elevation steps.
-- Slightly raised, subtly rounded panel headers and controls.
+- Neutral-black canvas and region surfaces with a compact four-level charcoal hierarchy.
+- Flat panel headers and controls with two- to three-pixel radii; larger floating overlays use six pixels.
 - Borderless resting surfaces; focus, validation, and playback receive deliberate semantic emphasis.
 - Embedded Inter at a compact 13-pixel body and 12-pixel technical-title scale.
+- A consistent 4/8/12 spacing rhythm across compact insets, controls, panels, and application chrome.
 - Mint for identity, focus, selection, and positive authoring state.
 - Amber for temporary playback state.
 - Red for invalid or destructive state.
@@ -76,16 +77,16 @@ name = "Reduced Action"
 [entities.ui_layout]
 position = [40, 40]
 size = [180, 34]
-padding = [7, 10, 6, 10]
-background = [0.016, 0.021, 0.028, 1]
-corner_radius = 6
+padding = [6, 8, 6, 8]
+background = [0.030, 0.030, 0.030, 1]
+corner_radius = 3
 
 [entities.ui_button]
 text = "Apply"
-color = [0.82, 0.85, 0.90, 1]
+color = [0.87, 0.87, 0.87, 1]
 size = 13
-hover_background = [0.032, 0.041, 0.055, 1]
-active_background = [0.045, 0.057, 0.076, 1]
+hover_background = [0.048, 0.048, 0.048, 1]
+active_background = [0.064, 0.064, 0.064, 1]
 ```
 
 The same components can produce an unrelated arcade treatment:
