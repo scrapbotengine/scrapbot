@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "timeout_frames": 120,
+  "actions": [
+    {"action": "wait", "frames": 2},
+    {"action": "click", "target": {"text": "Left Cube", "origin": "editor"}},
+    {"action": "wait", "frames": 2},
+    {"action": "key", "key": "editor_toggle"},
+    {"action": "wait", "frames": 3}
+  ]
+}

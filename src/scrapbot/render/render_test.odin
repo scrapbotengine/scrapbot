@@ -861,6 +861,43 @@ test_editor_selection_marks_direct_and_model_owned_gpu_instances_only_on_change 
 }
 
 @(test)
+test_editor_feedback_draws_are_suppressed_while_editor_is_hidden :: proc(t: ^testing.T) {
+	registry: resources.Registry
+	defer resources.destroy_registry(&registry)
+	description, description_err := resources.cube()
+	defer delete(description.vertices)
+	defer delete(description.indices)
+	testing.expect(t, description_err == "")
+	geometry, geometry_err := resources.register_geometry(&registry, "selected", description)
+	material, material_err := resources.register_material(
+		&registry,
+		"selected",
+		{base_color = {1, 1, 1, 1}},
+	)
+	testing.expect(t, geometry_err == "" && material_err == "")
+	render_list: Render_List
+	defer ecs.destroy_render_list(&render_list)
+	append(
+		&render_list.instances,
+		Render_Instance{slot = 0, geometry = {handle = geometry}, material = {handle = material}},
+	)
+	append(&render_list.instance_index_by_slot, 0)
+	render_list.instance_slot_count = 1
+	renderer: WGPU_Renderer
+	defer delete(renderer.gpu_editor_selected_slots)
+	append(&renderer.gpu_editor_selected_slots, 0)
+	state := new(ui.State)
+	defer free(state)
+	state.editor_visible = true
+	visible_draws := wgpu_collect_editor_feedback_draws(&renderer, &registry, &render_list, state)
+	testing.expect_value(t, len(visible_draws), 1)
+
+	state.editor_visible = false
+	hidden_draws := wgpu_collect_editor_feedback_draws(&renderer, &registry, &render_list, state)
+	testing.expect_value(t, len(hidden_draws), 0)
+}
+
+@(test)
 test_material_revision_marks_only_dependent_active_gpu_slots_for_sync :: proc(t: ^testing.T) {
 	registry: resources.Registry
 	defer resources.destroy_registry(&registry)

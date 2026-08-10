@@ -317,6 +317,9 @@ wgpu_collect_editor_feedback_draws :: proc(
 	render_list: ^shared.Render_List,
 	state: ^ui.State,
 ) -> [dynamic]WGPU_Editor_Feedback_Draw {
+	if state == nil || !state.editor_visible {
+		return nil
+	}
 	draws := make(
 		[dynamic]WGPU_Editor_Feedback_Draw,
 		0,
