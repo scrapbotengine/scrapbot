@@ -2790,6 +2790,7 @@ wgpu_geometry_cache :: proc(
 	geometry, ok := resources.get_geometry(registry, handle)
 	if !ok { return nil, "render geometry handle is stale" }
 	virtual_submission := wgpu_virtual_geometry_submission(renderer, geometry, geometry_mode)
+	compact_submission := wgpu_virtual_geometry_uses_compaction(renderer, geometry, geometry_mode)
 	cache_index := wgpu_geometry_cache_slot_for_submission(
 		renderer.geometry_cache[:],
 		handle,
@@ -2841,7 +2842,7 @@ wgpu_geometry_cache :: proc(
 	vertex_range_reused :=
 		vertex_range.size >= vertex_bytes &&
 		vertex_range.size > 0 &&
-		(!wgpu_virtual_geometry_uses_compaction(renderer, geometry) ||
+		(!compact_submission ||
 				wgpu_arena_range_within_limit(
 					vertex_range,
 					renderer.max_storage_buffer_binding_size,
@@ -2850,7 +2851,7 @@ wgpu_geometry_cache :: proc(
 		vertex_range = {}
 		vertex_range_reused = false
 	} else if !vertex_range_reused {
-		if wgpu_virtual_geometry_uses_compaction(renderer, geometry) {
+		if compact_submission {
 			addressable: bool
 			vertex_range, addressable = wgpu_arena_allocate_bounded(
 				&renderer.geometry_vertex_arena.allocator,

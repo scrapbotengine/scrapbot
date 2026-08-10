@@ -2120,6 +2120,8 @@ test_wgpu_meshlet_submission_policy_amortizes_indirect_commands :: proc(t: ^test
 	}
 	testing.expect(t, wgpu_virtual_geometry_submission(&renderer, &one_group))
 	testing.expect(t, wgpu_virtual_geometry_uses_compaction(&renderer, &one_group))
+	testing.expect(t, !wgpu_virtual_geometry_submission(&renderer, &one_group, .Conventional))
+	testing.expect(t, !wgpu_virtual_geometry_uses_compaction(&renderer, &one_group, .Conventional))
 	testing.expect(t, wgpu_meshlet_submission_uses_compaction(&renderer, true))
 	testing.expect(t, !wgpu_meshlet_submission_uses_compaction(&renderer, false))
 	renderer.gpu_meshlet_native_multi_draw = true
