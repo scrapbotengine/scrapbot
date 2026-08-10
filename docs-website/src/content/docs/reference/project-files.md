@@ -166,7 +166,9 @@ The source defines `fn scrapbot_vertex(input: Scrapbot_Vertex) -> Scrapbot_Verte
 
 Fragment input exposes viewport-local `screen_uv` for procedural effects and full-target `scene_uv` for scene texture reads. Hooks can use:
 
-- `scrapbot_parameter`, `scrapbot_time_seconds`, `scrapbot_delta_seconds`, and `scrapbot_frame_index` for authored data and animation;
+- `scrapbot_parameter` for authored data, plus `scrapbot_time_seconds`, `scrapbot_delta_seconds`, and
+  `scrapbot_frame_index` for ECS simulation-driven animation; paused redraws keep elapsed time and
+  frame index fixed and report zero delta;
 - `scrapbot_pixel_size` for viewport-local derivatives and `scrapbot_scene_pixel_size` for target texture offsets;
 - `scrapbot_scene_color`, `scrapbot_scene_depth`, and `scrapbot_scene_view_depth` for opaque-scene sampling;
 - `scrapbot_scene_stable_uv` for a conservative nearest-depth cross sample when refraction must not magnify subpixel opaque-coverage gaps;
@@ -177,7 +179,8 @@ Fragment input exposes viewport-local `screen_uv` for procedural effects and ful
   including the sun highlight from a procedural atmosphere when no reflection cubemap is assigned.
 
 `[shader.spectral_surface]` is optional. When enabled, Scrapbot evolves a deterministic Phillips
-wind spectrum and performs a 64×64 inverse FFT on the GPU. `patch_size` is the repeating
+wind spectrum from ECS simulation time and performs a 64×64 inverse FFT on the GPU only when that
+time advances. `patch_size` is the repeating
 world-space width in metres, `wind_speed` is metres per second, `wind_direction` must be non-zero,
 `amplitude` scales spectral energy, and `small_wave_damping` suppresses the shortest waves.
 

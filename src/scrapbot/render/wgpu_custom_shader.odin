@@ -1288,12 +1288,13 @@ wgpu_encode_spectral_surface :: proc(
 	if renderer == nil ||
 	   entry == nil ||
 	   !entry.spectral_surface.enabled ||
-	   entry.spectral_last_frame == renderer.profile_frame_index {
+	   entry.spectral_last_frame == renderer.profile_frame_index ||
+	   !wgpu_spectral_surface_time_changed(entry, renderer.custom_shader_time.elapsed_time) {
 		return ""
 	}
 	uniform := wgpu_spectral_surface_uniform(
 		entry.spectral_surface,
-		renderer.custom_shader_elapsed_seconds,
+		f32(renderer.custom_shader_time.elapsed_time),
 	)
 	wgpu.QueueWriteBuffer(
 		renderer.queue,
@@ -1324,9 +1325,21 @@ wgpu_encode_spectral_surface :: proc(
 	wgpu.ComputePassEncoderEnd(pass)
 	wgpu.ComputePassEncoderRelease(pass)
 	entry.spectral_last_frame = renderer.profile_frame_index
+	entry.spectral_last_elapsed_time = renderer.custom_shader_time.elapsed_time
+	entry.spectral_time_valid = true
 	renderer.spectral_surface_dispatch_count += 3
 	renderer.spectral_surface_active_count += 1
 	return ""
+}
+
+wgpu_spectral_surface_time_changed :: proc(
+	entry: ^WGPU_Custom_Shader_Cache,
+	elapsed_time: f64,
+) -> bool {
+	return(
+		entry != nil &&
+		(!entry.spectral_time_valid || entry.spectral_last_elapsed_time != elapsed_time) \
+	)
 }
 
 wgpu_rebuild_transparent_world_bind_group :: proc(renderer: ^WGPU_Renderer) -> string {
@@ -1388,21 +1401,38 @@ wgpu_prepare_transparent_draws :: proc(
 	})
 }
 
-wgpu_update_custom_shader_uniform :: proc(
-	renderer: ^WGPU_Renderer,
+wgpu_custom_shader_uniform :: proc(
 	viewport: ui.Rect,
-	delta_time: f32,
-) {
-	renderer.custom_shader_elapsed_seconds += max(delta_time, 0)
-	uniform := WGPU_Custom_Shader_Uniform {
+	simulation_time: shared.Time_Resource,
+	simulation_advanced: bool,
+) -> WGPU_Custom_Shader_Uniform {
+	return {
 		viewport = {viewport.x, viewport.y, max(viewport.width, 1), max(viewport.height, 1)},
 		time = {
-			renderer.custom_shader_elapsed_seconds,
-			delta_time,
-			f32(renderer.profile_frame_index),
+			f32(simulation_time.elapsed_time),
+			simulation_time.delta_time if simulation_advanced else 0,
+			f32(simulation_time.frame_index),
 			0,
 		},
 	}
+}
+
+wgpu_update_custom_shader_uniform :: proc(
+	renderer: ^WGPU_Renderer,
+	viewport: ui.Rect,
+	simulation_time: shared.Time_Resource,
+) {
+	simulation_advanced :=
+		!renderer.custom_shader_time_valid ||
+		renderer.custom_shader_time.frame_index != simulation_time.frame_index
+	uniform := wgpu_custom_shader_uniform(viewport, simulation_time, simulation_advanced)
+	renderer.custom_shader_time = simulation_time
+	renderer.custom_shader_time_valid = true
+	if renderer.custom_shader_uniform_valid && renderer.custom_shader_uniform == uniform {
+		return
+	}
+	renderer.custom_shader_uniform = uniform
+	renderer.custom_shader_uniform_valid = true
 	wgpu.QueueWriteBuffer(
 		renderer.queue,
 		renderer.custom_shader_uniform_buffer,

@@ -248,7 +248,12 @@ If legal despawn/reuse churn leaves an authoritative retained slot inactive, the
 
 Material revisions trigger one dependent-instance pass. WGPU replaces only that Material handle/version's factor uniform, bind group, and owned image textures. Stable materials and static instance fields remain resident.
 
-Shader revisions replace only that Shader handle/version's composed WGPU module and pipelines. Blended custom-material batches are collected from retained render instances, sorted against the active camera, and encoded after opaque world shading. The pass samples a retained opaque-color copy and read-only scene depth while preserving the opaque depth buffer.
+Shader revisions replace only that Shader handle/version's composed WGPU module and pipelines.
+Blended custom-material batches are collected from retained render instances, sorted against the
+active camera, and encoded after opaque world shading. The pass samples a retained opaque-color
+copy and read-only scene depth while preserving the opaque depth buffer. Its time helpers read the
+ECS `world.time` snapshot. Redraws without a simulation step publish zero shader delta and retain
+spectral fields without another FFT dispatch.
 
 ### Camera-selected postprocessing
 

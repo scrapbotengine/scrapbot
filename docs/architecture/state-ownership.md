@@ -233,11 +233,13 @@ The Shader resource owns spectral parameters and versioning. Its WGPU cache owns
 frequency-domain intermediate buffer, raw spatial displacement buffer, finalized
 displacement/normal/crest field, uniform, bind groups, and pipeline association.
 
-Simulation time is frame-valued. Each active spectral Shader updates its uniform and encodes one
-horizontal plus one vertical inverse FFT followed by one spatial finalization dispatch at most once
-per frame, even when several transparent draws share it. Finalization derives the compression
-Jacobian used for crest foam. Inactive and non-spectral Shaders encode no spectral work and bind the
-renderer's shared zero field.
+ECS `world.time` is the simulation-time authority. Project-shader time helpers receive its elapsed
+time and frame index; shader delta is zero on a redraw without a simulation step. Each active
+spectral Shader updates its uniform and encodes one horizontal plus one vertical inverse FFT followed
+by one spatial finalization dispatch at most once per elapsed-time change, even when several
+transparent draws share it. Paused redraws retain the field without an upload or dispatch.
+Finalization derives the compression Jacobian used for crest foam. Inactive and non-spectral
+Shaders encode no spectral work and bind the renderer's shared zero field.
 
 Changing the Shader version releases only that Shader's spectral state and render pipeline. Resizing the scene target rebuilds only per-Shader scene/depth bind groups; the spectral field survives.
 

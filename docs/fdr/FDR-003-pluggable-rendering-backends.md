@@ -1,7 +1,7 @@
 # FDR-003: Pluggable rendering backends
 
 **Status:** Active
-**Last reviewed:** 2026-08-09
+**Last reviewed:** 2026-08-10
 
 ## Overview
 
@@ -471,18 +471,22 @@ Blended hooks receive the opaque scene color/depth and render in a depth-tested,
 
 ### 25. Generate reusable spectral surfaces for project shaders
 
-**Decision:** Let a Shader resource opt into a renderer-owned 64×64 spectral surface. WGPU builds a deterministic Phillips wind spectrum, evolves its deep-water dispersion every rendered frame, and performs horizontal and vertical inverse FFT passes entirely on the GPU.
+**Decision:** Let a Shader resource opt into a renderer-owned 64×64 spectral surface. WGPU builds a deterministic Phillips wind spectrum, evolves its deep-water dispersion when ECS simulation time advances, and performs horizontal and vertical inverse FFT passes entirely on the GPU.
 
 Project hooks sample the periodic world-space field through `scrapbot_spectral_surface`. The helper
 returns displacement, a reconstructed normal, and crest compression. A bounded `choppiness`
 parameter converts the evolved height spectrum into frequency-domain horizontal orbital
 displacement, producing the sharpened crests and broad troughs associated with Gerstner waves.
 
-The engine owns bindings, allocation, simulation time, and one cached field per Shader resource;
-projects own how that data deforms or shades a surface. Shared helpers convert world-space vectors
-and normals back into project-hook object space under arbitrary entity transforms.
+The engine owns bindings, allocation, and one cached field per Shader resource. The ECS `Time`
+resource is the single time authority for project-shader helpers and spectral evolution, so paused
+redraws retain the same field. Projects own how that data deforms or shades a surface. Shared
+helpers convert world-space vectors and normals back into project-hook object space under arbitrary
+entity transforms.
 
-Shaders without the option bind a shared zero field and disabled uniform. They pay no FFT dispatch. Multiple materials that reference one Shader share its field and dispatch at most once per frame.
+Shaders without the option bind a shared zero field and disabled uniform. They pay no FFT dispatch.
+Multiple materials that reference one Shader share its field and dispatch at most once per ECS time
+advance.
 
 **Why:** Water, windblown terrain, and other broad stochastic surfaces need coherent low-frequency motion without copying backend bindings or compute orchestration into each project.
 

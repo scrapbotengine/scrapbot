@@ -90,6 +90,37 @@ test_project_shader_scene_sampling_uses_target_coordinates_and_linear_depth :: p
 }
 
 @(test)
+test_project_shader_time_tracks_ecs_simulation_steps :: proc(t: ^testing.T) {
+	viewport := ui.Rect {
+		x = 12,
+		y = 24,
+		width = 640,
+		height = 360,
+	}
+	simulation_time := shared.Time_Resource {
+		delta_time = 0.025,
+		elapsed_time = 42.5,
+		frame_index = 17,
+	}
+	advanced := wgpu_custom_shader_uniform(viewport, simulation_time, true)
+	testing.expect_value(t, advanced.viewport, [4]f32{12, 24, 640, 360})
+	testing.expect_value(t, advanced.time, [4]f32{42.5, 0.025, 17, 0})
+
+	paused := wgpu_custom_shader_uniform(viewport, simulation_time, false)
+	testing.expect_value(t, paused.time, [4]f32{42.5, 0, 17, 0})
+}
+
+@(test)
+test_spectral_surface_updates_only_when_ecs_elapsed_time_changes :: proc(t: ^testing.T) {
+	entry := WGPU_Custom_Shader_Cache{}
+	testing.expect(t, wgpu_spectral_surface_time_changed(&entry, 3.5))
+	entry.spectral_last_elapsed_time = 3.5
+	entry.spectral_time_valid = true
+	testing.expect(t, !wgpu_spectral_surface_time_changed(&entry, 3.5))
+	testing.expect(t, wgpu_spectral_surface_time_changed(&entry, 3.75))
+}
+
+@(test)
 test_project_shaders_receive_object_transforms_and_environment_reflections :: proc(t: ^testing.T) {
 	testing.expect(t, strings.contains(WGPU_CUSTOM_SHADER_PRELUDE, "model: mat4x4<f32>"))
 	testing.expect(t, strings.contains(WGPU_CUSTOM_SHADER_PRELUDE, "normal_model: mat4x4<f32>"))

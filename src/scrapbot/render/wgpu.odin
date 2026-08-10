@@ -624,6 +624,8 @@ WGPU_Custom_Shader_Cache :: struct {
 	render_bind_group: wgpu.BindGroup,
 	render_target_generation: u64,
 	spectral_last_frame: u64,
+	spectral_last_elapsed_time: f64,
+	spectral_time_valid: bool,
 	spectral_surface: shared.Shader_Spectral_Surface,
 	valid: bool,
 }
@@ -1225,7 +1227,10 @@ WGPU_Renderer :: struct {
 	custom_shader_target_generation: u64,
 	custom_shader_scene_width: u32,
 	custom_shader_scene_height: u32,
-	custom_shader_elapsed_seconds: f32,
+	custom_shader_uniform: WGPU_Custom_Shader_Uniform,
+	custom_shader_uniform_valid: bool,
+	custom_shader_time: shared.Time_Resource,
+	custom_shader_time_valid: bool,
 	spectral_surface_shader: wgpu.ShaderModule,
 	spectral_surface_bind_group_layout: wgpu.BindGroupLayout,
 	spectral_surface_pipeline_layout: wgpu.PipelineLayout,
@@ -3315,7 +3320,7 @@ wgpu_encode_render_pass :: proc(
 	); err != "" {
 		return err
 	}
-	wgpu_update_custom_shader_uniform(renderer, layout.render_viewport, delta_time)
+	wgpu_update_custom_shader_uniform(renderer, layout.render_viewport, world.time)
 	if err := wgpu_encode_sky_pass(renderer, encoder, layout.render_viewport); err != "" {
 		return err
 	}
