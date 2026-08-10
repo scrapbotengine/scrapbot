@@ -4009,6 +4009,24 @@ test_composite_shader_keeps_post_effects_hdr_composable :: proc(t: ^testing.T) {
 	testing.expect(t, strings.contains(WGPU_COMPOSITE_SHADER, "fn lens_flare"))
 	testing.expect(t, strings.contains(WGPU_COMPOSITE_SHADER, "fn procedural_lens_dirt"))
 	testing.expect(t, strings.contains(WGPU_COMPOSITE_SHADER, "fn apply_vignette"))
+	testing.expect(
+		t,
+		strings.contains(
+			WGPU_COMPOSITE_SHADER,
+			"let radial = to_center / max(radial_distance, 0.0001)",
+		),
+	)
+	testing.expect(
+		t,
+		strings.contains(
+			WGPU_COMPOSITE_SHADER,
+			"let halo_uv = uv + radial * post_effects.flare_optics.y",
+		),
+	)
+	testing.expect(
+		t,
+		!strings.contains(WGPU_COMPOSITE_SHADER, "let halo_uv = vec2<f32>(0.5) + radial"),
+	)
 	testing.expect(t, strings.contains(WGPU_COMPOSITE_SHADER, "let optical ="))
 	testing.expect(t, strings.contains(WGPU_COMPOSITE_SHADER, "apply_vignette(aces(hdr)"))
 }

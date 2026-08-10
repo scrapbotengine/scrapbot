@@ -279,7 +279,7 @@ Freezing leaves the last valid diagnostic range and indirect count resident whil
 
 Global volumetric fog is scene-owned rather than camera-owned. It resolves its own temporal scattering/transmittance history, then composes into current scene color before surface TAA and bloom. It stops at scene depth or its authored distance bound and becomes a shader no-op when absent or at zero density.
 
-Vignette, lens flare, and lens dirt are independent scene-owned singleton components. The final composite derives bounded chromatic ghosts and a halo from the bloom bright-pass, optionally modulates that optical energy with deterministic procedural dirt, then tone maps once. Vignette frames the tone-mapped result before fixed dithering. Disabled bloom suppresses flare and dirt; non-lit debug views suppress all three; adaptive post quality reduces the effective ghost count without mutating authored values.
+Vignette, lens flare, and lens dirt are independent scene-owned singleton components. The final composite derives bounded chromatic ghosts and a distance-preserving radial halo from the bloom bright-pass, optionally modulates that optical energy with deterministic procedural dirt, then tone maps once. Vignette frames the tone-mapped result before fixed dithering. Disabled bloom suppresses flare and dirt; non-lit debug views suppress all three; adaptive post quality reduces the effective ghost count without mutating authored values.
 
 World shading writes:
 

@@ -2086,7 +2086,8 @@ fn lens_flare(uv: vec2<f32>) -> vec3<f32> {
 		return vec3<f32>(0.0);
 	}
 	let to_center = vec2<f32>(0.5) - uv;
-	let radial = normalize(to_center + vec2<f32>(0.00001));
+	let radial_distance = length(to_center);
+	let radial = to_center / max(radial_distance, 0.0001);
 	let quality_count = max(1.0, floor(post_effects.flare_ghosts.y * post_effects.flare_ghosts.w + 0.5));
 	var ghosts = vec3<f32>(0.0);
 	var weight_sum = 0.0;
@@ -2103,7 +2104,7 @@ fn lens_flare(uv: vec2<f32>) -> vec3<f32> {
 	}
 	ghosts /= max(weight_sum, 1.0);
 
-	let halo_uv = vec2<f32>(0.5) + radial * post_effects.flare_optics.y;
+	let halo_uv = uv + radial * post_effects.flare_optics.y;
 	let halo_edge = smoothstep(0.0, 0.08, min(min(halo_uv.x, halo_uv.y), min(1.0 - halo_uv.x, 1.0 - halo_uv.y)));
 	let halo = flare_source(halo_uv, radial) * post_effects.flare_optics.x * halo_edge;
 	return (ghosts + halo) * post_effects.flare_tint_intensity.rgb * post_effects.flare_tint_intensity.w;
