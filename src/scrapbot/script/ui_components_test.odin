@@ -15,6 +15,9 @@ name = "Inspector Field"
 [entities.ui_layout]
 size = [240, 32]
 min_size = [120, 24]
+border_dash_length = 12
+border_dash_gap = 8
+border_dash_offset = 3
 fill_width = true
 fit_content_height = true
 fixed_in_fill = true
@@ -194,6 +197,8 @@ scrapbot.system(function()
 	scrapbot.query(scrapbot.ui_layout, scrapbot.ui_panel, scrapbot.ui_table):each(function(entity, layout, panel, table)
 		assert(layout.size.x == 240 and layout.size.y == 32)
 		assert(layout.min_size.x == 120 and layout.min_size.y == 24)
+		assert(layout.border_dash_length == 12 and layout.border_dash_gap == 8)
+		assert(layout.border_dash_offset == 3)
 		assert(layout.fill_width == true)
 		assert(layout.fit_content_height == true)
 		assert(layout.fixed_in_fill == true)
@@ -217,7 +222,10 @@ scrapbot.system(function()
 		assert(table.min_column_width == 44)
 		scrapbot.add_component(entity, scrapbot.ui_table, {min_column_width = 60})
 		scrapbot.add_component(entity, scrapbot.ui_panel, {collapsed = true})
-		scrapbot.add_component(entity, scrapbot.ui_layout, {stack_order = 8})
+		scrapbot.add_component(entity, scrapbot.ui_layout, {
+			stack_order = 8,
+			border_dash_offset = 5,
+		})
 		count += 1
 	end)
 	assert(count == 1)
@@ -440,7 +448,10 @@ end)
 	panel := world.ui_panels[world.entities[0].ui_panel_index]
 	testing.expect(t, panel.collapsible && panel.collapsed)
 	testing.expect(t, panel.movable)
-	testing.expect(t, world.ui_layouts[world.entities[0].ui_layout_index].stack_order == 8)
+	layout := world.ui_layouts[world.entities[0].ui_layout_index]
+	testing.expect(t, layout.stack_order == 8)
+	testing.expect(t, layout.border_dash_length == 12 && layout.border_dash_gap == 8)
+	testing.expect(t, layout.border_dash_offset == 5)
 	canvas := world.ui_canvases[world.entities[0].ui_canvas_index]
 	testing.expect(t, canvas.scale_mode == .Fit)
 	testing.expect(t, canvas.safe_area == shared.Vec4{24, 32, 40, 48})

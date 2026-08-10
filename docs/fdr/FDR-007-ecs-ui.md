@@ -1,7 +1,7 @@
 # FDR-007: ECS UI
 
 **Status:** Active
-**Last reviewed:** 2026-07-30
+**Last reviewed:** 2026-08-10
 
 ## Overview
 
@@ -9,7 +9,7 @@ ECS UI lets projects describe screen-space interfaces with ordinary entities and
 
 ## Behavior
 
-- Every UI entity describes a rectangular box with an explicit size, optional minimum size, per-axis fill and fit-to-content policies, per-child basis/grow/shrink factors, optional position, per-edge margin and padding, background color, SDF border color and width, corner radius, and hidden state.
+- Every UI entity describes a rectangular box with an explicit size, optional minimum size, per-axis fill and fit-to-content policies, per-child basis/grow/shrink factors, optional position, per-edge margin and padding, background color, SDF border color and width, optional dash length/gap/offset, corner radius, and hidden state.
 - Themes are explicit composition-time palettes, metrics, typography, semantic tokens, and composable named recipes that resolve into those ordinary component fields. `reduced_dark` is built in; UUID-backed `scrapbot.ui_theme` project resources explicitly inherit that baseline and override any palette, metric, or font token. HDR RGB tokens are preserved. Surface, text, button, control, container, edge-to-edge chrome-bar, and semantic-frame recipes share one vocabulary across editor and project composition. Scene entities use a built-in name or theme UUID plus ordered `ui_recipes`; Luau resolves a mutable spawn-component map; native Odin resolves bounded typed payloads through built-in-name or project-UUID host callbacks. Applying a theme never creates renderer-owned cascading style state, and every resolved value remains individually overridable.
 - Standalone icon entities select a UUID-backed icon set and symbolic icon name, apply an HDR tint, and fit the result inside an ordinary layout rectangle. Project-local SVG icon sets compile into cached MTSDF atlas products before runtime; the packaged runtime never parses SVG. Project loading rejects unknown icon-set UUIDs. A missing runtime set or symbol emits no paint command, so transient programmatic mutations remain safe without substituting misleading artwork.
 - A hidden box removes its complete descendant subtree from retained layout, painting, and pointer interaction without despawning any entities.
@@ -44,7 +44,7 @@ ECS UI lets projects describe screen-space interfaces with ordinary entities and
 - Numeric inputs expose bounds, stepping, and validation. `draggable = true` enables live horizontal scrubbing across the complete writable control surface, switching from the text-edit cursor to the matching resize cursor once armed and submitting once on release.
 - Optional styled prefix badges remain presentation and do not gate interaction. Prefix spacing and radius, selection radius, focus and invalid borders, and caret geometry and colors are public styles.
 - Color pickers retain a direct linear RGBA value and compose saturation/value, hue, optional alpha, and optional HDR exposure interaction regions inside one public ECS control. HDR values remain above one up to the configured EV presentation range; painting tone-maps previews without changing the stored color.
-- Backgrounds and inset borders use GPU-evaluated signed-distance rounded rectangles, including square corners at a zero radius.
+- Backgrounds and inset borders use GPU-evaluated signed-distance rounded rectangles, including square corners at a zero radius. A positive dash length and gap mask the border along its perimeter; the offset is a paint-only phase suitable for animation, while either zero value preserves a solid border.
 - Structural dirty notifications add, update, or remove only affected retained nodes when UI components or entities appear and disappear. Value updates on attached components preserve membership; reparenting, hiding, attachment, and removal dirty it.
 - Structural synchronization validates runtime-authored parent chains and rebuilds compact parent/first-child/next-sibling links. Responsive layout and painting then traverse retained hierarchy linearly instead of rediscovering children through whole-tree scans.
 - Project and editor domains carry independent monotonic layout and paint revisions. Typed setters, retained scrolling, and interactions increment only the affected domain, so unchanged frames skip hierarchy, layout, and paint without hashing every node and component.

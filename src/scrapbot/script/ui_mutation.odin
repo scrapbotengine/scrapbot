@@ -49,6 +49,24 @@ read_ui_component_command_from_luau :: proc "c" (
 			if err := read_ui_number_field(
 				L,
 				payload_index,
+				"border_dash_length",
+				&value.border_dash_length,
+			); err != "" { return err }
+			if err := read_ui_number_field(
+				L,
+				payload_index,
+				"border_dash_gap",
+				&value.border_dash_gap,
+			); err != "" { return err }
+			if err := read_ui_number_field(
+				L,
+				payload_index,
+				"border_dash_offset",
+				&value.border_dash_offset,
+			); err != "" { return err }
+			if err := read_ui_number_field(
+				L,
+				payload_index,
 				"corner_radius",
 				&value.corner_radius,
 			); err != "" { return err }

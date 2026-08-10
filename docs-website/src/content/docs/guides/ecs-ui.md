@@ -389,7 +389,7 @@ The popup must remain a root, while its menu rows are ordinary children. Activat
 
 ## Style controls per entity
 
-Layout backgrounds, borders, and corner radii are SDF shapes. Controls expose their own internal chrome as component fields:
+Layout backgrounds, borders, and corner radii are SDF shapes. Set positive `border_dash_length` and `border_dash_gap` values to make a border dashed, and adjust `border_dash_offset` to shift or animate its perimeter phase. Either zero dash value keeps the border solid. Controls expose their own internal chrome as component fields:
 
 - Scrollbar track/thumb geometry and colors.
 - Panel title, disclosure-arrow, and trailing-action geometry and colors.

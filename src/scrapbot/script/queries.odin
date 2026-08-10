@@ -698,7 +698,7 @@ push_resource_uuid_field :: proc "c" (L: Lua_State, name: cstring, value: shared
 }
 
 push_ui_layout_table :: proc "c" (L: Lua_State, value: shared.UI_Layout_Component) {
-	lua_createtable(L, 0, 34)
+	lua_createtable(L, 0, 37)
 	push_uuid_field(L, "parent", value.parent)
 	push_uuid_field(L, "popup_anchor", value.popup_anchor)
 	push_vec2_field(L, "position", value.position)
@@ -709,6 +709,9 @@ push_ui_layout_table :: proc "c" (L: Lua_State, value: shared.UI_Layout_Componen
 	push_vec4_field(L, "background", value.background)
 	push_vec4_field(L, "border_color", value.border_color)
 	push_number_field(L, "border_width", value.border_width)
+	push_number_field(L, "border_dash_length", value.border_dash_length)
+	push_number_field(L, "border_dash_gap", value.border_dash_gap)
+	push_number_field(L, "border_dash_offset", value.border_dash_offset)
 	push_number_field(L, "corner_radius", value.corner_radius)
 	push_bool_field(L, "hidden", value.hidden)
 	push_bool_field(L, "fill_width", value.fill_width)

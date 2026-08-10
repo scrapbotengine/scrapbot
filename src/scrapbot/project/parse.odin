@@ -1684,6 +1684,12 @@ parse_scene :: proc(
 						current.ui_layout.border_color, found = parse_vec4(value)
 					case "border_width":
 						current.ui_layout.border_width, found = parse_f32(value)
+					case "border_dash_length":
+						current.ui_layout.border_dash_length, found = parse_f32(value)
+					case "border_dash_gap":
+						current.ui_layout.border_dash_gap, found = parse_f32(value)
+					case "border_dash_offset":
+						current.ui_layout.border_dash_offset, found = parse_f32(value)
 					case "corner_radius":
 						current.ui_layout.corner_radius, found = parse_f32(value)
 					case "hidden":

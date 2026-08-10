@@ -1696,6 +1696,9 @@ padding = [12, 12, 12, 12]
 background = [0.1, 0.2, 0.3, 0.9]
 border_color = [0.4, 0.5, 0.6, 1.0]
 border_width = 2
+border_dash_length = 12
+border_dash_gap = 8
+border_dash_offset = 3
 corner_radius = 6
 hidden = true
 fill_width = true
@@ -1810,6 +1813,9 @@ min_column_width = 48
 	testing.expect(t, scene.entities[0].ui_panel.movable)
 	testing.expect(t, scene.entities[0].ui_layout.border_color == Vec4{0.4, 0.5, 0.6, 1})
 	testing.expect(t, scene.entities[0].ui_layout.border_width == 2)
+	testing.expect(t, scene.entities[0].ui_layout.border_dash_length == 12)
+	testing.expect(t, scene.entities[0].ui_layout.border_dash_gap == 8)
+	testing.expect(t, scene.entities[0].ui_layout.border_dash_offset == 3)
 	testing.expect(t, scene.entities[0].ui_layout.corner_radius == 6)
 	testing.expect(t, scene.entities[0].ui_layout.hidden)
 	testing.expect(t, scene.entities[0].ui_layout.stack_order == 7)

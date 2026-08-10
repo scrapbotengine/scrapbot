@@ -369,6 +369,7 @@ Vectors use `{x, y}`, `{x, y, z}`, or `{x, y, z, w}` in Luau and fixed arrays in
 | `parent: string`, `position: Vec2`, `size: Vec2`, `min_size: Vec2` | `parent` is an entity UUID. `size` must be positive; `min_size` is non-negative. |
 | `margin: Vec4`, `padding: Vec4` | Every inset component is non-negative. |
 | `background: Vec4`, `border_color: Vec4`, `border_width: number`, `corner_radius: number` | Border width and radius are non-negative SDF geometry values. |
+| `border_dash_length: number`, `border_dash_gap: number`, `border_dash_offset: number` | Length and gap are non-negative logical pixels. When both are positive, the border is dashed and offset shifts its perimeter phase; either zero value keeps the border solid. Offset must be finite. |
 | `hidden: bool` | Removes the complete subtree from layout, painting, focus, and pointer input. |
 | `fill_width: bool`, `fill_height: bool` | Consume available parent space on each axis. |
 | `fit_content_width: bool`, `fit_content_height: bool` | Size around visible descendants on each axis. |

@@ -81,6 +81,9 @@ Paint_Command :: struct {
 	corner_radius: f32,
 	border_color: shared.Vec4,
 	border_width: f32,
+	border_dash_length: f32,
+	border_dash_gap: f32,
+	border_dash_offset: f32,
 	line_start, line_end: shared.Vec2,
 	line_thickness: f32,
 	triangle: [3]shared.Vec2,
@@ -404,6 +407,7 @@ State :: struct {
 	editor_right_sidebar_visible: bool,
 	editor_simulation_playing: bool,
 	editor_simulation_stopped: bool,
+	editor_playback_border_offset: f32,
 	editor_simulation_step_requested: bool,
 	editor_playback_begin_requested: bool,
 	editor_playback_stop_requested: bool,
@@ -1329,7 +1333,7 @@ reconcile :: proc(
 	editor_scale := max(state.editor_pixel_density, 1)
 	editor_width := surface_width / editor_scale
 	editor_height := surface_height / editor_scale
-	reconcile_editor_ui_world(state, world)
+	reconcile_editor_ui_world(state, world, delta_seconds)
 	if err := sync_ui_structure(state, world); err != "" { return err }
 	if state.project_canvas_valid {
 		entity_index := state.project_canvas_entity_index
@@ -7837,6 +7841,9 @@ paint_node :: proc(state: ^State, world: ^shared.World, node_index, depth: int) 
 				corner_radius = background_corner_radius,
 				border_color = border_color,
 				border_width = border_width,
+				border_dash_length = layout.border_dash_length,
+				border_dash_gap = layout.border_dash_gap,
+				border_dash_offset = layout.border_dash_offset,
 			},
 		); err != "" { return err }
 	}
@@ -8366,6 +8373,9 @@ scale_paint_command :: proc(command: ^Paint_Command, scale: f32) {
 	}
 	command.corner_radius *= scale
 	command.border_width *= scale
+	command.border_dash_length *= scale
+	command.border_dash_gap *= scale
+	command.border_dash_offset *= scale
 	command.line_start.x *=
 		scale; command.line_start.y *= scale; command.line_end.x *= scale; command.line_end.y *= scale; command.line_thickness *= scale
 	for &point in command.triangle { point.x *= scale; point.y *= scale }

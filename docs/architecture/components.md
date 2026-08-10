@@ -253,11 +253,11 @@ These entries deliberately omit exhaustive field/default documentation. Follow t
 
 ### `scrapbot.ui_layout`
 
-- **Contract:** Required UI geometry/hierarchy box containing UUID parent, authored/minimum sizing, per-child basis/grow/shrink and stack order, per-axis alignment, box style, visibility, tree-row metadata, and optional root-popup anchor/open/viewport constraints.
+- **Contract:** Required UI geometry/hierarchy box containing UUID parent, authored/minimum sizing, per-child basis/grow/shrink and stack order, per-axis alignment, solid or dashed SDF box style, visibility, tree-row metadata, and optional root-popup anchor/open/viewport constraints.
 - **Storage/lifecycle:** Dedicated typed UI storage; authored.
 - **Producers:** Scene TOML, Luau/native UI APIs, editor composition, generic UI setters.
 - **Consumers:** Retained hierarchy, intrinsic/flex layout, clipping, interaction hit testing, painting, tree/list mechanics, and generic popup placement/dismissal.
-- **Invalidation:** Attach/remove/parent changes enqueue structural work; layout-affecting setters advance layout revision and visual setters advance paint revision. Popup open/anchor/constraint changes target the affected domain; stable closed or unchanged popups do no derived work.
+- **Invalidation:** Attach/remove/parent changes enqueue structural work; layout-affecting setters advance layout revision and visual setters, including border dash phase, advance paint revision only. Popup open/anchor/constraint changes target the affected domain; stable closed or unchanged popups do no derived work.
 - **Surfaces:** Shared public UI contract across projects and editor; see the [public component reference](../../docs-website/src/content/docs/reference/components.md#scrapbotui_layout).
 - **Source/tests:** `ecs/ui_components.odin`, `ui/ui.odin`; `ecs/ui_components_test.odin`, `ui/ui_retained_test.odin`.
 

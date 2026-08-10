@@ -120,6 +120,9 @@ test_ui_helpers_preserve_styles_and_use_the_shared_native_contract :: proc(t: ^t
 	layout.background = {0.02, 0.03, 0.04, 1}
 	layout.border_width = 1
 	layout.border_color = {0.2, 0.24, 0.3, 1}
+	layout.border_dash_length = 12
+	layout.border_dash_gap = 8
+	layout.border_dash_offset = 3
 	layout.corner_radius = 9
 	layout.basis = 120
 	layout.grow = 2
@@ -127,6 +130,9 @@ test_ui_helpers_preserve_styles_and_use_the_shared_native_contract :: proc(t: ^t
 	layout_payload := ui_layout(layout)
 	testing.expect(t, layout_payload.component == UI_LAYOUT)
 	testing.expect(t, layout_payload.layout.corner_radius == 9)
+	testing.expect(t, layout_payload.layout.border_dash_length == 12)
+	testing.expect(t, layout_payload.layout.border_dash_gap == 8)
+	testing.expect(t, layout_payload.layout.border_dash_offset == 3)
 	testing.expect(t, layout_payload.layout.background.w == 1)
 	testing.expect(t, layout_payload.layout.basis == 120)
 	testing.expect(t, layout_payload.layout.grow == 2)

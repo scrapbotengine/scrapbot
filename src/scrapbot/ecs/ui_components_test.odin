@@ -105,10 +105,17 @@ test_world_entity_and_ui_component_api_is_shared_and_updates_in_place :: proc(t:
 				background = {0.01, 0.02, 0.03, 1},
 				border_color = {0.1, 0.2, 0.3, 1},
 				border_width = 1,
+				border_dash_length = 12,
+				border_dash_gap = 8,
+				border_dash_offset = 3,
 				corner_radius = 5,
 			},
 		),
 	)
+	layout := world.ui_layouts[world.entities[entity_index].ui_layout_index]
+	testing.expect(t, layout.border_dash_length == 12)
+	testing.expect(t, layout.border_dash_gap == 8)
+	testing.expect(t, layout.border_dash_offset == 3)
 	viewport := shared.ui_viewport_default()
 	viewport.resource, _ = shared.resource_uuid_parse("a6000000-0000-4000-8000-000000000099")
 	testing.expect(t, set_ui_viewport(&world, entity_index, viewport))

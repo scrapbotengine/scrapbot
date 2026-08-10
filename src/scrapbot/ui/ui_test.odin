@@ -4257,7 +4257,7 @@ test_editor_shell_is_an_editor_origin_ecs_ui_tree :: proc(t: ^testing.T) {
 	project_layout := world.ui_layouts[world.entities[0].ui_layout_index]
 	project_layout.background = {0.7, 0.2, 0.1, 1}
 	testing.expect(t, ecs.set_ui_layout(&world, 0, project_layout))
-	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
+	testing.expect(t, reconcile(state, &world, 1280, 720, delta_seconds = 0) == "")
 	testing.expect(t, state.project_paint_output_revision > project_revision)
 	testing.expect_value(t, state.editor_paint_output_revision, editor_revision)
 	testing.expect_value(
@@ -4720,6 +4720,15 @@ test_editor_transport_buttons_preserve_unsaved_authoring_across_playback :: proc
 	playback_viewport := world.ui_layouts[world.entities[viewport_entity_index].ui_layout_index]
 	testing.expect(t, playback_viewport.border_color == theme.palette.warning_soft)
 	testing.expect(t, playback_viewport.border_width == 2)
+	testing.expect(
+		t,
+		playback_viewport.border_dash_length == EDITOR_UI_PLAYBACK_BORDER_DASH_LENGTH,
+	)
+	testing.expect(t, playback_viewport.border_dash_gap == EDITOR_UI_PLAYBACK_BORDER_DASH_GAP)
+	running_dash_offset := playback_viewport.border_dash_offset
+	testing.expect(t, reconcile(state, &world, 1280, 720, delta_seconds = 0.25) == "")
+	playback_viewport = world.ui_layouts[world.entities[viewport_entity_index].ui_layout_index]
+	testing.expect(t, playback_viewport.border_dash_offset != running_dash_offset)
 
 	press := proc(state: ^State, world: ^shared.World, node_index: int) {
 		rect := state.nodes[node_index].rect
@@ -4737,6 +4746,14 @@ test_editor_transport_buttons_preserve_unsaved_authoring_across_playback :: proc
 	testing.expect(t, state.editor_simulation_playing)
 	press(state, &world, pause)
 	testing.expect(t, !state.editor_simulation_playing)
+	playback_viewport = world.ui_layouts[world.entities[viewport_entity_index].ui_layout_index]
+	testing.expect(t, playback_viewport.border_dash_length == 0)
+	testing.expect(t, playback_viewport.border_dash_gap == 0)
+	testing.expect(t, playback_viewport.border_dash_offset == 0)
+	testing.expect(t, reconcile(state, &world, 1280, 720, delta_seconds = 0) == "")
+	testing.expect(t, reconcile(state, &world, 1280, 720, delta_seconds = 0.25) == "")
+	playback_viewport = world.ui_layouts[world.entities[viewport_entity_index].ui_layout_index]
+	testing.expect(t, playback_viewport.border_dash_offset == 0)
 	testing.expect(
 		t,
 		world.ui_texts[status_entity.ui_text_index].text ==
@@ -4753,6 +4770,12 @@ test_editor_transport_buttons_preserve_unsaved_authoring_across_playback :: proc
 	testing.expect(t, !run && delta == 0)
 	press(state, &world, pause)
 	testing.expect(t, state.editor_simulation_playing)
+	playback_viewport = world.ui_layouts[world.entities[viewport_entity_index].ui_layout_index]
+	testing.expect(
+		t,
+		playback_viewport.border_dash_length == EDITOR_UI_PLAYBACK_BORDER_DASH_LENGTH,
+	)
+	testing.expect(t, playback_viewport.border_dash_gap == EDITOR_UI_PLAYBACK_BORDER_DASH_GAP)
 	testing.expect(
 		t,
 		world.ui_texts[status_entity.ui_text_index].text ==
@@ -4809,6 +4832,11 @@ test_editor_transport_buttons_preserve_unsaved_authoring_across_playback :: proc
 	testing.expect(
 		t,
 		world.ui_layouts[world.entities[viewport_entity_index].ui_layout_index].border_width == 0,
+	)
+	testing.expect(
+		t,
+		world.ui_layouts[world.entities[viewport_entity_index].ui_layout_index].border_dash_length ==
+		0,
 	)
 	testing.expect(t, consume_playback_stop_request(state))
 	testing.expect(t, !consume_playback_stop_request(state))
@@ -8916,7 +8944,7 @@ test_editor_performance_panel_uses_public_panel_table_and_text_components :: pro
 	}
 	previous_paint_revision := world.ui_editor_paint_revision
 	diagnostics.visible_instances = 99
-	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
+	testing.expect(t, reconcile(state, &world, 1280, 720, delta_seconds = 0) == "")
 	testing.expect(t, world.ui_editor_paint_revision == previous_paint_revision)
 	diagnostics.entity_count = 43
 	diagnostics.revision += 1

@@ -577,6 +577,9 @@ UI_Layout_Component :: struct {
 	background: Vec4,
 	border_color: Vec4,
 	border_width: f32,
+	border_dash_length: f32,
+	border_dash_gap: f32,
+	border_dash_offset: f32,
 	corner_radius: f32,
 	hidden: bool,
 	fill_width: bool,
@@ -1132,6 +1135,10 @@ ui_layout_is_valid :: proc "contextless" (value: UI_Layout_Component) -> bool {
 		value.size.x > 0 &&
 		value.size.y > 0 &&
 		value.border_width >= 0 &&
+		value.border_dash_length >= 0 &&
+		value.border_dash_gap >= 0 &&
+		!math.is_nan(value.border_dash_offset) &&
+		!math.is_inf(value.border_dash_offset) &&
 		value.corner_radius >= 0 &&
 		value.min_size.x >= 0 &&
 		value.min_size.y >= 0 &&

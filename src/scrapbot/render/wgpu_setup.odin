@@ -1201,7 +1201,8 @@ wgpu_create_ui_pipeline :: proc(renderer: ^WGPU_Renderer, state: ^ui.State) -> s
 		{format = .Float32x4, offset = 48, shaderLocation = 5},
 		{format = .Float32x4, offset = 64, shaderLocation = 6},
 		{format = .Float32, offset = 80, shaderLocation = 7},
-		{format = .Float32, offset = 84, shaderLocation = 8},
+		{format = .Float32x3, offset = 84, shaderLocation = 8},
+		{format = .Float32, offset = 96, shaderLocation = 9},
 	}
 	buffer_layout := wgpu.VertexBufferLayout {
 		arrayStride = u64(size_of(WGPU_UI_Vertex)),
