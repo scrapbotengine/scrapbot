@@ -125,6 +125,7 @@ editor_authoring_place_model :: proc(
 	registry: ^resources.Registry,
 	resource_id: shared.Resource_UUID,
 	parent: shared.Entity_UUID = {},
+	explicit_position: Maybe(shared.Vec3) = nil,
 ) -> (
 	shared.Entity,
 	bool,
@@ -148,7 +149,10 @@ editor_authoring_place_model :: proc(
 	}
 
 	position := shared.Vec3{0, 2, 1}
-	if camera_index, _, camera_found := ecs.editor_scene_camera_entity(world); camera_found {
+	if requested_position, has_requested_position := explicit_position.?; has_requested_position {
+		position = requested_position
+	} else if camera_index, _, camera_found := ecs.editor_scene_camera_entity(world);
+	   camera_found {
 		camera_entity := world.entities[camera_index]
 		if camera_entity.transform_index >= 0 &&
 		   camera_entity.transform_index < len(world.transforms) {
@@ -191,6 +195,37 @@ editor_authoring_place_model :: proc(
 	push_structural_change(state, snapshot.entity.id, nil, snapshot)
 	editor_authoring_select(state, world, entity_index)
 	return world.entities[entity_index].id, true
+}
+
+editor_request_model_placement :: proc(
+	state: ^State,
+	resource: shared.Resource_UUID,
+	parent: shared.Entity_UUID = {},
+	pointer: Maybe(shared.Vec2) = nil,
+) {
+	if state == nil || state.editor_model_placement_requested {
+		return
+	}
+	request := Editor_Model_Placement_Request {
+		resource = resource,
+		parent = parent,
+	}
+	if value, ok := pointer.?; ok {
+		request.pointer = value
+		request.has_pointer = true
+	}
+	state.editor_model_placement_request = request
+	state.editor_model_placement_requested = true
+}
+
+consume_model_placement_request :: proc(state: ^State) -> (Editor_Model_Placement_Request, bool) {
+	if state == nil || !state.editor_model_placement_requested {
+		return {}, false
+	}
+	request := state.editor_model_placement_request
+	state.editor_model_placement_request = {}
+	state.editor_model_placement_requested = false
+	return request, true
 }
 
 editor_authoring_duplicate_entity :: proc(

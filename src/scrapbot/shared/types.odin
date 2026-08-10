@@ -1575,6 +1575,8 @@ Editor_UI_Role :: enum {
 	Gizmo_Toolbar,
 	Gizmo_Space_World,
 	Gizmo_Space_Local,
+	Placement_Toolbar,
+	Placement_Snap,
 	Debug_View_Toolbar,
 	Debug_View_Button,
 	Debug_View_Menu,

@@ -34,6 +34,8 @@ EDITOR_UI_VIEWPORT_NAME :: "__scrapbot_editor_viewport"
 EDITOR_UI_VIEWPORT_DOCK_NAME :: "__scrapbot_editor_viewport_dock"
 EDITOR_UI_VIEWPORT_TAB_NAME :: "__scrapbot_editor_viewport_tab"
 EDITOR_UI_GIZMO_TOOLBAR_NAME :: "__scrapbot_editor_gizmo_toolbar"
+EDITOR_UI_PLACEMENT_TOOLBAR_NAME :: "__scrapbot_editor_placement_toolbar"
+EDITOR_UI_PLACEMENT_SNAP_NAME :: "__scrapbot_editor_placement_snap"
 EDITOR_UI_DEBUG_VIEW_TOOLBAR_NAME :: "__scrapbot_editor_debug_view_toolbar"
 EDITOR_UI_DEBUG_VIEW_BUTTON_NAME :: "__scrapbot_editor_debug_view_button"
 EDITOR_UI_DEBUG_VIEW_MENU_NAME :: "__scrapbot_editor_debug_view_menu"
@@ -210,6 +212,19 @@ editor_ui_handle_activation :: proc(
 				case .Gizmo_Space_Local:
 					editor_set_gizmo_space(state, .Local)
 					return
+				case .Placement_Snap:
+					switch state.editor_placement_snap_step {
+						case 0:
+							state.editor_placement_snap_step = 0.25
+						case 0.25:
+							state.editor_placement_snap_step = 0.5
+						case 0.5:
+							state.editor_placement_snap_step = 1
+						case:
+							state.editor_placement_snap_step = 0
+					}
+					editor_ui_update_placement_snap_button(state, world)
+					return
 				case .Debug_View_Item:
 					if binding.slot < 0 {
 						state.editor_render_debug_view_override = false
@@ -330,12 +345,7 @@ editor_ui_handle_activation :: proc(
 					return
 				case .Inspector_Preview_Place:
 					if state.editor_has_resource_selection {
-						_, _ = editor_authoring_place_model(
-							state,
-							world,
-							state.resource_registry,
-							state.editor_selected_resource,
-						)
+						editor_request_model_placement(state, state.editor_selected_resource)
 					}
 					return
 				case .Inspector_Panel_Action:
@@ -411,6 +421,7 @@ editor_ui_handle_activation :: proc(
 				case .None,
 				     .Root,
 				     .Gizmo_Toolbar,
+				     .Placement_Toolbar,
 				     .Debug_View_Toolbar,
 				     .Debug_View_Button,
 				     .Debug_View_Menu,
@@ -575,14 +586,17 @@ editor_ui_consume_events :: proc(
 							}
 							parent = world.entities[parent_index].uuid
 						}
-						_, placed := editor_authoring_place_model(
-							state,
-							world,
-							state.resource_registry,
-							resource_id,
-							parent,
-						)
-						layout_changed = placed || layout_changed
+						if event.action == EDITOR_ACTION_DROP_VIEWPORT {
+							editor_request_model_placement(
+								state,
+								resource_id,
+								parent,
+								event.position,
+							)
+						} else {
+							editor_request_model_placement(state, resource_id, parent)
+						}
+						layout_changed = true
 						continue
 					}
 				}
@@ -1903,6 +1917,28 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 	)
 	world.ui_layouts[world.entities[world_button].ui_layout_index].size.x = 60
 	world.ui_layouts[world.entities[local_button].ui_layout_index].size.x = 60
+	placement_toolbar := editor_ui_create_box(
+		world,
+		EDITOR_UI_PLACEMENT_TOOLBAR_NAME,
+		EDITOR_UI_VIEWPORT_NAME,
+		.Placement_Toolbar,
+		{
+			position = {10, 52},
+			size = {104, 34},
+			padding = {2, 2, 2, 2},
+			background = theme.palette.overlay,
+			corner_radius = theme.metrics.radius,
+		},
+	)
+	editor_ui_add_hstack(world, placement_toolbar, {gap = 2})
+	placement_snap := editor_ui_create_transport_button(
+		world,
+		EDITOR_UI_PLACEMENT_SNAP_NAME,
+		EDITOR_UI_PLACEMENT_TOOLBAR_NAME,
+		"SNAP 0.5",
+		.Placement_Snap,
+	)
+	world.ui_layouts[world.entities[placement_snap].ui_layout_index].size.x = 100
 
 	right := editor_ui_create_box(
 		world,
@@ -2556,6 +2592,32 @@ editor_ui_update_gizmo_toolbar :: proc(state: ^State, world: ^shared.World) {
 	if root, found := editor_ui_entity(world, .Root); found {
 		ecs.mark_ui_paint_changed(world, root)
 	}
+}
+
+editor_ui_update_placement_snap_button :: proc(state: ^State, world: ^shared.World) {
+	if state == nil || world == nil {
+		return
+	}
+	entity_index, found := editor_ui_entity(world, .Placement_Snap)
+	if !found {
+		return
+	}
+	entity := world.entities[entity_index]
+	if entity.ui_button_index < 0 || entity.ui_button_index >= len(world.ui_buttons) {
+		return
+	}
+	button := world.ui_buttons[entity.ui_button_index]
+	switch state.editor_placement_snap_step {
+		case 0:
+			button.text = "SNAP OFF"
+		case 0.25:
+			button.text = "SNAP 0.25"
+		case 0.5:
+			button.text = "SNAP 0.5"
+		case:
+			button.text = "SNAP 1"
+	}
+	_ = ecs.set_ui_button(world, entity_index, button)
 }
 
 editor_ui_update_debug_view_button :: proc(state: ^State, world: ^shared.World) {

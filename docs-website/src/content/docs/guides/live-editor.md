@@ -225,9 +225,11 @@ Their previews use the public `scrapbot.ui_viewport` component and adaptive pool
 
 Drag a 3D preview to orbit, use the wheel to zoom, and click **Reset** to restore its view. Stable previews are revision-cached.
 
-While stopped, select a Model resource and click **Add to Scene** to create a persistent model root five world units in front of the editor fly camera. The new entity uses the Model's name, inherits the project's geometry policy, becomes the active selection, and participates in Undo, Redo, Save, and Revert. Add Shadow Caster or Shadow Receiver explicitly when the object needs them.
+While stopped, select a Model resource and click **Add to Scene** to create a persistent model root under the center of the Game viewport. Scrapbot places it on the nearest rendered surface. When the ray misses geometry, placement falls back to the world ground plane and then to a five-unit camera focus point. The new entity uses the Model's name, inherits the project's geometry policy, becomes the active selection, and participates in Undo, Redo, Save, and Revert. Add Shadow Caster or Shadow Receiver explicitly when the object needs them.
 
-You can also drag a Model row onto the Game viewport or empty Scene space to create a root. Drop it on an existing Scene row to parent the new model there while preserving the same camera-relative world placement. These gestures use the public `ui_action` drag/drop contract; the editor only interprets the resource and scene meaning.
+You can also drag a Model row onto an exact point in the Game viewport. Dragging onto empty Scene space uses the viewport center; dropping on an existing Scene row additionally parents the new model there while preserving its world placement. These gestures use the public `ui_action` drag/drop contract; the editor only interprets the resource and scene meaning.
+
+The **Snap** overlay cycles through off, 0.25, 0.5, and 1-unit world grids. Snapping quantizes the resolved model origin before the authoring transaction. It does not yet align imported bounds or orientation to a surface, and transform-gizmo snapping remains separate follow-up work.
 
 Click **Reimport** to force only the selected importer, update its live registry entry, and reconcile model instances when necessary. This does not restart Luau, native Odin, or the scene world. **Reimport All** forces every imported declaration. Failed imports retain the prior atomic product and surface the error in the inspector.
 

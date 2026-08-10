@@ -8998,9 +8998,7 @@ test_editor_preview_reset_restores_camera_without_losing_target :: proc(t: ^test
 }
 
 @(test)
-test_editor_model_preview_places_an_undoable_scene_root_in_front_of_fly_camera :: proc(
-	t: ^testing.T,
-) {
+test_editor_model_preview_requests_an_undoable_precise_scene_placement :: proc(t: ^testing.T) {
 	parent_id := ui_test_id("Model Placement Parent")
 	scene: shared.Scene
 	defer delete(scene.entities)
@@ -9052,6 +9050,18 @@ test_editor_model_preview_places_an_undoable_scene_root_in_front_of_fly_camera :
 	place_layout := world.ui_layouts[world.entities[place].ui_layout_index]
 	testing.expect(t, !place_layout.hidden)
 	editor_ui_handle_activation(state, &world, world.entities[place].id, {})
+	request, requested := consume_model_placement_request(state)
+	testing.expect(t, requested)
+	testing.expect_value(t, request.resource, resource_id)
+	_, placement_ok := editor_authoring_place_model(
+		state,
+		&world,
+		&registry,
+		request.resource,
+		request.parent,
+		shared.Vec3{1.5, 2, -3.5},
+	)
+	testing.expect(t, placement_ok)
 
 	placed_index, placed := editor_selected_world_index(state, &world)
 	testing.expect(t, placed)
@@ -9065,7 +9075,7 @@ test_editor_model_preview_places_an_undoable_scene_root_in_front_of_fly_camera :
 	testing.expect_value(
 		t,
 		world.transforms[entity.transform_index].position,
-		shared.Vec3{10, 4, 3},
+		shared.Vec3{1.5, 2, -3.5},
 	)
 	id_buffer: [36]u8
 	testing.expect_value(
@@ -9089,7 +9099,7 @@ test_editor_model_preview_places_an_undoable_scene_root_in_front_of_fly_camera :
 		testing.expect_value(
 			t,
 			world.transforms[world.entities[restored_index].transform_index].position,
-			shared.Vec3{10, 4, 3},
+			shared.Vec3{1.5, 2, -3.5},
 		)
 	}
 
@@ -9108,6 +9118,17 @@ test_editor_model_preview_places_an_undoable_scene_root_in_front_of_fly_camera :
 		state.event_count = 1
 		publish_ui_events(state, &world)
 		testing.expect(t, editor_ui_consume_events(state, &world, event_cursor))
+		request, requested = consume_model_placement_request(state)
+		testing.expect(t, requested)
+		_, placement_ok = editor_authoring_place_model(
+			state,
+			&world,
+			&registry,
+			request.resource,
+			request.parent,
+			shared.Vec3{1.5, 2, -3.5},
+		)
+		testing.expect(t, placement_ok)
 		child_index, child_placed := editor_selected_world_index(state, &world)
 		testing.expect(t, child_placed)
 		if child_placed {
@@ -9115,7 +9136,7 @@ test_editor_model_preview_places_an_undoable_scene_root_in_front_of_fly_camera :
 			ecs.begin_world_transform_resolution(&world)
 			child_world, valid := ecs.resolve_world_transform(&world, child_index)
 			testing.expect(t, valid)
-			testing.expect_value(t, child_world.position, shared.Vec3{10, 4, 3})
+			testing.expect_value(t, child_world.position, shared.Vec3{1.5, 2, -3.5})
 		}
 		testing.expect_value(t, state.editor_history_count, 2)
 		testing.expect(t, editor_undo(state, &world))

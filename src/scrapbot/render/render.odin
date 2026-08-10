@@ -1319,6 +1319,39 @@ run_frame_system_unmeasured :: proc(
 		}
 		platform.set_runtime_pointer_cursor(cursor)
 		picking_system_start := time.tick_now()
+		if request, requested := ui.consume_model_placement_request(config.ui_state); requested {
+			if config.resource_registry != nil {
+				list := ecs.build_resource_render_list(
+					world,
+					config.resource_registry,
+					config.ui_state.editor_visible,
+				)
+				pointer := shared.Vec2 {
+					viewport.x + viewport.width * 0.5,
+					viewport.y + viewport.height * 0.5,
+				}
+				if request.has_pointer {
+					pointer = request.pointer
+				}
+				if position, resolved := editor_model_placement_position(
+					&list,
+					config.resource_registry,
+					pointer,
+					viewport,
+					config.ui_state.editor_placement_snap_step,
+				); resolved {
+					_, _ = ui.editor_authoring_place_model(
+						config.ui_state,
+						world,
+						config.resource_registry,
+						request.resource,
+						request.parent,
+						position,
+					)
+				}
+				ecs.destroy_render_list(&list)
+			}
+		}
 		if config.ui_state.editor_pick_requested {
 			config.ui_state.editor_pick_requested = false
 			picked, found := editor_pick_camera_mesh(

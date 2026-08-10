@@ -9,6 +9,12 @@ Pick_Ray :: struct {
 	origin, direction: shared.Vec3,
 }
 
+Scene_Ray_Hit :: struct {
+	entity: shared.Entity,
+	position, normal: shared.Vec3,
+	distance: f32,
+}
+
 editor_pick_ray :: proc(
 	render_list: ^shared.Render_List,
 	position: shared.Vec2,
@@ -63,8 +69,23 @@ editor_pick_entity :: proc(
 	if !ray_ok {
 		return {}, false
 	}
+	hit, found := scene_raycast_nearest(render_list, registry, ray)
+	return hit.entity, found
+}
+
+scene_raycast_nearest :: proc(
+	render_list: ^shared.Render_List,
+	registry: ^resources.Registry,
+	ray: Pick_Ray,
+) -> (
+	Scene_Ray_Hit,
+	bool,
+) {
+	if render_list == nil || registry == nil {
+		return {}, false
+	}
 	nearest := f32(3.4028235e38)
-	picked: shared.Entity
+	result: Scene_Ray_Hit
 	found := false
 	for instance in render_list.instances {
 		geometry, ok := resources.get_geometry(registry, instance.geometry.handle)
@@ -83,12 +104,65 @@ editor_pick_entity :: proc(
 			c := pick_transform_point(model, triangle.c)
 			if distance, hit := pick_ray_triangle(ray, a, b, c); hit && distance < nearest {
 				nearest = distance
-				picked = instance.entity.id
+				result = {
+					entity = instance.entity.id,
+					position = pick_add(ray.origin, pick_mul(ray.direction, distance)),
+					normal = vec3_normalize(vec3_cross(vec3_sub(b, a), vec3_sub(c, a))),
+					distance = distance,
+				}
 				found = true
 			}
 		}
 	}
-	return picked, found
+	return result, found
+}
+
+scene_ray_plane_intersection :: proc(
+	ray: Pick_Ray,
+	point, normal: shared.Vec3,
+) -> (
+	shared.Vec3,
+	bool,
+) {
+	denominator := vec3_dot(ray.direction, normal)
+	if math.abs(denominator) < 0.000001 {
+		return {}, false
+	}
+	distance := vec3_dot(vec3_sub(point, ray.origin), normal) / denominator
+	if distance <= 0.0001 {
+		return {}, false
+	}
+	return pick_add(ray.origin, pick_mul(ray.direction, distance)), true
+}
+
+editor_model_placement_position :: proc(
+	render_list: ^shared.Render_List,
+	registry: ^resources.Registry,
+	pointer: shared.Vec2,
+	viewport: ui.Rect,
+	snap_step: f32,
+) -> (
+	shared.Vec3,
+	bool,
+) {
+	ray, ray_ok := editor_pick_ray(render_list, pointer, viewport)
+	if !ray_ok {
+		return {}, false
+	}
+	position: shared.Vec3
+	if hit, found := scene_raycast_nearest(render_list, registry, ray); found {
+		position = hit.position
+	} else if plane_position, found := scene_ray_plane_intersection(ray, {}, {0, 1, 0}); found {
+		position = plane_position
+	} else {
+		position = pick_add(ray.origin, pick_mul(ray.direction, 5))
+	}
+	if snap_step > 0 {
+		position.x = math.round(position.x / snap_step) * snap_step
+		position.y = math.round(position.y / snap_step) * snap_step
+		position.z = math.round(position.z / snap_step) * snap_step
+	}
+	return position, true
 }
 
 pick_ray_triangle :: proc(ray: Pick_Ray, a, b, c: shared.Vec3) -> (f32, bool) {

@@ -291,6 +291,13 @@ Editor_Gizmo_Toolbar_Visual_State :: struct {
 	space: shared.Editor_Gizmo_Space,
 }
 
+Editor_Model_Placement_Request :: struct {
+	resource: shared.Resource_UUID,
+	parent: shared.Entity_UUID,
+	pointer: shared.Vec2,
+	has_pointer: bool,
+}
+
 State :: struct {
 	events: [MAX_UI_EVENTS]UI_Event,
 	event_count: int,
@@ -462,6 +469,9 @@ State :: struct {
 	editor_history_clean_valid: bool,
 	editor_pick_requested: bool,
 	editor_pick_position: shared.Vec2,
+	editor_model_placement_requested: bool,
+	editor_model_placement_request: Editor_Model_Placement_Request,
+	editor_placement_snap_step: f32,
 	editor_scene_camera_captures_input: bool,
 	editor_camera_mesh_segments: [EDITOR_CAMERA_MESH_MAX_SEGMENTS]Editor_Camera_Mesh_Segment,
 	editor_camera_mesh_segment_count: int,
@@ -629,6 +639,7 @@ init :: proc(state: ^State) -> string {
 	state.editor_pixel_density = 1
 	state.editor_simulation_playing = true
 	state.editor_history_clean_valid = true
+	state.editor_placement_snap_step = 0.5
 	state.active_split_handle = -1
 	state.active_dock_tab = -1
 	state.dock_drop_space_node = -1
