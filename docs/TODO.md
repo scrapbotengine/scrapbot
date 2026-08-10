@@ -47,7 +47,8 @@ This file tracks current actionable engineering work. The broad product roadmap 
 - [ ] Add an opt-in runtime-entity browser policy on top of bounded, virtualized list rows.
 - [ ] Add resizable dynamic-array schemas with inspector add, remove, and reorder controls.
 - [ ] Extend project/native component schemas with enum choices so dynamic fields can use the reflected enum picker.
-- [ ] Extend placement-grid snapping to transform gizmos, then add multi-selection editing.
+- [ ] Apply the shared placement-grid snap policy to translation gizmos, with rotation and scale increments where appropriate.
+- [ ] Add multi-selection with reusable selection state, batch inspector edits, gizmo transforms, and one Undo/Redo transaction per gesture.
 - [ ] Add a scalable picking broad phase or GPU identity pass before exact triangle tests.
 - [ ] Add opt-in collision-aware editor fly-camera navigation on top of a scalable scene-query broad phase.
 
