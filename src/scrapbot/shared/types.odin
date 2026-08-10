@@ -935,6 +935,10 @@ UI_Color_Picker_Component :: struct {
 UI_Action_Component :: struct {
 	action: string,
 	payload: string,
+	drag_source: bool,
+	drop_target: bool,
+	drag_threshold: f32,
+	drop_background: Vec4,
 }
 UI_ACTION_MAX_BYTES :: 64
 UI_ACTION_PAYLOAD_MAX_BYTES :: 256
@@ -1120,7 +1124,7 @@ ui_color_picker_default :: proc "contextless" () -> UI_Color_Picker_Component {
 }
 
 ui_action_default :: proc "contextless" () -> UI_Action_Component {
-	return {}
+	return {drag_threshold = 5}
 }
 
 ui_layout_is_valid :: proc "contextless" (value: UI_Layout_Component) -> bool {
@@ -1432,7 +1436,9 @@ ui_action_is_valid :: proc "contextless" (value: UI_Action_Component) -> bool {
 	return(
 		value.action != "" &&
 		len(value.action) <= UI_ACTION_MAX_BYTES &&
-		len(value.payload) <= UI_ACTION_PAYLOAD_MAX_BYTES \
+		len(value.payload) <= UI_ACTION_PAYLOAD_MAX_BYTES &&
+		value.drag_threshold >= 0 &&
+		ui_vec4_is_finite(value.drop_background) \
 	)
 }
 

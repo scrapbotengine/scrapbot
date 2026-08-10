@@ -719,10 +719,14 @@ Dragging writes `value` directly in linear space and advances `ui_state.change_r
 | --- | --- | --- |
 | `action` | Required | Non-empty semantic action name, at most 64 UTF-8 bytes. |
 | `payload` | Empty | Optional opaque project payload, at most 256 UTF-8 bytes. |
+| `drag_source` | `false` | Makes this entity a thresholded generic drag source. |
+| `drop_target` | `false` | Accepts generic action drags over this entity or its descendants. |
+| `drag_threshold` | `5` | Non-negative pointer distance before the source begins dragging. |
+| `drop_background` | Transparent | Target background shown while a compatible drag is over it. |
 
 Attach `ui_action` to an interactive control or any of its UI layout ancestors. When the control activates, changes, submits, cancels, or completes a drop, the published event copies the nearest action and payload while retaining the exact interacted entity UUID.
 
-`ui_action` does not make an entity interactive and does not affect layout or paint. It adds project meaning to existing reusable controls.
+Without the drag flags, `ui_action` only adds project meaning to existing reusable controls. With them, the shared UI pass owns the complete gesture, move/not-allowed cursor, target feedback, `ui_state`, and immutable drop event. Source and target remain ordinary stable entity UUIDs; project code decides what their payload means.
 
 ## Related references
 

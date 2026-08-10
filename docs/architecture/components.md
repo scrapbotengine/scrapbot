@@ -433,11 +433,11 @@ These entries deliberately omit exhaustive field/default documentation. Follow t
 
 ### `scrapbot.ui_action`
 
-- **Contract:** A non-empty bounded semantic action plus optional bounded payload inherited from the interacted entity through its UI layout ancestors.
+- **Contract:** A non-empty bounded semantic action plus optional bounded payload inherited from the interacted entity through its UI layout ancestors. Optional drag-source and drop-target flags add generic thresholded drag/drop mechanics and authored target feedback.
 - **Storage/lifecycle:** Dedicated typed UI storage; authored. World-owned strings are cloned on attachment and reclaimed on removal, despawn, or world destruction.
 - **Producers:** Scene TOML, Luau/native deferred UI mutation, project composition, and editor composition where reusable controls need semantic meaning.
-- **Consumers:** UI interaction publishing resolves the nearest ancestor action and copies it into the World-owned immutable event history. Luau, native extensions, and editor orchestration read that history independently.
-- **Invalidation:** Adding or changing the component performs no retained hierarchy or paint work. Event strings allocate only when an interaction is published; stable frames do no action lookup or event append.
+- **Consumers:** UI interaction resolves semantic activation ancestry plus explicit drag-source/drop-target ancestry, owns cursor and target feedback, and copies completed drops into the World-owned immutable event history. Luau, native extensions, and editor orchestration read that history independently.
+- **Invalidation:** Adding or changing the component dirties only its interaction/paint contract. Active drags update the source and target state; stable frames do no action lookup, event append, or repaint.
 - **Surfaces:** Shared public UI contract across scene TOML, Luau, native Odin, projects, and editor composition; see the [public component reference](../../docs-website/src/content/docs/reference/components.md#scrapbotui_action).
 - **Source/tests:** `shared/types.odin`, `ecs/ui_components.odin`, `ecs/ui_events.odin`, `ui/ui.odin`; `script/ui_components_test.odin`, `native/ui_test.odin`, `ui/ui_test.odin`.
 

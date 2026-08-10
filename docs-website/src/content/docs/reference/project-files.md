@@ -323,9 +323,13 @@ Reusable controls can carry semantic project meaning without changing their visu
 [entities.ui_action]
 action = "menu.launch"
 payload = "campaign"
+drag_source = true
+drag_threshold = 5
 ```
 
 `action` is required and limited to 64 UTF-8 bytes; `payload` is optional and limited to 256 bytes. The interaction pass inherits the nearest action from the exact control or its UI ancestors and publishes it through the Luau/native immutable event API.
+
+Set `drop_target = true` on another action entity to accept the drag. `drop_background` supplies optional hover feedback. A completed event reports the source and target UUIDs with `drop_placement = "into"`; application systems interpret the action names and payloads.
 
 Responsive project UI can define one root canvas:
 

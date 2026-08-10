@@ -65,6 +65,10 @@ EDITOR_SIDEBAR_DOCK_ITEM_MIN_HEIGHT :: EDITOR_SIDEBAR_CONTENT_MIN_HEIGHT - EDITO
 EDITOR_SECTION_TITLE_HEIGHT :: f32(28)
 EDITOR_BROWSER_FILTER_HEIGHT :: f32(32)
 EDITOR_BROWSER_TEXT_INSET :: f32(20)
+EDITOR_ACTION_RESOURCE_MODEL :: "editor.resource.model"
+EDITOR_ACTION_DROP_VIEWPORT :: "editor.drop.viewport"
+EDITOR_ACTION_DROP_SCENE_ROOT :: "editor.drop.scene-root"
+EDITOR_ACTION_DROP_SCENE_PARENT :: "editor.drop.scene-parent"
 
 editor_ui_entity :: proc(
 	world: ^shared.World,
@@ -492,6 +496,31 @@ editor_hierarchy_binding_target :: proc(
 	return {}, false
 }
 
+editor_resource_drag_source :: proc(
+	world: ^shared.World,
+	source: shared.Entity_UUID,
+) -> (
+	shared.Resource_UUID,
+	bool,
+) {
+	if world == nil {
+		return {}, false
+	}
+	entity_index, found := ecs.entity_index_by_uuid(world, source)
+	if !found {
+		return {}, false
+	}
+	entity := world.entities[entity_index]
+	if entity.editor_ui_index < 0 || entity.editor_ui_index >= len(world.editor_uis) {
+		return {}, false
+	}
+	binding := world.editor_uis[entity.editor_ui_index]
+	if binding.role != .Project_Resource_Row {
+		return {}, false
+	}
+	return binding.resource_id, true
+}
+
 editor_ui_consume_events :: proc(
 	state: ^State,
 	world: ^shared.World,
@@ -522,6 +551,41 @@ editor_ui_consume_events :: proc(
 					editor_ui_handle_checkbox_change(state, world, entity)
 				}
 			case .Dropped:
+				if event.action == EDITOR_ACTION_DROP_VIEWPORT ||
+				   event.action == EDITOR_ACTION_DROP_SCENE_ROOT ||
+				   event.action == EDITOR_ACTION_DROP_SCENE_PARENT {
+					if resource_id, resource_found := editor_resource_drag_source(
+						world,
+						event.drag_source,
+					); resource_found {
+						parent: shared.Entity_UUID
+						if event.action == EDITOR_ACTION_DROP_SCENE_PARENT {
+							parent_entity, parent_found := editor_hierarchy_binding_target(
+								world,
+								world.entities[entity_index].id,
+								true,
+							)
+							if !parent_found {
+								continue
+							}
+							parent_index := int(parent_entity.index)
+							if !ecs.entity_is_alive(world, parent_index) ||
+							   world.entities[parent_index].id != parent_entity {
+								continue
+							}
+							parent = world.entities[parent_index].uuid
+						}
+						_, placed := editor_authoring_place_model(
+							state,
+							world,
+							state.resource_registry,
+							resource_id,
+							parent,
+						)
+						layout_changed = placed || layout_changed
+						continue
+					}
+				}
 				list_index := entity_index
 				if !ecs.entity_is_alive(world, list_index) ||
 				   world.entities[list_index].editor_ui_index < 0 ||
@@ -1457,6 +1521,21 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 	scene_list_value.overscan = 2
 	editor_ui_add_list(world, scene_list, scene_list_value)
 	editor_ui_add_scroll(world, scene_list)
+	_ = ecs.set_ui_action(
+		world,
+		scene_list,
+		{
+			action = EDITOR_ACTION_DROP_SCENE_ROOT,
+			drop_target = true,
+			drag_threshold = 5,
+			drop_background = {
+				theme.palette.accent.x,
+				theme.palette.accent.y,
+				theme.palette.accent.z,
+				0.18,
+			},
+		},
+	)
 	create_button := editor_ui_create_transport_button(
 		world,
 		"__scrapbot_editor_entity_create",
@@ -1625,6 +1704,21 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 			fill_width = true,
 			fill_height = true,
 			stack_order = 0,
+		},
+	)
+	_ = ecs.set_ui_action(
+		world,
+		viewport,
+		{
+			action = EDITOR_ACTION_DROP_VIEWPORT,
+			drop_target = true,
+			drag_threshold = 5,
+			drop_background = {
+				theme.palette.accent.x,
+				theme.palette.accent.y,
+				theme.palette.accent.z,
+				0.18,
+			},
 		},
 	)
 	gizmo_toolbar := editor_ui_create_box(
@@ -1999,6 +2093,21 @@ editor_ui_ensure_row :: proc(world: ^shared.World, slot: int) -> (int, int, int)
 		{size = {2000, EDITOR_ENTITY_ROW_HEIGHT}},
 		slot,
 	)
+	_ = ecs.set_ui_action(
+		world,
+		row,
+		{
+			action = EDITOR_ACTION_DROP_SCENE_PARENT,
+			drop_target = true,
+			drag_threshold = 5,
+			drop_background = {
+				theme.palette.accent.x,
+				theme.palette.accent.y,
+				theme.palette.accent.z,
+				0.18,
+			},
+		},
+	)
 	disclosure = editor_ui_create_box(
 		world,
 		disclosure_name,
@@ -2047,6 +2156,7 @@ editor_ui_ensure_resource_row :: proc(world: ^shared.World, slot: int) -> (int, 
 		{size = {2000, EDITOR_ENTITY_ROW_HEIGHT}},
 		slot,
 	)
+	_ = ecs.set_ui_action(world, row, {action = EDITOR_ACTION_RESOURCE_MODEL, drag_threshold = 5})
 	label = editor_ui_create_box(
 		world,
 		label_name,
@@ -2061,6 +2171,19 @@ editor_ui_ensure_resource_row :: proc(world: ^shared.World, slot: int) -> (int, 
 	)
 	editor_ui_add_text(world, label, "", theme.palette.text, EDITOR_TEXT_SIZE)
 	return row, label
+}
+
+editor_ui_set_resource_drag_source :: proc(world: ^shared.World, row: int, draggable: bool) {
+	if world == nil || !ecs.entity_is_alive(world, row) {
+		return
+	}
+	entity := world.entities[row]
+	if entity.ui_action_index < 0 || entity.ui_action_index >= len(world.ui_actions) {
+		return
+	}
+	value := world.ui_actions[entity.ui_action_index]
+	value.drag_source = draggable
+	_ = ecs.set_ui_action(world, row, value)
 }
 
 SYSTEM_PROFILE_CELL_HEIGHT :: f32(26)
@@ -5794,6 +5917,7 @@ refresh_editor_ecs_snapshot :: proc(state: ^State, world: ^shared.World) {
 			editor_ui_set_hidden(world, label, false)
 			world.editor_uis[world.entities[row].editor_ui_index].resource_id = material.id
 			world.editor_uis[world.entities[label].editor_ui_index].resource_id = material.id
+			editor_ui_set_resource_drag_source(world, row, false)
 			if state.editor_has_resource_selection &&
 			   state.editor_selected_resource == material.id {
 				selected_resource_row = world.entities[row].uuid
@@ -5812,6 +5936,7 @@ refresh_editor_ecs_snapshot :: proc(state: ^State, world: ^shared.World) {
 			editor_ui_set_hidden(world, label, false)
 			world.editor_uis[world.entities[row].editor_ui_index].resource_id = texture.id
 			world.editor_uis[world.entities[label].editor_ui_index].resource_id = texture.id
+			editor_ui_set_resource_drag_source(world, row, false)
 			if state.editor_has_resource_selection &&
 			   state.editor_selected_resource == texture.id {
 				selected_resource_row = world.entities[row].uuid
@@ -5830,6 +5955,7 @@ refresh_editor_ecs_snapshot :: proc(state: ^State, world: ^shared.World) {
 			editor_ui_set_hidden(world, label, false)
 			world.editor_uis[world.entities[row].editor_ui_index].resource_id = environment.id
 			world.editor_uis[world.entities[label].editor_ui_index].resource_id = environment.id
+			editor_ui_set_resource_drag_source(world, row, false)
 			if state.editor_has_resource_selection &&
 			   state.editor_selected_resource == environment.id {
 				selected_resource_row = world.entities[row].uuid
@@ -5848,6 +5974,7 @@ refresh_editor_ecs_snapshot :: proc(state: ^State, world: ^shared.World) {
 			editor_ui_set_hidden(world, label, false)
 			world.editor_uis[world.entities[row].editor_ui_index].resource_id = model.id
 			world.editor_uis[world.entities[label].editor_ui_index].resource_id = model.id
+			editor_ui_set_resource_drag_source(world, row, true)
 			if state.editor_has_resource_selection && state.editor_selected_resource == model.id {
 				selected_resource_row = world.entities[row].uuid
 			}
@@ -5865,6 +5992,7 @@ refresh_editor_ecs_snapshot :: proc(state: ^State, world: ^shared.World) {
 			editor_ui_set_hidden(world, label, false)
 			world.editor_uis[world.entities[row].editor_ui_index].resource_id = icon_set.id
 			world.editor_uis[world.entities[label].editor_ui_index].resource_id = icon_set.id
+			editor_ui_set_resource_drag_source(world, row, false)
 			if state.editor_has_resource_selection &&
 			   state.editor_selected_resource == icon_set.id {
 				selected_resource_row = world.entities[row].uuid
@@ -5883,6 +6011,7 @@ refresh_editor_ecs_snapshot :: proc(state: ^State, world: ^shared.World) {
 			editor_ui_set_hidden(world, label, false)
 			world.editor_uis[world.entities[row].editor_ui_index].resource_id = theme.id
 			world.editor_uis[world.entities[label].editor_ui_index].resource_id = theme.id
+			editor_ui_set_resource_drag_source(world, row, false)
 			if state.editor_has_resource_selection && state.editor_selected_resource == theme.id {
 				selected_resource_row = world.entities[row].uuid
 			}

@@ -48,7 +48,6 @@ This file tracks current actionable engineering work. The broad product roadmap 
 - [ ] Add resizable dynamic-array schemas with inspector add, remove, and reorder controls.
 - [ ] Extend project/native component schemas with enum choices so dynamic fields can use the reflected enum picker.
 - [ ] Add transform snapping and multi-selection editing.
-- [ ] Add generic typed resource dragging from the Resources list into viewport and hierarchy drop targets.
 - [ ] Add surface-hit and grid-aware placement modes on top of the camera-relative Model placement command.
 - [ ] Add a scalable picking broad phase or GPU identity pass before exact triangle tests.
 - [ ] Add opt-in collision-aware editor fly-camera navigation on top of a scalable scene-query broad phase.

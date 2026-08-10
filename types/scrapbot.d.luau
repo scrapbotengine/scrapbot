@@ -1123,11 +1123,19 @@ export type ScrapbotUiStateComponent = ScrapbotComponent<never, ReadonlyScrapbot
 export type ScrapbotUiAction = {
 	action: string?,
 	payload: string?,
+	drag_source: boolean?,
+	drop_target: boolean?,
+	drag_threshold: number?,
+	drop_background: Vec4?,
 }
 
 export type ReadonlyScrapbotUiAction = {
 	read action: string,
 	read payload: string,
+	read drag_source: boolean,
+	read drop_target: boolean,
+	read drag_threshold: number,
+	read drop_background: ReadonlyVec4,
 }
 
 export type ScrapbotUiActionComponent = ScrapbotComponent<ScrapbotUiAction, ReadonlyScrapbotUiAction>

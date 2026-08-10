@@ -1071,6 +1071,22 @@ read_ui_component_command_from_luau :: proc "c" (
 			   err != "" { return err }
 			if err := read_ui_string_field(L, payload_index, "payload", &value.payload);
 			   err != "" { return err }
+			if err := read_ui_bool_field(L, payload_index, "drag_source", &value.drag_source);
+			   err != "" { return err }
+			if err := read_ui_bool_field(L, payload_index, "drop_target", &value.drop_target);
+			   err != "" { return err }
+			if err := read_ui_number_field(
+				L,
+				payload_index,
+				"drag_threshold",
+				&value.drag_threshold,
+			); err != "" { return err }
+			if err := read_ui_vec4_field(
+				L,
+				payload_index,
+				"drop_background",
+				&value.drop_background,
+			); err != "" { return err }
 			if !shared.ui_action_is_valid(value) {
 				return "ui_action requires a non-empty bounded action and bounded payload"
 			}

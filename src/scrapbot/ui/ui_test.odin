@@ -1955,6 +1955,109 @@ test_selectable_list_lays_out_full_width_rows_and_selects_direct_child :: proc(t
 }
 
 @(test)
+test_ui_action_drag_source_drops_on_generic_target_with_feedback :: proc(t: ^testing.T) {
+	source_id := ui_test_id("Action Drag Source")
+	target_id := ui_test_id("Action Drop Target")
+	drop_color := shared.Vec4{0.2, 0.6, 0.5, 0.8}
+	scene: shared.Scene
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = source_id,
+			name = "Source",
+			has_ui_layout = true,
+			ui_layout = {position = {0, 0}, size = {80, 40}},
+			has_ui_action = true,
+			ui_action = {
+				action = "inventory.item",
+				payload = "healing-potion",
+				drag_source = true,
+				drag_threshold = 5,
+			},
+		},
+		shared.Scene_Entity {
+			id = target_id,
+			name = "Target",
+			has_ui_layout = true,
+			ui_layout = {position = {100, 0}, size = {80, 40}},
+			has_ui_action = true,
+			ui_action = {
+				action = "inventory.slot",
+				drop_target = true,
+				drag_threshold = 5,
+				drop_background = drop_color,
+			},
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	testing.expect(t, reconcile(state, &world, 200, 80) == "")
+	start := shared.Vec2{20, 20}
+	target := shared.Vec2{120, 20}
+	testing.expect(
+		t,
+		reconcile(
+			state,
+			&world,
+			200,
+			80,
+			{position = start, primary_down = true, available = true},
+		) ==
+		"",
+	)
+	testing.expect(
+		t,
+		reconcile(
+			state,
+			&world,
+			200,
+			80,
+			{position = target, primary_down = true, available = true},
+		) ==
+		"",
+	)
+	interaction := world.ui_states[world.entities[0].ui_state_index]
+	testing.expect(t, interaction.dragging)
+	testing.expect_value(t, interaction.drag_source, source_id)
+	testing.expect_value(t, interaction.drop_target, target_id)
+	testing.expect_value(t, interaction.drop_placement, shared.UI_Drop_Placement.Into)
+	testing.expect_value(t, current_pointer_cursor(state), Pointer_Cursor.Move)
+	found_feedback := false
+	for command in state.paint[:state.paint_count] {
+		if command.kind == .Panel && command.color == drop_color {
+			found_feedback = true
+		}
+	}
+	testing.expect(t, found_feedback)
+	testing.expect(
+		t,
+		reconcile(state, &world, 200, 80, {position = target, available = true}) == "",
+	)
+	interaction = world.ui_states[world.entities[0].ui_state_index]
+	testing.expect(t, !interaction.dragging)
+	target_interaction := world.ui_states[world.entities[1].ui_state_index]
+	testing.expect_value(t, target_interaction.drop_revision, u64(1))
+	testing.expect_value(t, target_interaction.drag_source, source_id)
+	event, found := ecs.ui_event_after_at(&world, 0, 1)
+	if !found {
+		event, found = ecs.ui_event_after_at(&world, 0, 0)
+	}
+	testing.expect(t, found)
+	if found {
+		testing.expect(t, event.kind == .Dropped)
+		testing.expect_value(t, event.entity, target_id)
+		testing.expect_value(t, event.action, "inventory.slot")
+		testing.expect_value(t, event.drag_source, source_id)
+		testing.expect_value(t, event.drop_target, target_id)
+	}
+}
+
+@(test)
 test_draggable_list_exposes_direct_child_drop_and_paints_lander_line :: proc(t: ^testing.T) {
 	list_id := ui_test_id("Draggable List")
 	first_id := ui_test_id("Draggable First")
@@ -8898,7 +9001,19 @@ test_editor_preview_reset_restores_camera_without_losing_target :: proc(t: ^test
 test_editor_model_preview_places_an_undoable_scene_root_in_front_of_fly_camera :: proc(
 	t: ^testing.T,
 ) {
-	world: shared.World
+	parent_id := ui_test_id("Model Placement Parent")
+	scene: shared.Scene
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = parent_id,
+			name = "Placement Parent",
+			has_transform = true,
+			transform = {position = {2, 0, 0}, scale = {1, 1, 1}},
+		},
+	)
+	world := ecs.build_world(&scene)
 	defer ecs.destroy_world(&world)
 	registry: resources.Registry
 	defer resources.destroy_registry(&registry)
@@ -8976,6 +9091,34 @@ test_editor_model_preview_places_an_undoable_scene_root_in_front_of_fly_camera :
 			world.transforms[world.entities[restored_index].transform_index].position,
 			shared.Vec3{10, 4, 3},
 		)
+	}
+
+	resource_row, resource_row_found := editor_ui_entity(&world, .Project_Resource_Row, 0)
+	parent_row, parent_row_found := editor_ui_entity(&world, .Browser_Row, 0)
+	testing.expect(t, resource_row_found && parent_row_found)
+	if resource_row_found && parent_row_found {
+		event_cursor := ecs.ui_event_latest_sequence(&world)
+		state.events[0] = {
+			kind = .Dropped,
+			entity = world.entities[parent_row].id,
+			source = world.entities[resource_row].id,
+			target = world.entities[parent_row].id,
+			drop_placement = .Into,
+		}
+		state.event_count = 1
+		publish_ui_events(state, &world)
+		testing.expect(t, editor_ui_consume_events(state, &world, event_cursor))
+		child_index, child_placed := editor_selected_world_index(state, &world)
+		testing.expect(t, child_placed)
+		if child_placed {
+			testing.expect_value(t, editor_entity_parent_uuid(&world, child_index), parent_id)
+			ecs.begin_world_transform_resolution(&world)
+			child_world, valid := ecs.resolve_world_transform(&world, child_index)
+			testing.expect(t, valid)
+			testing.expect_value(t, child_world.position, shared.Vec3{10, 4, 3})
+		}
+		testing.expect_value(t, state.editor_history_count, 2)
+		testing.expect(t, editor_undo(state, &world))
 	}
 
 	state.editor_simulation_stopped = false

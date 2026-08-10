@@ -685,6 +685,10 @@ write_scene_action :: proc(builder: ^strings.Builder, value: shared.UI_Action_Co
 	if value.payload != "" {
 		write_scene_string(builder, "payload", value.payload)
 	}
+	write_scene_value(builder, "drag_source", scene_bool(value.drag_source))
+	write_scene_value(builder, "drop_target", scene_bool(value.drop_target))
+	write_scene_value(builder, "drag_threshold", scene_f32(value.drag_threshold))
+	write_scene_value(builder, "drop_background", scene_vec4(value.drop_background))
 }
 
 write_scene_section :: proc(builder: ^strings.Builder, name: string) {

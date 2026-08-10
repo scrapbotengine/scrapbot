@@ -78,6 +78,10 @@ right_to_left = true
 [entities.ui_action]
 action = "inspector.commit"
 payload = "position"
+drag_source = true
+drop_target = true
+drag_threshold = 7
+drop_background = [0.2, 0.4, 0.6, 0.8]
 [[entities]]
 id = "aa000000-0000-4000-8000-000000000002"
 name = "Checkbox"
@@ -319,9 +323,15 @@ scrapbot.system(function()
 	local action_count = 0
 	scrapbot.query(scrapbot.ui_action):each(function(entity, action)
 		assert(action.action == "inspector.commit" and action.payload == "position")
+		assert(action.drag_source == true and action.drop_target == true)
+		assert(action.drag_threshold == 7 and math.abs(action.drop_background.w - 0.8) < 0.0001)
 		scrapbot.add_component(entity, scrapbot.ui_action, {
 			action = "inspector.apply",
 			payload = "rotation",
+			drag_source = false,
+			drop_target = true,
+			drag_threshold = 9,
+			drop_background = {x = 0.1, y = 0.2, z = 0.3, w = 0.4},
 		})
 		action_count += 1
 	end)
@@ -420,6 +430,10 @@ end)
 	testing.expect(t, progress.right_to_left)
 	action := world.ui_actions[world.entities[0].ui_action_index]
 	testing.expect(t, action.action == "inspector.apply" && action.payload == "rotation")
+	testing.expect(t, !action.drag_source && action.drop_target)
+	testing.expect(t, action.drag_threshold == 9)
+	testing.expect(t, action.drop_background.x > 0.099 && action.drop_background.x < 0.101)
+	testing.expect(t, action.drop_background.w > 0.399 && action.drop_background.w < 0.401)
 	table := world.ui_tables[world.entities[0].ui_table_index]
 	testing.expect(t, table.proportional_columns && table.resizable_columns)
 	testing.expect(t, table.min_column_width == 60)

@@ -295,7 +295,7 @@ trends; they are not portable performance thresholds.
   - [x] UUID-addressed authoring transactions with inspector and gizmo undo/redo
   - [x] Registry-driven, namespaced Add Component picker and panel-title removal actions with undo/redo
   - [x] Entity create, duplicate, rename, delete, and runtime promotion
-  - [x] Camera-relative Model placement from the resource preview with structural Undo/Redo
+  - [x] Camera-relative Model placement from previews or generic resource drags onto the viewport and Scene hierarchy, with structural Undo/Redo
   - [x] Resource create, duplicate, rename, move, delete, usage lookup, and structural undo/redo
   - [x] Explicit stopped-mode scene persistence by stable entity UUID
   - [x] Recoverable project-wide Save transactions across scene and resource files

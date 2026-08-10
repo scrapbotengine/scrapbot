@@ -785,6 +785,12 @@ system_get_ui_component :: proc "c" (
 			if !api_ui_payload_set_action(payload, value.action, value.payload) {
 				return 0
 			}
+			payload.action = {
+				drag_source = bool_to_c_int(value.drag_source),
+				drop_target = bool_to_c_int(value.drop_target),
+				drag_threshold = value.drag_threshold,
+				drop_background = api_vec4_from_shared(value.drop_background),
+			}
 		case:
 			return 0
 	}
@@ -1283,6 +1289,10 @@ ui_command_from_api_payload :: proc "c" (
 			value := shared.UI_Action_Component {
 				action = action,
 				payload = action_payload,
+				drag_source = payload.action.drag_source != 0,
+				drop_target = payload.action.drop_target != 0,
+				drag_threshold = payload.action.drag_threshold,
+				drop_background = shared_vec4_from_api(payload.action.drop_background),
 			}
 			if !shared.ui_action_is_valid(value) {
 				return "native ui_action payload is invalid"

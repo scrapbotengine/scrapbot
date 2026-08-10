@@ -1004,6 +1004,10 @@ init_registry :: proc(registry: ^Registry) {
 		{
 			Field_Definition{name = "action", field_type = .String},
 			Field_Definition{name = "payload", field_type = .String},
+			Field_Definition{name = "drag_source", field_type = .Bool},
+			Field_Definition{name = "drop_target", field_type = .Bool},
+			Field_Definition{name = "drag_threshold", field_type = .Number},
+			Field_Definition{name = "drop_background", field_type = .Vec4},
 		},
 	)
 	register_engine_component(

@@ -124,6 +124,7 @@ editor_authoring_place_model :: proc(
 	world: ^shared.World,
 	registry: ^resources.Registry,
 	resource_id: shared.Resource_UUID,
+	parent: shared.Entity_UUID = {},
 ) -> (
 	shared.Entity,
 	bool,
@@ -138,6 +139,12 @@ editor_authoring_place_model :: proc(
 	model, alive := resources.get_model(registry, handle)
 	if !alive || !model.authored {
 		return {}, false
+	}
+	if parent != (shared.Entity_UUID{}) {
+		parent_index, parent_found := ecs.entity_index_by_uuid(world, parent)
+		if !parent_found || world.entities[parent_index].origin != .Scene {
+			return {}, false
+		}
 	}
 
 	position := shared.Vec3{0, 2, 1}
@@ -171,6 +178,15 @@ editor_authoring_place_model :: proc(
 		ecs.destroy_entity_snapshot(snapshot)
 		free(snapshot)
 		return {}, false
+	}
+	if parent != (shared.Entity_UUID{}) {
+		if !ecs.set_transform_parent(world, entity_index, parent, true) {
+			_ = ecs.delete_entity_by_uuid(world, snapshot.entity.id)
+			ecs.destroy_entity_snapshot(snapshot)
+			free(snapshot)
+			return {}, false
+		}
+		snapshot.entity.transform = world.transforms[world.entities[entity_index].transform_index]
 	}
 	push_structural_change(state, snapshot.entity.id, nil, snapshot)
 	editor_authoring_select(state, world, entity_index)

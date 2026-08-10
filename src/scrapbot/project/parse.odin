@@ -2406,6 +2406,14 @@ parse_scene :: proc(
 						current.ui_action.action, found = parse_basic_string(value)
 					case "payload":
 						current.ui_action.payload, found = parse_basic_string(value)
+					case "drag_source":
+						current.ui_action.drag_source, found = parse_bool(value)
+					case "drop_target":
+						current.ui_action.drop_target, found = parse_bool(value)
+					case "drag_threshold":
+						current.ui_action.drag_threshold, found = parse_f32(value)
+					case "drop_background":
+						current.ui_action.drop_background, found = parse_vec4(value)
 					case:
 						return scene, fail(
 							.Invalid_Field,

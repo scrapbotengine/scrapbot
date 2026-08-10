@@ -416,6 +416,8 @@ payload = "campaign"
 
 The action may live on the exact control or a UI ancestor shared by a composite subtree. `scrapbot.ui.events(cursor)` returns ordered activation, change, submission, cancellation, and drop events to Luau; native extensions use the same cursor model. Reads are immutable, so multiple systems can independently observe the same interaction.
 
+For semantic drag and drop, set `drag_source = true` on the source action and `drop_target = true` on an accepting action. The shared UI owns thresholding, cursors, target feedback, state, and event publication. Game code only maps the stable source and target UUIDs to inventory items, abilities, resources, or other domain data.
+
 The `ui-showcase` example uses this contract to drive a live neon event monitor from ordinary buttons, a checkbox, an input, and the HDR color picker.
 
 ## Inspect current state through `ui_state`

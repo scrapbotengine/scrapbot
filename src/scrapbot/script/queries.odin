@@ -1056,9 +1056,13 @@ push_ui_color_picker_table :: proc "c" (L: Lua_State, value: shared.UI_Color_Pic
 }
 
 push_ui_action_table :: proc "c" (L: Lua_State, value: shared.UI_Action_Component) {
-	lua_createtable(L, 0, 2)
+	lua_createtable(L, 0, 6)
 	push_string_field(L, "action", value.action)
 	push_string_field(L, "payload", value.payload)
+	push_bool_field(L, "drag_source", value.drag_source)
+	push_bool_field(L, "drop_target", value.drop_target)
+	push_number_field(L, "drag_threshold", value.drag_threshold)
+	push_vec4_field(L, "drop_background", value.drop_background)
 }
 
 require_system_access :: proc "c" (

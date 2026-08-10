@@ -292,6 +292,9 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 	action := shared.UI_Action_Component {
 		action = "native.launch",
 		payload = "alpha",
+		drag_source = true,
+		drag_threshold = 6,
+		drop_background = {0.2, 0.3, 0.4, 0.5},
 	}
 	testing.expect(t, ecs.set_ui_action(&world, entity_index, action))
 
@@ -526,7 +529,12 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 	native_action, native_action_payload, action_ok := api_ui_payload_action(&action_payload)
 	testing.expect(t, action_ok)
 	testing.expect(t, native_action == "native.launch" && native_action_payload == "alpha")
+	testing.expect(t, action_payload.action.drag_source != 0)
+	testing.expect(t, action_payload.action.drag_threshold == 6)
+	testing.expect(t, action_payload.action.drop_background.w == 0.5)
 	testing.expect(t, api_ui_payload_set_action(&action_payload, "native.commit", "beta"))
+	action_payload.action.drop_target = 1
+	action_payload.action.drag_threshold = 8
 	testing.expect(t, system_set_ui_component(&ctx, entity, &action_payload) == nil)
 	panel_payload.panel.collapsed = 1
 	testing.expect(t, system_set_ui_component(&ctx, entity, &panel_payload) == nil)
@@ -560,6 +568,8 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 	testing.expect(t, stored_dock_item.movable)
 	stored_action := world.ui_actions[world.entities[entity_index].ui_action_index]
 	testing.expect(t, stored_action.action == "native.commit" && stored_action.payload == "beta")
+	testing.expect(t, stored_action.drag_source && stored_action.drop_target)
+	testing.expect(t, stored_action.drag_threshold == 8)
 
 	text_payload.text.size = 20
 	testing.expect(t, api_payload_set_strings(&text_payload, "After", "Project Font"))

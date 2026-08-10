@@ -520,6 +520,13 @@ UI_State_Payload :: struct {
 	drop_revision: u64,
 }
 
+UI_Action_Payload :: struct {
+	drag_source: c.int,
+	drop_target: c.int,
+	drag_threshold: f32,
+	drop_background: Vec4,
+}
+
 UI_Component_Payload :: struct {
 	component: cstring,
 	layout: UI_Layout_Payload,
@@ -540,6 +547,7 @@ UI_Component_Payload :: struct {
 	checkbox: UI_Checkbox_Payload,
 	color_picker: UI_Color_Picker_Payload,
 	state: UI_State_Payload,
+	action: UI_Action_Payload,
 	text_bytes: [MAX_UI_TEXT_BYTES]u8,
 	text_len: c.int,
 	font_bytes: [MAX_UI_FONT_BYTES]u8,

@@ -51,6 +51,7 @@ UI_Event :: raw.UI_Event
 UI_Event_Kind :: raw.UI_Event_Kind
 UI_Event_Part :: raw.UI_Event_Part
 UI_State :: raw.UI_State_Payload
+UI_Action :: raw.UI_Action_Payload
 UI_Component_Payload :: raw.UI_Component_Payload
 UI_Theme_Name :: raw.UI_Theme_Name
 UI_Theme_Recipe :: raw.UI_Theme_Recipe
@@ -565,12 +566,14 @@ ui_color_picker :: proc "contextless" (value: UI_Color_Picker) -> UI_Component_P
 ui_action :: proc "contextless" (
 	action: string,
 	payload: string = "",
+	interaction: UI_Action = {drag_threshold = 5},
 ) -> (
 	UI_Component_Payload,
 	bool,
 ) {
 	value := UI_Component_Payload {
 		component = UI_ACTION,
+		action = interaction,
 	}
 	return value, ui_payload_set_action(&value, action, payload)
 }

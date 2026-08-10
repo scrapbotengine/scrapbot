@@ -166,6 +166,8 @@ Bindings must name query terms and obey the scheduled system's declared read/wri
 
 `UI_Component_Payload` is the fixed-layout transport for every public `scrapbot.ui_*` component. It carries the complete box, responsive sizing policy, control value, and styles shared by scene TOML, Luau, native extensions, and editor chrome. The component name selects the relevant typed member.
 
+Its typed `action` member carries semantic drag-source and drop-target configuration, including the threshold and drop-feedback color. Drop results continue through the shared UUID-addressed `UI_Event` transport.
+
 The specialized members cover:
 
 - `UI_Layout_Payload`: minimum size, per-axis fill and fit-to-content flags, and fixed-child behavior inside fill stacks.

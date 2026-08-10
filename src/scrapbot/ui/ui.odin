@@ -217,6 +217,13 @@ List_Drag_Interaction :: struct {
 	drop_valid: bool,
 	placement: shared.UI_Drop_Placement,
 }
+Action_Drag_Interaction :: struct {
+	source: shared.Entity,
+	target: shared.Entity,
+	start: shared.Vec2,
+	armed: bool,
+	dragging: bool,
+}
 EDITOR_TRANSACTION_MAX_CHANGES :: 3
 Editor_Edit_Value_Kind :: enum {
 	Number,
@@ -355,6 +362,7 @@ State :: struct {
 	editor_ui_active_entity: shared.Entity,
 	editor_ui_has_active_entity: bool,
 	list_drags: [2]List_Drag_Interaction,
+	action_drags: [2]Action_Drag_Interaction,
 	stack_drags: [2]Stack_Drag_Interaction,
 	next_paint_order: int,
 	layout_size_changed: bool,
@@ -1452,6 +1460,7 @@ reconcile :: proc(
 	project_stack_drag_armed := false
 	editor_stack_drag_armed := false
 	if project_press_started && project_pressed_ok {
+		action_drag_begin(state, world, project_pressed, project_pointer.position, false)
 		list_drag_begin(state, world, project_pressed, project_pointer.position, false)
 		project_stack_drag_armed = stack_drag_begin(
 			state,
@@ -1462,6 +1471,7 @@ reconcile :: proc(
 		)
 	}
 	if editor_press_started && pressed_ok {
+		action_drag_begin(state, world, pressed, editor_pointer.position, true)
 		list_drag_begin(state, world, pressed, editor_pointer.position, true)
 		editor_stack_drag_armed = stack_drag_begin(
 			state,
@@ -1473,6 +1483,8 @@ reconcile :: proc(
 	}
 	list_drag_update(state, world, project_pointer, project_press_released, false)
 	list_drag_update(state, world, editor_pointer, editor_press_released, true)
+	action_drag_update(state, world, project_pointer, project_press_released, false)
+	action_drag_update(state, world, editor_pointer, editor_press_released, true)
 	stack_layout_changed, stack_title_clicked := stack_drag_update(
 		state,
 		world,
@@ -1490,6 +1502,9 @@ reconcile :: proc(
 	)
 	panel_changed = stack_layout_changed || stack_title_clicked || panel_changed
 	if drag_cursor := workspace_drag_pointer_cursor(state); drag_cursor != .Default {
+		state.pointer_cursor = drag_cursor
+	}
+	if drag_cursor := action_drag_pointer_cursor(state); drag_cursor != .Default {
 		state.pointer_cursor = drag_cursor
 	}
 	update_color_picker_interaction(
@@ -4065,6 +4080,11 @@ control_pointer_cursor :: proc(
 		if ecs.entity_is_alive(world, entity_index) &&
 		   world.entities[entity_index].id == node.entity {
 			entity := world.entities[entity_index]
+			if entity.ui_action_index >= 0 &&
+			   entity.ui_action_index < len(world.ui_actions) &&
+			   world.ui_actions[entity.ui_action_index].drag_source {
+				return .Move
+			}
 			if entity.ui_input_index >= 0 && entity.ui_input_index < len(world.ui_inputs) {
 				if !world.ui_inputs[entity.ui_input_index].read_only {
 					return .Text_Edit
@@ -6602,6 +6622,221 @@ stack_drag_update :: proc(
 	return
 }
 
+action_entity_for_node :: proc(
+	state: ^State,
+	world: ^shared.World,
+	node_index: int,
+	drag_source: bool,
+) -> (
+	shared.Entity,
+	^shared.UI_Action_Component,
+	bool,
+) {
+	if state == nil || world == nil {
+		return {}, nil, false
+	}
+	current := node_index
+	for current >= 0 {
+		node := state.nodes[current]
+		entity_index := int(node.entity.index)
+		if ecs.entity_is_alive(world, entity_index) &&
+		   world.entities[entity_index].id == node.entity {
+			component_index := world.entities[entity_index].ui_action_index
+			if component_index >= 0 && component_index < len(world.ui_actions) {
+				value := &world.ui_actions[component_index]
+				accepted := value.drop_target
+				if drag_source {
+					accepted = value.drag_source
+				}
+				if accepted {
+					return node.entity, value, true
+				}
+			}
+		}
+		current = node.parent_node_index
+	}
+	return {}, nil, false
+}
+
+action_drag_begin :: proc(
+	state: ^State,
+	world: ^shared.World,
+	pressed: shared.Entity,
+	position: shared.Vec2,
+	editor: bool,
+) {
+	if state == nil || world == nil {
+		return
+	}
+	source, _, found := action_entity_for_node(state, world, find_node(state, pressed), true)
+	if !found {
+		return
+	}
+	slot := 0
+	if editor {
+		slot = 1
+	}
+	state.action_drags[slot] = {
+		source = source,
+		start = position,
+		armed = true,
+	}
+}
+
+action_drag_reset :: proc(state: ^State, world: ^shared.World, slot: int) {
+	if state == nil || slot < 0 || slot >= len(state.action_drags) {
+		return
+	}
+	drag := &state.action_drags[slot]
+	source_index := int(drag.source.index)
+	if world != nil &&
+	   ecs.entity_is_alive(world, source_index) &&
+	   world.entities[source_index].id == drag.source {
+		interaction := ecs.ensure_ui_state(world, source_index)
+		if interaction != nil {
+			paint_changed :=
+				interaction.dragging || interaction.drop_target != (shared.Entity_UUID{})
+			interaction.dragging = false
+			interaction.drag_source = {}
+			interaction.drop_target = {}
+			interaction.drop_placement = .None
+			if paint_changed {
+				ecs.mark_ui_paint_changed(world, source_index)
+			}
+		}
+	}
+	drag^ = {}
+}
+
+action_drag_update :: proc(
+	state: ^State,
+	world: ^shared.World,
+	pointer: Pointer_Input,
+	released: bool,
+	editor: bool,
+) {
+	if state == nil || world == nil {
+		return
+	}
+	slot := 0
+	if editor {
+		slot = 1
+	}
+	drag := &state.action_drags[slot]
+	if !drag.armed {
+		return
+	}
+	source_index := int(drag.source.index)
+	if !ecs.entity_is_alive(world, source_index) ||
+	   world.entities[source_index].id != drag.source {
+		action_drag_reset(state, world, slot)
+		return
+	}
+	action_index := world.entities[source_index].ui_action_index
+	if action_index < 0 || action_index >= len(world.ui_actions) {
+		action_drag_reset(state, world, slot)
+		return
+	}
+	action := world.ui_actions[action_index]
+	if pointer.primary_down && !drag.dragging {
+		delta_x := pointer.position.x - drag.start.x
+		delta_y := pointer.position.y - drag.start.y
+		if delta_x * delta_x + delta_y * delta_y >= action.drag_threshold * action.drag_threshold {
+			drag.dragging = true
+		}
+	}
+	drag.target = {}
+	if drag.dragging && pointer.available {
+		hit := pointer_hit_node(state, pointer.position, editor)
+		if target, _, found := action_entity_for_node(state, world, hit, false);
+		   found && target != drag.source {
+			drag.target = target
+		}
+	}
+	interaction := ecs.ensure_ui_state(world, source_index)
+	if interaction != nil {
+		was_dragging := interaction.dragging
+		was_target := interaction.drop_target
+		interaction.dragging = drag.dragging
+		interaction.drag_source = world.entities[source_index].uuid
+		interaction.drop_target = {}
+		interaction.drop_placement = .None
+		if drag.target != (shared.Entity{}) {
+			target_index := int(drag.target.index)
+			if ecs.entity_is_alive(world, target_index) &&
+			   world.entities[target_index].id == drag.target {
+				interaction.drop_target = world.entities[target_index].uuid
+				interaction.drop_placement = .Into
+			}
+		}
+		if was_dragging != interaction.dragging || was_target != interaction.drop_target {
+			ecs.mark_ui_paint_changed(world, source_index)
+		}
+	}
+	if !released {
+		if !pointer.available {
+			action_drag_reset(state, world, slot)
+		}
+		return
+	}
+	if drag.dragging && drag.target != (shared.Entity{}) {
+		target_index := int(drag.target.index)
+		if ecs.entity_is_alive(world, target_index) &&
+		   world.entities[target_index].id == drag.target {
+			target_interaction := ecs.ensure_ui_state(world, target_index)
+			if target_interaction != nil {
+				target_interaction.drag_source = world.entities[source_index].uuid
+				target_interaction.drop_target = world.entities[target_index].uuid
+				target_interaction.drop_placement = .Into
+				target_interaction.drop_revision += 1
+				target_interaction.changed = true
+				target_interaction.change_revision += 1
+				ecs.mark_ui_paint_changed(world, target_index)
+			}
+			append_ui_event(
+				state,
+				{
+					kind = .Dropped,
+					entity = drag.target,
+					source = drag.source,
+					target = drag.target,
+					drop_placement = .Into,
+					position = pointer.position,
+				},
+			)
+		}
+	}
+	action_drag_reset(state, world, slot)
+}
+
+action_drag_pointer_cursor :: proc(state: ^State) -> Pointer_Cursor {
+	if state == nil {
+		return .Default
+	}
+	for drag in state.action_drags {
+		if !drag.armed {
+			continue
+		}
+		if !drag.dragging || drag.target != (shared.Entity{}) {
+			return .Move
+		}
+		return .Not_Allowed
+	}
+	return .Default
+}
+
+action_drop_target_active :: proc(state: ^State, entity: shared.Entity) -> bool {
+	if state == nil {
+		return false
+	}
+	for drag in state.action_drags {
+		if drag.dragging && drag.target == entity {
+			return true
+		}
+	}
+	return false
+}
+
 list_drag_begin :: proc(
 	state: ^State,
 	world: ^shared.World,
@@ -6630,6 +6865,9 @@ list_drag_begin :: proc(
 	slot := 0
 	if editor {
 		slot = 1
+	}
+	if state.action_drags[slot].armed {
+		return
 	}
 	state.list_drags[slot] = {
 		list = list,
@@ -7488,6 +7726,18 @@ paint_node :: proc(state: ^State, world: ^shared.World, node_index, depth: int) 
 	border_width := layout.border_width
 	if node.viewport_index >= 0 && node.viewport_index < len(world.ui_viewports) {
 		background = {}
+	}
+	entity_index := int(node.entity.index)
+	if action_drop_target_active(state, node.entity) &&
+	   ecs.entity_is_alive(world, entity_index) &&
+	   world.entities[entity_index].id == node.entity {
+		action_index := world.entities[entity_index].ui_action_index
+		if action_index >= 0 && action_index < len(world.ui_actions) {
+			action := world.ui_actions[action_index]
+			if action.drop_target && action.drop_background.w > 0 {
+				background = action.drop_background
+			}
+		}
 	}
 	if node.parent_entity_index >= 0 && node.parent_entity_index < len(world.entities) {
 		parent := world.entities[node.parent_entity_index]

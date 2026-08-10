@@ -278,6 +278,8 @@ retained path as scene TOML and Luau.
 
 Use `scrapbot.get_ui` for a typed read/modify/write cycle and `scrapbot.set_ui` for the deferred update. The same payload supports responsive layout fields such as `min_size`, `fill_width`, `fit_content_height`, and `stack_order`; reorderable/resizable HStacks and VStacks; movable public panels; proportional and pointer-resizable `scrapbot.ui_table` columns; reusable `scrapbot.ui_progress` values; direct linear RGBA/HDR `scrapbot.ui_color_picker` values; semantic `scrapbot.ui_action` strings; and numeric `scrapbot.ui_input` controls with optional horizontal scrubbing (`draggable = true`), prefix badges, and leading/trailing icon references. `scrapbot.UI_State_Component` is readable but renderer-owned and cannot be written. Its activation, change, submit, cancel, and drop revisions expose current per-entity state; `valid` exposes numeric validation.
 
+`UI_Component_Payload.action` carries the reusable `ui_action` drag-source, drop-target, threshold, and feedback-color fields. Native tools and games therefore use the same semantic drag-and-drop contract as scene TOML, Luau, and the editor.
+
 For ordered semantic commands, keep an independent sequence cursor and read the immutable event history:
 
 ```odin
