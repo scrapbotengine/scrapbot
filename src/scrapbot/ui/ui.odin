@@ -992,8 +992,8 @@ consume_simulation_delta :: proc(state: ^State, delta_seconds: f32) -> (f32, boo
 	return 0, false
 }
 
-editor_simulation_running :: proc(state: ^State) -> bool {
-	return state != nil && state.editor_simulation_playing && !state.editor_simulation_stopped
+editor_play_mode_active :: proc(state: ^State) -> bool {
+	return state != nil && !state.editor_simulation_stopped
 }
 
 destroy :: proc(state: ^State) {

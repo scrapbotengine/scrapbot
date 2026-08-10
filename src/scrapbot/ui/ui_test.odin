@@ -4735,8 +4735,10 @@ test_editor_transport_buttons_preserve_unsaved_authoring_across_playback :: proc
 	}
 
 	testing.expect(t, state.editor_simulation_playing)
+	testing.expect(t, editor_play_mode_active(state))
 	press(state, &world, pause)
 	testing.expect(t, !state.editor_simulation_playing)
+	testing.expect(t, editor_play_mode_active(state))
 	testing.expect(
 		t,
 		world.ui_texts[status_entity.ui_text_index].text ==
@@ -4782,6 +4784,7 @@ test_editor_transport_buttons_preserve_unsaved_authoring_across_playback :: proc
 	press(state, &world, stop)
 	testing.expect(t, !state.editor_simulation_playing)
 	testing.expect(t, state.editor_simulation_stopped)
+	testing.expect(t, !editor_play_mode_active(state))
 	testing.expect(t, world.ui_texts[status_entity.ui_text_index].text == "STOPPED")
 	if playback_warning_found {
 		testing.expect(

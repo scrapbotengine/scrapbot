@@ -4052,21 +4052,19 @@ test_post_effect_uniform_upload_is_change_driven :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_selection_outline_animation_uses_simulation_time_only_while_running :: proc(t: ^testing.T) {
-	first := shared.Time_Resource {
-		elapsed_time = 12.25,
-	}
-	second := shared.Time_Resource {
-		elapsed_time = 12.5,
-	}
-	paused_first := wgpu_editor_feedback_uniform(first, false)
-	paused_second := wgpu_editor_feedback_uniform(second, false)
-	testing.expect_value(t, paused_first, [4]f32{0, 0, 10, 7})
-	testing.expect_value(t, paused_second, paused_first)
-	running_first := wgpu_editor_feedback_uniform(first, true)
-	running_second := wgpu_editor_feedback_uniform(second, true)
-	testing.expect_value(t, running_first, [4]f32{12.25, 1, 10, 7})
-	testing.expect(t, running_second[0] > running_first[0])
+test_selection_outline_animation_uses_render_time_through_running_and_pause :: proc(
+	t: ^testing.T,
+) {
+	renderer: WGPU_Renderer
+	stopped := wgpu_advance_editor_selection_outline(&renderer, 0.25, false)
+	testing.expect_value(t, stopped, [4]f32{0, 0, 10, 7})
+	running := wgpu_advance_editor_selection_outline(&renderer, 0.25, true)
+	testing.expect_value(t, running, [4]f32{0.25, 1, 10, 7})
+	paused := wgpu_advance_editor_selection_outline(&renderer, 0.25, true)
+	testing.expect_value(t, paused, [4]f32{0.5, 1, 10, 7})
+	stopped = wgpu_advance_editor_selection_outline(&renderer, 0.25, false)
+	testing.expect_value(t, stopped, [4]f32{0, 0, 10, 7})
+	testing.expect(t, renderer.editor_selection_outline_time == 0)
 }
 
 @(test)

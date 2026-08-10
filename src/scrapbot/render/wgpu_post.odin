@@ -57,16 +57,31 @@ WGPU_Post_Effects_Uniform :: struct {
 }
 
 wgpu_editor_feedback_uniform :: proc(
-	simulation_time: shared.Time_Resource,
+	animation_time: f32,
 	animate_selection_outline: bool,
 ) -> [4]f32 {
-	animation_enabled := f32(0)
-	animation_time := f32(0)
-	if animate_selection_outline {
-		animation_enabled = 1
-		animation_time = f32(math.mod_f64(simulation_time.elapsed_time, 1024))
+	if !animate_selection_outline {
+		return {0, 0, 10, 7}
 	}
-	return {animation_time, animation_enabled, 10, 7}
+	return {animation_time, 1, 10, 7}
+}
+
+wgpu_advance_editor_selection_outline :: proc(
+	renderer: ^WGPU_Renderer,
+	delta_time: f32,
+	animate_selection_outline: bool,
+) -> [4]f32 {
+	if renderer == nil || !animate_selection_outline {
+		if renderer != nil {
+			renderer.editor_selection_outline_time = 0
+		}
+		return wgpu_editor_feedback_uniform(0, false)
+	}
+	renderer.editor_selection_outline_time = math.mod_f32(
+		renderer.editor_selection_outline_time + max(delta_time, 0),
+		1024,
+	)
+	return wgpu_editor_feedback_uniform(renderer.editor_selection_outline_time, true)
 }
 
 wgpu_store_post_effects_uniform :: proc(
@@ -2323,7 +2338,11 @@ wgpu_encode_bloom_and_composite :: proc(
 			lens_dirt.intensity,
 		},
 		dirt_parameters = {lens_dirt.scale, lens_dirt.contrast, lens_dirt.seed, 0},
-		editor_feedback = wgpu_editor_feedback_uniform(world.time, animate_selection_outline),
+		editor_feedback = wgpu_advance_editor_selection_outline(
+			renderer,
+			delta_time,
+			animate_selection_outline,
+		),
 	}
 	if wgpu_store_post_effects_uniform(renderer, post_effects_uniform) {
 		wgpu.QueueWriteBuffer(
