@@ -2174,18 +2174,30 @@ editor_select_entity :: proc(
 	   !world.entities[index].alive ||
 	   world.entities[index].origin == .Editor ||
 	   world.entities[index].id.generation != entity.generation { return false }
+	selected_entity := entity
+	model_owner := world.entities[index].model_owner
+	if model_owner != (shared.Entity_UUID{}) {
+		if owner_index, found := ecs.entity_index_by_uuid(world, model_owner);
+		   found &&
+		   owner_index >= 0 &&
+		   owner_index < len(world.entities) &&
+		   world.entities[owner_index].alive &&
+		   world.entities[owner_index].origin != .Editor {
+			selected_entity = world.entities[owner_index].id
+		}
+	}
 	if !state.editor_has_selection ||
 	   state.editor_selected_entity !=
-		   entity { for &node in state.nodes[:state.node_count] { if node.editor_role == .Inspector_Scroll { node.scroll_offset = 0; node.scroll_target = 0 } } }
+		   selected_entity { for &node in state.nodes[:state.node_count] { if node.editor_role == .Inspector_Scroll { node.scroll_offset = 0; node.scroll_target = 0 } } }
 	if !state.editor_has_selection ||
 	   state.editor_selected_entity !=
-		   entity { state.editor_gizmo_active_handle = .None; state.editor_gizmo_captures_pointer = false }
-	state.editor_selected_entity = entity
+		   selected_entity { state.editor_gizmo_active_handle = .None; state.editor_gizmo_captures_pointer = false }
+	state.editor_selected_entity = selected_entity
 	state.editor_has_selection = true
 	state.editor_has_resource_selection = false
 	state.editor_snapshot_valid = false
 	row_slot := -1
-	for component in world.editor_uis { if (component.role == .Browser_Row || component.role == .Browser_Row_Label) && component.target == entity { row_slot = component.slot; break } }
+	for component in world.editor_uis { if (component.role == .Browser_Row || component.role == .Browser_Row_Label) && component.target == selected_entity { row_slot = component.slot; break } }
 	if row_slot >=
 	   0 { for &node in state.nodes[:state.node_count] { if node.editor_role != .Browser_Scroll { continue }; row_top := f32(row_slot) * EDITOR_ENTITY_ROW_HEIGHT; row_bottom := row_top + EDITOR_ENTITY_ROW_HEIGHT; if row_top < node.scroll_target { node.scroll_target = row_top } else if row_bottom > node.scroll_target + node.rect.height { node.scroll_target = row_bottom - node.rect.height }; break } }
 	return true

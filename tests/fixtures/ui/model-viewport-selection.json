@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "timeout_frames": 120,
+  "actions": [
+    {"action": "click", "target": {"text": "STOP", "origin": "editor"}},
+    {"action": "set_editor_camera", "position": {"x": -0.36, "y": 0.35, "z": 8}, "rotation": {"x": 0, "y": 0, "z": 0}},
+    {"action": "wait", "frames": 2},
+    {"action": "click", "target": {"name": "__scrapbot_editor_viewport", "origin": "editor"}},
+    {"action": "expect", "target": {"name": "__scrapbot_editor_inspector_entity_name", "origin": "editor"}, "expect": "text", "text": "Imported Triangle"},
+    {"action": "capture", "target": {"name": "__scrapbot_editor_scene", "origin": "editor"}, "padding": 4}
+  ]
+}

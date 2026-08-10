@@ -6359,6 +6359,44 @@ test_editor_browser_uses_name_color_instead_of_provenance_labels :: proc(t: ^tes
 }
 
 @(test)
+test_editor_selection_promotes_derived_model_entity_to_authored_root :: proc(t: ^testing.T) {
+	root_id := ui_test_id("Model Selection Root")
+	scene := shared.Scene{}
+	defer delete(scene.entities)
+	append(&scene.entities, shared.Scene_Entity{id = root_id, name = "Authored Model"})
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	derived_index, created := ecs.create_world_entity(
+		&world,
+		"Authored Model / Node / primitive:0",
+		{},
+		.Runtime,
+	)
+	testing.expect(t, created)
+	if !created {
+		return
+	}
+	world.entities[derived_index].model_owner = root_id
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	state.editor_visible = true
+
+	testing.expect(t, editor_select_entity(state, &world, world.entities[derived_index].id, 720))
+	testing.expect_value(t, state.editor_selected_entity, world.entities[0].id)
+	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
+	testing.expect_value(t, editor_browser_row_count(&world), 1)
+	root_row, row_found := editor_ui_entity(&world, .Browser_Row, 0)
+	browser, browser_found := editor_ui_entity(&world, .Browser_Scroll, 0)
+	testing.expect(t, row_found && browser_found)
+	if row_found && browser_found {
+		list := world.ui_lists[world.entities[browser].ui_list_index]
+		testing.expect_value(t, list.selected, world.entities[root_row].uuid)
+	}
+}
+
+@(test)
 test_editor_browser_builds_collapsible_transform_tree_and_reparents_with_history :: proc(
 	t: ^testing.T,
 ) {
