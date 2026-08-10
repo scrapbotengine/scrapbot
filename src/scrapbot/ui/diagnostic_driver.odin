@@ -267,7 +267,9 @@ diagnostic_key_is_valid :: proc(key: string) -> bool {
 		     "redo",
 		     "editor_toggle",
 		     "run_stop",
-		     "pause_step":
+		     "pause_step",
+		     "toggle_left_sidebar",
+		     "toggle_right_sidebar":
 			return true
 	}
 	return false
@@ -808,6 +810,10 @@ diagnostic_keyboard_set :: proc(keyboard: ^Keyboard_Input, key: string) {
 			keyboard.run_stop = true
 		case "pause_step":
 			keyboard.pause_step = true
+		case "toggle_left_sidebar":
+			keyboard.toggle_left_sidebar = true
+		case "toggle_right_sidebar":
+			keyboard.toggle_right_sidebar = true
 	}
 }
 

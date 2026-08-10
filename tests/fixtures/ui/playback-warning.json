@@ -3,6 +3,7 @@
   "timeout_frames": 120,
   "actions": [
     {"action": "wait", "frames": 5},
+    {"action": "expect", "target": {"name": "__scrapbot_editor_playback_warning_badge", "origin": "editor"}, "expect": "text", "text": "PLAY MODE RUNNING  /  SCENE EDITS ARE NOT SAVED"},
     {"action": "capture", "target": {"name": "__scrapbot_editor_root", "origin": "editor"}}
   ]
 }

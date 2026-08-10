@@ -33,6 +33,8 @@ EDITOR_UI_RESOURCE_TOOLS_NAME :: "__scrapbot_editor_resource_tools"
 EDITOR_UI_VIEWPORT_NAME :: "__scrapbot_editor_viewport"
 EDITOR_UI_VIEWPORT_DOCK_NAME :: "__scrapbot_editor_viewport_dock"
 EDITOR_UI_VIEWPORT_TAB_NAME :: "__scrapbot_editor_viewport_tab"
+EDITOR_UI_PLAYBACK_WARNING_NAME :: "__scrapbot_editor_playback_warning"
+EDITOR_UI_PLAYBACK_WARNING_BADGE_NAME :: "__scrapbot_editor_playback_warning_badge"
 EDITOR_UI_GIZMO_TOOLBAR_NAME :: "__scrapbot_editor_gizmo_toolbar"
 EDITOR_UI_PLACEMENT_TOOLBAR_NAME :: "__scrapbot_editor_placement_toolbar"
 EDITOR_UI_PLACEMENT_SNAP_NAME :: "__scrapbot_editor_placement_snap"
@@ -846,6 +848,14 @@ editor_ui_handle_shortcuts :: proc(state: ^State, keyboard: Keyboard_Input) {
 	   state.editor_scene_camera_captures_input ||
 	   (state.has_focused_input && !state.focused_input_editor) {
 		return
+	}
+	if keyboard.toggle_left_sidebar {
+		state.editor_left_sidebar_visible = !state.editor_left_sidebar_visible
+		state.editor_sidebar_visual_valid = false
+	}
+	if keyboard.toggle_right_sidebar {
+		state.editor_right_sidebar_visible = !state.editor_right_sidebar_visible
+		state.editor_sidebar_visual_valid = false
 	}
 	if keyboard.run_stop {
 		if state.editor_simulation_playing {
@@ -1781,6 +1791,33 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 			},
 		},
 	)
+	playback_warning := editor_ui_create_box(
+		world,
+		EDITOR_UI_PLAYBACK_WARNING_NAME,
+		EDITOR_UI_VIEWPORT_NAME,
+		.None,
+		{position = {0, 52}, size = {1, 30}, fill_width = true},
+	)
+	warning_layout, _ := theme_button(theme, .Warning)
+	warning_layout.size = {370, 30}
+	warning_layout.padding = {5, 12, 5, 12}
+	warning_layout.fixed_in_fill = true
+	warning_layout.corner_radius = theme.metrics.radius
+	playback_warning_badge := editor_ui_create_box(
+		world,
+		EDITOR_UI_PLAYBACK_WARNING_BADGE_NAME,
+		EDITOR_UI_PLAYBACK_WARNING_NAME,
+		.None,
+		warning_layout,
+	)
+	world.ui_layouts[world.entities[playback_warning_badge].ui_layout_index].horizontal_alignment = .Center
+	editor_ui_add_text(
+		world,
+		playback_warning_badge,
+		"PLAY MODE RUNNING  /  SCENE EDITS ARE NOT SAVED",
+		theme.palette.warning,
+		EDITOR_TEXT_SIZE,
+	)
 	gizmo_toolbar := editor_ui_create_box(
 		world,
 		EDITOR_UI_GIZMO_TOOLBAR_NAME,
@@ -2466,6 +2503,22 @@ editor_ui_update_transport :: proc(state: ^State, world: ^shared.World) {
 			layout.border_width = frame.border_width
 		}
 	}
+	if warning, found := ecs.entity_index_by_uuid(
+		world,
+		shared.entity_uuid_from_engine_name(EDITOR_UI_PLAYBACK_WARNING_NAME),
+	); found {
+		editor_ui_set_hidden(world, warning, !playback)
+	}
+	if warning_badge, found := ecs.entity_index_by_uuid(
+		world,
+		shared.entity_uuid_from_engine_name(EDITOR_UI_PLAYBACK_WARNING_BADGE_NAME),
+	); found {
+		label := "PLAY MODE PAUSED  /  SCENE EDITS ARE NOT SAVED"
+		if state.editor_simulation_playing {
+			label = "PLAY MODE RUNNING  /  SCENE EDITS ARE NOT SAVED"
+		}
+		editor_ui_set_text(world, warning_badge, label)
+	}
 	if status_bar, found := ecs.entity_index_by_uuid(
 		world,
 		shared.entity_uuid_from_engine_name(EDITOR_UI_STATUS_NAME),
@@ -2579,6 +2632,34 @@ editor_ui_update_transport :: proc(state: ^State, world: ^shared.World) {
 	}
 	if root, found := editor_ui_entity(world, .Root); found {
 		ecs.mark_ui_paint_changed(world, root)
+	}
+}
+
+editor_ui_update_sidebars :: proc(state: ^State, world: ^shared.World) {
+	if state == nil || world == nil {
+		return
+	}
+	visual_state := Editor_Sidebar_Visual_State {
+		world_uuid = world.instance_uuid,
+		left_visible = state.editor_left_sidebar_visible,
+		right_visible = state.editor_right_sidebar_visible,
+	}
+	if state.editor_sidebar_visual_valid && state.editor_sidebar_visual_state == visual_state {
+		return
+	}
+	state.editor_sidebar_visual_state = visual_state
+	state.editor_sidebar_visual_valid = true
+	if left, found := ecs.entity_index_by_uuid(
+		world,
+		shared.entity_uuid_from_engine_name(EDITOR_UI_LEFT_NAME),
+	); found {
+		editor_ui_set_hidden(world, left, !visual_state.left_visible)
+	}
+	if right, found := ecs.entity_index_by_uuid(
+		world,
+		shared.entity_uuid_from_engine_name(EDITOR_UI_RIGHT_NAME),
+	); found {
+		editor_ui_set_hidden(world, right, !visual_state.right_visible)
 	}
 }
 
@@ -6503,6 +6584,7 @@ refresh_editor_ecs_snapshot :: proc(state: ^State, world: ^shared.World) {
 reconcile_editor_ui_world :: proc(state: ^State, world: ^shared.World) {
 	if state == nil || world == nil || !state.editor_visible { return }
 	editor_ui_create_shell(world)
+	editor_ui_update_sidebars(state, world)
 	editor_ui_update_transport(state, world)
 	editor_ui_update_gizmo_toolbar(state, world)
 	if !state.editor_snapshot_valid ||

@@ -4674,6 +4674,26 @@ test_editor_transport_buttons_preserve_unsaved_authoring_across_playback :: proc
 		world.ui_texts[status_entity.ui_text_index].text ==
 		"PLAY MODE  /  RUNNING  /  CHANGES ARE TEMPORARY",
 	)
+	playback_warning_index, playback_warning_found := ecs.entity_index_by_uuid(
+		&world,
+		shared.entity_uuid_from_engine_name(EDITOR_UI_PLAYBACK_WARNING_NAME),
+	)
+	playback_warning_badge_index, playback_warning_badge_found := ecs.entity_index_by_uuid(
+		&world,
+		shared.entity_uuid_from_engine_name(EDITOR_UI_PLAYBACK_WARNING_BADGE_NAME),
+	)
+	testing.expect(t, playback_warning_found && playback_warning_badge_found)
+	if playback_warning_found && playback_warning_badge_found {
+		testing.expect(
+			t,
+			!world.ui_layouts[world.entities[playback_warning_index].ui_layout_index].hidden,
+		)
+		testing.expect_value(
+			t,
+			world.ui_texts[world.entities[playback_warning_badge_index].ui_text_index].text,
+			"PLAY MODE RUNNING  /  SCENE EDITS ARE NOT SAVED",
+		)
+	}
 	top_index, top_found := ecs.entity_index_by_uuid(
 		&world,
 		shared.entity_uuid_from_engine_name(EDITOR_UI_TOP_NAME),
@@ -4722,6 +4742,13 @@ test_editor_transport_buttons_preserve_unsaved_authoring_across_playback :: proc
 		world.ui_texts[status_entity.ui_text_index].text ==
 		"PLAY MODE  /  PAUSED  /  CHANGES ARE TEMPORARY",
 	)
+	if playback_warning_badge_found {
+		testing.expect_value(
+			t,
+			world.ui_texts[world.entities[playback_warning_badge_index].ui_text_index].text,
+			"PLAY MODE PAUSED  /  SCENE EDITS ARE NOT SAVED",
+		)
+	}
 	delta, run := consume_simulation_delta(state, 0.2)
 	testing.expect(t, !run && delta == 0)
 	press(state, &world, pause)
@@ -4756,6 +4783,12 @@ test_editor_transport_buttons_preserve_unsaved_authoring_across_playback :: proc
 	testing.expect(t, !state.editor_simulation_playing)
 	testing.expect(t, state.editor_simulation_stopped)
 	testing.expect(t, world.ui_texts[status_entity.ui_text_index].text == "STOPPED")
+	if playback_warning_found {
+		testing.expect(
+			t,
+			world.ui_layouts[world.entities[playback_warning_index].ui_layout_index].hidden,
+		)
+	}
 	if top_found && status_bar_found {
 		testing.expect(
 			t,
@@ -4894,7 +4927,7 @@ test_editor_command_shortcuts_toggle_shell_and_drive_transport :: proc(t: ^testi
 		reconcile(state, &world, 1280, 720, {}, 0, 0, 1.0 / 60.0, {editor_toggle = true}) == "",
 	)
 	testing.expect(t, state.editor_visible)
-	testing.expect(t, state.editor_simulation_playing)
+	testing.expect(t, !state.editor_simulation_playing && !state.editor_simulation_stopped)
 }
 
 @(test)
@@ -4923,7 +4956,7 @@ test_editor_resource_reimport_requests_are_consumed_once :: proc(t: ^testing.T) 
 }
 
 @(test)
-test_editor_toggle_resumes_playback_when_the_editor_closes :: proc(t: ^testing.T) {
+test_editor_toggle_pauses_on_open_and_resumes_on_close :: proc(t: ^testing.T) {
 	scene := shared.Scene{}
 	defer delete(scene.entities)
 	world := ecs.build_world(&scene)
@@ -4933,14 +4966,14 @@ test_editor_toggle_resumes_playback_when_the_editor_closes :: proc(t: ^testing.T
 	testing.expect(t, init(state) == "")
 	defer destroy(state)
 
-	// Opening preserves a running game, and closing keeps it running.
+	// Opening pauses a running game, and closing resumes it.
 	testing.expect(t, state.editor_simulation_playing)
 	testing.expect(
 		t,
 		reconcile(state, &world, 1280, 720, {}, 0, 0, 1.0 / 60.0, {editor_toggle = true}) == "",
 	)
 	testing.expect(t, state.editor_visible)
-	testing.expect(t, state.editor_simulation_playing)
+	testing.expect(t, !state.editor_simulation_playing)
 	testing.expect(t, !state.editor_simulation_stopped)
 	testing.expect(
 		t,
@@ -4973,6 +5006,71 @@ test_editor_toggle_resumes_playback_when_the_editor_closes :: proc(t: ^testing.T
 	testing.expect(t, state.editor_simulation_playing)
 	testing.expect(t, !state.editor_simulation_stopped)
 	testing.expect(t, consume_playback_begin_request(state))
+}
+
+@(test)
+test_editor_sidebar_shortcuts_toggle_public_workspace_panes :: proc(t: ^testing.T) {
+	world: shared.World
+	defer ecs.destroy_world(&world)
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	state.editor_visible = true
+	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
+	left, left_found := ecs.entity_index_by_uuid(
+		&world,
+		shared.entity_uuid_from_engine_name(EDITOR_UI_LEFT_NAME),
+	)
+	right, right_found := ecs.entity_index_by_uuid(
+		&world,
+		shared.entity_uuid_from_engine_name(EDITOR_UI_RIGHT_NAME),
+	)
+	testing.expect(t, left_found && right_found)
+	if !left_found || !right_found {
+		return
+	}
+	left_layout := world.entities[left].ui_layout_index
+	right_layout := world.entities[right].ui_layout_index
+	testing.expect(t, !world.ui_layouts[left_layout].hidden)
+	testing.expect(t, !world.ui_layouts[right_layout].hidden)
+
+	testing.expect(
+		t,
+		reconcile(state, &world, 1280, 720, {}, 0, 0, 1.0 / 60.0, {toggle_left_sidebar = true}) ==
+		"",
+	)
+	testing.expect(t, !state.editor_left_sidebar_visible)
+	testing.expect(t, world.ui_layouts[left_layout].hidden)
+	testing.expect(t, !world.ui_layouts[right_layout].hidden)
+
+	testing.expect(
+		t,
+		reconcile(state, &world, 1280, 720, {}, 0, 0, 1.0 / 60.0, {toggle_right_sidebar = true}) ==
+		"",
+	)
+	testing.expect(t, !state.editor_right_sidebar_visible)
+	testing.expect(t, world.ui_layouts[left_layout].hidden)
+	testing.expect(t, world.ui_layouts[right_layout].hidden)
+
+	editor_toggle(state)
+	testing.expect(t, !state.editor_visible)
+	testing.expect(
+		t,
+		reconcile(
+			state,
+			&world,
+			1280,
+			720,
+			{},
+			0,
+			0,
+			1.0 / 60.0,
+			{toggle_left_sidebar = true, toggle_right_sidebar = true},
+		) ==
+		"",
+	)
+	testing.expect(t, !state.editor_left_sidebar_visible && !state.editor_right_sidebar_visible)
 }
 
 @(test)

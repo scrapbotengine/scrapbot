@@ -60,6 +60,7 @@ Keyboard_Input :: struct {
 	backspace, delete_forward: bool,
 	tab, shift, fine, enter, escape, select_all, save, undo, redo: bool,
 	editor_toggle, run_stop, pause_step: bool,
+	toggle_left_sidebar, toggle_right_sidebar: bool,
 }
 Paint_Kind :: enum {
 	Panel,
@@ -292,6 +293,12 @@ Editor_Gizmo_Toolbar_Visual_State :: struct {
 	space: shared.Editor_Gizmo_Space,
 }
 
+Editor_Sidebar_Visual_State :: struct {
+	world_uuid: shared.Entity_UUID,
+	left_visible: bool,
+	right_visible: bool,
+}
+
 Editor_Model_Placement_Request :: struct {
 	resource: shared.Resource_UUID,
 	parent: shared.Entity_UUID,
@@ -393,6 +400,8 @@ State :: struct {
 	dock_drop_stack_placement: shared.UI_Drop_Placement,
 	pointer_cursor: Pointer_Cursor,
 	editor_visible: bool,
+	editor_left_sidebar_visible: bool,
+	editor_right_sidebar_visible: bool,
 	editor_simulation_playing: bool,
 	editor_simulation_stopped: bool,
 	editor_simulation_step_requested: bool,
@@ -444,6 +453,8 @@ State :: struct {
 	editor_transport_visual_valid: bool,
 	editor_gizmo_toolbar_visual_state: Editor_Gizmo_Toolbar_Visual_State,
 	editor_gizmo_toolbar_visual_valid: bool,
+	editor_sidebar_visual_state: Editor_Sidebar_Visual_State,
+	editor_sidebar_visual_valid: bool,
 	system_profile: ^shared.System_Profile,
 	editor_system_profile_revision: u64,
 	performance_diagnostics: ^shared.Performance_Diagnostics,
@@ -646,6 +657,8 @@ publish_ui_events :: proc(state: ^State, world: ^shared.World, start_index: int 
 init :: proc(state: ^State) -> string {
 	state^ = {}
 	state.editor_pixel_density = 1
+	state.editor_left_sidebar_visible = true
+	state.editor_right_sidebar_visible = true
 	state.editor_simulation_playing = true
 	state.editor_history_clean_valid = true
 	state.editor_placement_snap_step = 0.5
@@ -712,8 +725,11 @@ editor_toggle :: proc(state: ^State) {
 	if state == nil {
 		return
 	}
-	state.editor_visible = !state.editor_visible
-	if !state.editor_visible {
+	opening := !state.editor_visible
+	state.editor_visible = opening
+	if opening {
+		editor_pause(state)
+	} else {
 		editor_play(state)
 	}
 	state.editor_snapshot_valid = false
@@ -847,6 +863,8 @@ editor_world_restored :: proc(
 	state.editor_snapshot_valid = false
 	state.editor_gizmo_active_handle = .None
 	state.editor_gizmo_captures_pointer = false
+	state.editor_transport_visual_valid = false
+	state.editor_sidebar_visual_valid = false
 	clear_input_focus(state)
 }
 

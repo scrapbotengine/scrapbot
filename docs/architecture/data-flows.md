@@ -446,6 +446,8 @@ The interaction pass publishes activation, change, submission, cancellation, and
 
 The retained interaction pass derives a backend-neutral cursor intent from the topmost reusable control and any active workspace gesture after applying project-canvas pointer inversion. The windowed renderer maps pointer, text-edit, directional-resize, move, and not-allowed intents to cached SDL system cursors; headless runs retain the same UI interaction behavior without initializing the platform cursor boundary.
 
+SDL maps command-modified editor keys into backend-neutral one-frame commands before UI reconciliation. Opening the shell pauses active playback; closing resumes it. Sidebar commands update retained left/right visibility state and hide only the corresponding public dock-space layout, allowing the ordinary fill HStack to reallocate the center workspace. Transport changes also update the retained play-mode badge, viewport frame, and status copy without a stable-frame rebuild.
+
 ## Authoring persistence
 
 ```text

@@ -19,13 +19,14 @@ Pass `--editor` to start with the editor already open:
 bin/scrapbot run examples/ecs-showcase --editor
 ```
 
-Opening the editor preserves the current playback state. Closing it always starts or resumes normal playback, including when the project was paused or stopped.
+Opening the editor pauses an actively running project so the world does not keep changing while you orient yourself. An already paused or stopped project keeps its state. Closing the editor always starts or resumes normal playback, including when the project was paused or stopped.
 
 The project world fills all available center space without enforcing a fixed aspect ratio. Project-authored UI keeps the same uniform canvas scale it uses outside the editor, then translates into and clips against the free-aspect viewport. Text and controls never stretch independently along X or Y.
 
 The editor workspace is responsive:
 
 - Drag either vertical separator beside the viewport to resize a sidebar.
+- Press `Cmd/Ctrl+B` to hide or show Browse, and `Cmd/Ctrl+Alt+B` to hide or show Inspect.
 - The center viewport fills the remaining space.
 - Panes retain their proportions when the window changes.
 - Native window resizing keeps the simulation, surface, camera aspect, viewport, and layout updating throughout the drag.
@@ -36,7 +37,7 @@ Browser filters are badge-free and share their outer edges with the selectable r
 
 Scrolling follows the pane under the pointer. A wheel event over Systems, the scene browser, or an inspector pane scrolls that pane. A wheel event over sidebar padding or non-scrollable chrome scrolls the complete sidebar.
 
-The top bar contains the Scrapbot title and project simulation controls. The bottom bar reports simulation and persistence status. Running and paused playback display `PLAY MODE / <STATE> / CHANGES ARE TEMPORARY`; amber top and status bars plus an amber viewport frame keep that warning visible across the workspace. Pausing preserves the play-mode treatment because edits remain disposable. Stop returns the editor to neutral authoring chrome.
+The top bar contains the Scrapbot title and project simulation controls. The bottom bar reports simulation and persistence status. Running and paused playback display `PLAY MODE / <STATE> / CHANGES ARE TEMPORARY`. An amber badge inside the viewport states that scene edits are not saved, while an amber viewport frame and status text reinforce the warning without recoloring the complete editor. Pausing preserves the play-mode treatment because edits remain disposable. Stop returns the editor to neutral authoring chrome and removes the badge.
 
 | Control | Behavior |
 | --- | --- |
@@ -52,11 +53,13 @@ The transport also has command shortcuts while the editor is open:
 
 | Shortcut | Behavior |
 | --- | --- |
-| `Cmd/Ctrl+E` | Toggle editor visibility. Opening preserves playback state; closing starts or resumes playback. |
+| `Cmd/Ctrl+E` | Toggle editor visibility. Opening pauses active playback; closing starts or resumes playback. |
+| `Cmd/Ctrl+B` | Hide or show the left Browse sidebar. |
+| `Cmd/Ctrl+Alt+B` | Hide or show the right Inspect sidebar. |
 | `Cmd/Ctrl+R` | Play when stopped, resume when paused, and stop when running. |
 | `Cmd/Ctrl+T` | Pause when running; advance one fixed step when paused or stopped. |
 
-Opening the shell never changes transport state. Leaving it always enters running playback, so a paused project resumes and a stopped authoring world captures its in-memory playback baseline before project systems advance. Use the explicit Play, Pause, Stop, and Step controls or their shortcuts while editing.
+Opening the shell pauses active playback without changing the current runtime world. Leaving it always enters running playback, so a paused project resumes and a stopped authoring world captures its in-memory playback baseline before project systems advance. Use the explicit Play, Pause, Stop, and Step controls or their shortcuts while editing.
 
 Transport shortcuts are ignored while the scene camera captures the pointer or a project-owned input has focus. Command-modified E and R do not change the transform-gizmo mode.
 

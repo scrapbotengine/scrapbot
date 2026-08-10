@@ -1211,6 +1211,8 @@ run_frame_system_unmeasured :: proc(
 			editor_toggle = platform_keyboard.editor_toggle,
 			run_stop = platform_keyboard.run_stop,
 			pause_step = platform_keyboard.pause_step,
+			toggle_left_sidebar = platform_keyboard.toggle_left_sidebar,
+			toggle_right_sidebar = platform_keyboard.toggle_right_sidebar,
 		}
 		if config.ui_driver != nil {
 			driver_pointer, driver_keyboard, driver_err := ui.diagnostic_driver_input(

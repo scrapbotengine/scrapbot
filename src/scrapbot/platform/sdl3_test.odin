@@ -55,6 +55,22 @@ test_editor_toggle_shortcut_requires_command_e_press :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_editor_sidebar_shortcuts_distinguish_left_and_right :: proc(t: ^testing.T) {
+	right, requested := editor_sidebar_shortcut(.B, sdl.Keymod{.LCTRL}, false)
+	testing.expect(t, requested && !right)
+	right, requested = editor_sidebar_shortcut(.B, sdl.Keymod{.RGUI, .LALT}, false)
+	testing.expect(t, requested && right)
+	right, requested = editor_sidebar_shortcut(.B, sdl.Keymod{.LCTRL, .RALT}, false)
+	testing.expect(t, requested && right)
+	_, requested = editor_sidebar_shortcut(.B, {}, false)
+	testing.expect(t, !requested)
+	_, requested = editor_sidebar_shortcut(.B, sdl.Keymod{.LGUI}, true)
+	testing.expect(t, !requested)
+	_, requested = editor_sidebar_shortcut(.E, sdl.Keymod{.LGUI}, false)
+	testing.expect(t, !requested)
+}
+
+@(test)
 test_editor_gizmo_mode_shortcuts_use_standard_transform_keys :: proc(t: ^testing.T) {
 	mode, ok := editor_gizmo_mode_shortcut(
 		.W,
@@ -141,6 +157,10 @@ test_runtime_text_keys_preserve_navigation_modifiers_and_shortcuts :: proc(t: ^t
 	testing.expect(t, input.redo)
 	runtime_text_key(&input, .E, sdl.Keymod{.LGUI})
 	testing.expect(t, input.editor_toggle)
+	runtime_text_key(&input, .B, sdl.Keymod{.LGUI})
+	testing.expect(t, input.toggle_left_sidebar && !input.toggle_right_sidebar)
+	runtime_text_key(&input, .B, sdl.Keymod{.LCTRL, .LALT})
+	testing.expect(t, input.toggle_right_sidebar)
 	runtime_text_key(&input, .R, sdl.Keymod{.LCTRL})
 	testing.expect(t, input.run_stop)
 	runtime_text_key(&input, .T, sdl.Keymod{.RGUI})
@@ -149,7 +169,15 @@ test_runtime_text_keys_preserve_navigation_modifiers_and_shortcuts :: proc(t: ^t
 	runtime_text_key(&repeated, .E, sdl.Keymod{.LGUI}, true)
 	runtime_text_key(&repeated, .R, sdl.Keymod{.LGUI}, true)
 	runtime_text_key(&repeated, .T, sdl.Keymod{.LGUI}, true)
-	testing.expect(t, !repeated.editor_toggle && !repeated.run_stop && !repeated.pause_step)
+	runtime_text_key(&repeated, .B, sdl.Keymod{.LGUI}, true)
+	testing.expect(
+		t,
+		!repeated.editor_toggle &&
+		!repeated.run_stop &&
+		!repeated.pause_step &&
+		!repeated.toggle_left_sidebar &&
+		!repeated.toggle_right_sidebar,
+	)
 	runtime_text_key(&input, .ESCAPE, sdl.Keymod{.LCTRL})
 	testing.expect(t, !input.escape)
 	runtime_text_key(&input, .ESCAPE, {})

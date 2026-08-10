@@ -56,6 +56,7 @@ Runtime_Text_Input :: struct {
 	backspace, delete_forward: bool,
 	tab, shift, fine, enter, escape, select_all, save, undo, redo: bool,
 	editor_toggle, run_stop, pause_step: bool,
+	toggle_left_sidebar, toggle_right_sidebar: bool,
 }
 
 Runtime_Pointer_Cursor :: enum {
@@ -633,6 +634,23 @@ editor_toggle_shortcut :: proc(
 	return !repeat && shortcut && scancode == .E
 }
 
+editor_sidebar_shortcut :: proc(
+	scancode: sdl.Scancode,
+	modifiers: sdl.Keymod,
+	repeat: bool,
+) -> (
+	right: bool,
+	requested: bool,
+) {
+	shortcut :=
+		.LCTRL in modifiers || .RCTRL in modifiers || .LGUI in modifiers || .RGUI in modifiers
+	if repeat || !shortcut || scancode != .B {
+		return false, false
+	}
+	right = .LALT in modifiers || .RALT in modifiers
+	return right, true
+}
+
 editor_gizmo_mode_shortcut :: proc(
 	scancode: sdl.Scancode,
 	modifiers: sdl.Keymod,
@@ -800,6 +818,15 @@ runtime_text_key :: proc(
 		case .E:
 			if editor_toggle_shortcut(scancode, modifiers, repeat) {
 				input.editor_toggle = true
+			}
+		case .B:
+			if right, requested := editor_sidebar_shortcut(scancode, modifiers, repeat);
+			   requested {
+				if right {
+					input.toggle_right_sidebar = true
+				} else {
+					input.toggle_left_sidebar = true
+				}
 			}
 		case .R:
 			if shortcut && !repeat { input.run_stop = true }
