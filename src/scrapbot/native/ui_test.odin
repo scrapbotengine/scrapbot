@@ -145,9 +145,6 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 	layout.size = {240, 40}
 	layout.padding = {4, 8, 4, 8}
 	layout.corner_radius = 7
-	layout.border_dash_length = 12
-	layout.border_dash_gap = 8
-	layout.border_dash_offset = 3
 	layout.min_size = {120, 24}
 	layout.fill_width = true
 	layout.fit_content_height = true
@@ -419,9 +416,6 @@ test_native_ui_api_reads_defers_updates_removes_and_spawns_shared_components :: 
 		system_get_ui_component(&ctx, entity, "scrapbot.ui_layout", &layout_payload) != 0,
 	)
 	testing.expect(t, layout_payload.layout.min_size == (api.Vec2{120, 24}))
-	testing.expect(t, layout_payload.layout.border_dash_length == 12)
-	testing.expect(t, layout_payload.layout.border_dash_gap == 8)
-	testing.expect(t, layout_payload.layout.border_dash_offset == 3)
 	testing.expect(t, layout_payload.layout.fill_width != 0)
 	testing.expect(t, layout_payload.layout.fit_content_height != 0)
 	testing.expect(t, layout_payload.layout.fixed_in_fill != 0)

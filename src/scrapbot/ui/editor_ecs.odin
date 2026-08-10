@@ -35,9 +35,6 @@ EDITOR_UI_VIEWPORT_DOCK_NAME :: "__scrapbot_editor_viewport_dock"
 EDITOR_UI_VIEWPORT_TAB_NAME :: "__scrapbot_editor_viewport_tab"
 EDITOR_UI_PLAYBACK_WARNING_NAME :: "__scrapbot_editor_playback_warning"
 EDITOR_UI_PLAYBACK_WARNING_BADGE_NAME :: "__scrapbot_editor_playback_warning_badge"
-EDITOR_UI_PLAYBACK_BORDER_DASH_LENGTH :: f32(12)
-EDITOR_UI_PLAYBACK_BORDER_DASH_GAP :: f32(8)
-EDITOR_UI_PLAYBACK_BORDER_DASH_SPEED :: f32(28)
 EDITOR_UI_GIZMO_TOOLBAR_NAME :: "__scrapbot_editor_gizmo_toolbar"
 EDITOR_UI_PLACEMENT_TOOLBAR_NAME :: "__scrapbot_editor_placement_toolbar"
 EDITOR_UI_PLACEMENT_SNAP_NAME :: "__scrapbot_editor_placement_snap"
@@ -2500,18 +2497,10 @@ editor_ui_update_transport :: proc(state: ^State, world: ^shared.World) {
 		layout := &world.ui_layouts[world.entities[viewport].ui_layout_index]
 		layout.border_color = {}
 		layout.border_width = 0
-		layout.border_dash_length = 0
-		layout.border_dash_gap = 0
-		layout.border_dash_offset = 0
 		if playback {
 			frame := theme_warning_frame(theme)
 			layout.border_color = frame.border_color
 			layout.border_width = frame.border_width
-			if state.editor_simulation_playing {
-				layout.border_dash_length = EDITOR_UI_PLAYBACK_BORDER_DASH_LENGTH
-				layout.border_dash_gap = EDITOR_UI_PLAYBACK_BORDER_DASH_GAP
-				layout.border_dash_offset = state.editor_playback_border_offset
-			}
 		}
 	}
 	if warning, found := ecs.entity_index_by_uuid(
@@ -2643,30 +2632,6 @@ editor_ui_update_transport :: proc(state: ^State, world: ^shared.World) {
 	}
 	if root, found := editor_ui_entity(world, .Root); found {
 		ecs.mark_ui_paint_changed(world, root)
-	}
-}
-
-editor_ui_update_playback_border_animation :: proc(
-	state: ^State,
-	world: ^shared.World,
-	delta_seconds: f32,
-) {
-	if state == nil || world == nil {
-		return
-	}
-	if !state.editor_simulation_playing || state.editor_simulation_stopped {
-		state.editor_playback_border_offset = 0
-		return
-	}
-	period := EDITOR_UI_PLAYBACK_BORDER_DASH_LENGTH + EDITOR_UI_PLAYBACK_BORDER_DASH_GAP
-	delta := max(delta_seconds, 0)
-	state.editor_playback_border_offset += delta * EDITOR_UI_PLAYBACK_BORDER_DASH_SPEED
-	state.editor_playback_border_offset -=
-		math.floor(state.editor_playback_border_offset / period) * period
-	if viewport, found := editor_ui_entity(world, .Viewport); found {
-		layout := world.ui_layouts[world.entities[viewport].ui_layout_index]
-		layout.border_dash_offset = state.editor_playback_border_offset
-		_ = ecs.set_ui_layout(world, viewport, layout)
 	}
 }
 
@@ -6616,12 +6581,11 @@ refresh_editor_ecs_snapshot :: proc(state: ^State, world: ^shared.World) {
 	state.editor_snapshot_refresh_count += 1
 }
 
-reconcile_editor_ui_world :: proc(state: ^State, world: ^shared.World, delta_seconds: f32) {
+reconcile_editor_ui_world :: proc(state: ^State, world: ^shared.World) {
 	if state == nil || world == nil || !state.editor_visible { return }
 	editor_ui_create_shell(world)
 	editor_ui_update_sidebars(state, world)
 	editor_ui_update_transport(state, world)
-	editor_ui_update_playback_border_animation(state, world, delta_seconds)
 	editor_ui_update_gizmo_toolbar(state, world)
 	if !state.editor_snapshot_valid ||
 	   !state.editor_snapshot_was_visible { refresh_editor_ecs_snapshot(state, world) }

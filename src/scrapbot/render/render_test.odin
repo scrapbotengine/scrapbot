@@ -2062,9 +2062,6 @@ test_project_ui_vertices_preserve_pixel_aspect_inside_editor_viewport :: proc(t:
 		rect = {20, 20, 430, 90},
 		corner_radius = 12,
 		border_width = 2,
-		border_dash_length = 12,
-		border_dash_gap = 8,
-		border_dash_offset = 3,
 	}
 	wgpu_append_ui_vertices(&vertices, []ui.Paint_Command{command}, 1, nil, viewport, 1280, 720)
 	testing.expect_value(t, len(vertices), 6)
@@ -2074,9 +2071,6 @@ test_project_ui_vertices_preserve_pixel_aspect_inside_editor_viewport :: proc(t:
 	testing.expect(t, math.abs(vertices[0].size_radius[1] - 90 * scale) < 0.001)
 	testing.expect(t, math.abs(vertices[0].size_radius[2] - 12 * scale) < 0.001)
 	testing.expect(t, math.abs(vertices[0].border_width - 2 * scale) < 0.001)
-	testing.expect(t, math.abs(vertices[0].border_dash[0] - 12 * scale) < 0.001)
-	testing.expect(t, math.abs(vertices[0].border_dash[1] - 8 * scale) < 0.001)
-	testing.expect(t, math.abs(vertices[0].border_dash[2] - 3 * scale) < 0.001)
 	expected_x := (viewport.x + 20 * scale) / 1280 * 2 - 1
 	expected_y := 1 - (canvas_y + 20 * scale) / 720 * 2
 	testing.expect(t, math.abs(vertices[0].position[0] - expected_x) < 0.001)

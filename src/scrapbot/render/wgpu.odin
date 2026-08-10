@@ -659,10 +659,9 @@ WGPU_UI_Vertex :: struct {
 	clip: [4]f32,
 	border_color: [4]f32,
 	border_width: f32,
-	border_dash: [3]f32,
 	font_layer: f32,
 }
-#assert(size_of(WGPU_UI_Vertex) == 100)
+#assert(size_of(WGPU_UI_Vertex) == 88)
 
 WGPU_Request_Adapter_State :: struct {
 	completed: bool,
@@ -1951,15 +1950,8 @@ wgpu_append_ui_vertices :: proc(
 			command.border_color.w,
 		}
 		border_width := command.border_width
-		border_dash := [3]f32 {
-			command.border_dash_length,
-			command.border_dash_gap,
-			command.border_dash_offset,
-		}
 		if project_command {
-			scale := min(project_transform.scale.x, project_transform.scale.y)
-			border_width *= scale
-			border_dash *= scale
+			border_width *= min(project_transform.scale.x, project_transform.scale.y)
 		}
 		params := [3]f32{shape_width, shape_height, radius}
 		append(
@@ -1973,7 +1965,6 @@ wgpu_append_ui_vertices :: proc(
 				clip = clip,
 				border_color = border_color,
 				border_width = border_width,
-				border_dash = border_dash,
 				font_layer = command.font_layer,
 			},
 			WGPU_UI_Vertex {
@@ -1985,7 +1976,6 @@ wgpu_append_ui_vertices :: proc(
 				clip = clip,
 				border_color = border_color,
 				border_width = border_width,
-				border_dash = border_dash,
 				font_layer = command.font_layer,
 			},
 			WGPU_UI_Vertex {
@@ -1997,7 +1987,6 @@ wgpu_append_ui_vertices :: proc(
 				clip = clip,
 				border_color = border_color,
 				border_width = border_width,
-				border_dash = border_dash,
 				font_layer = command.font_layer,
 			},
 			WGPU_UI_Vertex {
@@ -2009,7 +1998,6 @@ wgpu_append_ui_vertices :: proc(
 				clip = clip,
 				border_color = border_color,
 				border_width = border_width,
-				border_dash = border_dash,
 				font_layer = command.font_layer,
 			},
 			WGPU_UI_Vertex {
@@ -2021,7 +2009,6 @@ wgpu_append_ui_vertices :: proc(
 				clip = clip,
 				border_color = border_color,
 				border_width = border_width,
-				border_dash = border_dash,
 				font_layer = command.font_layer,
 			},
 			WGPU_UI_Vertex {
@@ -2033,7 +2020,6 @@ wgpu_append_ui_vertices :: proc(
 				clip = clip,
 				border_color = border_color,
 				border_width = border_width,
-				border_dash = border_dash,
 				font_layer = command.font_layer,
 			},
 		)

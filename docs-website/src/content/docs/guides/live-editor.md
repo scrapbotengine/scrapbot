@@ -37,7 +37,7 @@ Browser filters are badge-free and share their outer edges with the selectable r
 
 Scrolling follows the pane under the pointer. A wheel event over Systems, the scene browser, or an inspector pane scrolls that pane. A wheel event over sidebar padding or non-scrollable chrome scrolls the complete sidebar.
 
-The top bar contains the Scrapbot title and project simulation controls. The bottom bar reports simulation and persistence status. Running and paused playback display `PLAY MODE / <STATE> / CHANGES ARE TEMPORARY`. An amber badge inside the viewport states that scene edits are not saved, while amber status text reinforces the warning without recoloring the complete editor. During Running, the viewport uses an animated dashed amber frame to communicate that live changes are temporary. Pausing freezes simulation and replaces it with a steady solid amber frame because edits remain disposable. Stop returns the editor to neutral authoring chrome and removes the warning treatment.
+The top bar contains the Scrapbot title and project simulation controls. The bottom bar reports simulation and persistence status. Running and paused playback display `PLAY MODE / <STATE> / CHANGES ARE TEMPORARY`. An amber badge inside the viewport states that scene edits are not saved, while an amber viewport frame and status text reinforce the warning without recoloring the complete editor. Pausing preserves the play-mode treatment because edits remain disposable. Stop returns the editor to neutral authoring chrome and removes the badge.
 
 | Control | Behavior |
 | --- | --- |
