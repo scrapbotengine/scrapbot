@@ -471,7 +471,7 @@ Blended hooks receive the opaque scene color/depth and render in a depth-tested,
 
 ### 25. Generate reusable spectral surfaces for project shaders
 
-**Decision:** Let a Shader resource opt into a renderer-owned 64×64 spectral surface. WGPU builds a deterministic Phillips wind spectrum, evolves its deep-water dispersion when ECS simulation time advances, and performs horizontal and vertical inverse FFT passes entirely on the GPU.
+**Decision:** Let a Shader resource opt into a renderer-owned 64×64 spectral surface. WGPU builds a deterministic Phillips wind spectrum, evolves its deep-water dispersion when the default ECS project clock advances, and performs horizontal and vertical inverse FFT passes entirely on the GPU.
 
 Project hooks sample the periodic world-space field through `scrapbot_spectral_surface`. The helper
 returns displacement, a reconstructed normal, and crest compression. A bounded `choppiness`
@@ -508,7 +508,7 @@ batch and instance mix, but qualified adapter-specific calibration remains futur
 
 ## Related
 
-- **ADRs:** ADR-003, ADR-005, ADR-010, ADR-011, ADR-029, ADR-034, ADR-038, ADR-039, ADR-046, ADR-047, ADR-048, ADR-049, ADR-050, ADR-054
+- **ADRs:** ADR-003, ADR-005, ADR-010, ADR-011, ADR-029, ADR-034, ADR-038, ADR-039, ADR-046, ADR-047, ADR-048, ADR-049, ADR-050, ADR-054, ADR-056
 - **FDRs:** FDR-001, FDR-002, FDR-008
 
 ## Open Questions

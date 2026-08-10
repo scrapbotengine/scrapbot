@@ -13,7 +13,7 @@
 | [ADR-009](ADR-009-parallelize-access-declared-native-systems.md) | Parallelize access-declared native systems | 2026-07-12 |
 | [ADR-010](ADR-010-keep-render-resources-outside-the-ecs.md) | Keep render resources outside the ECS | 2026-07-12 |
 | [ADR-011](ADR-011-extract-ecs-lights-into-bounded-render-packets.md) | Extract ECS lights into bounded render packets | 2026-07-12 |
-| [ADR-012](ADR-012-model-frame-time-as-a-world-resource.md) | Model frame time as a world resource | 2026-07-12 |
+| [ADR-012](ADR-012-model-frame-time-as-a-world-resource.md) | Model frame time as a world resource (superseded by ADR-056) | 2026-07-12 |
 | [ADR-013](ADR-013-precompute-mtsdf-font-atlases.md) | Precompute MTSDF font atlases | 2026-07-12 |
 | [ADR-014](ADR-014-compose-ui-from-boxes-and-controls.md) | Compose UI from boxes and controls | 2026-07-13 |
 | [ADR-015](ADR-015-keep-editor-chrome-engine-owned.md) | Keep editor chrome engine-owned | 2026-07-13 |
@@ -57,3 +57,4 @@
 | [ADR-053](ADR-053-expose-live-debugging-through-a-transport-independent-service.md) | Expose live debugging through a transport-independent service | 2026-08-05 |
 | [ADR-054](ADR-054-select-geometry-submission-through-layered-policy.md) | Select geometry submission through layered policy | 2026-08-08 |
 | [ADR-055](ADR-055-compile-mesh-distance-fields-offline.md) | Compile mesh distance fields offline | 2026-08-08 |
+| [ADR-056](ADR-056-separate-engine-time-from-project-clocks.md) | Separate engine time from project clocks | 2026-08-10 |

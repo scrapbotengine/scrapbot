@@ -216,14 +216,14 @@ Query callbacks receive a `ScrapbotEntity` table with `id`, `name`, `index`, and
 
 ## Systems
 
-Every callback receives a read-only `ScrapbotTime` value as its first argument:
+Every callback receives a read-only `ScrapbotTime` snapshot of the default `scrapbot.clock` component as its first argument. The lowest stable scene-order clock is the default; query `scrapbot.clock` for additional independently scaled clocks.
 
 | Field | Meaning |
 | --- | --- |
-| `delta_time` | Current simulation step in seconds. |
-| `smooth_delta_time` | Exponentially smoothed delta time for presentation. |
-| `elapsed_time` | Accumulated simulation time in seconds. |
-| `frame_index` | One-based frame count. |
+| `delta_time` | Current scaled project-clock step in seconds. |
+| `smooth_delta_time` | Exponentially smoothed scaled delta time. |
+| `elapsed_time` | Accumulated scaled project time in seconds. |
+| `frame_index` | One-based permitted simulation-step count. |
 
 | API | Meaning |
 | --- | --- |

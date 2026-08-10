@@ -16,6 +16,7 @@ Most components use the same suffix in every public surface:
 | `scrapbot.transform` | `[entities.transform]` | `scrapbot.transform` | `scrapbot.Transform_Component` |
 | `scrapbot.camera` | `[entities.camera]` | `scrapbot.camera` | Use `scrapbot.Component{name = "scrapbot.camera"}` for membership. |
 | `scrapbot.world_environment` | `[entities.world_environment]` | `scrapbot.world_environment` | Use `scrapbot.Component{name = "scrapbot.world_environment"}` for membership. |
+| `scrapbot.clock` | `[entities.components.scrapbot.clock]` | `scrapbot.clock` | Use `scrapbot.Component{name = "scrapbot.clock"}` for membership. |
 | `scrapbot.volumetric_fog` | `[entities.components.scrapbot.volumetric_fog]` | `scrapbot.volumetric_fog` | Use `scrapbot.Component{name = "scrapbot.volumetric_fog"}` for membership. |
 | `scrapbot.vignette` | `[entities.components.scrapbot.vignette]` | `scrapbot.vignette` | Use `scrapbot.Component{name = "scrapbot.vignette"}` for membership. |
 | `scrapbot.lens_flare` | `[entities.components.scrapbot.lens_flare]` | `scrapbot.lens_flare` | Use `scrapbot.Component{name = "scrapbot.lens_flare"}` for membership. |
@@ -35,6 +36,7 @@ The generated `.scrapbot/types/scrapbot.d.luau` file is the precise type referen
 | Component | Kind | Purpose |
 | --- | --- | --- |
 | `scrapbot.transform` | Data | Optional UUID parent plus local position, Euler rotation, and scale. |
+| `scrapbot.clock` | Data | Scaled project clock that pauses with simulation; multiple instances may coexist. |
 | `scrapbot.camera` | Data | Perspective camera projection. |
 | `scrapbot.world_environment` | Data/resource references | Singleton scene lighting, sky presentation, and base exposure. |
 | `scrapbot.volumetric_fog` | Data | Singleton global height/distance fog with shadowed directional and clustered point-light scattering. |
@@ -88,6 +90,23 @@ The keyboard snapshot provides availability/focus plus held, pressed-this-frame,
 | `scrapbot.pointer_input` | `available`, `captured`, `position`, `delta`, `wheel`; button held/pressed/released state is accessed through input helpers. |
 
 ## Transform, camera, and rendering
+
+### `scrapbot.clock`
+
+```toml
+[entities.components.scrapbot.clock]
+speed = 1
+```
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `speed` | number | Non-negative multiplier applied to permitted simulation steps. Defaults to `1` when omitted. `0` freezes elapsed-time progression while permitted steps still increment `frame_index`. |
+| `delta_time` | number | Engine-maintained scaled duration of the latest simulation step. |
+| `smooth_delta_time` | number | Engine-maintained exponentially smoothed scaled step. |
+| `elapsed_time` | number | Engine-maintained accumulated scaled project time. |
+| `frame_index` | number | Engine-maintained count of permitted simulation steps. |
+
+Every active `scrapbot.clock` instance advances on a simulation step and remains unchanged during Paused or Stopped redraws. Multiple entities may carry clocks at different speeds. The clock on the lowest stable scene-order entity is the default used by `ScrapbotTime`, native system contexts, and project shader helpers; query `scrapbot.clock` to address additional clocks. Projects without a clock currently retain the legacy unscaled system snapshot for compatibility.
 
 ### `scrapbot.transform`
 

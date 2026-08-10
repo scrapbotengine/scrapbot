@@ -78,7 +78,7 @@ Query components are declared as reads automatically. Writes must be declared ex
 
 The optional `name` is shown in live editor tooling, including the system performance panel. Use a single token such as `autorotate` for a project-owned system. Dotted multi-token names such as `physics.rigidbody` are reserved for engine or library systems, matching component ownership. Unnamed systems remain valid and receive an ordinal fallback label. This convention is not yet runtime-enforced.
 
-Every system receives a read-only `ScrapbotTime` snapshot. Use `delta_time` for simulation, `smooth_delta_time` for presentation smoothing, `elapsed_time` for runtime-relative clocks, and `frame_index` for deterministic frame counting.
+Every system receives a read-only `ScrapbotTime` snapshot from the default `scrapbot.clock` component. Use `delta_time` for scaled simulation, `smooth_delta_time` for presentation smoothing, `elapsed_time` for project-relative clocks, and `frame_index` for deterministic simulation-step counting. Add and query more `scrapbot.clock` components when a project needs independent clock speeds.
 
 Stop restores a fresh authoring ECS world but deliberately keeps the loaded Luau VM and its module/closure state. If a system constructs disposable runtime entities once per playback world, guard that work with ECS world state—commonly `time.frame_index == 1`—rather than a closure-local boolean. That lets Play reconstruct the runtime world without reloading scripts.
 

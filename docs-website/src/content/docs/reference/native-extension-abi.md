@@ -110,7 +110,7 @@ This raw callback type is the dynamic-library boundary. Odin projects using `scr
 
 The context includes:
 
-- a read-only `time` snapshot with delta time, smoothed delta time, elapsed time, and frame index;
+- a read-only `time` snapshot from the default `scrapbot.clock`, with scaled delta time, smoothed delta time, elapsed time, and frame index;
 - extension `userdata`;
 - cursor-based linear query iteration, caller-owned 64-entity query chunks, plus count and indexed compatibility helpers for component-name terms;
 - `get_transform` and `set_transform`;

@@ -1,7 +1,7 @@
 # FDR-006: Native extensions
 
 **Status:** Active
-**Last reviewed:** 2026-07-21
+**Last reviewed:** 2026-08-10
 
 ## Overview
 
@@ -107,7 +107,7 @@ Native extensions let project code add compiled engine/library behavior incremen
 
 ## Related
 
-- **ADRs:** ADR-008, ADR-010, ADR-012, ADR-025, ADR-029
+- **ADRs:** ADR-008, ADR-010, ADR-012, ADR-025, ADR-029, ADR-056
 - **FDRs:** FDR-003, FDR-004, FDR-005, FDR-007
 
 ## Open Questions

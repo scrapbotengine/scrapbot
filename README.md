@@ -135,7 +135,7 @@ trends; they are not portable performance thresholds.
   - [x] Component registry
   - [x] Component lifecycles
   - [x] ID-keyed custom component storage
-  - [x] Engine-owned frame time resource
+  - [x] Run-global engine clock plus authorable, independently scaled ECS project clocks
   - [x] Incremental render and retained-UI membership reconciliation
   - [x] Revision-driven retained UI paint and independent GPU streams
   - [ ] World snapshots

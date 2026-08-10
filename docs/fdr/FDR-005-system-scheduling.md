@@ -1,7 +1,7 @@
 # FDR-005: System scheduling
 
 **Status:** Active
-**Last reviewed:** 2026-07-22
+**Last reviewed:** 2026-08-10
 
 ## Overview
 
@@ -26,7 +26,7 @@ System scheduling lets Scrapbot reason about which systems can run together by c
 - Luau systems execute serially on the calling thread and act as barriers between native stages.
 - Each parallel native system receives a private deferred-command buffer; commands merge deterministically in system order after the stage completes.
 - The combined frame schedule and native deferred-command buffers persist across frames. The schedule rebuilds only when system topology changes; buffers use compact ordered headers plus typed payload arrays, start small, and grow on demand.
-- Every system in a frame observes the same read-only world time resource snapshot.
+- Every system in a permitted simulation step observes the same read-only snapshot of the default `scrapbot.clock`.
 - `scrapbot run --scheduler-trace` reports worker count, parallel stage count, and maximum parallel width for the run.
 - The runtime measures each project-Odin and Luau callback at its execution boundary and tags profiler entries with explicit Engine, Project Odin, or Luau provenance rather than inferring origin from names. The editor publishes every five successful frames from a rolling window of the last 50 successful frames and uses project-facing Luau names when provided; failed frames do not enter the sample.
 - Structural world changes requested from Luau systems are queued in a deferred command buffer and applied after all scheduled systems finish for the frame.
@@ -117,7 +117,7 @@ Declared systems now enforce their declared component access at the Luau API bou
 
 ## Related
 
-- **ADRs:** ADR-001, ADR-006, ADR-007, ADR-009, ADR-012, ADR-023, ADR-024
+- **ADRs:** ADR-001, ADR-006, ADR-007, ADR-009, ADR-012, ADR-023, ADR-024, ADR-056
 - **FDRs:** FDR-004, FDR-006
 
 ## Open Questions

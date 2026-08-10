@@ -1,7 +1,7 @@
 # FDR-004: Luau scripting
 
 **Status:** Active
-**Last reviewed:** 2026-07-22
+**Last reviewed:** 2026-08-10
 
 ## Overview
 
@@ -35,7 +35,7 @@ Luau scripting lets project directories include fast-iteration game code without
 - Scripts can register frame systems with `scrapbot.system(function(time) ... end)`.
 - Scripts can give systems a project-facing name through the optional system-options `name` field. Project-owned names use one token; dotted multi-token names are reserved for engine or library systems. Named systems use that label in editor tooling; unnamed legacy registrations retain an ordinal fallback.
 - Scripts can declare system component access with `scrapbot.system({ reads = {...}, writes = {...} }, function(time) ... end)`.
-- Every system receives the same read-only time resource snapshot with delta time, smoothed delta time, elapsed time, and frame index.
+- Every system receives the same read-only snapshot of the default `scrapbot.clock` with scaled delta time, smoothed delta time, elapsed time, and frame index. Additional clocks are ordinary queryable components.
 - Script system access declarations accept component handles, query objects for reads, or registered component-name strings.
 - Scripts can create reusable query objects with `scrapbot.query(component_a, component_b, ...)`.
 - Query object construction is order-insensitive: repeated calls with the same component set return the same object, and query payloads use Scrapbot's canonical component order.
@@ -177,7 +177,7 @@ Registered component definitions also receive runtime-local component IDs. Luau 
 
 ## Related
 
-- **ADRs:** ADR-001, ADR-002, ADR-006, ADR-007, ADR-008, ADR-010, ADR-012, ADR-029
+- **ADRs:** ADR-001, ADR-002, ADR-006, ADR-007, ADR-008, ADR-010, ADR-012, ADR-029, ADR-056
 - **FDRs:** FDR-001, FDR-002, FDR-003, FDR-005, FDR-006
 
 ## Open Questions

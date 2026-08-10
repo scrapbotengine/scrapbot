@@ -93,7 +93,7 @@ Native extensions use the same component sets through a forward-only query curso
 
 ## Systems and scheduling
 
-Systems provide behavior. Every system observes the same read-only frame-time snapshot, including `delta_time`, smoothed delta time, elapsed time, and frame index.
+Systems provide behavior. Every system observes the same read-only snapshot of the default `scrapbot.clock` component, including scaled `delta_time`, smoothed delta time, elapsed project time, and simulation-step index. Additional clocks can be queried as ordinary ECS data for independent time domains.
 
 Access declarations are part of correctness as well as optimization:
 

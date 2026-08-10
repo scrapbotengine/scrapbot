@@ -70,7 +70,7 @@ scrapbot.system(&reg, "scrappyphysics.motion", accesses[:], motion_system)
 return scrapbot.err(&reg)
 ```
 
-The callback receives `scrapbot.System_Context`. The context includes a read-only `time` snapshot and can query entities by component names, read/write `scrapbot.transform`, read/write Number, Vec2, Vec3, Vec4, and Color fields on schema-backed custom components, and consume the same public ECS UI payloads used by scenes, Luau, and editor chrome. A Transform's optional `parent` is a stable entity UUID; its position, rotation, and scale are local to that parent, and invalid or cyclic parent writes are rejected. Native and Luau systems share the same scheduler.
+The callback receives `scrapbot.System_Context`. The context includes a read-only time snapshot from the default `scrapbot.clock` and can query entities by component names, read/write `scrapbot.transform`, read/write Number, Vec2, Vec3, Vec4, and Color fields on schema-backed custom components, and consume the same public ECS UI payloads used by scenes, Luau, and editor chrome. A Transform's optional `parent` is a stable entity UUID; its position, rotation, and scale are local to that parent, and invalid or cyclic parent writes are rejected. Native and Luau systems share the same scheduler.
 
 Custom schema constructors are `scrapbot.number`, `scrapbot.vec2`, `scrapbot.vec3`, `scrapbot.vec4`, and `scrapbot.color`; each accepts its typed field descriptor or a raw field name. `scrapbot.number_draggable(field, step, minimum?, maximum?)` opts a scalar into inspector scrubbing and publishes its step and bounds through the shared registry. Corresponding `*_value` payload constructors and `scrapbot.get`/`scrapbot.set` overloads avoid packing unrelated scalar settings into vectors.
 

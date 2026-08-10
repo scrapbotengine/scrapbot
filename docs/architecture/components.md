@@ -18,6 +18,7 @@ Lifecycle meanings:
 | --- | --- | --- | --- | --- |
 | `scrapbot.keyboard_input` | Runtime input | Derived | Read-only | Singleton per-frame keyboard held/pressed/released snapshot; scheduler-visible and not entity-attached. |
 | `scrapbot.pointer_input` | Runtime input | Derived | Read-only | Singleton per-frame pointer position/delta/wheel/button snapshot; scheduler-visible and not entity-attached. |
+| `scrapbot.clock` | Runtime time | Authored | Yes | Scaled project clock; the earliest stable scene-order instance feeds system snapshots and project shaders. |
 | `scrapbot.transform` | Spatial | Authored | Yes | UUID-parented local position, rotation, and scale; source for resolved world transforms. |
 | `scrapbot.camera` | Spatial/render | Authored | Yes | Selects projection, coordinated GPU-budgeted world/shadow/post bounds, exposure, and per-view TAA/fast-AA/AO/SSR/bloom policy; project camera is distinct from the editor fly camera. |
 | `scrapbot.world_environment` | Environment/render | Authored | Yes | Singleton scene selection for imported lighting, procedural or imported sky presentation, and base exposure. |
@@ -82,6 +83,16 @@ These entries deliberately omit exhaustive field/default documentation. Follow t
 - **Invalidation:** Replaced exactly once per runtime frame before project scheduling; no structural reconciliation or complete-world scan.
 - **Surfaces:** Read-only Luau/native APIs and system access declarations; not scene TOML or entity queries.
 - **Source/tests:** `shared/input.odin`, `platform/sdl3.odin`, `ecs/input.odin`, `render/render.odin`; `ecs/input_test.odin`, `platform/sdl3_test.odin`, `script/script_test.odin`.
+
+### `scrapbot.clock`
+
+- **Contract:** An entity-attached project clock with an authored non-negative speed and engine-maintained delta, smoothed delta, elapsed time, and frame index. Multiple clocks may coexist; lowest stable scene order selects the default.
+- **Storage/lifecycle:** Authored schema-backed ECS component in compact custom storage. The World retains a high-precision compatibility snapshot of the default clock for system and renderer boundaries.
+- **Producers:** Scene loading, membership commands, and stopped-mode authoring provide speed and membership; `ecs.advance_project_time` advances every active non-editor instance once per permitted simulation step.
+- **Consumers:** Luau/native systems query any clock. The default supplies `ScrapbotTime`, native system context time, project-shader helpers, and spectral-surface invalidation.
+- **Invalidation:** Pause and stopped redraws perform no clock work. A simulation step visits only the component storage's compact active set. Membership or stable scene order changes default selection; derived fields are overwritten on the next step.
+- **Surfaces:** `[entities.components.scrapbot.clock]`, `scrapbot.clock`, dynamic native component descriptors, generic inspector/history for `speed`, and read-only presentation of engine-maintained fields. See the [public component reference](../../docs-website/src/content/docs/reference/components.md#scrapbotclock).
+- **Source/tests:** `component/registry.odin`, `ecs/time.odin`, `render/render.odin`, `script/api.odin`; `ecs/time_test.odin`, `render/render_test.odin`.
 
 ### `scrapbot.transform`
 

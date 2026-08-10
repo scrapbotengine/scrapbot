@@ -2,6 +2,8 @@
 
 **Date:** 2026-07-12
 
+**Superseded by:** [ADR-056](ADR-056-separate-engine-time-from-project-clocks.md)
+
 ## Context
 
 Scrapbot previously passed a loose delta-seconds scalar into each system and used a fixed 1/60 step in every renderer path. Frame time is global engine state shared by all systems, not data owned by a particular entity. Representing it as a singleton component would require a synthetic entity, uniqueness rules, and special lifecycle handling.
