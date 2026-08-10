@@ -1972,6 +1972,7 @@ struct Post_Effects {
 	flare_optics: vec4<f32>,
 	dirt_tint_intensity: vec4<f32>,
 	dirt_parameters: vec4<f32>,
+	editor_feedback: vec4<f32>,
 };
 @group(0) @binding(8) var<uniform> post_effects: Post_Effects;
 @group(0) @binding(9) var editor_feedback_mask: texture_2d<f32>;
@@ -2149,6 +2150,42 @@ fn editor_feedback_outline(uv: vec2<f32>) -> vec2<f32> {
 	return neighbor * (vec2<f32>(1.0) - center);
 }
 
+fn selection_dash_coverage(uv: vec2<f32>) -> f32 {
+	if (post_effects.editor_feedback.y < 0.5) {
+		return 1.0;
+	}
+	let dimensions = vec2<i32>(textureDimensions(editor_feedback_mask));
+	let pixel = clamp(
+		vec2<i32>(uv * vec2<f32>(dimensions)),
+		vec2<i32>(0),
+		dimensions - vec2<i32>(1),
+	);
+	let horizontal =
+		editor_feedback_at(pixel + vec2<i32>(2, 0), dimensions).r -
+		editor_feedback_at(pixel + vec2<i32>(-2, 0), dimensions).r;
+	let vertical =
+		editor_feedback_at(pixel + vec2<i32>(0, 2), dimensions).r -
+		editor_feedback_at(pixel + vec2<i32>(0, -2), dimensions).r;
+	let pixel_position = vec2<f32>(pixel);
+	var coordinate = pixel_position.x * select(-1.0, 1.0, vertical >= 0.0);
+	if (abs(horizontal) > abs(vertical)) {
+		coordinate = pixel_position.y * select(1.0, -1.0, horizontal >= 0.0);
+	}
+	let dash_length = post_effects.editor_feedback.z;
+	let gap_length = post_effects.editor_feedback.w;
+	let period = dash_length + gap_length;
+	let offset = post_effects.editor_feedback.x * 28.0;
+	let phase = fract((coordinate + offset) / period) * period;
+	let center_distance = abs(phase - dash_length * 0.5);
+	let wrapped_distance = min(center_distance, period - center_distance);
+	let edge_width = max(fwidth(coordinate), 0.75);
+	return 1.0 - smoothstep(
+		dash_length * 0.5 - edge_width,
+		dash_length * 0.5 + edge_width,
+		wrapped_distance,
+	);
+}
+
 @fragment
 fn composite_fs(input: Fullscreen_Output) -> @location(0) vec4<f32> {
 	var bloom = textureSample(bloom_0, linear_sampler, input.uv).rgb * 0.34;
@@ -2159,7 +2196,7 @@ fn composite_fs(input: Fullscreen_Output) -> @location(0) vec4<f32> {
 	let resolved = textureSample(hdr_texture, linear_sampler, input.uv);
 	let feedback = textureSample(editor_feedback_mask, linear_sampler, input.uv).rg;
 	let feedback_outline = editor_feedback_outline(input.uv);
-	let selection_outline = feedback_outline.r;
+	let selection_outline = feedback_outline.r * selection_dash_coverage(input.uv);
 	let preview_fill = smoothstep(0.1, 0.9, feedback.g) * 0.28;
 	let preview_outline = feedback_outline.g;
 	let selection_color = vec3<f32>(1.0, 0.42, 0.06);

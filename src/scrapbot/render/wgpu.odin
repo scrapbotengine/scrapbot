@@ -3573,6 +3573,7 @@ wgpu_encode_render_pass :: proc(
 		renderer.render_list.has_camera,
 		world,
 		delta_time,
+		ui.editor_simulation_running(ui_state) && len(renderer.gpu_editor_selected_slots) > 0,
 		config.render_feature_overrides,
 	); err != "" {
 		return err

@@ -53,6 +53,20 @@ WGPU_Post_Effects_Uniform :: struct {
 	flare_optics: [4]f32,
 	dirt_tint_intensity: [4]f32,
 	dirt_parameters: [4]f32,
+	editor_feedback: [4]f32,
+}
+
+wgpu_editor_feedback_uniform :: proc(
+	simulation_time: shared.Time_Resource,
+	animate_selection_outline: bool,
+) -> [4]f32 {
+	animation_enabled := f32(0)
+	animation_time := f32(0)
+	if animate_selection_outline {
+		animation_enabled = 1
+		animation_time = f32(math.mod_f64(simulation_time.elapsed_time, 1024))
+	}
+	return {animation_time, animation_enabled, 10, 7}
 }
 
 wgpu_store_post_effects_uniform :: proc(
@@ -1866,6 +1880,7 @@ wgpu_encode_bloom_and_composite :: proc(
 	has_camera: bool,
 	world: ^shared.World,
 	delta_time: f32,
+	animate_selection_outline: bool,
 	render_feature_overrides: Render_Feature_Overrides,
 ) -> string {
 	resolved_camera := camera
@@ -2308,6 +2323,7 @@ wgpu_encode_bloom_and_composite :: proc(
 			lens_dirt.intensity,
 		},
 		dirt_parameters = {lens_dirt.scale, lens_dirt.contrast, lens_dirt.seed, 0},
+		editor_feedback = wgpu_editor_feedback_uniform(world.time, animate_selection_outline),
 	}
 	if wgpu_store_post_effects_uniform(renderer, post_effects_uniform) {
 		wgpu.QueueWriteBuffer(

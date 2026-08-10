@@ -849,6 +849,14 @@ test_editor_selection_marks_direct_and_model_owned_gpu_instances_only_on_change 
 	testing.expect_value(t, len(renderer.gpu_dirty_indices), 2)
 	testing.expect(t, strings.contains(WGPU_EDITOR_FEEDBACK_SHADER, "feedback_instances"))
 	testing.expect(t, strings.contains(WGPU_COMPOSITE_SHADER, "fn editor_feedback_outline"))
+	testing.expect(t, strings.contains(WGPU_COMPOSITE_SHADER, "fn selection_dash_coverage"))
+	testing.expect(
+		t,
+		strings.contains(
+			WGPU_COMPOSITE_SHADER,
+			"feedback_outline.r * selection_dash_coverage(input.uv)",
+		),
+	)
 	testing.expect(t, !strings.contains(WGPU_EDITOR_FEEDBACK_SHADER, "texture_depth"))
 }
 
@@ -4041,6 +4049,24 @@ test_post_effect_uniform_upload_is_change_driven :: proc(t: ^testing.T) {
 	testing.expect(t, !wgpu_store_post_effects_uniform(&renderer, uniform))
 	uniform.flare_tint_intensity = {1, 0.8, 0.6, 0.5}
 	testing.expect(t, wgpu_store_post_effects_uniform(&renderer, uniform))
+}
+
+@(test)
+test_selection_outline_animation_uses_simulation_time_only_while_running :: proc(t: ^testing.T) {
+	first := shared.Time_Resource {
+		elapsed_time = 12.25,
+	}
+	second := shared.Time_Resource {
+		elapsed_time = 12.5,
+	}
+	paused_first := wgpu_editor_feedback_uniform(first, false)
+	paused_second := wgpu_editor_feedback_uniform(second, false)
+	testing.expect_value(t, paused_first, [4]f32{0, 0, 10, 7})
+	testing.expect_value(t, paused_second, paused_first)
+	running_first := wgpu_editor_feedback_uniform(first, true)
+	running_second := wgpu_editor_feedback_uniform(second, true)
+	testing.expect_value(t, running_first, [4]f32{12.25, 1, 10, 7})
+	testing.expect(t, running_second[0] > running_first[0])
 }
 
 @(test)
