@@ -1319,6 +1319,59 @@ run_frame_system_unmeasured :: proc(
 		}
 		platform.set_runtime_pointer_cursor(cursor)
 		picking_system_start := time.tick_now()
+		placement_preview_was_visible := config.ui_state.editor_model_placement_preview_visible
+		config.ui_state.editor_model_placement_preview_visible = false
+		config.ui_state.editor_model_placement_preview_resource = {}
+		placement_preview_active := false
+		if preview, previewing := ui.editor_model_placement_drag_request(config.ui_state, world);
+		   previewing && config.resource_registry != nil {
+			placement_preview_active = true
+			list := ecs.build_resource_render_list(
+				world,
+				config.resource_registry,
+				config.ui_state.editor_visible,
+			)
+			pointer := shared.Vec2 {
+				viewport.x + viewport.width * 0.5,
+				viewport.y + viewport.height * 0.5,
+			}
+			if preview.has_pointer {
+				pointer = preview.pointer
+			}
+			if placement, resolved := editor_model_placement_position(
+				&list,
+				config.resource_registry,
+				preview.resource,
+				pointer,
+				viewport,
+				config.ui_state.editor_placement_snap_step,
+			); resolved {
+				contact, contact_ok := editor_project_world(
+					placement.contact,
+					viewport,
+					camera,
+					has_camera,
+				)
+				origin, origin_ok := editor_project_world(
+					placement.position,
+					viewport,
+					camera,
+					has_camera,
+				)
+				config.ui_state.editor_model_placement_preview_visible = contact_ok && origin_ok
+				config.ui_state.editor_model_placement_preview_resource = preview.resource
+				config.ui_state.editor_model_placement_preview_position = placement.position
+				config.ui_state.editor_model_placement_preview_contact = contact
+				config.ui_state.editor_model_placement_preview_origin = origin
+				config.ui_state.editor_model_placement_preview_clip = viewport
+			}
+			ecs.destroy_render_list(&list)
+		}
+		if placement_preview_active || placement_preview_was_visible {
+			if err := ui.rebuild_editor_world_overlay(config.ui_state); err != "" {
+				return err
+			}
+		}
 		if request, requested := ui.consume_model_placement_request(config.ui_state); requested {
 			if config.resource_registry != nil {
 				list := ecs.build_resource_render_list(
@@ -1336,6 +1389,7 @@ run_frame_system_unmeasured :: proc(
 				if position, resolved := editor_model_placement_position(
 					&list,
 					config.resource_registry,
+					request.resource,
 					pointer,
 					viewport,
 					config.ui_state.editor_placement_snap_step,
@@ -1346,7 +1400,7 @@ run_frame_system_unmeasured :: proc(
 						config.resource_registry,
 						request.resource,
 						request.parent,
-						position,
+						position.position,
 					)
 				}
 				ecs.destroy_render_list(&list)
@@ -1381,6 +1435,12 @@ run_frame_system_unmeasured :: proc(
 			} else {
 				ui.editor_clear_selection(config.ui_state)
 			}
+		}
+		config.ui_state.editor_render_selected_entity = {}
+		config.ui_state.editor_render_selected_uuid = {}
+		if selected_uuid, selected := ui.editor_selected_uuid(config.ui_state, world); selected {
+			config.ui_state.editor_render_selected_entity = config.ui_state.editor_selected_entity
+			config.ui_state.editor_render_selected_uuid = selected_uuid
 		}
 		record_system_profile_phase(config, .Picking, picking_system_start)
 		return ""

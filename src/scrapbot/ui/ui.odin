@@ -221,6 +221,7 @@ Action_Drag_Interaction :: struct {
 	source: shared.Entity,
 	target: shared.Entity,
 	start: shared.Vec2,
+	position: shared.Vec2,
 	armed: bool,
 	dragging: bool,
 }
@@ -416,6 +417,8 @@ State :: struct {
 	editor_pixel_density: f32,
 	editor_paint_start: int,
 	editor_selected_entity: shared.Entity,
+	editor_render_selected_entity: shared.Entity,
+	editor_render_selected_uuid: shared.Entity_UUID,
 	editor_has_selection: bool,
 	editor_selected_resource: shared.Resource_UUID,
 	editor_has_resource_selection: bool,
@@ -471,6 +474,12 @@ State :: struct {
 	editor_pick_position: shared.Vec2,
 	editor_model_placement_requested: bool,
 	editor_model_placement_request: Editor_Model_Placement_Request,
+	editor_model_placement_preview_visible: bool,
+	editor_model_placement_preview_resource: shared.Resource_UUID,
+	editor_model_placement_preview_position: shared.Vec3,
+	editor_model_placement_preview_contact: shared.Vec2,
+	editor_model_placement_preview_origin: shared.Vec2,
+	editor_model_placement_preview_clip: Rect,
 	editor_placement_snap_step: f32,
 	editor_scene_camera_captures_input: bool,
 	editor_camera_mesh_segments: [EDITOR_CAMERA_MESH_MAX_SEGMENTS]Editor_Camera_Mesh_Segment,
@@ -6690,6 +6699,7 @@ action_drag_begin :: proc(
 	state.action_drags[slot] = {
 		source = source,
 		start = position,
+		position = position,
 		armed = true,
 	}
 }
@@ -6737,6 +6747,7 @@ action_drag_update :: proc(
 	if !drag.armed {
 		return
 	}
+	drag.position = pointer.position
 	source_index := int(drag.source.index)
 	if !ecs.entity_is_alive(world, source_index) ||
 	   world.entities[source_index].id != drag.source {
@@ -8361,11 +8372,87 @@ rebuild_editor_world_overlay :: proc(state: ^State) -> string {
 	if err := append_editor_gizmo(state); err != "" {
 		return err
 	}
+	if err := append_editor_model_placement_preview(state); err != "" {
+		return err
+	}
 	if state.editor_overlay_rebuild_changed ||
 	   state.editor_overlay_compare_count != state.editor_overlay_paint_count {
 		state.editor_overlay_paint_output_revision += 1
 		if state.editor_overlay_paint_output_revision == 0 {
 			state.editor_overlay_paint_output_revision = 1
+		}
+	}
+	return ""
+}
+
+append_editor_model_placement_preview :: proc(state: ^State) -> string {
+	if state == nil || !state.editor_model_placement_preview_visible {
+		return ""
+	}
+	scale := max(state.editor_pixel_density, 1)
+	contact := state.editor_model_placement_preview_contact
+	origin := state.editor_model_placement_preview_origin
+	color := shared.Vec4{1, 0.68, 0.22, 0.96}
+	soft := color
+	soft.w = 0.52
+	clip := state.editor_model_placement_preview_clip
+	commands := [5]Paint_Command {
+		{
+			kind = .Ring,
+			color = color,
+			ring_center = contact,
+			ring_axis_x = {11 * scale, 0},
+			ring_axis_y = {0, 11 * scale},
+			ring_thickness = 2 * scale,
+			has_clip = true,
+			clip = clip,
+		},
+		{
+			kind = .Line,
+			color = color,
+			line_start = {contact.x - 16 * scale, contact.y},
+			line_end = {contact.x - 6 * scale, contact.y},
+			line_thickness = 2 * scale,
+			has_clip = true,
+			clip = clip,
+		},
+		{
+			kind = .Line,
+			color = color,
+			line_start = {contact.x + 6 * scale, contact.y},
+			line_end = {contact.x + 16 * scale, contact.y},
+			line_thickness = 2 * scale,
+			has_clip = true,
+			clip = clip,
+		},
+		{
+			kind = .Line,
+			color = color,
+			line_start = {contact.x, contact.y - 16 * scale},
+			line_end = {contact.x, contact.y + 16 * scale},
+			line_thickness = 2 * scale,
+			has_clip = true,
+			clip = clip,
+		},
+		{
+			kind = .Line,
+			color = soft,
+			line_start = contact,
+			line_end = origin,
+			line_thickness = 1.5 * scale,
+			has_clip = true,
+			clip = clip,
+		},
+	}
+	for command, index in commands {
+		if index == len(commands) - 1 {
+			delta := shared.Vec2{origin.x - contact.x, origin.y - contact.y}
+			if delta.x * delta.x + delta.y * delta.y < 16 * scale * scale {
+				continue
+			}
+		}
+		if err := append_paint(state, command); err != "" {
+			return err
 		}
 	}
 	return ""

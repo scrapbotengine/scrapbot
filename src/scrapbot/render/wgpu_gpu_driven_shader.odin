@@ -1061,7 +1061,7 @@ fn fs_main(
 					debug_color = vec3<f32>(0.05, 0.055, 0.07);
 				}
 			}
-			default: {}
+		default: {}
 		}
 		var output: Fragment_Output;
 		output.color = vec4<f32>(debug_color, virtual_transition_marker(input.virtual_transition));

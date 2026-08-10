@@ -15,6 +15,13 @@ Scene_Ray_Hit :: struct {
 	distance: f32,
 }
 
+Editor_Model_Placement :: struct {
+	position: shared.Vec3,
+	contact: shared.Vec3,
+	normal: shared.Vec3,
+	grounded: bool,
+}
+
 editor_pick_ray :: proc(
 	render_list: ^shared.Render_List,
 	position: shared.Vec2,
@@ -138,31 +145,196 @@ scene_ray_plane_intersection :: proc(
 editor_model_placement_position :: proc(
 	render_list: ^shared.Render_List,
 	registry: ^resources.Registry,
+	resource: shared.Resource_UUID,
 	pointer: shared.Vec2,
 	viewport: ui.Rect,
 	snap_step: f32,
 ) -> (
-	shared.Vec3,
+	Editor_Model_Placement,
 	bool,
 ) {
 	ray, ray_ok := editor_pick_ray(render_list, pointer, viewport)
 	if !ray_ok {
 		return {}, false
 	}
-	position: shared.Vec3
+	contact: shared.Vec3
+	normal: shared.Vec3
+	grounded := false
 	if hit, found := scene_raycast_nearest(render_list, registry, ray); found {
-		position = hit.position
+		contact = hit.position
+		normal = hit.normal
+		if vec3_dot(normal, ray.direction) > 0 {
+			normal = pick_mul(normal, -1)
+		}
+		grounded = true
 	} else if plane_position, found := scene_ray_plane_intersection(ray, {}, {0, 1, 0}); found {
-		position = plane_position
+		contact = plane_position
+		normal = {0, 1, 0}
+		grounded = true
 	} else {
-		position = pick_add(ray.origin, pick_mul(ray.direction, 5))
+		contact = pick_add(ray.origin, pick_mul(ray.direction, 5))
 	}
 	if snap_step > 0 {
-		position.x = math.round(position.x / snap_step) * snap_step
-		position.y = math.round(position.y / snap_step) * snap_step
-		position.z = math.round(position.z / snap_step) * snap_step
+		contact.x = math.round(contact.x / snap_step) * snap_step
+		contact.y = math.round(contact.y / snap_step) * snap_step
+		contact.z = math.round(contact.z / snap_step) * snap_step
 	}
-	return position, true
+	position := contact
+	if grounded {
+		if support, center, found := editor_model_support_projection(registry, resource, normal);
+		   found {
+			position = pick_add(
+				pick_add(contact, pick_mul(center, -1)),
+				pick_mul(normal, vec3_dot(center, normal) - support),
+			)
+		}
+	}
+	return {position = position, contact = contact, normal = normal, grounded = grounded}, true
+}
+
+editor_model_support_projection :: proc(
+	registry: ^resources.Registry,
+	resource: shared.Resource_UUID,
+	normal: shared.Vec3,
+) -> (
+	f32,
+	shared.Vec3,
+	bool,
+) {
+	if registry == nil || resource == (shared.Resource_UUID{}) {
+		return 0, {}, false
+	}
+	handle, found := resources.model_handle_by_uuid(registry, resource)
+	if !found {
+		return 0, {}, false
+	}
+	model, alive := resources.get_model(registry, handle)
+	if !alive || len(model.nodes) == 0 {
+		return 0, {}, false
+	}
+	world_transforms := make(
+		[]shared.Transform_Component,
+		len(model.nodes),
+		context.temp_allocator,
+	)
+	states := make([]u8, len(model.nodes), context.temp_allocator)
+	minimum := f32(0)
+	bounds_minimum: shared.Vec3
+	bounds_maximum: shared.Vec3
+	has_point := false
+	for node, node_index in model.nodes {
+		if node.mesh_index < 0 || int(node.mesh_index) >= len(model.meshes) {
+			continue
+		}
+		transform, resolved := editor_model_node_transform(
+			model,
+			node_index,
+			world_transforms,
+			states,
+		)
+		if !resolved {
+			continue
+		}
+		for primitive in model.meshes[node.mesh_index].primitives {
+			geometry, geometry_alive := resources.get_geometry(registry, primitive.geometry)
+			if !geometry_alive {
+				continue
+			}
+			for x in 0 ..< 2 {
+				for y in 0 ..< 2 {
+					for z in 0 ..< 2 {
+						local := shared.Vec3 {
+							geometry.bounds.min.x if x == 0 else geometry.bounds.max.x,
+							geometry.bounds.min.y if y == 0 else geometry.bounds.max.y,
+							geometry.bounds.min.z if z == 0 else geometry.bounds.max.z,
+						}
+						point := editor_transform_point(transform, local)
+						projection := vec3_dot(point, normal)
+						if !has_point || projection < minimum {
+							minimum = projection
+						}
+						if !has_point {
+							bounds_minimum = point
+							bounds_maximum = point
+						} else {
+							bounds_minimum = {
+								min(bounds_minimum.x, point.x),
+								min(bounds_minimum.y, point.y),
+								min(bounds_minimum.z, point.z),
+							}
+							bounds_maximum = {
+								max(bounds_maximum.x, point.x),
+								max(bounds_maximum.y, point.y),
+								max(bounds_maximum.z, point.z),
+							}
+						}
+						has_point = true
+					}
+				}
+			}
+		}
+	}
+	center := pick_mul(pick_add(bounds_minimum, bounds_maximum), 0.5)
+	return minimum, center, has_point
+}
+
+editor_model_node_transform :: proc(
+	model: ^resources.Model,
+	index: int,
+	transforms: []shared.Transform_Component,
+	states: []u8,
+) -> (
+	shared.Transform_Component,
+	bool,
+) {
+	if model == nil ||
+	   index < 0 ||
+	   index >= len(model.nodes) ||
+	   index >= len(transforms) ||
+	   index >= len(states) {
+		return {}, false
+	}
+	if states[index] == 2 {
+		return transforms[index], true
+	}
+	if states[index] == 1 {
+		return {}, false
+	}
+	states[index] = 1
+	result := model.nodes[index].transform
+	parent := model.nodes[index].parent_index
+	if parent >= 0 {
+		parent_transform, resolved := editor_model_node_transform(
+			model,
+			int(parent),
+			transforms,
+			states,
+		)
+		if !resolved {
+			states[index] = 0
+			return {}, false
+		}
+		result = shared.transform_combine(parent_transform, result)
+	}
+	transforms[index] = result
+	states[index] = 2
+	return result, true
+}
+
+editor_transform_point :: proc(
+	transform: shared.Transform_Component,
+	point: shared.Vec3,
+) -> shared.Vec3 {
+	scaled := shared.Vec3 {
+		point.x * transform.scale.x,
+		point.y * transform.scale.y,
+		point.z * transform.scale.z,
+	}
+	rotated := shared.transform_quaternion_rotate(
+		shared.transform_quaternion_from_euler(transform.rotation),
+		scaled,
+	)
+	return pick_add(transform.position, rotated)
 }
 
 pick_ray_triangle :: proc(ray: Pick_Ray, a, b, c: shared.Vec3) -> (f32, bool) {

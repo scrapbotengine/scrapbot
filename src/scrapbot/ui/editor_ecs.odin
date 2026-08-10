@@ -508,13 +508,14 @@ editor_hierarchy_binding_target :: proc(
 }
 
 editor_resource_drag_source :: proc(
+	state: ^State,
 	world: ^shared.World,
 	source: shared.Entity_UUID,
 ) -> (
 	shared.Resource_UUID,
 	bool,
 ) {
-	if world == nil {
+	if state == nil || !state.editor_simulation_stopped || world == nil {
 		return {}, false
 	}
 	entity_index, found := ecs.entity_index_by_uuid(world, source)
@@ -530,6 +531,50 @@ editor_resource_drag_source :: proc(
 		return {}, false
 	}
 	return binding.resource_id, true
+}
+
+editor_model_placement_drag_request :: proc(
+	state: ^State,
+	world: ^shared.World,
+) -> (
+	Editor_Model_Placement_Request,
+	bool,
+) {
+	if state == nil || world == nil || !state.editor_simulation_stopped {
+		return {}, false
+	}
+	drag := state.action_drags[1]
+	if !drag.armed || !drag.dragging || drag.target == (shared.Entity{}) {
+		return {}, false
+	}
+	source_index := int(drag.source.index)
+	target_index := int(drag.target.index)
+	if !ecs.entity_is_alive(world, source_index) ||
+	   world.entities[source_index].id != drag.source ||
+	   !ecs.entity_is_alive(world, target_index) ||
+	   world.entities[target_index].id != drag.target {
+		return {}, false
+	}
+	resource, found := editor_resource_drag_source(state, world, world.entities[source_index].uuid)
+	if !found {
+		return {}, false
+	}
+	target := world.entities[target_index]
+	if target.ui_action_index < 0 || target.ui_action_index >= len(world.ui_actions) {
+		return {}, false
+	}
+	action := world.ui_actions[target.ui_action_index].action
+	request := Editor_Model_Placement_Request {
+		resource = resource,
+	}
+	if action == EDITOR_ACTION_DROP_VIEWPORT {
+		request.pointer = drag.position
+		request.has_pointer = true
+	} else if action != EDITOR_ACTION_DROP_SCENE_ROOT &&
+	   action != EDITOR_ACTION_DROP_SCENE_PARENT {
+		return {}, false
+	}
+	return request, true
 }
 
 editor_ui_consume_events :: proc(
@@ -566,6 +611,7 @@ editor_ui_consume_events :: proc(
 				   event.action == EDITOR_ACTION_DROP_SCENE_ROOT ||
 				   event.action == EDITOR_ACTION_DROP_SCENE_PARENT {
 					if resource_id, resource_found := editor_resource_drag_source(
+						state,
 						world,
 						event.drag_source,
 					); resource_found {
@@ -6036,7 +6082,7 @@ refresh_editor_ecs_snapshot :: proc(state: ^State, world: ^shared.World) {
 			editor_ui_set_hidden(world, label, false)
 			world.editor_uis[world.entities[row].editor_ui_index].resource_id = model.id
 			world.editor_uis[world.entities[label].editor_ui_index].resource_id = model.id
-			editor_ui_set_resource_drag_source(world, row, true)
+			editor_ui_set_resource_drag_source(world, row, state.editor_simulation_stopped)
 			if state.editor_has_resource_selection && state.editor_selected_resource == model.id {
 				selected_resource_row = world.entities[row].uuid
 			}

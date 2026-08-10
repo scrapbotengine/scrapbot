@@ -8866,6 +8866,23 @@ test_editor_gizmo_appends_three_axis_lines_and_handles :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_editor_model_placement_preview_paints_contact_and_origin_feedback :: proc(t: ^testing.T) {
+	state := new(State)
+	defer free(state)
+	state.editor_pixel_density = 1
+	state.editor_model_placement_preview_visible = true
+	state.editor_model_placement_preview_contact = {100, 120}
+	state.editor_model_placement_preview_origin = {100, 80}
+	state.editor_model_placement_preview_clip = {20, 30, 400, 300}
+	state.paint_editor_overlay = true
+	testing.expect(t, append_editor_model_placement_preview(state) == "")
+	testing.expect_value(t, state.editor_overlay_paint_count, 5)
+	testing.expect_value(t, state.editor_overlay_paint[0].kind, Paint_Kind.Ring)
+	testing.expect_value(t, state.editor_overlay_paint[0].ring_center, shared.Vec2{100, 120})
+	testing.expect_value(t, state.editor_overlay_paint[4].line_end, shared.Vec2{100, 80})
+}
+
+@(test)
 test_editor_camera_mesh_appends_editor_viewport_lines :: proc(t: ^testing.T) {
 	state := new(State)
 	defer free(state)
@@ -9107,6 +9124,11 @@ test_editor_model_preview_requests_an_undoable_precise_scene_placement :: proc(t
 	parent_row, parent_row_found := editor_ui_entity(&world, .Browser_Row, 0)
 	testing.expect(t, resource_row_found && parent_row_found)
 	if resource_row_found && parent_row_found {
+		resource_action_index := world.entities[resource_row].ui_action_index
+		testing.expect(t, resource_action_index >= 0)
+		if resource_action_index >= 0 {
+			testing.expect(t, world.ui_actions[resource_action_index].drag_source)
+		}
 		event_cursor := ecs.ui_event_latest_sequence(&world)
 		state.events[0] = {
 			kind = .Dropped,
@@ -9143,6 +9165,14 @@ test_editor_model_preview_requests_an_undoable_precise_scene_placement :: proc(t
 	}
 
 	state.editor_simulation_stopped = false
+	refresh_editor_ecs_snapshot(state, &world)
+	if resource_row_found {
+		resource_action_index := world.entities[resource_row].ui_action_index
+		testing.expect(t, resource_action_index >= 0)
+		if resource_action_index >= 0 {
+			testing.expect(t, !world.ui_actions[resource_action_index].drag_source)
+		}
+	}
 	_, placed_while_running := editor_authoring_place_model(state, &world, &registry, resource_id)
 	testing.expect(t, !placed_while_running)
 }

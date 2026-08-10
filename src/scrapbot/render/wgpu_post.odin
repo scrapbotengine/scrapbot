@@ -901,7 +901,7 @@ wgpu_create_post_process_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 	if renderer.composite_shader == nil {
 		return "failed to create HDR composite shader"
 	}
-	composite_entries: [4 + WGPU_BLOOM_LEVELS]wgpu.BindGroupLayoutEntry
+	composite_entries: [5 + WGPU_BLOOM_LEVELS]wgpu.BindGroupLayoutEntry
 	composite_entries[0] = {
 		binding = 0,
 		visibility = {.Fragment},
@@ -931,6 +931,11 @@ wgpu_create_post_process_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 		binding = u32(3 + WGPU_BLOOM_LEVELS),
 		visibility = {.Fragment},
 		buffer = {type = .Uniform, minBindingSize = u64(size_of(WGPU_Post_Effects_Uniform))},
+	}
+	composite_entries[4 + WGPU_BLOOM_LEVELS] = {
+		binding = u32(4 + WGPU_BLOOM_LEVELS),
+		visibility = {.Fragment},
+		texture = {sampleType = .Float, viewDimension = ._2D},
 	}
 	renderer.composite_bind_group_layout = wgpu.DeviceCreateBindGroupLayout(
 		renderer.device,
@@ -1176,6 +1181,16 @@ wgpu_release_post_targets :: proc(renderer: ^WGPU_Renderer) {
 		wgpu.TextureRelease(renderer.indirect_diffuse_texture)
 		renderer.indirect_diffuse_texture = nil
 	}
+	if renderer.editor_feedback_mask_view != nil {
+		wgpu.TextureViewRelease(renderer.editor_feedback_mask_view)
+		renderer.editor_feedback_mask_view = nil
+	}
+	if renderer.editor_feedback_mask_texture != nil {
+		wgpu.TextureRelease(renderer.editor_feedback_mask_texture)
+		renderer.editor_feedback_mask_texture = nil
+	}
+	renderer.editor_feedback_mask_initialized = false
+	renderer.editor_feedback_mask_active = false
 	renderer.post_width = 0
 	renderer.post_height = 0
 	renderer.post_ambient_occlusion_resolution_scale = 0
@@ -1369,6 +1384,18 @@ wgpu_ensure_post_targets :: proc(
 			width,
 			height,
 			.RGBA16Float,
+			{.RenderAttachment, .TextureBinding},
+		)
+	if err != "" {
+		return err
+	}
+	renderer.editor_feedback_mask_texture, renderer.editor_feedback_mask_view, err =
+		wgpu_create_post_texture(
+			renderer,
+			"Scrapbot Editor Feedback Mask",
+			width,
+			height,
+			.RGBA8Unorm,
 			{.RenderAttachment, .TextureBinding},
 		)
 	if err != "" {
@@ -1699,7 +1726,7 @@ wgpu_ensure_post_targets :: proc(
 		}
 	}
 	for temporal_index in 0 ..< len(renderer.temporal_color_views) {
-		composite_entries: [4 + WGPU_BLOOM_LEVELS]wgpu.BindGroupEntry
+		composite_entries: [5 + WGPU_BLOOM_LEVELS]wgpu.BindGroupEntry
 		composite_entries[0] = {
 			binding = 0,
 			textureView = renderer.temporal_color_views[temporal_index],
@@ -1725,6 +1752,10 @@ wgpu_ensure_post_targets :: proc(
 			buffer = renderer.post_effects_uniform_buffer,
 			offset = 0,
 			size = u64(size_of(WGPU_Post_Effects_Uniform)),
+		}
+		composite_entries[4 + WGPU_BLOOM_LEVELS] = {
+			binding = u32(4 + WGPU_BLOOM_LEVELS),
+			textureView = renderer.editor_feedback_mask_view,
 		}
 		renderer.composite_bind_groups[temporal_index] = wgpu.DeviceCreateBindGroup(
 			renderer.device,

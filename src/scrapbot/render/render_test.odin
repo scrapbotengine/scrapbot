@@ -777,6 +777,51 @@ test_gpu_instance_reset_clears_retained_slots_beyond_a_smaller_world :: proc(t: 
 }
 
 @(test)
+test_editor_selection_marks_direct_and_model_owned_gpu_instances_only_on_change :: proc(
+	t: ^testing.T,
+) {
+	selected := shared.Entity {
+		index = 4,
+		generation = 2,
+	}
+	selected_uuid, parsed := shared.entity_uuid_parse("a7000000-0000-4000-8000-000000000042")
+	testing.expect(t, parsed)
+	render_list: Render_List
+	defer ecs.destroy_render_list(&render_list)
+	append(
+		&render_list.instances,
+		Render_Instance{slot = 0, entity = {id = selected}},
+		Render_Instance {
+			slot = 1,
+			entity = {id = {index = 8, generation = 1}, model_owner = selected_uuid},
+		},
+	)
+	append(&render_list.instance_index_by_slot, 0, 1)
+	renderer: WGPU_Renderer
+	defer delete(renderer.gpu_instance_records)
+	defer delete(renderer.gpu_dirty_indices)
+	defer delete(renderer.gpu_editor_selected_slots)
+	defer delete(renderer.gpu_editor_selected_slot_indices)
+	resize(&renderer.gpu_instance_records, 2)
+	wgpu_apply_editor_selection(&renderer, &render_list, selected, selected_uuid)
+	testing.expect_value(t, renderer.gpu_instance_records[0].render_flags[3], f32(1))
+	testing.expect_value(t, renderer.gpu_instance_records[1].render_flags[3], f32(1))
+	testing.expect_value(t, len(renderer.gpu_editor_selected_slots), 2)
+	testing.expect_value(t, len(renderer.gpu_dirty_indices), 2)
+	clear(&renderer.gpu_dirty_indices)
+	wgpu_apply_editor_selection(&renderer, &render_list, selected, selected_uuid)
+	testing.expect_value(t, len(renderer.gpu_dirty_indices), 0)
+	wgpu_apply_editor_selection(&renderer, &render_list, {}, {})
+	testing.expect_value(t, renderer.gpu_instance_records[0].render_flags[3], f32(0))
+	testing.expect_value(t, renderer.gpu_instance_records[1].render_flags[3], f32(0))
+	testing.expect_value(t, len(renderer.gpu_editor_selected_slots), 0)
+	testing.expect_value(t, len(renderer.gpu_dirty_indices), 2)
+	testing.expect(t, strings.contains(WGPU_EDITOR_FEEDBACK_SHADER, "feedback_instances"))
+	testing.expect(t, strings.contains(WGPU_COMPOSITE_SHADER, "fn editor_feedback_outline"))
+	testing.expect(t, !strings.contains(WGPU_EDITOR_FEEDBACK_SHADER, "texture_depth"))
+}
+
+@(test)
 test_material_revision_marks_only_dependent_active_gpu_slots_for_sync :: proc(t: ^testing.T) {
 	registry: resources.Registry
 	defer resources.destroy_registry(&registry)

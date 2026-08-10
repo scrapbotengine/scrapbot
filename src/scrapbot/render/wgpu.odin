@@ -995,6 +995,10 @@ WGPU_Renderer :: struct {
 	gpu_instance_source_transforms: [dynamic]shared.Transform_Component,
 	gpu_active_slots: [dynamic]bool,
 	gpu_dirty_indices: [dynamic]int,
+	gpu_editor_selected_entity: shared.Entity,
+	gpu_editor_selected_uuid: shared.Entity_UUID,
+	gpu_editor_selected_slots: [dynamic]int,
+	gpu_editor_selected_slot_indices: [dynamic]int,
 	gpu_transform_updates: [dynamic]WGPU_GPU_Instance_Transform,
 	gpu_live_slots: [dynamic]int,
 	gpu_batch_indices_by_slot: [dynamic][shared.MAX_GEOMETRY_LODS]u32,
@@ -1148,6 +1152,16 @@ WGPU_Renderer :: struct {
 	surface_view: wgpu.TextureView,
 	indirect_diffuse_texture: wgpu.Texture,
 	indirect_diffuse_view: wgpu.TextureView,
+	editor_feedback_shader: wgpu.ShaderModule,
+	editor_feedback_pipeline: wgpu.RenderPipeline,
+	editor_feedback_pipeline_layout: wgpu.PipelineLayout,
+	editor_feedback_bind_group_layout: wgpu.BindGroupLayout,
+	editor_feedback_bind_group: wgpu.BindGroup,
+	editor_feedback_instance_buffer: wgpu.Buffer,
+	editor_feedback_mask_texture: wgpu.Texture,
+	editor_feedback_mask_view: wgpu.TextureView,
+	editor_feedback_mask_initialized: bool,
+	editor_feedback_mask_active: bool,
 	bloom_textures: [WGPU_BLOOM_LEVELS]wgpu.Texture,
 	bloom_views: [WGPU_BLOOM_LEVELS]wgpu.TextureView,
 	bloom_compute_bind_groups: [2][WGPU_BLOOM_LEVELS]wgpu.BindGroup,
@@ -3495,6 +3509,17 @@ wgpu_encode_render_pass :: proc(
 	); err != "" {
 		return err
 	}
+	if err := wgpu_encode_editor_feedback_pass(
+		renderer,
+		encoder,
+		registry,
+		&renderer.render_list,
+		ui_state,
+		layout.render_width,
+		layout.render_height,
+	); err != "" {
+		return err
+	}
 	record_system_profile_phase(config, .Render_World, world_start)
 	if err := wgpu_encode_hiz_debug_view(renderer, encoder, layout.render_viewport); err != "" {
 		return err
@@ -4366,6 +4391,8 @@ wgpu_draw_frame :: proc(
 		layout.render_width,
 		layout.render_height,
 		config.cpu_culling,
+		config.ui_state.editor_render_selected_entity if config.ui_state != nil else shared.Entity{},
+		config.ui_state.editor_render_selected_uuid if config.ui_state != nil else shared.Entity_UUID{},
 	)
 	if prepare_err != "" {
 		return false, false, prepare_err
@@ -4722,6 +4749,8 @@ wgpu_render_offscreen_frame :: proc(
 		layout.render_width,
 		layout.render_height,
 		config.cpu_culling,
+		config.ui_state.editor_render_selected_entity if config.ui_state != nil else shared.Entity{},
+		config.ui_state.editor_render_selected_uuid if config.ui_state != nil else shared.Entity_UUID{},
 	)
 	if prepare_err != "" {
 		return prepare_err

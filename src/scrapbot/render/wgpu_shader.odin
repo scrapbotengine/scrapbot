@@ -1974,6 +1974,7 @@ struct Post_Effects {
 	dirt_parameters: vec4<f32>,
 };
 @group(0) @binding(8) var<uniform> post_effects: Post_Effects;
+@group(0) @binding(9) var editor_feedback_mask: texture_2d<f32>;
 
 struct Fullscreen_Output {
 	@builtin(position) position: vec4<f32>,
@@ -2122,6 +2123,31 @@ fn apply_vignette(color: vec3<f32>, uv: vec2<f32>) -> vec3<f32> {
 	return mix(color, post_effects.vignette_color_intensity.rgb, mask * intensity);
 }
 
+fn editor_feedback_at(pixel: vec2<i32>, dimensions: vec2<i32>) -> vec2<f32> {
+	let sample_pixel = clamp(pixel, vec2<i32>(0), dimensions - vec2<i32>(1));
+	return step(vec2<f32>(0.5), textureLoad(editor_feedback_mask, sample_pixel, 0).rg);
+}
+
+fn editor_feedback_outline(uv: vec2<f32>) -> vec2<f32> {
+	let dimensions = vec2<i32>(textureDimensions(editor_feedback_mask));
+	let pixel = clamp(
+		vec2<i32>(uv * vec2<f32>(dimensions)),
+		vec2<i32>(0),
+		dimensions - vec2<i32>(1),
+	);
+	let center = editor_feedback_at(pixel, dimensions);
+	var neighbor = vec2<f32>(0.0);
+	neighbor = max(neighbor, editor_feedback_at(pixel + vec2<i32>(-2, 0), dimensions));
+	neighbor = max(neighbor, editor_feedback_at(pixel + vec2<i32>(2, 0), dimensions));
+	neighbor = max(neighbor, editor_feedback_at(pixel + vec2<i32>(0, -2), dimensions));
+	neighbor = max(neighbor, editor_feedback_at(pixel + vec2<i32>(0, 2), dimensions));
+	neighbor = max(neighbor, editor_feedback_at(pixel + vec2<i32>(-2, -2), dimensions));
+	neighbor = max(neighbor, editor_feedback_at(pixel + vec2<i32>(2, -2), dimensions));
+	neighbor = max(neighbor, editor_feedback_at(pixel + vec2<i32>(-2, 2), dimensions));
+	neighbor = max(neighbor, editor_feedback_at(pixel + vec2<i32>(2, 2), dimensions));
+	return neighbor * (vec2<f32>(1.0) - center);
+}
+
 @fragment
 fn composite_fs(input: Fullscreen_Output) -> @location(0) vec4<f32> {
 	var bloom = textureSample(bloom_0, linear_sampler, input.uv).rgb * 0.34;
@@ -2130,9 +2156,28 @@ fn composite_fs(input: Fullscreen_Output) -> @location(0) vec4<f32> {
 	bloom += textureSample(bloom_3, linear_sampler, input.uv).rgb * 0.13;
 	bloom += textureSample(bloom_4, linear_sampler, input.uv).rgb * 0.07;
 	let resolved = textureSample(hdr_texture, linear_sampler, input.uv);
+	let feedback = textureSample(editor_feedback_mask, linear_sampler, input.uv).rg;
+	let feedback_outline = editor_feedback_outline(input.uv);
+	let selection_outline = feedback_outline.r;
+	let preview_fill = smoothstep(0.1, 0.9, feedback.g) * 0.28;
+	let preview_outline = feedback_outline.g;
+	let selection_color = vec3<f32>(1.0, 0.42, 0.06);
+	let preview_color = vec3<f32>(1.0, 0.68, 0.22);
 	if (automatic_exposure.values.w > 1.5) {
+		var presented = clamp(resolved.rgb, vec3<f32>(0.0), vec3<f32>(1.0));
+		presented = mix(
+			presented,
+			preview_color,
+			preview_fill,
+		);
+		presented = mix(presented, preview_color, preview_outline);
+		presented = mix(
+			presented,
+			selection_color,
+			selection_outline,
+		);
 		return vec4<f32>(
-			presentation_dither(clamp(resolved.rgb, vec3<f32>(0.0), vec3<f32>(1.0)), input.position.xy),
+			presentation_dither(presented, input.position.xy),
 			1.0,
 		);
 	}
@@ -2142,7 +2187,18 @@ fn composite_fs(input: Fullscreen_Output) -> @location(0) vec4<f32> {
 	let optical = (bloom * 0.8 + flare) *
 		(vec3<f32>(1.0) + post_effects.dirt_tint_intensity.rgb * dirt) * bloom_enabled;
 	let hdr = resolved.rgb * automatic_exposure.values.x + optical;
-	let graded = apply_vignette(aces(hdr), input.uv);
+	var graded = apply_vignette(aces(hdr), input.uv);
+	graded = mix(
+		graded,
+		preview_color,
+		preview_fill,
+	);
+	graded = mix(graded, preview_color, preview_outline);
+	graded = mix(
+		graded,
+		selection_color,
+		selection_outline,
+	);
 	return vec4<f32>(presentation_dither(graded, input.position.xy), 1.0);
 }
 `

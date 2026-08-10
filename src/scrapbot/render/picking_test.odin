@@ -49,12 +49,14 @@ test_editor_picking_returns_nearest_transformed_triangle_hit :: proc(t: ^testing
 	placement, placement_found := editor_model_placement_position(
 		&list,
 		&registry,
+		{},
 		{500, 350},
 		viewport,
 		0.5,
 	)
 	testing.expect(t, placement_found)
-	testing.expect_value(t, placement, shared.Vec3{0, 0, 2.5})
+	testing.expect_value(t, placement.position, shared.Vec3{0, 0, 2.5})
+	testing.expect_value(t, placement.contact, shared.Vec3{0, 0, 2.5})
 	_, found = editor_pick_entity(&list, &registry, {105, 55}, viewport)
 	testing.expect(t, !found)
 }
@@ -80,6 +82,42 @@ test_scene_ray_plane_intersection_rejects_parallel_and_behind_hits :: proc(t: ^t
 		{0, 1, 0},
 	)
 	testing.expect(t, !found)
+}
+
+@(test)
+test_model_support_projection_places_the_lowest_bound_on_the_hit_surface :: proc(t: ^testing.T) {
+	registry: resources.Registry
+	defer resources.destroy_registry(&registry)
+	desc, desc_err := resources.cube()
+	testing.expect(t, desc_err == "")
+	defer delete(desc.vertices)
+	defer delete(desc.indices)
+	geometry, geometry_err := resources.register_geometry(&registry, "support-cube", desc)
+	testing.expect(t, geometry_err == "")
+	resource, parsed := shared.resource_uuid_parse("a7000000-0000-4000-8000-000000000041")
+	testing.expect(t, parsed)
+	mesh: resources.Model_Mesh
+	append(&mesh.primitives, resources.Model_Primitive{geometry = geometry})
+	model := resources.Model {
+		id = resource,
+		authored = true,
+		generation = 1,
+		alive = true,
+	}
+	append(&model.meshes, mesh)
+	append(
+		&model.nodes,
+		resources.Model_Node {
+			mesh_index = 0,
+			parent_index = -1,
+			transform = {position = {2, 1, 4}, scale = {1, 1, 1}},
+		},
+	)
+	append(&registry.models, model)
+	support, center, found := editor_model_support_projection(&registry, resource, {0, 1, 0})
+	testing.expect(t, found)
+	testing.expect(t, math.abs(support - 0.5) < 0.0001)
+	testing.expect_value(t, center, shared.Vec3{2, 1, 4})
 }
 
 @(test)
