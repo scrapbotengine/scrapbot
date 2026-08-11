@@ -1,7 +1,7 @@
 # FDR-012: Render profiling
 
 **Status:** Active
-**Last reviewed:** 2026-08-08
+**Last reviewed:** 2026-08-11
 
 ## Overview
 
@@ -20,7 +20,7 @@
 - The profiler drains timing readbacks in bounded batches. The wait happens outside the recorded active CPU duration.
 - `profile.json` contains raw frame rows plus median, p95, and maximum distributions for CPU active time, full GPU frame time, pre-UI GPU scene time, and each timed GPU pass.
 - `overview.png` is the final frame from the measurement pass.
-- `--capture-range START:END` performs a fresh deterministic replay and writes lossless 1:1 PNGs under `frames/`. Readback stalls from this pass never enter the measured report.
+- `--capture-range START:END` performs a fresh deterministic replay and writes lossless 1:1 PNGs under `frames/`. The unpaced headless replay drains outstanding GPU work every four non-captured frames, while captured frames drain during pixel mapping. These stalls never enter the measured report.
 - `--resolution WIDTHxHEIGHT` overrides project resolution. Without it, the project window resolution is used.
 - `--framegrab-region` applies the same top-left 1:1 crop to the overview and replay sequence.
 - `--ui-script` and `--editor` use the existing semantic retained-UI path in both passes.

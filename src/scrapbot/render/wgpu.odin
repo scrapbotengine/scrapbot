@@ -5155,6 +5155,18 @@ wgpu_offscreen_capture_requested :: proc(config: ^Run_Config) -> bool {
 	return config.framegrab_path != "" || config.framegrab_sequence_directory != ""
 }
 
+wgpu_headless_queue_drain_requested :: proc "contextless" (
+	profile_enabled: bool,
+	sequence_capture: bool,
+	frame_index: u32,
+) -> bool {
+	return(
+		!profile_enabled &&
+		!sequence_capture &&
+		frame_index % u32(WGPU_GPU_TIMESTAMP_FRAMES) == u32(WGPU_GPU_TIMESTAMP_FRAMES - 1) \
+	)
+}
+
 wgpu_run_headless :: proc(world: ^World, config: ^Run_Config) -> string {
 	renderer, init_err := wgpu_init_renderer(false, config.ui_state)
 	defer wgpu_destroy_renderer(&renderer)
@@ -5287,6 +5299,14 @@ wgpu_run_headless :: proc(world: ^World, config: ^Run_Config) -> string {
 			}
 			diagnostic_err = err
 			break
+		}
+		// Headless runs have no presentation boundary to pace submissions. Keep
+		// their GPU queue bounded even before a delayed final or sequence capture;
+		// otherwise a heavy warmup can retain every frame's transient Metal state.
+		// Profile runs already drain their timestamp/readback ring at this cadence,
+		// and a sequence frame drains immediately while mapping its pixels below.
+		if wgpu_headless_queue_drain_requested(config.profile != nil, sequence_capture, index) {
+			wgpu.DevicePoll(renderer.device, true)
 		}
 		if config.ui_driver != nil &&
 		   ui.diagnostic_driver_is_complete(config.ui_driver) &&

@@ -63,6 +63,25 @@ test_wgpu_headless_runs_use_offscreen_output_without_requiring_capture :: proc(t
 }
 
 @(test)
+test_unprofiled_headless_runs_bound_the_gpu_queue_between_captures :: proc(t: ^testing.T) {
+	for frame_index in 0 ..< u32(WGPU_GPU_TIMESTAMP_FRAMES - 1) {
+		testing.expect(t, !wgpu_headless_queue_drain_requested(false, false, frame_index))
+	}
+	testing.expect(
+		t,
+		wgpu_headless_queue_drain_requested(false, false, WGPU_GPU_TIMESTAMP_FRAMES - 1),
+	)
+	testing.expect(
+		t,
+		!wgpu_headless_queue_drain_requested(true, false, WGPU_GPU_TIMESTAMP_FRAMES - 1),
+	)
+	testing.expect(
+		t,
+		!wgpu_headless_queue_drain_requested(false, true, WGPU_GPU_TIMESTAMP_FRAMES - 1),
+	)
+}
+
+@(test)
 test_wgpu_window_runs_are_the_only_surface_output_mode :: proc(t: ^testing.T) {
 	config := Run_Config {
 		backend = .WGPU,

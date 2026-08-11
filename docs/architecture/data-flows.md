@@ -409,12 +409,12 @@ fixed-delta warmup + measured replay
      viewport / resolution / renderer counters ┘           │
                                                    profile.json + overview
 
-optional fresh deterministic replay ──> lossless 1:1 frame sequence
+optional fresh deterministic replay ──> bounded GPU queue ──> lossless 1:1 frame sequence
 ```
 
 `scrapbot profile` is an opt-in diagnostic path, not an ECS system or ordinary-frame observer. The measurement pass never maps render-target pixels. Timestamp readbacks keep their originating renderer-frame index and patch the matching preallocated row. Bounded batch drains happen outside measured active CPU duration.
 
-A requested capture range starts from a fresh project world and writes images during a second replay. Those readback stalls cannot contaminate the telemetry report.
+A requested capture range starts from a fresh project world and writes images during a second replay. Captured frames drain while mapping their pixels; preceding warmup frames use a four-frame submission barrier because the headless loop has no presentation pacing. This bounds retained transient GPU state without adding readback stalls to the telemetry report.
 
 Post-run tools consume the artifact without engine access. The analyzer ranks GPU-pass p95 values, including each directional-shadow cascade, and prints representative target/dispatch/draw/sample workloads. It totals frame-local counters and rejects comparisons with different adapters or render dimensions.
 

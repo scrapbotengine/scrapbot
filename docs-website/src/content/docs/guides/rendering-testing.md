@@ -646,10 +646,11 @@ Every step shares one cooldown and measurement generation. Scale changes reject 
 
 Use a long enough warmup when profiling adaptive policy. The measured rows should represent its settled scale rather than startup convergence. For fixed-scale feature comparisons, disable dynamic resolution.
 
-Image capture uses a fresh second replay. Before applying its bounded map-request timeout, capture
-drains the submitted GPU queue so a deliberately unpaced heavy replay is not mistaken for a failed
-readback. PNG mapping can stall the pipeline, so capture time never enters the telemetry report.
-Keep the range narrow and use `--framegrab-region` when only one area matters.
+Image capture uses a fresh second replay. Headless warmup has no presentation pacing, so the replay
+drains outstanding GPU work every four non-captured frames instead of retaining an arbitrarily long
+submission backlog. A captured frame drains again before applying its bounded map-request timeout.
+PNG mapping can stall the pipeline, so capture time never enters the telemetry report. Keep the
+range narrow and use `--framegrab-region` when only one area matters.
 
 For valid before/after comparisons, hold these constant:
 

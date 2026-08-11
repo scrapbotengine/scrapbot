@@ -190,7 +190,7 @@ Visibility counters and timestamps use multi-frame readback rings. The renderer 
 scrapbot profile [path] [--warmup n] [--frames n] [--resolution WIDTHxHEIGHT] [--capture-range START:END] [--framegrab-region x,y,width,height] [--editor] [--ui-script actions.json] [--cpu-culling] [--disabled-features names] [--out directory] [--json]
 ```
 
-Runs a bounded headless WGPU measurement after an excluded warmup. The output bundle contains raw exact-frame CPU/GPU telemetry in `profile.json` and a final `overview.png`. Profile schema version 2 defines GPU frame and scene time as ordered pass-boundary spans; version 1 used an additive pass total and is intentionally not comparison-compatible. A capture range triggers a fresh replay and writes a lossless PNG sequence, keeping pixel readback stalls outside the measured pass.
+Runs a bounded headless WGPU measurement after an excluded warmup. The output bundle contains raw exact-frame CPU/GPU telemetry in `profile.json` and a final `overview.png`. Profile schema version 2 defines GPU frame and scene time as ordered pass-boundary spans; version 1 used an additive pass total and is intentionally not comparison-compatible. A capture range triggers a fresh replay and writes a lossless PNG sequence. The replay bounds its otherwise unpaced GPU queue before capture begins, and all queue and pixel-readback stalls stay outside the measured pass.
 
 `--disabled-features` accepts comma-separated `automatic-exposure`, `temporal-antialiasing`, `fast-antialiasing`, `ambient-occlusion`, `screen-space-reflections`, `bloom`, and `volumetric-fog`. These profile-only overrides do not mutate project data.
 
