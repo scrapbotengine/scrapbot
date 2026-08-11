@@ -221,6 +221,12 @@ editor_ui_handle_activation :: proc(
 				case .Gizmo_Space_Local:
 					editor_set_gizmo_space(state, .Local)
 					return
+				case .Gizmo_Pivot_Origin:
+					editor_set_gizmo_pivot(state, .Origin)
+					return
+				case .Gizmo_Pivot_Center:
+					editor_set_gizmo_pivot(state, .Center)
+					return
 				case .Placement_Snap:
 					switch state.editor_placement_snap_step {
 						case 0:
@@ -1898,22 +1904,6 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		theme.palette.warning,
 		EDITOR_TEXT_SIZE,
 	)
-	gizmo_toolbar := editor_ui_create_box(
-		world,
-		EDITOR_UI_GIZMO_TOOLBAR_NAME,
-		EDITOR_UI_VIEWPORT_NAME,
-		.Gizmo_Toolbar,
-		{
-			position = {10, 10},
-			size = {126, 34},
-			padding = {2, 2, 2, 2},
-			background = theme.palette.overlay,
-			border_color = theme.palette.border_strong,
-			border_width = 0,
-			corner_radius = theme.metrics.radius,
-			hidden = true,
-		},
-	)
 	debug_view_menu := editor_ui_create_box(
 		world,
 		EDITOR_UI_DEBUG_VIEW_MENU_NAME,
@@ -1990,6 +1980,22 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 	)
 	editor_ui_add_hstack(world, debug_view_toolbar, {fill = true})
 	world.ui_layouts[world.entities[debug_view_toolbar].ui_layout_index].horizontal_alignment = .End
+	gizmo_toolbar := editor_ui_create_box(
+		world,
+		EDITOR_UI_GIZMO_TOOLBAR_NAME,
+		EDITOR_UI_VIEWPORT_NAME,
+		.Gizmo_Toolbar,
+		{
+			position = {10, 10},
+			size = {250, 34},
+			padding = {2, 2, 2, 2},
+			background = theme.palette.overlay,
+			border_color = theme.palette.border_strong,
+			border_width = 0,
+			corner_radius = theme.metrics.radius,
+			hidden = true,
+		},
+	)
 	debug_view_button := editor_ui_create_box(
 		world,
 		EDITOR_UI_DEBUG_VIEW_BUTTON_NAME,
@@ -2078,8 +2084,24 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		"LOCAL",
 		.Gizmo_Space_Local,
 	)
+	origin_button := editor_ui_create_transport_button(
+		world,
+		"__scrapbot_editor_gizmo_origin",
+		EDITOR_UI_GIZMO_TOOLBAR_NAME,
+		"ORIGIN",
+		.Gizmo_Pivot_Origin,
+	)
+	center_button := editor_ui_create_transport_button(
+		world,
+		"__scrapbot_editor_gizmo_center",
+		EDITOR_UI_GIZMO_TOOLBAR_NAME,
+		"CENTER",
+		.Gizmo_Pivot_Center,
+	)
 	world.ui_layouts[world.entities[world_button].ui_layout_index].size.x = 60
 	world.ui_layouts[world.entities[local_button].ui_layout_index].size.x = 60
+	world.ui_layouts[world.entities[origin_button].ui_layout_index].size.x = 60
+	world.ui_layouts[world.entities[center_button].ui_layout_index].size.x = 60
 	placement_toolbar := editor_ui_create_box(
 		world,
 		EDITOR_UI_PLACEMENT_TOOLBAR_NAME,
@@ -2761,6 +2783,7 @@ editor_ui_update_gizmo_toolbar :: proc(state: ^State, world: ^shared.World) {
 	visual_state := Editor_Gizmo_Toolbar_Visual_State {
 		visible = visible,
 		space = state.editor_gizmo_space,
+		pivot = state.editor_gizmo_pivot,
 	}
 	if state.editor_gizmo_toolbar_visual_valid &&
 	   state.editor_gizmo_toolbar_visual_state == visual_state {
@@ -2770,7 +2793,10 @@ editor_ui_update_gizmo_toolbar :: proc(state: ^State, world: ^shared.World) {
 	state.editor_gizmo_toolbar_visual_valid = true
 	editor_ui_set_hidden(world, toolbar, !visible)
 	for component in world.editor_uis {
-		if component.role != .Gizmo_Space_World && component.role != .Gizmo_Space_Local {
+		if component.role != .Gizmo_Space_World &&
+		   component.role != .Gizmo_Space_Local &&
+		   component.role != .Gizmo_Pivot_Origin &&
+		   component.role != .Gizmo_Pivot_Center {
 			continue
 		}
 		if component.entity_index < 0 || component.entity_index >= len(world.entities) {
@@ -2785,7 +2811,9 @@ editor_ui_update_gizmo_toolbar :: proc(state: ^State, world: ^shared.World) {
 		}
 		selected :=
 			component.role == .Gizmo_Space_World && state.editor_gizmo_space == .World ||
-			component.role == .Gizmo_Space_Local && state.editor_gizmo_space == .Local
+			component.role == .Gizmo_Space_Local && state.editor_gizmo_space == .Local ||
+			component.role == .Gizmo_Pivot_Origin && state.editor_gizmo_pivot == .Origin ||
+			component.role == .Gizmo_Pivot_Center && state.editor_gizmo_pivot == .Center
 		layout := &world.ui_layouts[entity.ui_layout_index]
 		button := &world.ui_buttons[entity.ui_button_index]
 		base_layout, base_button := theme_button(theme, .Quiet)

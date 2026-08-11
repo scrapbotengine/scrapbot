@@ -266,7 +266,7 @@ Action_Drag_Interaction :: struct {
 	armed: bool,
 	dragging: bool,
 }
-EDITOR_TRANSACTION_MAX_CHANGES :: 3
+EDITOR_TRANSACTION_MAX_CHANGES :: 6
 Editor_Edit_Value_Kind :: enum {
 	Number,
 	Boolean,
@@ -331,6 +331,7 @@ Editor_Transport_Visual_State :: struct {
 Editor_Gizmo_Toolbar_Visual_State :: struct {
 	visible: bool,
 	space: shared.Editor_Gizmo_Space,
+	pivot: shared.Editor_Gizmo_Pivot,
 }
 
 Editor_Sidebar_Visual_State :: struct {
@@ -539,6 +540,14 @@ State :: struct {
 	editor_gizmo_visible: bool,
 	editor_gizmo_mode: shared.Editor_Gizmo_Mode,
 	editor_gizmo_space: shared.Editor_Gizmo_Space,
+	editor_gizmo_pivot: shared.Editor_Gizmo_Pivot,
+	editor_gizmo_bounds_center: shared.Vec3,
+	editor_gizmo_bounds_selected: shared.Entity_UUID,
+	editor_gizmo_bounds_world_uuid: shared.Entity_UUID,
+	editor_gizmo_bounds_render_topology_revision: u64,
+	editor_gizmo_bounds_render_hierarchy_revision: u64,
+	editor_gizmo_bounds_geometry_topology_revision: u64,
+	editor_gizmo_bounds_valid: bool,
 	editor_render_debug_view_override: bool,
 	editor_render_debug_view: shared.Render_Debug_View,
 	editor_render_debug_hiz_mip: u32,
@@ -560,6 +569,7 @@ State :: struct {
 	editor_gizmo_drag_rotation: shared.Vec3,
 	editor_gizmo_drag_scale: shared.Vec3,
 	editor_gizmo_drag_world_transform: shared.Transform_Component,
+	editor_gizmo_drag_pivot: shared.Vec3,
 	editor_gizmo_drag_direction: shared.Vec2,
 	editor_gizmo_drag_screen_axes: [3]shared.Vec2,
 	editor_gizmo_drag_world_axes: [3]shared.Vec3,
@@ -2192,6 +2202,16 @@ editor_set_gizmo_space :: proc(state: ^State, space: shared.Editor_Gizmo_Space) 
 	state.editor_gizmo_active_handle = .None
 	state.editor_gizmo_hovered_handle = .None
 	state.editor_gizmo_captures_pointer = false
+	state.editor_snapshot_valid = false
+}
+
+editor_set_gizmo_pivot :: proc(state: ^State, pivot: shared.Editor_Gizmo_Pivot) {
+	if state == nil || state.editor_gizmo_pivot == pivot { return }
+	state.editor_gizmo_pivot = pivot
+	state.editor_gizmo_active_handle = .None
+	state.editor_gizmo_hovered_handle = .None
+	state.editor_gizmo_captures_pointer = false
+	state.editor_gizmo_bounds_valid = false
 	state.editor_snapshot_valid = false
 }
 

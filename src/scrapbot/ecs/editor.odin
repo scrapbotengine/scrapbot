@@ -257,6 +257,7 @@ reconcile_editor_transform_gizmo :: proc(
 	enabled: bool,
 	mode: shared.Editor_Gizmo_Mode = .Translate,
 	space: shared.Editor_Gizmo_Space = .World,
+	pivot: shared.Editor_Gizmo_Pivot = .Origin,
 ) {
 	if world == nil { return }; target := INVALID_COMPONENT_INDEX
 	if enabled { index := int(selected.index); if index >= 0 && index < len(world.entities) && world.entities[index].alive && world.entities[index].id.generation == selected.generation && world.entities[index].transform_index >= 0 { target = index } }
@@ -275,6 +276,7 @@ reconcile_editor_transform_gizmo :: proc(
 	   world.editor_transform_gizmos[target_component_index].entity_index == target {
 		world.editor_transform_gizmos[target_component_index].mode = mode
 		world.editor_transform_gizmos[target_component_index].space = space
+		world.editor_transform_gizmos[target_component_index].pivot = pivot
 		return
 	}
 	component_index := INVALID_COMPONENT_INDEX
@@ -283,6 +285,7 @@ reconcile_editor_transform_gizmo :: proc(
 		entity_index = target,
 		mode = mode,
 		space = space,
+		pivot = pivot,
 	}
 	if component_index <
 	   0 { component_index = len(world.editor_transform_gizmos); append(&world.editor_transform_gizmos, component) } else { world.editor_transform_gizmos[component_index] = component }

@@ -106,6 +106,76 @@ test_translation_handles_follow_cursor_rays_in_world_constraints :: proc(t: ^tes
 }
 
 @(test)
+test_center_pivot_rotation_and_scale_move_the_transform_origin :: proc(t: ^testing.T) {
+	pivot := shared.Vec3{1, 0, 0}
+	position := shared.Vec3{2, 0, 0}
+	rotated := editor_gizmo_rotated_position(position, pivot, {0, 0, 1}, math.PI / 2)
+	testing.expect(t, gizmo_vec3_near(rotated, {1, 1, 0}))
+
+	axes := [3]shared.Vec3{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}
+	scaled := editor_gizmo_scaled_position(position, pivot, axes, {2, 1, 1})
+	testing.expect(t, gizmo_vec3_near(scaled, {3, 0, 0}))
+	scaled = editor_gizmo_scaled_position({2, 2, 0}, pivot, axes, {2, 0.5, 1})
+	testing.expect(t, gizmo_vec3_near(scaled, {3, 1, 0}))
+}
+
+@(test)
+test_center_pivot_free_translation_preserves_origin_offset :: proc(t: ^testing.T) {
+	world: shared.World
+	defer ecs.destroy_world(&world)
+	append(
+		&world.entities,
+		shared.World_Entity {
+			id = {index = 0, generation = 1},
+			alive = true,
+			transform_index = 0,
+			editor_transform_gizmo_index = -1,
+		},
+	)
+	append_soa(
+		&world.transforms,
+		shared.Transform_Component{position = {2, 0, -10}, scale = {1, 1, 1}},
+	)
+	state := new(ui.State)
+	defer free(state)
+	state.editor_visible = true
+	state.editor_has_selection = true
+	state.editor_selected_entity = {
+		index = 0,
+		generation = 1,
+	}
+	state.editor_gizmo_pivot = .Center
+	state.editor_gizmo_bounds_valid = true
+	state.editor_gizmo_bounds_center = {3, 0, -10}
+	camera := shared.Camera_Instance {
+		camera = {fov = 60, near = 0.1, far = 100},
+	}
+	viewport := ui.Rect{0, 0, 800, 600}
+	editor_transform_gizmo_system(state, &world, {}, viewport, camera, true)
+	start := state.editor_gizmo_origin
+	editor_transform_gizmo_system(
+		state,
+		&world,
+		{position = start, available = true},
+		viewport,
+		camera,
+		true,
+		{transform_translate = true},
+	)
+	target, projected := editor_project_world({4, 1, -10}, viewport, camera, true)
+	testing.expect(t, projected)
+	editor_transform_gizmo_system(
+		state,
+		&world,
+		{position = target, available = true},
+		viewport,
+		camera,
+		true,
+	)
+	testing.expect(t, gizmo_vec3_near(world.transforms[0].position, {3, 1, -10}))
+}
+
+@(test)
 test_transform_chord_g_starts_free_translation_then_x_constrains_it :: proc(t: ^testing.T) {
 	world: shared.World
 	defer ecs.destroy_world(&world)

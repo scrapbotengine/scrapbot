@@ -695,6 +695,50 @@ editor_history_push_transform :: proc(
 	editor_history_push_transaction(state, transaction)
 }
 
+editor_history_push_transform_pair :: proc(
+	state: ^State,
+	world: ^shared.World,
+	entity_index: int,
+	first_field: shared.Editor_Inspector_Field,
+	first_before, first_after: shared.Vec3,
+	second_field: shared.Editor_Inspector_Field,
+	second_before, second_after: shared.Vec3,
+) {
+	if state == nil || world == nil || entity_index < 0 || entity_index >= len(world.entities) {
+		return
+	}
+	target := &world.entities[entity_index]
+	if !target.alive { return }
+	transaction: Editor_Edit_Transaction
+	fields := [2]shared.Editor_Inspector_Field{first_field, second_field}
+	before_values := [2][3]f32 {
+		{first_before.x, first_before.y, first_before.z},
+		{second_before.x, second_before.y, second_before.z},
+	}
+	after_values := [2][3]f32 {
+		{first_after.x, first_after.y, first_after.z},
+		{second_after.x, second_after.y, second_after.z},
+	}
+	axes := [3]shared.Editor_Inspector_Axis{.X, .Y, .Z}
+	for field, field_index in fields {
+		for before_value, axis_index in before_values[field_index] {
+			if before_value == after_values[field_index][axis_index] { continue }
+			change_index := transaction.change_count
+			transaction.changes[change_index] = {
+				target_uuid = target.uuid,
+				component_revision = target.component_revision,
+				field = field,
+				axis = axes[axis_index],
+				kind = .Number,
+				before_number = before_value,
+				after_number = after_values[field_index][axis_index],
+			}
+			transaction.change_count += 1
+		}
+	}
+	editor_history_push_transaction(state, transaction)
+}
+
 editor_history_push_transaction :: proc(state: ^State, transaction: Editor_Edit_Transaction) {
 	if state == nil { return }
 	if !state.editor_simulation_stopped {

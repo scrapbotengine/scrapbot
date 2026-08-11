@@ -1314,6 +1314,7 @@ run_frame_system_unmeasured :: proc(
 		camera, has_camera := ecs.active_camera_instance(world, config.ui_state.editor_visible)
 		gizmo_system_start := time.tick_now()
 		config.ui_state.editor_keyboard_escape_consumed = false
+		editor_update_gizmo_bounds_center(config.ui_state, world, config.resource_registry)
 		gizmo_pointer := pointer
 		if !config.ui_state.editor_gizmo_keyboard_active &&
 		   ui.editor_pointer_consumed_by_chrome(config.ui_state, pointer) {

@@ -4377,7 +4377,7 @@ test_editor_shell_is_an_editor_origin_ecs_ui_tree :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_editor_gizmo_space_toolbar_is_ecs_ui_and_follows_selection :: proc(t: ^testing.T) {
+test_editor_gizmo_toolbar_controls_space_and_pivot :: proc(t: ^testing.T) {
 	scene := shared.Scene{}
 	defer delete(scene.entities)
 	append(
@@ -4399,8 +4399,10 @@ test_editor_gizmo_space_toolbar_is_ecs_ui_and_follows_selection :: proc(t: ^test
 	toolbar, toolbar_found := editor_ui_entity(&world, .Gizmo_Toolbar)
 	world_button, world_found := editor_ui_entity(&world, .Gizmo_Space_World)
 	local_button, local_found := editor_ui_entity(&world, .Gizmo_Space_Local)
-	testing.expect(t, toolbar_found && world_found && local_found)
-	if !toolbar_found || !world_found || !local_found {
+	origin_button, origin_found := editor_ui_entity(&world, .Gizmo_Pivot_Origin)
+	center_button, center_found := editor_ui_entity(&world, .Gizmo_Pivot_Center)
+	testing.expect(t, toolbar_found && world_found && local_found && origin_found && center_found)
+	if !toolbar_found || !world_found || !local_found || !origin_found || !center_found {
 		return
 	}
 	toolbar_layout := world.entities[toolbar].ui_layout_index
@@ -4411,6 +4413,7 @@ test_editor_gizmo_space_toolbar_is_ecs_ui_and_follows_selection :: proc(t: ^test
 	toolbar_node := find_editor_role_node(state, .Gizmo_Toolbar)
 	viewport_node := find_editor_role_node(state, .Viewport)
 	world_button_node := find_node_by_entity_index(state, world_button)
+	center_button_node := find_node_by_entity_index(state, center_button)
 	testing.expect(t, toolbar_node >= 0 && viewport_node >= 0)
 	testing.expect(t, !world.ui_layouts[toolbar_layout].hidden)
 	if toolbar_node >= 0 {
@@ -4435,6 +4438,35 @@ test_editor_gizmo_space_toolbar_is_ecs_ui_and_follows_selection :: proc(t: ^test
 			editor_pointer_consumed_by_chrome(state, {position = button_point, available = true}),
 		)
 	}
+	if center_button_node >= 0 {
+		button_point := shared.Vec2 {
+			state.nodes[center_button_node].rect.x +
+			state.nodes[center_button_node].rect.width * 0.5,
+			state.nodes[center_button_node].rect.y +
+			state.nodes[center_button_node].rect.height * 0.5,
+		}
+		hit := pointer_hit_node(state, button_point, true)
+		testing.expect(t, hit >= 0 && state.nodes[hit].entity == world.entities[center_button].id)
+		testing.expect(
+			t,
+			reconcile(
+				state,
+				&world,
+				1280,
+				720,
+				{position = button_point, primary_down = true, available = true},
+			) ==
+			"",
+		)
+		testing.expect(t, state.editor_gizmo_pivot == .Center)
+		testing.expect(t, state.editor_has_selection)
+		testing.expect(
+			t,
+			reconcile(state, &world, 1280, 720, {position = button_point, available = true}) == "",
+		)
+		testing.expect(t, state.editor_has_selection)
+		editor_set_gizmo_pivot(state, .Origin)
+	}
 	if viewport_node >= 0 {
 		viewport_point := shared.Vec2 {
 			state.nodes[viewport_node].rect.x + state.nodes[viewport_node].rect.width * 0.5,
@@ -4458,11 +4490,10 @@ test_editor_gizmo_space_toolbar_is_ecs_ui_and_follows_selection :: proc(t: ^test
 
 	state.editor_gizmo_active_handle = .X
 	state.editor_gizmo_captures_pointer = true
-	state.editor_snapshot_valid = true
 	editor_ui_handle_activation(state, &world, world.entities[local_button].id, {})
 	testing.expect(t, state.editor_gizmo_space == .Local)
 	testing.expect(t, state.editor_gizmo_active_handle == .None)
-	testing.expect(t, !state.editor_gizmo_captures_pointer && !state.editor_snapshot_valid)
+	testing.expect(t, !state.editor_gizmo_captures_pointer)
 	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
 	local_layout := world.entities[local_button].ui_layout_index
 	world_layout := world.entities[world_button].ui_layout_index
@@ -4471,9 +4502,66 @@ test_editor_gizmo_space_toolbar_is_ecs_ui_and_follows_selection :: proc(t: ^test
 		world.ui_layouts[local_layout].background.y > world.ui_layouts[world_layout].background.y,
 	)
 
+	state.editor_gizmo_active_handle = .Y
+	state.editor_gizmo_captures_pointer = true
+	state.editor_gizmo_bounds_valid = true
+	editor_ui_handle_activation(state, &world, world.entities[center_button].id, {})
+	testing.expect(t, state.editor_gizmo_pivot == .Center)
+	testing.expect(t, state.editor_gizmo_active_handle == .None)
+	testing.expect(t, !state.editor_gizmo_captures_pointer)
+	testing.expect(t, !state.editor_gizmo_bounds_valid)
+	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
+	origin_layout := world.entities[origin_button].ui_layout_index
+	center_layout := world.entities[center_button].ui_layout_index
+	testing.expect(
+		t,
+		world.ui_layouts[center_layout].background.y >
+		world.ui_layouts[origin_layout].background.y,
+	)
+
 	editor_clear_selection(state)
 	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
 	testing.expect(t, world.ui_layouts[toolbar_layout].hidden)
+}
+
+@(test)
+test_center_pivot_transform_history_keeps_position_and_scale_atomic :: proc(t: ^testing.T) {
+	uuid := shared.entity_uuid_from_engine_name("center-pivot-history")
+	scene := shared.Scene{}
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = uuid,
+			name = "Offset Mesh",
+			has_transform = true,
+			transform = {position = {1, 2, 3}, scale = {1, 1, 1}},
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	state := new(State)
+	defer free(state)
+	defer destroy(state)
+	state.editor_simulation_stopped = true
+	editor_history_push_transform_pair(
+		state,
+		&world,
+		0,
+		.Transform_Position,
+		{1, 2, 3},
+		{4, 5, 6},
+		.Transform_Scale,
+		{1, 1, 1},
+		{2, 3, 4},
+	)
+	testing.expect(t, state.editor_history_count == 1)
+	testing.expect(t, state.editor_history[0].change_count == 6)
+	world.transforms[0].position = {4, 5, 6}
+	world.transforms[0].scale = {2, 3, 4}
+	testing.expect(t, editor_history_apply(state, &world, false))
+	testing.expect(t, world.transforms[0].position == shared.Vec3{1, 2, 3})
+	testing.expect(t, world.transforms[0].scale == shared.Vec3{1, 1, 1})
 }
 
 @(test)

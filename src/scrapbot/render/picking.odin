@@ -125,6 +125,100 @@ editor_selection_focus_bounds :: proc(
 	return transform.position, max(radius, 0.25), true
 }
 
+editor_gizmo_bounds_entity_matches_selection :: proc(
+	world: ^shared.World,
+	entity_index: int,
+	selected_uuid: shared.Entity_UUID,
+) -> bool {
+	if world == nil || !ecs.entity_is_alive(world, entity_index) {
+		return false
+	}
+	entity := world.entities[entity_index]
+	return(
+		entity.uuid == selected_uuid ||
+		entity.model_owner == selected_uuid ||
+		ecs.entity_is_descendant_of_uuid(world, entity_index, selected_uuid) \
+	)
+}
+
+editor_gizmo_bounds_dirty_for_selection :: proc(
+	world: ^shared.World,
+	selected_uuid: shared.Entity_UUID,
+) -> bool {
+	if world == nil {
+		return false
+	}
+	for entity_index in world.render_dirty_entities {
+		if editor_gizmo_bounds_entity_matches_selection(world, entity_index, selected_uuid) {
+			return true
+		}
+	}
+	for entity_index in world.render_extract_dirty_entities {
+		if editor_gizmo_bounds_entity_matches_selection(world, entity_index, selected_uuid) {
+			return true
+		}
+	}
+	for entity_index in world.render_transform_dirty_entities {
+		if editor_gizmo_bounds_entity_matches_selection(world, entity_index, selected_uuid) {
+			return true
+		}
+	}
+	return false
+}
+
+editor_update_gizmo_bounds_center :: proc(
+	state: ^ui.State,
+	world: ^shared.World,
+	registry: ^resources.Registry,
+) {
+	if state == nil ||
+	   world == nil ||
+	   registry == nil ||
+	   state.editor_gizmo_pivot != .Center ||
+	   state.editor_gizmo_active_handle != .None {
+		return
+	}
+	selected_uuid, selected := ui.editor_selected_uuid(state, world)
+	if !selected {
+		state.editor_gizmo_bounds_valid = false
+		return
+	}
+	invalid :=
+		!state.editor_gizmo_bounds_valid ||
+		state.editor_gizmo_bounds_selected != selected_uuid ||
+		state.editor_gizmo_bounds_world_uuid != world.instance_uuid ||
+		state.editor_gizmo_bounds_render_topology_revision != world.render_topology_revision ||
+		state.editor_gizmo_bounds_render_hierarchy_revision != world.render_hierarchy_revision ||
+		state.editor_gizmo_bounds_geometry_topology_revision !=
+			registry.geometry_topology_revision ||
+		editor_gizmo_bounds_dirty_for_selection(world, selected_uuid)
+	if !invalid {
+		return
+	}
+	render_list: shared.Render_List
+	ecs.begin_world_transform_resolution(world)
+	for entity_index in world.render_active_entities {
+		if instance, found := ecs.resource_render_instance_for_entity(world, entity_index); found {
+			append(&render_list.instances, instance)
+		}
+	}
+	center, _, bounded := editor_selection_focus_bounds(
+		world,
+		&render_list,
+		registry,
+		state.editor_selected_entity,
+		selected_uuid,
+	)
+	ecs.destroy_render_list(&render_list)
+	state.editor_gizmo_bounds_center = center
+	state.editor_gizmo_bounds_selected = selected_uuid
+	state.editor_gizmo_bounds_world_uuid = world.instance_uuid
+	state.editor_gizmo_bounds_render_topology_revision = world.render_topology_revision
+	state.editor_gizmo_bounds_render_hierarchy_revision = world.render_hierarchy_revision
+	state.editor_gizmo_bounds_geometry_topology_revision = registry.geometry_topology_revision
+	state.editor_gizmo_bounds_valid = bounded
+}
+
 editor_pick_ray :: proc(
 	render_list: ^shared.Render_List,
 	position: shared.Vec2,

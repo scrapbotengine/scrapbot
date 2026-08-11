@@ -474,10 +474,10 @@ These entries deliberately omit exhaustive field/default documentation. Follow t
 
 ### `scrapbot.internal.editor_transform_gizmo`
 
-- **Contract:** Transient editor ownership, mode, space, drag axis, and interaction state attached to the currently manipulable selected entity.
+- **Contract:** Transient editor ownership, mode, World/Local orientation space, and Origin/Center manipulation pivot attached to the currently manipulable selected entity.
 - **Storage/lifecycle:** Dedicated editor-gizmo storage; internal derived component.
 - **Producers:** Editor selection and transform-gizmo reconciliation while the shell is visible.
-- **Consumers:** Gizmo rendering, picking, drag manipulation, and the generic read-only component inspector.
+- **Consumers:** Bounds-center placement, gizmo rendering, picking, drag manipulation, and the generic read-only component inspector.
 - **Invalidation:** Selection, editor visibility, and Transform membership add or remove the exact component; interaction changes mutate only its retained slot.
 - **Surfaces:** Internal only; rejected from scene, Luau, native extension, and editor authoring surfaces, but runtime type inspection may show its read-only advanced card.
 - **Source/tests:** `ecs/editor.odin`, `render/gizmo.odin`, `ui/editor_reflection.odin`; `ecs/editor_test.odin`, `render/gizmo_test.odin`, `ui/ui_test.odin`.

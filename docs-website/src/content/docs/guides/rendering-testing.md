@@ -494,6 +494,8 @@ bin/scrapbot run examples/ecs-showcase \
 
 `tests/fixtures/ui/authoring-history.json` covers the authoring-history boundary: it edits a scene Transform, verifies dirty state across Undo and Redo, uses Revert to reload scene entities without restarting project code, asserts the disk-authored value, and captures the transport controls.
 
+`tests/fixtures/ui/gizmo-center-pivot.json` selects a renderable entity, activates the transient Center manipulation pivot through the public ECS toolbar, and captures its selected visual state.
+
 Scripts use schema version 1 and execute actions sequentially:
 
 ```json

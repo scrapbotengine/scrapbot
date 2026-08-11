@@ -58,6 +58,12 @@
 
 **World transform** - The derived position, rotation, and scale produced by composing an entity's local Transform with its ancestor chain. Rendering and editor spatial tools consume this value; it is not separately authored.
 
+**Transform origin** - The position represented by an entity's Transform. It is the canonical spatial point inherited by children and remains distinct from an editor manipulation pivot or a rendered-bounds center.
+
+**Manipulation pivot** - The transient world-space point around which an editor transform gesture operates. Scrapbot can use the selected entity's Transform origin or derived rendered-bounds center without serializing another Transform field.
+
+**Rendered-bounds center** - The center of the combined world-space Geometry bounds for a selected entity, its Transform descendants, and its generated Model children. Editor framing and Center-pivot manipulation derive this value on demand.
+
 ## Projects
 
 **Project directory** - The directory where a user runs Scrapbot. It contains `project.toml`, scene files, standalone resources, scripts, assets, and optional native extension code.

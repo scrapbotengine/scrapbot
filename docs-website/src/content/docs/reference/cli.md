@@ -149,7 +149,7 @@ The shell is built from transient editor-origin ECS UI entities. Its tools inclu
 - A revision-driven Performance panel for rolling frame health and current rendering counters.
 - An independently sampled Systems panel for CPU phase attribution.
 - Smoothly scrolling, clipped Scene and Inspector panes with proportional scrollbars.
-- Translation, rotation, and scale gizmos with World and Local orientation controls.
+- Translation, rotation, and scale gizmos with World/Local orientation and Origin/Center pivot controls.
 
 Hold right mouse inside the viewport to capture the pointer. Look with the mouse, move with WASD, rise with Space, and descend with Ctrl. Clicking rendered geometry selects the nearest project entity, reveals it in the Scene pane, and drives the component inspector.
 

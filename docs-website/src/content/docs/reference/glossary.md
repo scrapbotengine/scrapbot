@@ -38,6 +38,15 @@ An entity's authored position, rotation, and scale relative to its Transform par
 **World transform**<br>
 The derived position, rotation, and scale produced by composing an entity's local Transform with its ancestor chain. Rendering and editor spatial tools consume this value; it is not separately authored.
 
+**Transform origin**<br>
+The position represented by an entity's Transform. It is the canonical spatial point inherited by children and remains separate from an editor manipulation pivot or rendered-bounds center.
+
+**Manipulation pivot**<br>
+The transient point around which an editor transform gesture operates. Scrapbot can use the selected entity's Transform origin or rendered-bounds center without adding serialized Transform data.
+
+**Rendered-bounds center**<br>
+The center of the combined world-space Geometry bounds for a selected entity, its Transform descendants, and its generated Model children.
+
 ## Projects
 
 **Project directory**  
@@ -104,4 +113,4 @@ The origin recorded for a live entity: scene-authored, runtime-spawned, or edito
 A transient editor-owned ECS entity used to navigate the live viewport without mutating the project's camera.
 
 **Transform gizmo**
-Transient editor state attached to the selected entity and rendered as screen-legible handles. Its ECS-visible mode and World/Local orientation support X, Y, and Z translation, rotation, and scale in the running world.
+Transient editor state attached to the selected entity and rendered as screen-legible handles. Its ECS-visible mode, World/Local orientation, and Origin/Center manipulation pivot support X, Y, and Z translation, rotation, and scale in the running world.

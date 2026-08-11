@@ -1519,10 +1519,15 @@ Editor_Gizmo_Space :: enum {
 	World,
 	Local,
 }
+Editor_Gizmo_Pivot :: enum {
+	Origin,
+	Center,
+}
 Editor_Transform_Gizmo_Component :: struct {
 	entity_index: int,
 	mode: Editor_Gizmo_Mode,
 	space: Editor_Gizmo_Space,
+	pivot: Editor_Gizmo_Pivot,
 }
 
 MAX_SYSTEM_PROFILE_ENTRIES :: 80
@@ -1580,6 +1585,8 @@ Editor_UI_Role :: enum {
 	Gizmo_Toolbar,
 	Gizmo_Space_World,
 	Gizmo_Space_Local,
+	Gizmo_Pivot_Origin,
+	Gizmo_Pivot_Center,
 	Placement_Toolbar,
 	Placement_Snap,
 	Debug_View_Toolbar,
