@@ -381,6 +381,141 @@ primitive = "plane"
 resource = "7b000000-0000-4000-8000-000000000009"
 
 [[entities]]
+id = "7b100000-0000-4000-8000-000000000057"
+name = "Coastal Water Near West"
+
+[entities.transform]
+position = [-84, -0.2, 84]
+rotation = [0, 0, 0]
+scale = [84, 1, 84]
+
+[entities.mesh]
+primitive = "plane"
+
+[entities.material]
+resource = "7b000000-0000-4000-8000-000000000009"
+
+[[entities]]
+id = "7b100000-0000-4000-8000-000000000058"
+name = "Coastal Water Near"
+
+[entities.transform]
+position = [0, -0.2, 84]
+rotation = [0, 0, 0]
+scale = [84, 1, 84]
+
+[entities.mesh]
+primitive = "plane"
+
+[entities.material]
+resource = "7b000000-0000-4000-8000-000000000009"
+
+[[entities]]
+id = "7b100000-0000-4000-8000-000000000059"
+name = "Coastal Water Near East"
+
+[entities.transform]
+position = [84, -0.2, 84]
+rotation = [0, 0, 0]
+scale = [84, 1, 84]
+
+[entities.mesh]
+primitive = "plane"
+
+[entities.material]
+resource = "7b000000-0000-4000-8000-000000000009"
+
+[[entities]]
+id = "7b100000-0000-4000-8000-000000000076"
+name = "Coastal Water Fore West"
+
+[entities.transform]
+position = [-84, -0.2, 168]
+rotation = [0, 0, 0]
+scale = [84, 1, 84]
+
+[entities.mesh]
+primitive = "plane"
+
+[entities.material]
+resource = "7b000000-0000-4000-8000-000000000009"
+
+[[entities]]
+id = "7b100000-0000-4000-8000-000000000077"
+name = "Coastal Water Fore"
+
+[entities.transform]
+position = [0, -0.2, 168]
+rotation = [0, 0, 0]
+scale = [84, 1, 84]
+
+[entities.mesh]
+primitive = "plane"
+
+[entities.material]
+resource = "7b000000-0000-4000-8000-000000000009"
+
+[[entities]]
+id = "7b100000-0000-4000-8000-000000000078"
+name = "Coastal Water Fore East"
+
+[entities.transform]
+position = [84, -0.2, 168]
+rotation = [0, 0, 0]
+scale = [84, 1, 84]
+
+[entities.mesh]
+primitive = "plane"
+
+[entities.material]
+resource = "7b000000-0000-4000-8000-000000000009"
+
+[[entities]]
+id = "7b100000-0000-4000-8000-000000000079"
+name = "Coastal Water Close West"
+
+[entities.transform]
+position = [-84, -0.2, 252]
+rotation = [0, 0, 0]
+scale = [84, 1, 84]
+
+[entities.mesh]
+primitive = "plane"
+
+[entities.material]
+resource = "7b000000-0000-4000-8000-000000000009"
+
+[[entities]]
+id = "7b100000-0000-4000-8000-000000000080"
+name = "Coastal Water Close"
+
+[entities.transform]
+position = [0, -0.2, 252]
+rotation = [0, 0, 0]
+scale = [84, 1, 84]
+
+[entities.mesh]
+primitive = "plane"
+
+[entities.material]
+resource = "7b000000-0000-4000-8000-000000000009"
+
+[[entities]]
+id = "7b100000-0000-4000-8000-000000000081"
+name = "Coastal Water Close East"
+
+[entities.transform]
+position = [84, -0.2, 252]
+rotation = [0, 0, 0]
+scale = [84, 1, 84]
+
+[entities.mesh]
+primitive = "plane"
+
+[entities.material]
+resource = "7b000000-0000-4000-8000-000000000009"
+
+[[entities]]
 id = "7b100000-0000-4000-8000-000000000006"
 name = "Coastal Seabed"
 
