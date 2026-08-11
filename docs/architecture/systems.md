@@ -42,10 +42,10 @@ These are the engine-owned rows published to the editor's Systems panel. They ar
 ### `scrapbot.gizmo`
 
 - **Phase/order:** After editor camera and before retained UI.
-- **Inputs:** Editor selection, resolved world transforms and selected light payload, active editor camera and viewport, pointer state, gizmo mode/orientation/pivot, transient snap increments, retained selected-subtree bounds, and compact camera/directional-light/point-light membership.
+- **Inputs:** Editor selection, resolved world transforms and selected light payload, active editor camera and viewport, window pointer state plus world-tool capture/wrap displacement, gizmo mode/orientation/pivot, transient snap increments, retained selected-subtree bounds, and compact camera/directional-light/point-light membership.
 - **Outputs:** Immediate free modal translation/view-axis rotation/uniform scaling, later axis-qualified Transform edits resolved against the same captured gesture, increment-snapped origin- or bounds-center-based Transform edits, camera body/frustum geometry, decluttered constant-size camera/light icons, selected point-range rings or directional arrow, canonical light-field edits, and the gizmo/overlay paint and interaction state.
 - **Stable-frame behavior:** Reuses retained overlay GPU output and a selected-subtree bounds center until exact projected output or interaction state changes. CPU projection visits only compact active camera/light membership plus bounded selected-tool geometry; icon decluttering is capped at 256 entries and the selected light adds at most 144 range segments or one direction segment.
-- **Boundary:** Main-thread CPU editor tooling; visualization is an overlay consumer, not an authored renderable entity.
+- **Boundary:** Main-thread CPU editor tooling; visualization is an overlay consumer, not an authored renderable entity. Initial hits respect viewport/chrome ownership, while active transform and light gestures retain the unfiltered window pointer until commit or cancellation.
 - **Source/tests:** `render/gizmo.odin`, `render/light_gizmo.odin`, `render/camera_visualizer.odin`, `render/scene_icons.odin`, `ui/editor_ecs.odin`; `render/gizmo_test.odin`, `render/light_gizmo_test.odin`, `render/camera_visualizer_test.odin`, `render/scene_icons_test.odin`.
 
 ### `scrapbot.ui`

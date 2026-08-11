@@ -24,7 +24,7 @@ runtime_input_sampled_generation: u64
 runtime_scene_camera_look_active: bool
 runtime_scene_camera_orbit_active: bool
 runtime_scene_camera_capture_warmup: int
-runtime_editor_transform_pointer_active: bool
+runtime_editor_tool_pointer_active: bool
 runtime_pointer_cursor: Runtime_Pointer_Cursor
 runtime_pointer_hand_cursor: ^sdl.Cursor
 runtime_text_edit_cursor: ^sdl.Cursor
@@ -252,7 +252,7 @@ close_runtime_window :: proc() {
 	   (runtime_scene_camera_look_active || runtime_scene_camera_orbit_active) {
 		_ = sdl.SetWindowRelativeMouseMode(runtime_window, false)
 	}
-	if runtime_window != nil && runtime_editor_transform_pointer_active {
+	if runtime_window != nil && runtime_editor_tool_pointer_active {
 		_ = sdl.SetWindowMouseGrab(runtime_window, false)
 	}
 	if runtime_window != nil {
@@ -296,7 +296,7 @@ close_runtime_window :: proc() {
 	runtime_scene_camera_look_active = false
 	runtime_scene_camera_orbit_active = false
 	runtime_scene_camera_capture_warmup = 0
-	runtime_editor_transform_pointer_active = false
+	runtime_editor_tool_pointer_active = false
 	runtime_pointer_cursor = .Default
 	runtime_wheel_x = 0
 	runtime_wheel_y = 0
@@ -447,22 +447,22 @@ runtime_editor_pointer_wrap_target :: proc(
 	return target, wrapped
 }
 
-set_runtime_editor_transform_pointer_active :: proc(active: bool) {
+set_runtime_editor_tool_pointer_active :: proc(active: bool) {
 	should_activate :=
 		active &&
 		runtime_window != nil &&
 		!runtime_window_hidden &&
 		!runtime_scene_camera_look_active &&
 		!runtime_scene_camera_orbit_active
-	if should_activate == runtime_editor_transform_pointer_active { return }
+	if should_activate == runtime_editor_tool_pointer_active { return }
 	if runtime_window != nil {
 		_ = sdl.SetWindowMouseGrab(runtime_window, should_activate)
 	}
-	runtime_editor_transform_pointer_active = should_activate
+	runtime_editor_tool_pointer_active = should_activate
 }
 
 runtime_editor_transform_pointer_wrap :: proc(pointer: Pointer_State) -> shared.Vec2 {
-	if !runtime_editor_transform_pointer_active ||
+	if !runtime_editor_tool_pointer_active ||
 	   !pointer.available ||
 	   runtime_window == nil { return {} }
 

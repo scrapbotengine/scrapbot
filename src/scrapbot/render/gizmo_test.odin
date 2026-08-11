@@ -15,11 +15,12 @@ gizmo_vec3_near :: proc(a, b: shared.Vec3, epsilon: f32 = 0.001) -> bool {
 }
 
 @(test)
-test_modal_gizmo_absorbs_pointer_wrap_into_drag_anchors :: proc(t: ^testing.T) {
+test_transform_gizmos_absorb_pointer_wrap_into_drag_anchors :: proc(t: ^testing.T) {
 	state := new(ui.State)
 	defer free(state)
 	state^ = ui.State {
 		editor_gizmo_keyboard_active = true,
+		editor_gizmo_captures_pointer = true,
 		editor_gizmo_drag_pointer = {400, 300},
 		editor_gizmo_drag_last_pointer = {900, 500},
 	}
@@ -29,7 +30,12 @@ test_modal_gizmo_absorbs_pointer_wrap_into_drag_anchors :: proc(t: ^testing.T) {
 
 	state.editor_gizmo_keyboard_active = false
 	editor_gizmo_apply_pointer_wrap(state, {100, 100})
-	testing.expect(t, state.editor_gizmo_drag_pointer == shared.Vec2{-800, 1000})
+	testing.expect(t, state.editor_gizmo_drag_pointer == shared.Vec2{-700, 1100})
+	testing.expect(t, state.editor_gizmo_drag_last_pointer == shared.Vec2{-200, 1300})
+
+	state.editor_gizmo_captures_pointer = false
+	editor_gizmo_apply_pointer_wrap(state, {100, 100})
+	testing.expect(t, state.editor_gizmo_drag_pointer == shared.Vec2{-700, 1100})
 }
 
 @(test)

@@ -1099,6 +1099,21 @@ frame_active_seconds :: proc(start: time.Tick) -> f32 {
 	return f32(f64(time.tick_diff(start, finish)) / 1_000_000_000.0)
 }
 
+editor_world_tool_pointer_input :: proc(
+	state: ^ui.State,
+	pointer: ui.Pointer_Input,
+) -> ui.Pointer_Input {
+	if state == nil {
+		return {}
+	}
+	if !state.editor_gizmo_keyboard_active &&
+	   !ui.editor_world_tool_captures_pointer(state) &&
+	   ui.editor_pointer_consumed_by_chrome(state, pointer) {
+		return {}
+	}
+	return pointer
+}
+
 run_frame_system_unmeasured :: proc(
 	config: ^Run_Config,
 	world: ^World,
@@ -1171,10 +1186,10 @@ run_frame_system_unmeasured :: proc(
 	}
 	if config.ui_state != nil {
 		defer {
-			platform.set_runtime_editor_transform_pointer_active(
+			platform.set_runtime_editor_tool_pointer_active(
 				config.ui_driver == nil &&
 				config.ui_state.editor_visible &&
-				config.ui_state.editor_gizmo_keyboard_active,
+				ui.editor_world_tool_captures_pointer(config.ui_state),
 			)
 		}
 		config.last_drawable_width = drawable_width
@@ -1191,6 +1206,7 @@ run_frame_system_unmeasured :: proc(
 		allow_camera_navigation :=
 			!ui.editor_pointer_consumed_by_chrome(config.ui_state, camera_pointer) &&
 			!config.ui_state.editor_gizmo_keyboard_active &&
+			!ui.editor_world_tool_captures_pointer(config.ui_state) &&
 			!ui.editor_ui_has_open_popup(config.ui_state, world)
 		camera_input := platform.runtime_scene_camera_input(
 			config.ui_state.editor_visible,
@@ -1242,7 +1258,7 @@ run_frame_system_unmeasured :: proc(
 		}
 		record_system_profile_phase(config, .Editor_Camera, camera_system_start)
 		gizmo_pointer_wrap: shared.Vec2
-		if config.ui_driver == nil && config.ui_state.editor_gizmo_keyboard_active {
+		if config.ui_driver == nil && config.ui_state.editor_gizmo_captures_pointer {
 			gizmo_pointer_wrap = platform.runtime_editor_transform_pointer_wrap(platform_pointer)
 		}
 		pointer := ui.Pointer_Input {
@@ -1315,11 +1331,7 @@ run_frame_system_unmeasured :: proc(
 		gizmo_system_start := time.tick_now()
 		config.ui_state.editor_keyboard_escape_consumed = false
 		editor_update_gizmo_bounds_center(config.ui_state, world, config.resource_registry)
-		gizmo_pointer := pointer
-		if !config.ui_state.editor_gizmo_keyboard_active &&
-		   ui.editor_pointer_consumed_by_chrome(config.ui_state, pointer) {
-			gizmo_pointer = {}
-		}
+		gizmo_pointer := editor_world_tool_pointer_input(config.ui_state, pointer)
 		editor_camera_mesh_system(
 			config.ui_state,
 			world,

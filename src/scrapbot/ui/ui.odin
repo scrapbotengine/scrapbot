@@ -102,6 +102,13 @@ consume_editor_pointer_activation :: proc(state: ^State, pointer: Pointer_Input)
 		state.editor_previous_primary_down = true
 	}
 }
+
+editor_world_tool_captures_pointer :: proc(state: ^State) -> bool {
+	return(
+		state != nil &&
+		(state.editor_gizmo_captures_pointer || state.editor_light_gizmo_captures_pointer) \
+	)
+}
 Paint_Kind :: enum {
 	Panel,
 	Glyph,
@@ -1484,7 +1491,7 @@ reconcile :: proc(
 		height,
 		surface_width,
 		surface_height,
-	); if state.editor_gizmo_captures_pointer || state.editor_light_gizmo_captures_pointer {
+	); if editor_world_tool_captures_pointer(state) {
 		project_pointer = {}
 	}
 	editor_pointer := pointer

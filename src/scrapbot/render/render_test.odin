@@ -14,6 +14,36 @@ import "core:thread"
 import "vendor:wgpu"
 
 @(test)
+test_active_world_tools_keep_pointer_input_over_editor_chrome :: proc(t: ^testing.T) {
+	state := new(ui.State)
+	defer free(state)
+	state.editor_pixel_density = 1
+	state.node_count = 1
+	state.nodes[0] = {
+		origin = .Editor,
+		button_index = 0,
+		parent_node_index = -1,
+		rect = {0, 0, 100, 100},
+		paint_order = 1,
+		laid_out = true,
+	}
+	pointer := ui.Pointer_Input {
+		position = {50, 50},
+		primary_down = true,
+		available = true,
+	}
+	testing.expect(t, ui.editor_pointer_consumed_by_chrome(state, pointer))
+	testing.expect(t, !editor_world_tool_pointer_input(state, pointer).available)
+
+	state.editor_gizmo_captures_pointer = true
+	testing.expect_value(t, editor_world_tool_pointer_input(state, pointer), pointer)
+
+	state.editor_gizmo_captures_pointer = false
+	state.editor_light_gizmo_captures_pointer = true
+	testing.expect_value(t, editor_world_tool_pointer_input(state, pointer), pointer)
+}
+
+@(test)
 test_wgpu_headless_runs_use_offscreen_output_without_requiring_capture :: proc(t: ^testing.T) {
 	config := Run_Config {
 		backend = .WGPU,
