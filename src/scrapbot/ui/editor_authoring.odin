@@ -262,6 +262,43 @@ editor_authoring_duplicate_entity :: proc(
 	return world.entities[created_index].id, true
 }
 
+editor_duplicate_entity :: proc(
+	state: ^State,
+	world: ^shared.World,
+	entity_index: int,
+) -> (
+	shared.Entity,
+	bool,
+) {
+	if state == nil || world == nil {
+		return {}, false
+	}
+	if state.editor_simulation_stopped {
+		return editor_authoring_duplicate_entity(state, world, entity_index)
+	}
+	if !ecs.entity_is_alive(world, entity_index) ||
+	   world.entities[entity_index].origin == .Editor {
+		return {}, false
+	}
+	after := capture_snapshot_pointer(world, entity_index)
+	if after == nil {
+		return {}, false
+	}
+	after.entity.id = shared.entity_uuid_generate()
+	delete(after.entity.name)
+	after.entity.name = ecs.clone_snapshot_string(
+		fmt.tprintf("%s Copy", world.entities[entity_index].name),
+	)
+	after.origin = .Runtime
+	created_index, ok := ecs.apply_entity_snapshot(world, after)
+	destroy_snapshot_pointer(after)
+	if !ok {
+		return {}, false
+	}
+	editor_authoring_select(state, world, created_index)
+	return world.entities[created_index].id, true
+}
+
 editor_authoring_delete_entity :: proc(
 	state: ^State,
 	world: ^shared.World,
@@ -294,6 +331,28 @@ editor_authoring_delete_entity :: proc(
 	push_structural_change(state, id, before, nil)
 	state.editor_has_selection = false
 	state.editor_snapshot_valid = false
+	return true
+}
+
+editor_delete_entity :: proc(state: ^State, world: ^shared.World, entity_index: int) -> bool {
+	if state == nil || world == nil {
+		return false
+	}
+	if state.editor_simulation_stopped {
+		return editor_authoring_delete_entity(state, world, entity_index)
+	}
+	if !ecs.entity_is_alive(world, entity_index) ||
+	   world.entities[entity_index].origin == .Editor {
+		return false
+	}
+	id := world.entities[entity_index].id
+	if !ecs.delete_entity_by_uuid(world, world.entities[entity_index].uuid) {
+		return false
+	}
+	if state.editor_has_selection && state.editor_selected_entity == id {
+		state.editor_has_selection = false
+		state.editor_snapshot_valid = false
+	}
 	return true
 }
 

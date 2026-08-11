@@ -15,8 +15,28 @@ editor_transform_gizmo_system :: proc(
 	viewport: ui.Rect,
 	camera: shared.Camera_Instance,
 	has_camera: bool,
+	keyboard: ui.Keyboard_Input = {},
 ) {
 	if state == nil || world == nil { editor_hide_gizmo(state); return }
+	if state.editor_gizmo_keyboard_active &&
+	   (!state.editor_visible || !state.editor_has_selection) {
+		selected_index := int(state.editor_selected_entity.index)
+		if selected_index >= 0 &&
+		   selected_index < len(world.entities) &&
+		   world.entities[selected_index].alive &&
+		   world.entities[selected_index].id == state.editor_selected_entity {
+			selected := &world.entities[selected_index]
+			if selected.transform_index >= 0 && selected.transform_index < len(world.transforms) {
+				world.transforms[selected.transform_index].position =
+					state.editor_gizmo_drag_position
+				world.transforms[selected.transform_index].rotation =
+					state.editor_gizmo_drag_rotation
+				world.transforms[selected.transform_index].scale = state.editor_gizmo_drag_scale
+				ecs.mark_render_transform_dirty(world, selected_index)
+				ui.editor_recompute_scene_dirty(state)
+			}
+		}
+	}
 	ecs.reconcile_editor_transform_gizmo(
 		world,
 		state.editor_selected_entity,
@@ -30,6 +50,42 @@ editor_transform_gizmo_system :: proc(
 	if entity.transform_index < 0 ||
 	   entity.transform_index >= len(world.transforms) { editor_hide_gizmo(state); return }
 	transform := &world.transforms[entity.transform_index]
+	if keyboard.escape {
+		escape_event := ui.Interaction_Event {
+			kind = .Keyboard,
+		}
+		if state.editor_transform_chord_pending || state.editor_gizmo_keyboard_active {
+			ui.cancel_interaction_event(&escape_event)
+		}
+		state.editor_keyboard_escape_consumed = escape_event.cancelled
+		if state.editor_gizmo_keyboard_active {
+			transform.position = state.editor_gizmo_drag_position
+			transform.rotation = state.editor_gizmo_drag_rotation
+			transform.scale = state.editor_gizmo_drag_scale
+			ecs.mark_render_transform_dirty(world, entity_index)
+			ui.editor_recompute_scene_dirty(state)
+		}
+		state.editor_transform_chord_pending = false
+		state.editor_gizmo_keyboard_active = false
+		state.editor_gizmo_active_handle = .None
+		state.editor_gizmo_captures_pointer = false
+	}
+	if !state.editor_gizmo_keyboard_active {
+		if keyboard.transform_translate {
+			state.editor_transform_chord_pending = true
+			state.editor_transform_chord_mode = .Translate
+			ui.editor_set_gizmo_mode(state, .Translate)
+		} else if keyboard.transform_rotate {
+			state.editor_transform_chord_pending = true
+			state.editor_transform_chord_mode = .Rotate
+			ui.editor_set_gizmo_mode(state, .Rotate)
+		} else if keyboard.transform_scale {
+			state.editor_transform_chord_pending = true
+			state.editor_transform_chord_mode = .Scale
+			ui.editor_set_gizmo_mode(state, .Scale)
+		}
+	}
+	gizmo.mode = state.editor_gizmo_mode
 	ecs.begin_world_transform_resolution(world)
 	world_transform, _ := ecs.resolve_world_transform(world, entity_index)
 	eye, fov := editor_camera_eye_fov(
@@ -60,6 +116,10 @@ editor_transform_gizmo_system :: proc(
 	) { editor_hide_gizmo(state); return }
 	just_pressed :=
 		pointer.available && pointer.primary_down && !state.editor_previous_primary_down
+	keyboard_handle, keyboard_handle_requested := editor_gizmo_keyboard_handle(
+		state.editor_transform_chord_mode,
+		keyboard,
+	)
 	if state.editor_gizmo_active_handle == .None {
 		state.editor_gizmo_hovered_handle = editor_gizmo_hit_handle(
 			pointer.position,
@@ -70,8 +130,15 @@ editor_transform_gizmo_system :: proc(
 			gizmo.mode,
 			pointer.available,
 		)
-		if just_pressed && state.editor_gizmo_hovered_handle != .None {
+		start_keyboard_drag :=
+			state.editor_transform_chord_pending && keyboard_handle_requested && pointer.available
+		if just_pressed && state.editor_gizmo_hovered_handle != .None || start_keyboard_drag {
 			handle := state.editor_gizmo_hovered_handle
+			if start_keyboard_drag {
+				handle = keyboard_handle
+				state.editor_transform_chord_pending = false
+				state.editor_gizmo_keyboard_active = true
+			}
 			delta := shared.Vec2{1, -1}; pixels := EDITOR_GIZMO_SCREEN_SIZE
 			if handle >= .X && handle <= .Z {
 				axis_index := int(handle) - 1
@@ -107,36 +174,28 @@ editor_transform_gizmo_system :: proc(
 				state.editor_gizmo_drag_world_scale = world_size
 			}
 		}
-	} else if !pointer.primary_down {
-		switch gizmo.mode {
-			case .Translate:
-				ui.editor_history_push_transform(
-					state,
-					world,
-					entity_index,
-					.Transform_Position,
-					state.editor_gizmo_drag_position,
-					transform.position,
-				)
-			case .Rotate:
-				ui.editor_history_push_transform(
-					state,
-					world,
-					entity_index,
-					.Transform_Rotation,
-					state.editor_gizmo_drag_rotation,
-					transform.rotation,
-				)
-			case .Scale:
-				ui.editor_history_push_transform(
-					state,
-					world,
-					entity_index,
-					.Transform_Scale,
-					state.editor_gizmo_drag_scale,
-					transform.scale,
-				)
+	} else if state.editor_gizmo_keyboard_active && (just_pressed || keyboard.enter) {
+		if just_pressed {
+			ui.consume_editor_pointer_activation(state, pointer)
 		}
+		editor_gizmo_commit_history(
+			state,
+			world,
+			entity_index,
+			world.transforms[entity.transform_index],
+			gizmo.mode,
+		)
+		state.editor_gizmo_active_handle = .None
+		state.editor_gizmo_captures_pointer = false
+		state.editor_gizmo_keyboard_active = false
+	} else if !state.editor_gizmo_keyboard_active && !pointer.primary_down {
+		editor_gizmo_commit_history(
+			state,
+			world,
+			entity_index,
+			world.transforms[entity.transform_index],
+			gizmo.mode,
+		)
 		state.editor_gizmo_active_handle = .None; state.editor_gizmo_captures_pointer = false
 	} else {
 		state.editor_gizmo_captures_pointer =
@@ -255,6 +314,79 @@ editor_transform_gizmo_system :: proc(
 	}
 }
 
+editor_gizmo_keyboard_handle :: proc(
+	mode: shared.Editor_Gizmo_Mode,
+	keyboard: ui.Keyboard_Input,
+) -> (
+	ui.Editor_Gizmo_Handle,
+	bool,
+) {
+	axis := -1
+	if keyboard.transform_axis_x {
+		axis = 0
+	} else if keyboard.transform_axis_y {
+		axis = 1
+	} else if keyboard.transform_axis_z {
+		axis = 2
+	}
+	if axis < 0 {
+		return .None, false
+	}
+	if mode == .Rotate || !keyboard.shift {
+		return ui.Editor_Gizmo_Handle(axis + int(ui.Editor_Gizmo_Handle.X)), true
+	}
+	switch axis {
+		case 0:
+			return .YZ, true
+		case 1:
+			return .XZ, true
+		case 2:
+			return .XY, true
+	}
+	return .None, false
+}
+
+editor_gizmo_commit_history :: proc(
+	state: ^ui.State,
+	world: ^shared.World,
+	entity_index: int,
+	transform: shared.Transform_Component,
+	mode: shared.Editor_Gizmo_Mode,
+) {
+	if state == nil || world == nil {
+		return
+	}
+	switch mode {
+		case .Translate:
+			ui.editor_history_push_transform(
+				state,
+				world,
+				entity_index,
+				.Transform_Position,
+				state.editor_gizmo_drag_position,
+				transform.position,
+			)
+		case .Rotate:
+			ui.editor_history_push_transform(
+				state,
+				world,
+				entity_index,
+				.Transform_Rotation,
+				state.editor_gizmo_drag_rotation,
+				transform.rotation,
+			)
+		case .Scale:
+			ui.editor_history_push_transform(
+				state,
+				world,
+				entity_index,
+				.Transform_Scale,
+				state.editor_gizmo_drag_scale,
+				transform.scale,
+			)
+	}
+}
+
 editor_gizmo_apply_world_transform :: proc(
 	world: ^shared.World,
 	entity_index: int,
@@ -280,7 +412,9 @@ editor_hide_gizmo :: proc(state: ^ui.State) {if state == nil { return }
 	state.editor_gizmo_visible = false
 	state.editor_gizmo_hovered_handle = .None
 	state.editor_gizmo_active_handle = .None
-	state.editor_gizmo_captures_pointer = false}
+	state.editor_gizmo_captures_pointer = false
+	state.editor_gizmo_keyboard_active = false
+	state.editor_transform_chord_pending = false}
 
 editor_project_gizmo :: proc(
 	state: ^ui.State,

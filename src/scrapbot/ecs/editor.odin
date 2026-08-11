@@ -123,9 +123,13 @@ editor_scene_camera_system :: proc(
 		),
 	)
 	direction = shared.camera_vec3_normalize(direction)
+	move_speed := component.move_speed
+	if input.move_fast {
+		move_speed *= 4
+	}
 	transform.position = shared.camera_vec3_add(
 		transform.position,
-		shared.camera_vec3_mul(direction, component.move_speed * max(delta_seconds, 0)),
+		shared.camera_vec3_mul(direction, move_speed * max(delta_seconds, 0)),
 	)
 }
 

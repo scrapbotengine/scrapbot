@@ -551,6 +551,7 @@ Editor_Fly_Camera_Input :: struct {
 	movement: Vec3,
 	look_delta: Vec2,
 	look_active: bool,
+	move_fast: bool,
 }
 
 Ambient_Light_Component :: struct {

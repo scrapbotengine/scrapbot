@@ -48,6 +48,7 @@ Scene_Camera_Key_State :: struct {
 	forward, backward: bool,
 	left, right: bool,
 	up, down: bool,
+	fast: bool,
 }
 
 Runtime_Text_Input :: struct {
@@ -57,6 +58,22 @@ Runtime_Text_Input :: struct {
 	tab, shift, fine, enter, escape, select_all, save, undo, redo: bool,
 	editor_toggle, run_stop, pause_step: bool,
 	toggle_left_sidebar, toggle_right_sidebar: bool,
+	duplicate_entity, delete_entity: bool,
+	transform_translate, transform_rotate, transform_scale: bool,
+	transform_axis_x, transform_axis_y, transform_axis_z: bool,
+}
+
+Editor_Shortcut_Action :: enum {
+	Toggle_Editor,
+	Toggle_Left_Sidebar,
+	Toggle_Right_Sidebar,
+	Run_Stop,
+	Pause_Step,
+	Save,
+	Undo,
+	Redo,
+	Duplicate_Entity,
+	Delete_Entity,
 }
 
 Runtime_Pointer_Cursor :: enum {
@@ -624,31 +641,80 @@ consume_editor_gizmo_mode :: proc() -> (shared.Editor_Gizmo_Mode, bool) {
 	return mode, requested
 }
 
-editor_toggle_shortcut :: proc(
-	scancode: sdl.Scancode,
-	modifiers: sdl.Keymod,
-	repeat: bool,
-) -> bool {
-	shortcut :=
-		.LCTRL in modifiers || .RCTRL in modifiers || .LGUI in modifiers || .RGUI in modifiers
-	return !repeat && shortcut && scancode == .E
-}
-
-editor_sidebar_shortcut :: proc(
+editor_shortcut_action :: proc(
 	scancode: sdl.Scancode,
 	modifiers: sdl.Keymod,
 	repeat: bool,
 ) -> (
-	right: bool,
-	requested: bool,
+	Editor_Shortcut_Action,
+	bool,
 ) {
 	shortcut :=
 		.LCTRL in modifiers || .RCTRL in modifiers || .LGUI in modifiers || .RGUI in modifiers
-	if repeat || !shortcut || scancode != .B {
-		return false, false
+	alt := .LALT in modifiers || .RALT in modifiers
+	shift := .LSHIFT in modifiers || .RSHIFT in modifiers
+	if repeat {
+		return .Toggle_Editor, false
 	}
-	right = .LALT in modifiers || .RALT in modifiers
-	return right, true
+	if !shortcut && !alt {
+		#partial switch scancode {
+			case .BACKSPACE, .DELETE:
+				return .Delete_Entity, true
+		}
+		return .Toggle_Editor, false
+	}
+	if !shortcut {
+		return .Toggle_Editor, false
+	}
+	#partial switch scancode {
+		case .E:
+			return .Toggle_Editor, true
+		case .B:
+			if alt {
+				return .Toggle_Right_Sidebar, true
+			}
+			return .Toggle_Left_Sidebar, true
+		case .R:
+			return .Run_Stop, true
+		case .T:
+			return .Pause_Step, true
+		case .S:
+			return .Save, true
+		case .Z:
+			if shift {
+				return .Redo, true
+			}
+			return .Undo, true
+		case .D:
+			return .Duplicate_Entity, true
+	}
+	return .Toggle_Editor, false
+}
+
+apply_editor_shortcut_action :: proc(input: ^Runtime_Text_Input, action: Editor_Shortcut_Action) {
+	if input == nil { return }
+	switch action {
+		case .Toggle_Editor:
+			input.editor_toggle = true
+		case .Toggle_Left_Sidebar:
+			input.toggle_left_sidebar = true
+		case .Toggle_Right_Sidebar:
+			input.toggle_right_sidebar = true
+		case .Run_Stop:
+			input.run_stop = true
+		case .Pause_Step:
+			input.pause_step = true
+		case .Save:
+			input.save = true
+		case .Undo:
+			input.undo = true
+		case .Redo:
+			input.redo = true
+		case .Duplicate_Entity:
+			input.duplicate_entity = true
+		case .Delete_Entity:
+			input.delete_entity = true
+	}
 }
 
 editor_gizmo_mode_shortcut :: proc(
@@ -667,8 +733,6 @@ editor_gizmo_mode_shortcut :: proc(
 			return .Translate, true
 		case .E:
 			return .Rotate, true
-		case .R:
-			return .Scale, true
 		case:
 			return .Translate, false
 	}
@@ -689,7 +753,12 @@ scene_camera_input_from_state :: proc(
 	if keys.down { movement.y -= 1 }
 	if keys.forward { movement.z += 1 }
 	if keys.backward { movement.z -= 1 }
-	return {movement = movement, look_delta = look_delta, look_active = true}
+	return {
+		movement = movement,
+		look_delta = look_delta,
+		look_active = true,
+		move_fast = keys.fast,
+	}
 }
 
 SCENE_CAMERA_CAPTURE_WARMUP_SAMPLES :: 2
@@ -760,6 +829,11 @@ runtime_scene_camera_input :: proc(
 			int(key_count),
 			.LCTRL,
 		) || keyboard_state_has(keyboard, int(key_count), .RCTRL),
+		fast = keyboard_state_has(
+			keyboard,
+			int(key_count),
+			.LSHIFT,
+		) || keyboard_state_has(keyboard, int(key_count), .RSHIFT),
 	}
 	look_delta := scene_camera_capture_delta(
 		{delta_x, delta_y},
@@ -792,6 +866,9 @@ runtime_text_key :: proc(
 	input.shift = .LSHIFT in modifiers || .RSHIFT in modifiers
 	input.fine =
 		.LCTRL in modifiers || .RCTRL in modifiers || .LGUI in modifiers || .RGUI in modifiers
+	if action, requested := editor_shortcut_action(scancode, modifiers, repeat); requested {
+		apply_editor_shortcut_action(input, action)
+	}
 	#partial switch scancode {
 		case .LEFT:
 			input.left = true
@@ -815,33 +892,20 @@ runtime_text_key :: proc(
 			input.enter = true
 		case .ESCAPE:
 			if !shortcut { input.escape = true }
-		case .E:
-			if editor_toggle_shortcut(scancode, modifiers, repeat) {
-				input.editor_toggle = true
-			}
-		case .B:
-			if right, requested := editor_sidebar_shortcut(scancode, modifiers, repeat);
-			   requested {
-				if right {
-					input.toggle_right_sidebar = true
-				} else {
-					input.toggle_left_sidebar = true
-				}
-			}
-		case .R:
-			if shortcut && !repeat { input.run_stop = true }
-		case .T:
-			if shortcut && !repeat { input.pause_step = true }
 		case .A:
 			if shortcut { input.select_all = true }
+		case .G:
+			if !shortcut && !repeat { input.transform_translate = true }
+		case .R:
+			if !shortcut && !repeat { input.transform_rotate = true }
 		case .S:
-			if shortcut { input.save = true }
+			if !shortcut && !repeat { input.transform_scale = true }
+		case .X:
+			if !shortcut && !repeat { input.transform_axis_x = true }
+		case .Y:
+			if !shortcut && !repeat { input.transform_axis_y = true }
 		case .Z:
-			if shortcut && input.shift {
-				input.redo = true
-			} else if shortcut {
-				input.undo = true
-			}
+			if !shortcut && !repeat { input.transform_axis_z = true }
 	}
 }
 

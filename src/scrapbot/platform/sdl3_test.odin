@@ -43,46 +43,54 @@ test_runtime_window_size_preserves_requested_aspect_and_fits_usable_display :: p
 }
 
 @(test)
-test_editor_toggle_shortcut_requires_command_e_press :: proc(t: ^testing.T) {
-	testing.expect(t, editor_toggle_shortcut(.E, sdl.Keymod{.LCTRL}, false))
-	testing.expect(t, editor_toggle_shortcut(.E, sdl.Keymod{.RCTRL}, false))
-	testing.expect(t, editor_toggle_shortcut(.E, sdl.Keymod{.LGUI}, false))
-	testing.expect(t, editor_toggle_shortcut(.E, sdl.Keymod{.RGUI}, false))
-	testing.expect(t, !editor_toggle_shortcut(.E, sdl.Keymod{}, false))
-	testing.expect(t, !editor_toggle_shortcut(.E, sdl.Keymod{.LCTRL}, true))
-	other := sdl.Scancode(4)
-	testing.expect(t, !editor_toggle_shortcut(other, sdl.Keymod{.LCTRL}, false))
+test_editor_shortcuts_decode_to_centralized_semantic_actions :: proc(t: ^testing.T) {
+	action, ok := editor_shortcut_action(.E, sdl.Keymod{.LCTRL}, false)
+	testing.expect(t, ok && action == .Toggle_Editor)
+	action, ok = editor_shortcut_action(.B, sdl.Keymod{.RGUI}, false)
+	testing.expect(t, ok && action == .Toggle_Left_Sidebar)
+	action, ok = editor_shortcut_action(.B, sdl.Keymod{.LCTRL, .RALT}, false)
+	testing.expect(t, ok && action == .Toggle_Right_Sidebar)
+	action, ok = editor_shortcut_action(.D, sdl.Keymod{.LGUI}, false)
+	testing.expect(t, ok && action == .Duplicate_Entity)
+	action, ok = editor_shortcut_action(.BACKSPACE, {}, false)
+	testing.expect(t, ok && action == .Delete_Entity)
+	action, ok = editor_shortcut_action(.DELETE, {}, false)
+	testing.expect(t, ok && action == .Delete_Entity)
+	_, ok = editor_shortcut_action(.D, {}, false)
+	testing.expect(t, !ok)
+	_, ok = editor_shortcut_action(.DELETE, sdl.Keymod{.LGUI}, false)
+	testing.expect(t, !ok)
+	_, ok = editor_shortcut_action(.D, sdl.Keymod{.LGUI}, true)
+	testing.expect(t, !ok)
 }
 
 @(test)
-test_editor_sidebar_shortcuts_distinguish_left_and_right :: proc(t: ^testing.T) {
-	right, requested := editor_sidebar_shortcut(.B, sdl.Keymod{.LCTRL}, false)
-	testing.expect(t, requested && !right)
-	right, requested = editor_sidebar_shortcut(.B, sdl.Keymod{.RGUI, .LALT}, false)
-	testing.expect(t, requested && right)
-	right, requested = editor_sidebar_shortcut(.B, sdl.Keymod{.LCTRL, .RALT}, false)
-	testing.expect(t, requested && right)
-	_, requested = editor_sidebar_shortcut(.B, {}, false)
-	testing.expect(t, !requested)
-	_, requested = editor_sidebar_shortcut(.B, sdl.Keymod{.LGUI}, true)
-	testing.expect(t, !requested)
-	_, requested = editor_sidebar_shortcut(.E, sdl.Keymod{.LGUI}, false)
-	testing.expect(t, !requested)
-}
-
-@(test)
-test_editor_gizmo_mode_shortcuts_use_standard_transform_keys :: proc(t: ^testing.T) {
+test_editor_gizmo_mode_shortcuts_leave_blender_transform_keys_to_chords :: proc(t: ^testing.T) {
 	mode, ok := editor_gizmo_mode_shortcut(
 		.W,
 		{},
 		false,
 	); testing.expect(t, ok && mode == .Translate)
 	mode, ok = editor_gizmo_mode_shortcut(.E, {}, false); testing.expect(t, ok && mode == .Rotate)
-	mode, ok = editor_gizmo_mode_shortcut(.R, {}, false); testing.expect(t, ok && mode == .Scale)
+	_, ok = editor_gizmo_mode_shortcut(.R, {}, false); testing.expect(t, !ok)
 	_, ok = editor_gizmo_mode_shortcut(.R, {}, true); testing.expect(t, !ok)
 	_, ok = editor_gizmo_mode_shortcut(.R, sdl.Keymod{.LGUI}, false); testing.expect(t, !ok)
 	_, ok = editor_gizmo_mode_shortcut(.E, sdl.Keymod{.LCTRL}, false); testing.expect(t, !ok)
 	_, ok = editor_gizmo_mode_shortcut(.A, {}, false); testing.expect(t, !ok)
+}
+
+@(test)
+test_runtime_text_input_decodes_blender_transform_chords :: proc(t: ^testing.T) {
+	input: Runtime_Text_Input
+	runtime_text_key(&input, .G, {}, false)
+	runtime_text_key(&input, .X, sdl.Keymod{.LSHIFT}, false)
+	testing.expect(t, input.transform_translate)
+	testing.expect(t, input.transform_axis_x)
+	testing.expect(t, input.shift)
+
+	repeated: Runtime_Text_Input
+	runtime_text_key(&repeated, .R, {}, true)
+	testing.expect(t, !repeated.transform_rotate)
 }
 
 @(test)
@@ -91,6 +99,7 @@ test_scene_camera_input_maps_navigation_only_while_looking :: proc(t: ^testing.T
 		forward = true,
 		left = true,
 		up = true,
+		fast = true,
 	}
 	inactive := scene_camera_input_from_state(keys, {4, -2}, false)
 	testing.expect(t, !inactive.look_active)
@@ -100,6 +109,7 @@ test_scene_camera_input_maps_navigation_only_while_looking :: proc(t: ^testing.T
 	testing.expect(t, active.look_active)
 	testing.expect(t, active.movement == shared.Vec3{-1, 1, 1})
 	testing.expect(t, active.look_delta == shared.Vec2{4, -2})
+	testing.expect(t, active.move_fast)
 }
 
 @(test)
@@ -165,18 +175,28 @@ test_runtime_text_keys_preserve_navigation_modifiers_and_shortcuts :: proc(t: ^t
 	testing.expect(t, input.run_stop)
 	runtime_text_key(&input, .T, sdl.Keymod{.RGUI})
 	testing.expect(t, input.pause_step)
+	runtime_text_key(&input, .D, sdl.Keymod{.LGUI})
+	testing.expect(t, input.duplicate_entity)
+	runtime_text_key(&input, .BACKSPACE, sdl.Keymod{})
+	testing.expect(t, input.backspace && input.delete_entity)
+	runtime_text_key(&input, .DELETE, sdl.Keymod{})
+	testing.expect(t, input.delete_forward && input.delete_entity)
 	repeated: Runtime_Text_Input
 	runtime_text_key(&repeated, .E, sdl.Keymod{.LGUI}, true)
 	runtime_text_key(&repeated, .R, sdl.Keymod{.LGUI}, true)
 	runtime_text_key(&repeated, .T, sdl.Keymod{.LGUI}, true)
 	runtime_text_key(&repeated, .B, sdl.Keymod{.LGUI}, true)
+	runtime_text_key(&repeated, .D, sdl.Keymod{.LGUI}, true)
+	runtime_text_key(&repeated, .DELETE, sdl.Keymod{}, true)
 	testing.expect(
 		t,
 		!repeated.editor_toggle &&
 		!repeated.run_stop &&
 		!repeated.pause_step &&
 		!repeated.toggle_left_sidebar &&
-		!repeated.toggle_right_sidebar,
+		!repeated.toggle_right_sidebar &&
+		!repeated.duplicate_entity &&
+		!repeated.delete_entity,
 	)
 	runtime_text_key(&input, .ESCAPE, sdl.Keymod{.LCTRL})
 	testing.expect(t, !input.escape)

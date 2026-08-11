@@ -1231,6 +1231,14 @@ run_frame_system_unmeasured :: proc(
 			pause_step = platform_keyboard.pause_step,
 			toggle_left_sidebar = platform_keyboard.toggle_left_sidebar,
 			toggle_right_sidebar = platform_keyboard.toggle_right_sidebar,
+			duplicate_entity = platform_keyboard.duplicate_entity,
+			delete_entity = platform_keyboard.delete_entity,
+			transform_translate = platform_keyboard.transform_translate,
+			transform_rotate = platform_keyboard.transform_rotate,
+			transform_scale = platform_keyboard.transform_scale,
+			transform_axis_x = platform_keyboard.transform_axis_x,
+			transform_axis_y = platform_keyboard.transform_axis_y,
+			transform_axis_z = platform_keyboard.transform_axis_z,
 		}
 		if config.ui_driver != nil {
 			driver_pointer, driver_keyboard, driver_err := ui.diagnostic_driver_input(
@@ -1255,8 +1263,9 @@ run_frame_system_unmeasured :: proc(
 		}
 		camera, has_camera := ecs.active_camera_instance(world, config.ui_state.editor_visible)
 		gizmo_system_start := time.tick_now()
+		config.ui_state.editor_keyboard_escape_consumed = false
 		gizmo_pointer := pointer
-		if ui.editor_pointer_over_gizmo_toolbar(config.ui_state, pointer) {
+		if ui.editor_pointer_consumed_by_chrome(config.ui_state, pointer) {
 			gizmo_pointer = {}
 		}
 		editor_camera_mesh_system(
@@ -1267,6 +1276,12 @@ run_frame_system_unmeasured :: proc(
 			has_camera,
 			config.ui_state.editor_visible,
 		)
+		gizmo_keyboard := keyboard
+		if ui.has_text_focus(config.ui_state) ||
+		   ui.editor_ui_has_open_popup(config.ui_state, world) ||
+		   camera_input.look_active {
+			gizmo_keyboard = {}
+		}
 		editor_transform_gizmo_system(
 			config.ui_state,
 			world,
@@ -1274,6 +1289,7 @@ run_frame_system_unmeasured :: proc(
 			viewport,
 			camera,
 			has_camera,
+			gizmo_keyboard,
 		)
 		if err := ui.rebuild_editor_world_overlay(config.ui_state); err != "" {
 			return err

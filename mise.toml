@@ -187,7 +187,7 @@ case "$(uname -s)" in
     exit 1
     ;;
 esac
-odin build src/scrapbot_cli -out:bin/scrapbot -o:speed -extra-linker-flags:"$LUAU_LINK_FLAGS"
+odin build src/scrapbot_cli -out:bin/scrapbot -o:speed -debug -extra-linker-flags:"$LUAU_LINK_FLAGS"
 '''
 
 [tasks.build-dev]
@@ -215,7 +215,7 @@ case "$(uname -s)" in
     exit 1
     ;;
 esac
-odin build src/scrapbot_cli -out:bin/scrapbot-dev -o:minimal -extra-linker-flags:"$LUAU_LINK_FLAGS"
+odin build src/scrapbot_cli -out:bin/scrapbot-dev -o:minimal -debug -define:SCRAPBOT_SOFTWARE_STACK_TRACE=true -extra-linker-flags:"$LUAU_LINK_FLAGS"
 '''
 
 [tasks.build-release]
@@ -387,6 +387,7 @@ bin/scrapbot run examples/ui-showcase --backend null --headless --no-hot-reload 
 bin/scrapbot run examples/ui-showcase --backend null --editor --headless --no-hot-reload --frames 180 --ui-script tests/fixtures/ui/enum-inspector.json --json
 bin/scrapbot run examples/ecs-showcase --backend null --editor --headless --no-hot-reload --frames 180 --ui-script tests/fixtures/ui/entity-reference-inspector.json --json
 bin/scrapbot run examples/ecs-showcase --backend null --editor --headless --no-hot-reload --frames 180 --ui-script tests/fixtures/ui/nested-inspector.json --json
+bin/scrapbot run examples/minimal --backend null --editor --headless --no-hot-reload --frames 120 --ui-script tests/fixtures/ui/entity-actions.json --json
 bin/scrapbot run examples/assets --backend null --editor --headless --no-hot-reload --frames 180 --ui-script tests/fixtures/ui/model-placement.json --json
 bin/scrapbot run examples/ecs-showcase --backend null --editor --headless --no-hot-reload --frames 120 --ui-script tests/fixtures/ui/editor-panel-edge-split.json --json
 bin/scrapbot run examples/ecs-showcase --backend null --editor --headless --no-hot-reload --frames 120 --ui-script tests/fixtures/ui/performance-diagnostics.json --json

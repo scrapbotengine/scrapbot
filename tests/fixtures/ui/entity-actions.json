@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "timeout_frames": 120,
+  "actions": [
+    {"action": "click", "target": {"text": "Left Cube", "origin": "editor"}},
+    {"action": "key", "key": "duplicate_entity"},
+    {"action": "expect", "target": {"text": "Left Cube Copy", "origin": "editor"}, "expect": "visible"},
+    {"action": "key", "key": "delete_entity"},
+    {"action": "wait", "frames": 2},
+    {"action": "expect", "target": {"text": "Left Cube", "origin": "editor"}, "expect": "visible"},
+    {"action": "capture", "target": {"name": "__scrapbot_editor_scene_tools", "origin": "editor"}, "padding": 8}
+  ]
+}

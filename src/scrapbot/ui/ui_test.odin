@@ -4410,6 +4410,7 @@ test_editor_gizmo_space_toolbar_is_ecs_ui_and_follows_selection :: proc(t: ^test
 	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
 	toolbar_node := find_editor_role_node(state, .Gizmo_Toolbar)
 	viewport_node := find_editor_role_node(state, .Viewport)
+	world_button_node := find_node_by_entity_index(state, world_button)
 	testing.expect(t, toolbar_node >= 0 && viewport_node >= 0)
 	testing.expect(t, !world.ui_layouts[toolbar_layout].hidden)
 	if toolbar_node >= 0 {
@@ -4422,6 +4423,18 @@ test_editor_gizmo_space_toolbar_is_ecs_ui_and_follows_selection :: proc(t: ^test
 			editor_pointer_over_gizmo_toolbar(state, {position = point, available = true}),
 		)
 	}
+	if world_button_node >= 0 {
+		button_point := shared.Vec2 {
+			state.nodes[world_button_node].rect.x +
+			state.nodes[world_button_node].rect.width * 0.5,
+			state.nodes[world_button_node].rect.y +
+			state.nodes[world_button_node].rect.height * 0.5,
+		}
+		testing.expect(
+			t,
+			editor_pointer_consumed_by_chrome(state, {position = button_point, available = true}),
+		)
+	}
 	if viewport_node >= 0 {
 		viewport_point := shared.Vec2 {
 			state.nodes[viewport_node].rect.x + state.nodes[viewport_node].rect.width * 0.5,
@@ -4430,6 +4443,13 @@ test_editor_gizmo_space_toolbar_is_ecs_ui_and_follows_selection :: proc(t: ^test
 		testing.expect(
 			t,
 			!editor_pointer_over_gizmo_toolbar(
+				state,
+				{position = viewport_point, available = true},
+			),
+		)
+		testing.expect(
+			t,
+			!editor_pointer_consumed_by_chrome(
 				state,
 				{position = viewport_point, available = true},
 			),
@@ -4547,6 +4567,9 @@ test_editor_game_view_debug_selector_is_transient_public_ui :: proc(t: ^testing.
 		world.entities[menu].uuid,
 	)
 	testing.expect(t, !state.editor_render_debug_view_override)
+	state.editor_pick_requested = false
+	editor_ui_handle_activation(state, &world, world.entities[button].id, {32, 24})
+	testing.expect(t, !state.editor_pick_requested)
 	project_camera := world.cameras[0]
 	project_camera.debug_view = .Depth
 	project_camera.debug_hiz_mip = 3
@@ -5490,6 +5513,90 @@ test_editor_scene_panel_is_a_flush_scrollable_selectable_list :: proc(t: ^testin
 			testing.expect(t, math.abs(row.rect.y - tools.rect.y - tools.rect.height) < 0.01)
 		}
 	}
+}
+
+@(test)
+test_editor_entity_shortcuts_share_authoring_actions_and_select_duplicate :: proc(t: ^testing.T) {
+	scene := shared.Scene{}
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity{id = ui_test_id("Entity Shortcut Original"), name = "Original"},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	state.editor_visible = true
+	state.editor_simulation_stopped = true
+	testing.expect(t, editor_select_entity(state, &world, world.entities[0].id, 0))
+
+	editor_ui_handle_shortcuts(state, &world, {duplicate_entity = true})
+	testing.expect(t, state.editor_has_selection)
+	duplicate := state.editor_selected_entity
+	testing.expect(t, duplicate != world.entities[0].id)
+	duplicate_index := int(duplicate.index)
+	testing.expect(
+		t,
+		duplicate_index >= 0 &&
+		duplicate_index < len(world.entities) &&
+		world.entities[duplicate_index].alive &&
+		world.entities[duplicate_index].name == "Original Copy",
+	)
+
+	state.has_focused_input = true
+	editor_ui_handle_shortcuts(state, &world, {delete_entity = true})
+	testing.expect(t, world.entities[duplicate_index].alive)
+	state.has_focused_input = false
+	editor_ui_handle_shortcuts(state, &world, {delete_entity = true})
+	testing.expect(t, !world.entities[duplicate_index].alive)
+	testing.expect(t, !state.editor_has_selection)
+
+	stopped_history_count := state.editor_history_count
+	testing.expect(t, editor_select_entity(state, &world, world.entities[0].id, 0))
+	state.editor_simulation_playing = true
+	state.editor_simulation_stopped = false
+	editor_ui_handle_shortcuts(state, &world, {duplicate_entity = true})
+	testing.expect(t, state.editor_has_selection)
+	runtime_duplicate := state.editor_selected_entity
+	runtime_duplicate_index := int(runtime_duplicate.index)
+	testing.expect(
+		t,
+		runtime_duplicate_index >= 0 &&
+		runtime_duplicate_index < len(world.entities) &&
+		world.entities[runtime_duplicate_index].alive &&
+		world.entities[runtime_duplicate_index].origin == .Runtime &&
+		state.editor_history_count == stopped_history_count,
+	)
+	state.editor_simulation_playing = false
+	editor_ui_handle_shortcuts(state, &world, {delete_entity = true})
+	testing.expect(t, !world.entities[runtime_duplicate_index].alive)
+	testing.expect(t, !state.editor_has_selection)
+	testing.expect(t, state.editor_history_count == stopped_history_count)
+
+	testing.expect(t, editor_select_entity(state, &world, world.entities[0].id, 0))
+	state.has_focused_input = true
+	editor_ui_handle_shortcuts(state, &world, {escape = true})
+	testing.expect(t, state.editor_has_selection)
+	state.has_focused_input = false
+	editor_ui_handle_shortcuts(state, &world, {escape = true})
+	testing.expect(t, !state.editor_has_selection)
+
+	testing.expect(t, editor_select_entity(state, &world, world.entities[0].id, 0))
+	popup_layout_index := len(world.ui_layouts)
+	append(&world.ui_layouts, shared.UI_Layout_Component{popup = true, popup_open = true})
+	state.node_count = 1
+	state.nodes[0] = {
+		origin = .Editor,
+		layout_index = popup_layout_index,
+	}
+	editor_ui_handle_shortcuts(state, &world, {escape = true})
+	testing.expect(t, state.editor_has_selection)
+	world.ui_layouts[popup_layout_index].popup_open = false
+	editor_ui_handle_shortcuts(state, &world, {escape = true})
+	testing.expect(t, !state.editor_has_selection)
 }
 
 @(test)

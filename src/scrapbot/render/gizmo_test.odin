@@ -15,6 +15,152 @@ gizmo_vec3_near :: proc(a, b: shared.Vec3, epsilon: f32 = 0.001) -> bool {
 }
 
 @(test)
+test_transform_chord_constraints_map_axes_and_excluded_planes :: proc(t: ^testing.T) {
+	handle, ok := editor_gizmo_keyboard_handle(.Translate, {transform_axis_x = true})
+	testing.expect(t, ok && handle == .X)
+	handle, ok = editor_gizmo_keyboard_handle(.Scale, {transform_axis_x = true, shift = true})
+	testing.expect(t, ok && handle == .YZ)
+	handle, ok = editor_gizmo_keyboard_handle(.Rotate, {transform_axis_z = true, shift = true})
+	testing.expect(t, ok && handle == .Z)
+	_, ok = editor_gizmo_keyboard_handle(.Translate, {})
+	testing.expect(t, !ok)
+}
+
+@(test)
+test_transform_chord_g_x_starts_modal_axis_translation :: proc(t: ^testing.T) {
+	world: shared.World
+	defer ecs.destroy_world(&world)
+	append(
+		&world.entities,
+		shared.World_Entity {
+			id = {index = 0, generation = 1},
+			alive = true,
+			transform_index = 0,
+			editor_transform_gizmo_index = -1,
+		},
+	)
+	append_soa(&world.transforms, shared.Transform_Component{scale = {1, 1, 1}})
+	state := new(ui.State)
+	defer free(state)
+	state.editor_visible = true
+	state.editor_has_selection = true
+	state.editor_selected_entity = {
+		index = 0,
+		generation = 1,
+	}
+	camera := shared.Camera_Instance {
+		transform = {position = {4, 4, 8}},
+		camera = {fov = 60, near = 0.1, far = 100},
+	}
+	viewport := ui.Rect{240, 48, 740, 644}
+	editor_transform_gizmo_system(state, &world, {}, viewport, camera, true)
+	start := state.editor_gizmo_origin
+	editor_transform_gizmo_system(
+		state,
+		&world,
+		{position = start, available = true},
+		viewport,
+		camera,
+		true,
+		{transform_translate = true},
+	)
+	testing.expect(t, state.editor_transform_chord_pending)
+	editor_transform_gizmo_system(
+		state,
+		&world,
+		{position = start, available = true},
+		viewport,
+		camera,
+		true,
+		{transform_axis_x = true},
+	)
+	testing.expect(t, state.editor_gizmo_keyboard_active)
+	testing.expect(t, state.editor_gizmo_active_handle == .X)
+	direction := state.editor_gizmo_drag_direction
+	drag := shared.Vec2{start.x + direction.x * 40, start.y + direction.y * 40}
+	editor_transform_gizmo_system(
+		state,
+		&world,
+		{position = drag, available = true},
+		viewport,
+		camera,
+		true,
+	)
+	testing.expect(t, world.transforms[0].position.x > 0.01)
+	testing.expect(t, math.abs(world.transforms[0].position.y) < 0.001)
+	testing.expect(t, math.abs(world.transforms[0].position.z) < 0.001)
+	editor_transform_gizmo_system(
+		state,
+		&world,
+		{position = drag, available = true},
+		viewport,
+		camera,
+		true,
+		{escape = true},
+	)
+	testing.expect(t, state.editor_keyboard_escape_consumed)
+	testing.expect(t, world.transforms[0].position == shared.Vec3{})
+	testing.expect(t, !state.editor_gizmo_keyboard_active)
+}
+
+@(test)
+test_keyboard_transform_click_commit_consumes_viewport_activation :: proc(t: ^testing.T) {
+	world: shared.World
+	defer ecs.destroy_world(&world)
+	append(
+		&world.entities,
+		shared.World_Entity {
+			id = {index = 0, generation = 1},
+			alive = true,
+			transform_index = 0,
+			editor_transform_gizmo_index = -1,
+		},
+	)
+	append_soa(&world.transforms, shared.Transform_Component{scale = {1, 1, 1}})
+	state := new(ui.State)
+	defer free(state)
+	state.editor_visible = true
+	state.editor_has_selection = true
+	state.editor_selected_entity = {
+		index = 0,
+		generation = 1,
+	}
+	camera := shared.Camera_Instance {
+		transform = {position = {4, 4, 8}},
+		camera = {fov = 60, near = 0.1, far = 100},
+	}
+	viewport := ui.Rect{240, 48, 740, 644}
+	editor_transform_gizmo_system(state, &world, {}, viewport, camera, true)
+	pointer := ui.Pointer_Input {
+		position = state.editor_gizmo_origin,
+		available = true,
+	}
+	editor_transform_gizmo_system(
+		state,
+		&world,
+		pointer,
+		viewport,
+		camera,
+		true,
+		{transform_translate = true},
+	)
+	editor_transform_gizmo_system(
+		state,
+		&world,
+		pointer,
+		viewport,
+		camera,
+		true,
+		{transform_axis_x = true},
+	)
+	testing.expect(t, state.editor_gizmo_keyboard_active)
+	pointer.primary_down = true
+	editor_transform_gizmo_system(state, &world, pointer, viewport, camera, true)
+	testing.expect(t, !state.editor_gizmo_keyboard_active)
+	testing.expect(t, state.editor_previous_primary_down)
+}
+
+@(test)
 test_transform_gizmo_world_and_local_axes_follow_the_selected_space :: proc(t: ^testing.T) {
 	rotation := shared.Vec3{0, 0, math.PI / 2}
 	world_axes := editor_gizmo_axes(rotation, .World)

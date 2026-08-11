@@ -61,6 +61,45 @@ Keyboard_Input :: struct {
 	tab, shift, fine, enter, escape, select_all, save, undo, redo: bool,
 	editor_toggle, run_stop, pause_step: bool,
 	toggle_left_sidebar, toggle_right_sidebar: bool,
+	duplicate_entity, delete_entity: bool,
+	transform_translate, transform_rotate, transform_scale: bool,
+	transform_axis_x, transform_axis_y, transform_axis_z: bool,
+}
+
+Interaction_Event_Kind :: enum {
+	Pointer_Activate,
+	Keyboard,
+}
+
+Interaction_Event :: struct {
+	kind: Interaction_Event_Kind,
+	target: shared.Entity,
+	current_target: shared.Entity,
+	position: shared.Vec2,
+	cancelled: bool,
+}
+
+cancel_interaction_event :: proc(event: ^Interaction_Event) {
+	if event != nil {
+		event.cancelled = true
+	}
+}
+
+consume_editor_pointer_activation :: proc(state: ^State, pointer: Pointer_Input) {
+	if state == nil || !pointer.available || !pointer.primary_down {
+		return
+	}
+	event := Interaction_Event {
+		kind = .Pointer_Activate,
+		position = pointer.position,
+	}
+	cancel_interaction_event(&event)
+	if event.cancelled {
+		// Preserve the physical press edge through editor reconciliation. The
+		// release clears this normally, so a consumed press cannot become a
+		// delayed activation on the following frame.
+		state.editor_previous_primary_down = true
+	}
 }
 Paint_Kind :: enum {
 	Panel,
@@ -509,6 +548,10 @@ State :: struct {
 	editor_gizmo_hovered_handle: Editor_Gizmo_Handle,
 	editor_gizmo_active_handle: Editor_Gizmo_Handle,
 	editor_gizmo_captures_pointer: bool,
+	editor_transform_chord_pending: bool,
+	editor_transform_chord_mode: shared.Editor_Gizmo_Mode,
+	editor_gizmo_keyboard_active: bool,
+	editor_keyboard_escape_consumed: bool,
 	editor_gizmo_drag_pointer: shared.Vec2,
 	editor_gizmo_drag_last_pointer: shared.Vec2,
 	editor_gizmo_drag_angle: f32,
@@ -1299,7 +1342,7 @@ reconcile :: proc(
 	if state == nil || world == nil { return "UI state or world is unavailable" }
 	state.event_count = 0
 	world.ui_events.latest_pass_after_sequence = ecs.ui_event_latest_sequence(world)
-	editor_ui_handle_shortcuts(state, keyboard)
+	editor_ui_handle_shortcuts(state, world, keyboard)
 	when ODIN_TEST {
 		state.layout_node_visit_count = 0
 		state.layout_child_edge_visit_count = 0
@@ -2159,6 +2202,31 @@ editor_pointer_over_gizmo_toolbar :: proc(state: ^State, pointer: Pointer_Input)
 		return node_pointer_contains(node, point)
 	}
 	return false
+}
+
+editor_pointer_consumed_by_chrome :: proc(state: ^State, pointer: Pointer_Input) -> bool {
+	if state == nil || !pointer.available {
+		return false
+	}
+	point := pointer.position
+	scale := max(state.editor_pixel_density, 1)
+	point.x /= scale
+	point.y /= scale
+	hit := pointer_hit_node(state, point, true)
+	for hit >= 0 && hit < state.node_count {
+		node := state.nodes[hit]
+		if node.button_index >= 0 ||
+		   node.input_index >= 0 ||
+		   node.checkbox_index >= 0 ||
+		   node.color_picker_index >= 0 {
+			return true
+		}
+		if node.editor_role == .Viewport {
+			return false
+		}
+		hit = node.parent_node_index
+	}
+	return true
 }
 
 editor_select_entity :: proc(

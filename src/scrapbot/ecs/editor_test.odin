@@ -113,6 +113,21 @@ test_editor_scene_camera_is_an_ecs_entity_and_fly_system_moves_it :: proc(t: ^te
 	testing.expect(t, math.abs(distance - EDITOR_SCENE_CAMERA_MOVE_SPEED) < 0.0001)
 	testing.expect(t, after.transform.rotation.y > camera.transform.rotation.y)
 	testing.expect(t, after.transform.rotation.x > camera.transform.rotation.x)
+	boost_start := after.transform.position
+	editor_scene_camera_system(
+		&world,
+		{movement = {0, 0, 1}, look_active = true, move_fast = true},
+		1,
+		true,
+	)
+	boosted, _ := active_camera_instance(&world, true)
+	boost_delta := shared.Vec3 {
+		boosted.transform.position.x - boost_start.x,
+		boosted.transform.position.y - boost_start.y,
+		boosted.transform.position.z - boost_start.z,
+	}
+	boost_distance := math.sqrt(shared.camera_vec3_dot(boost_delta, boost_delta))
+	testing.expect(t, math.abs(boost_distance - EDITOR_SCENE_CAMERA_MOVE_SPEED * 4) < 0.0001)
 }
 
 @(test)

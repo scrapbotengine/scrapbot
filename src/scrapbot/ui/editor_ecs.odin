@@ -128,9 +128,15 @@ editor_ui_handle_activation :: proc(
 	pressed: shared.Entity,
 	position: shared.Vec2,
 ) {
+	event := Interaction_Event {
+		kind = .Pointer_Activate,
+		target = pressed,
+		position = position,
+	}
 	entity_index := int(pressed.index)
-	for entity_index >= 0 && entity_index < len(world.entities) {
+	for !event.cancelled && entity_index >= 0 && entity_index < len(world.entities) {
 		entity := world.entities[entity_index]
+		event.current_target = entity.id
 		if entity.editor_ui_index >= 0 && entity.editor_ui_index < len(world.editor_uis) {
 			binding := world.editor_uis[entity.editor_ui_index]
 			switch binding.role {
@@ -254,23 +260,8 @@ editor_ui_handle_activation :: proc(
 					state.editor_render_debug_occlusion_frozen = !state.editor_render_debug_occlusion_frozen
 					editor_ui_update_debug_view_button(state, world)
 					return
-				case .Entity_Create:
-					_, _ = editor_authoring_create_entity(state, world)
-					return
-				case .Entity_Duplicate:
-					if selected, ok := editor_selected_world_index(state, world); ok {
-						_, _ = editor_authoring_duplicate_entity(state, world, selected)
-					}
-					return
-				case .Entity_Delete:
-					if selected, ok := editor_selected_world_index(state, world); ok {
-						_ = editor_authoring_delete_entity(state, world, selected)
-					}
-					return
-				case .Entity_Promote:
-					if selected, ok := editor_selected_world_index(state, world); ok {
-						_ = editor_authoring_promote_entity(state, world, selected)
-					}
+				case .Entity_Create, .Entity_Duplicate, .Entity_Delete, .Entity_Promote:
+					_ = editor_ui_execute_entity_action(state, world, binding.role)
 					return
 				case .Inspector_Enum_Menu_Button:
 					if binding.read_only {
@@ -469,6 +460,17 @@ editor_ui_handle_activation :: proc(
 				     .Inspector_Resource_Menu_Content,
 				     .Status:
 			}
+		}
+		// Reusable controls own their activation even when their editor binding
+		// only relies on generic mechanics (for example opening a popup). This is
+		// the propagation boundary that keeps the same pointer event from
+		// reaching an interactive ancestor such as the scene viewport.
+		if entity.ui_button_index >= 0 ||
+		   entity.ui_input_index >= 0 ||
+		   entity.ui_checkbox_index >= 0 ||
+		   entity.ui_color_picker_index >= 0 {
+			cancel_interaction_event(&event)
+			break
 		}
 		layout_index := entity.ui_layout_index
 		if layout_index < 0 || layout_index >= len(world.ui_layouts) {
@@ -838,7 +840,54 @@ editor_ui_consume_color_picker_state :: proc(
 	}
 }
 
-editor_ui_handle_shortcuts :: proc(state: ^State, keyboard: Keyboard_Input) {
+editor_ui_execute_entity_action :: proc(
+	state: ^State,
+	world: ^shared.World,
+	action: shared.Editor_UI_Role,
+) -> bool {
+	if state == nil || world == nil {
+		return false
+	}
+	#partial switch action {
+		case .Entity_Create:
+			_, created := editor_authoring_create_entity(state, world)
+			return created
+		case .Entity_Duplicate:
+			if selected, ok := editor_selected_world_index(state, world); ok {
+				_, duplicated := editor_duplicate_entity(state, world, selected)
+				return duplicated
+			}
+		case .Entity_Delete:
+			if selected, ok := editor_selected_world_index(state, world); ok {
+				return editor_delete_entity(state, world, selected)
+			}
+		case .Entity_Promote:
+			if selected, ok := editor_selected_world_index(state, world); ok {
+				return editor_authoring_promote_entity(state, world, selected)
+			}
+	}
+	return false
+}
+
+editor_ui_has_open_popup :: proc(state: ^State, world: ^shared.World) -> bool {
+	if state == nil || world == nil {
+		return false
+	}
+	for node in state.nodes[:state.node_count] {
+		if node.origin != .Editor ||
+		   node.layout_index < 0 ||
+		   node.layout_index >= len(world.ui_layouts) {
+			continue
+		}
+		layout := world.ui_layouts[node.layout_index]
+		if ui_layout_is_popup(layout) && layout.popup_open {
+			return true
+		}
+	}
+	return false
+}
+
+editor_ui_handle_shortcuts :: proc(state: ^State, world: ^shared.World, keyboard: Keyboard_Input) {
 	if state == nil {
 		return
 	}
@@ -872,6 +921,25 @@ editor_ui_handle_shortcuts :: proc(state: ^State, keyboard: Keyboard_Input) {
 		} else {
 			editor_step(state)
 		}
+	}
+	if state.has_focused_input {
+		return
+	}
+	if keyboard.escape {
+		if state.editor_keyboard_escape_consumed {
+			return
+		}
+		if !editor_ui_has_open_popup(state, world) {
+			editor_clear_selection(state)
+		}
+		return
+	}
+	if keyboard.duplicate_entity {
+		_ = editor_ui_execute_entity_action(state, world, .Entity_Duplicate)
+		return
+	}
+	if keyboard.delete_entity {
+		_ = editor_ui_execute_entity_action(state, world, .Entity_Delete)
 	}
 }
 
@@ -1611,34 +1679,38 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		world,
 		"__scrapbot_editor_entity_create",
 		EDITOR_UI_SCENE_TOOLS_NAME,
-		"+",
+		"",
 		.Entity_Create,
+		"plus",
 	)
 	world.ui_layouts[world.entities[create_button].ui_layout_index].size.x = 32
 	duplicate_button := editor_ui_create_transport_button(
 		world,
 		"__scrapbot_editor_entity_duplicate",
 		EDITOR_UI_SCENE_TOOLS_NAME,
-		"DUP",
+		"",
 		.Entity_Duplicate,
+		"copy",
 	)
-	world.ui_layouts[world.entities[duplicate_button].ui_layout_index].size.x = 48
+	world.ui_layouts[world.entities[duplicate_button].ui_layout_index].size.x = 32
 	delete_button := editor_ui_create_transport_button(
 		world,
 		"__scrapbot_editor_entity_delete",
 		EDITOR_UI_SCENE_TOOLS_NAME,
-		"DEL",
+		"",
 		.Entity_Delete,
+		"trash",
 	)
-	world.ui_layouts[world.entities[delete_button].ui_layout_index].size.x = 42
+	world.ui_layouts[world.entities[delete_button].ui_layout_index].size.x = 32
 	promote_button := editor_ui_create_transport_button(
 		world,
 		"__scrapbot_editor_entity_promote",
 		EDITOR_UI_SCENE_TOOLS_NAME,
-		"KEEP",
+		"",
 		.Entity_Promote,
+		"push-pin",
 	)
-	world.ui_layouts[world.entities[promote_button].ui_layout_index].size.x = 48
+	world.ui_layouts[world.entities[promote_button].ui_layout_index].size.x = 32
 
 	resource_browser := editor_ui_create_box(
 		world,
