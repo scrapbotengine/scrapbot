@@ -301,17 +301,20 @@ Scene and Resources use the public virtualized-list contract, so scrolling visit
 
 ## Transform an entity
 
-Selecting an entity with a Transform adds a screen-legible transform gizmo. Pointer drags remain available on its visible handles. Blender-style keyboard chords start a constrained modal transform:
+Selecting an entity with a Transform adds a screen-legible transform gizmo. Pointer drags remain available on its visible handles. Blender-style keys immediately start a modal transform; an optional axis key can constrain it afterward:
 
 | Chord | Result |
-| --- | --- | --- |
+| --- | --- |
+| `G` | Translate freely in the camera plane |
 | `G`, then `X`, `Y`, or `Z` | Translate on that axis |
 | `G`, then `Shift+X`, `Shift+Y`, or `Shift+Z` | Translate on the plane excluding that axis |
+| `R` | Rotate around the current view axis |
 | `R`, then `X`, `Y`, or `Z` (with optional Shift) | Rotate in the complementary plane, around that axis |
+| `S` | Scale all axes uniformly |
 | `S`, then `X`, `Y`, or `Z` | Scale on that axis |
 | `S`, then `Shift+X`, `Shift+Y`, or `Shift+Z` | Scale on the plane excluding that axis |
 
-Move the pointer after completing the chord. The cursor remains visible, stays confined to the editor window, and wraps to the opposite edge when it reaches a boundary, so a long transform can continue without running out of pointer travel. Click or press Enter to commit; Escape restores the transform from before the chord. An uppercase axis means the Shift-modified excluded-plane form, not a different coordinate system. Chords use the current World or Local orientation.
+Move the pointer as soon as you press `G`, `R`, or `S`. Pressing an axis key during the gesture re-evaluates the complete transform from its starting value under that constraint, like Blender's modal transform map. The cursor remains visible, stays confined to the editor window, and wraps to the opposite edge when it reaches a boundary, so a long transform can continue without running out of pointer travel. Click or press Enter to commit; Escape restores the transform from before the chord. An uppercase axis means the Shift-modified excluded-plane form, not a different coordinate system. Axis constraints use the current World or Local orientation.
 
 The axis colors remain consistent in every mode:
 

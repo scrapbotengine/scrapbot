@@ -1191,7 +1191,6 @@ run_frame_system_unmeasured :: proc(
 		allow_camera_navigation :=
 			!ui.editor_pointer_consumed_by_chrome(config.ui_state, camera_pointer) &&
 			!config.ui_state.editor_gizmo_keyboard_active &&
-			!config.ui_state.editor_transform_chord_pending &&
 			!ui.editor_ui_has_open_popup(config.ui_state, world)
 		camera_input := platform.runtime_scene_camera_input(
 			config.ui_state.editor_visible,

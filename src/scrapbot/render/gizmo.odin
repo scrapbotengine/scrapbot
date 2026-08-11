@@ -62,7 +62,7 @@ editor_transform_gizmo_system :: proc(
 		escape_event := ui.Interaction_Event {
 			kind = .Keyboard,
 		}
-		if state.editor_transform_chord_pending || state.editor_gizmo_keyboard_active {
+		if state.editor_gizmo_keyboard_active {
 			ui.cancel_interaction_event(&escape_event)
 		}
 		state.editor_keyboard_escape_consumed = escape_event.cancelled
@@ -73,23 +73,23 @@ editor_transform_gizmo_system :: proc(
 			ecs.mark_render_transform_dirty(world, entity_index)
 			ui.editor_recompute_scene_dirty(state)
 		}
-		state.editor_transform_chord_pending = false
 		state.editor_gizmo_keyboard_active = false
 		state.editor_gizmo_active_handle = .None
 		state.editor_gizmo_captures_pointer = false
 	}
+	keyboard_mode_requested := false
 	if !state.editor_gizmo_keyboard_active {
 		if keyboard.transform_translate {
-			state.editor_transform_chord_pending = true
 			state.editor_transform_chord_mode = .Translate
+			keyboard_mode_requested = true
 			ui.editor_set_gizmo_mode(state, .Translate)
 		} else if keyboard.transform_rotate {
-			state.editor_transform_chord_pending = true
 			state.editor_transform_chord_mode = .Rotate
+			keyboard_mode_requested = true
 			ui.editor_set_gizmo_mode(state, .Rotate)
 		} else if keyboard.transform_scale {
-			state.editor_transform_chord_pending = true
 			state.editor_transform_chord_mode = .Scale
+			keyboard_mode_requested = true
 			ui.editor_set_gizmo_mode(state, .Scale)
 		}
 	}
@@ -128,6 +128,10 @@ editor_transform_gizmo_system :: proc(
 		state.editor_transform_chord_mode,
 		keyboard,
 	)
+	if state.editor_gizmo_keyboard_active && keyboard_handle_requested {
+		state.editor_gizmo_active_handle = keyboard_handle
+		state.editor_gizmo_hovered_handle = keyboard_handle
+	}
 	if state.editor_gizmo_active_handle == .None {
 		state.editor_gizmo_hovered_handle = editor_gizmo_hit_handle(
 			pointer.position,
@@ -138,13 +142,11 @@ editor_transform_gizmo_system :: proc(
 			gizmo.mode,
 			pointer.available,
 		)
-		start_keyboard_drag :=
-			state.editor_transform_chord_pending && keyboard_handle_requested && pointer.available
+		start_keyboard_drag := keyboard_mode_requested && pointer.available
 		if just_pressed && state.editor_gizmo_hovered_handle != .None || start_keyboard_drag {
 			handle := state.editor_gizmo_hovered_handle
 			if start_keyboard_drag {
-				handle = keyboard_handle
-				state.editor_transform_chord_pending = false
+				handle = .Center
 				state.editor_gizmo_keyboard_active = true
 			}
 			delta := shared.Vec2{1, -1}; pixels := EDITOR_GIZMO_SCREEN_SIZE
@@ -156,12 +158,19 @@ editor_transform_gizmo_system :: proc(
 				); pixels = screen_length(delta)
 			}
 			if gizmo.mode ==
-			   .Rotate { pixels = screen_length(screen_sub(pointer.position, state.editor_gizmo_origin)) }
+			   .Rotate { pixels = max(screen_length(screen_sub(pointer.position, state.editor_gizmo_origin)), 1) }
 			if pixels > 0.001 {
 				state.editor_gizmo_active_handle = handle
 				state.editor_gizmo_captures_pointer = true
 				state.editor_gizmo_drag_pointer = pointer.position
 				state.editor_gizmo_drag_last_pointer = pointer.position
+				if gizmo.mode == .Rotate &&
+				   screen_length(screen_sub(pointer.position, state.editor_gizmo_origin)) < 1 {
+					state.editor_gizmo_drag_last_pointer = {
+						state.editor_gizmo_origin.x + EDITOR_GIZMO_SCREEN_SIZE,
+						state.editor_gizmo_origin.y,
+					}
+				}
 				state.editor_gizmo_drag_angle = 0
 				state.editor_gizmo_drag_position = transform.position
 				state.editor_gizmo_drag_rotation = transform.rotation
@@ -173,6 +182,14 @@ editor_transform_gizmo_system :: proc(
 				}
 				for endpoint, index in state.editor_gizmo_endpoints { state.editor_gizmo_drag_screen_axes[index] = screen_sub(endpoint, state.editor_gizmo_origin) }
 				state.editor_gizmo_drag_world_axes = world_axes
+				state.editor_gizmo_drag_view_axis = vec3_normalize(
+					vec3_sub({}, shared.Vec3{0, 2, 6}),
+				)
+				if has_camera {
+					state.editor_gizmo_drag_view_axis = shared.camera_forward(
+						camera.transform.rotation,
+					)
+				}
 				state.editor_gizmo_drag_pixels = pixels
 				state.editor_gizmo_drag_world_scale = world_size
 			}
@@ -227,9 +244,17 @@ editor_transform_gizmo_system :: proc(
 				current := screen_sub(pointer.position, state.editor_gizmo_origin)
 				state.editor_gizmo_drag_angle += screen_rotation_delta(previous, current)
 				state.editor_gizmo_drag_last_pointer = pointer.position
-				axis_index, axis_ok := editor_gizmo_single_axis(state.editor_gizmo_active_handle)
-				if axis_ok {
-					candidate := state.editor_gizmo_drag_world_transform
+				candidate := state.editor_gizmo_drag_world_transform
+				if state.editor_gizmo_active_handle == .Center {
+					candidate.rotation = editor_gizmo_rotated_euler_around_world_axis(
+						state.editor_gizmo_drag_world_transform.rotation,
+						state.editor_gizmo_drag_view_axis,
+						state.editor_gizmo_drag_angle,
+					)
+					editor_gizmo_apply_world_transform(world, entity_index, candidate)
+				} else if axis_index, axis_ok := editor_gizmo_single_axis(
+					state.editor_gizmo_active_handle,
+				); axis_ok {
 					candidate.rotation = editor_gizmo_rotated_euler(
 						state.editor_gizmo_drag_world_transform.rotation,
 						axis_index,
@@ -379,7 +404,7 @@ editor_hide_gizmo :: proc(state: ^ui.State) {if state == nil { return }
 	state.editor_gizmo_active_handle = .None
 	state.editor_gizmo_captures_pointer = false
 	state.editor_gizmo_keyboard_active = false
-	state.editor_transform_chord_pending = false}
+}
 
 editor_project_gizmo :: proc(
 	state: ^ui.State,
@@ -699,6 +724,25 @@ editor_gizmo_rotated_euler :: proc(
 		result = mat4_mul(start_matrix, delta)
 	}
 	return editor_gizmo_matrix_euler(result)
+}
+
+editor_gizmo_rotated_euler_around_world_axis :: proc(
+	start, axis: shared.Vec3,
+	angle: f32,
+) -> shared.Vec3 {
+	direction := vec3_normalize(axis)
+	half_angle := angle * 0.5
+	sine := f32(math.sin(half_angle))
+	delta := shared.Transform_Quaternion {
+		x = direction.x * sine,
+		y = direction.y * sine,
+		z = direction.z * sine,
+		w = f32(math.cos(half_angle)),
+	}
+	start_rotation := shared.transform_quaternion_from_euler(start)
+	return shared.transform_quaternion_to_euler(
+		shared.transform_quaternion_mul(delta, start_rotation),
+	)
 }
 
 screen_solve_basis :: proc(delta, first, second: shared.Vec2) -> (f32, f32, bool) {det :=
