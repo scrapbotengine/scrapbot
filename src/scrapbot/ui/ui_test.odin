@@ -5532,6 +5532,13 @@ test_editor_entity_shortcuts_share_authoring_actions_and_select_duplicate :: pro
 	state.editor_visible = true
 	state.editor_simulation_stopped = true
 	testing.expect(t, editor_select_entity(state, &world, world.entities[0].id, 0))
+	editor_ui_handle_shortcuts(state, &world, {focus_selected = true})
+	testing.expect(t, consume_editor_focus_selected_request(state))
+	testing.expect(t, !consume_editor_focus_selected_request(state))
+	state.has_focused_input = true
+	editor_ui_handle_shortcuts(state, &world, {focus_selected = true})
+	testing.expect(t, !consume_editor_focus_selected_request(state))
+	state.has_focused_input = false
 
 	editor_ui_handle_shortcuts(state, &world, {duplicate_entity = true})
 	testing.expect(t, state.editor_has_selection)

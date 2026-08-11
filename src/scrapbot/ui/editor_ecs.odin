@@ -925,6 +925,13 @@ editor_ui_handle_shortcuts :: proc(state: ^State, world: ^shared.World, keyboard
 	if state.has_focused_input {
 		return
 	}
+	if keyboard.focus_selected &&
+	   state.editor_has_selection &&
+	   !state.editor_gizmo_keyboard_active &&
+	   !editor_ui_has_open_popup(state, world) {
+		state.editor_focus_selected_requested = true
+		return
+	}
 	if keyboard.escape {
 		if state.editor_keyboard_escape_consumed {
 			return

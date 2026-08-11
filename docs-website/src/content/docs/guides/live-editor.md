@@ -131,12 +131,25 @@ Use the `VIEW / CAMERA` menu inside the Game surface to inspect the rendered inp
 | `Space` | Move up |
 | `Ctrl` | Move down |
 | `Shift` | Move 4× faster while held |
-| Release right mouse button | Return to normal pointer interaction |
+| Hold middle mouse button and drag | Orbit around the current point of interest |
+| Mouse wheel over Game | Dolly forward or backward |
+| `F` | Frame the selected entity and make it the orbit target |
+| Release the active right or middle mouse button | Return to normal pointer interaction |
+
+The point of interest follows ordinary fly translation and the center of free-look. Framing a
+selection replaces it with the selected renderable bounds, so subsequent middle-mouse movement
+orbits that entity without changing its Transform.
 
 The transient fly camera inherits the project camera's field of view, far plane, and render policy,
 but uses a near plane no larger than one centimeter. This keeps close surface inspection coherent;
 the fly camera does not currently collide with project geometry, so crossing inside a closed mesh
 still reveals its back-face-culled interior.
+
+Wheel dolly applies only when unobstructed Game viewport content owns the pointer. Sidebar scrolling,
+menus, and other editor chrome keep their ordinary wheel behavior. `F` preserves the current viewing
+direction and frames the selected entity's complete rendered subtree, including generated children
+of a Model root. If the selection has no renderable geometry, the camera frames its resolved world
+Transform instead.
 
 Closing and reopening the editor preserves the scene-camera viewpoint for the current run.
 
@@ -306,7 +319,7 @@ The axis colors remain consistent in every mode:
 - Green moves along Y.
 - Blue moves along Z.
 
-Hover an axis to affect one component, or hover an XY, XZ, or YZ wall to affect that pair. In move mode, the center handle translates freely in the camera plane. In scale mode, it changes all three scale components uniformly. Gizmo ownership and mode are represented by a transient editor component on the selected entity; the component is removed when selection changes or the editor closes. Transform chords are ignored while the right mouse button is capturing fly-camera input or a text field owns keyboard focus.
+Hover an axis to affect one component, or hover an XY, XZ, or YZ wall to affect that pair. In move mode, the center handle translates freely in the camera plane. In scale mode, it changes all three scale components uniformly. Gizmo ownership and mode are represented by a transient editor component on the selected entity; the component is removed when selection changes or the editor closes. Transform chords are ignored while the scene camera is capturing fly or orbit input, or a text field owns keyboard focus.
 
 Use the `WORLD` and `LOCAL` controls in the viewport's upper-left corner to choose the gizmo orientation. World keeps the rails, walls, and rings aligned to the scene axes. Local rotates them with the selected entity's resolved world orientation: movement follows its rotated axes, rotation composes around those axes, and scale continues to edit the corresponding local X, Y, or Z scale. The selected space is stored on the transient gizmo component. A drag freezes its basis when it begins, so the handle stays stable even while the transform changes. For a parented entity, the gizmo edits its world pose and derives the new local Transform automatically.
 

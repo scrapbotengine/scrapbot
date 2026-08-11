@@ -22,6 +22,7 @@ runtime_pointer_released: [2]u64
 runtime_input_generation: u64
 runtime_input_sampled_generation: u64
 runtime_scene_camera_look_active: bool
+runtime_scene_camera_orbit_active: bool
 runtime_scene_camera_capture_warmup: int
 runtime_editor_transform_pointer_active: bool
 runtime_pointer_cursor: Runtime_Pointer_Cursor
@@ -41,6 +42,7 @@ Pointer_State :: struct {
 	x, y: f32,
 	wheel_y: f32,
 	primary_down: bool,
+	middle_down: bool,
 	secondary_down: bool,
 	available: bool,
 }
@@ -60,6 +62,7 @@ Runtime_Text_Input :: struct {
 	editor_toggle, run_stop, pause_step: bool,
 	toggle_left_sidebar, toggle_right_sidebar: bool,
 	duplicate_entity, delete_entity: bool,
+	focus_selected: bool,
 	transform_translate, transform_rotate, transform_scale: bool,
 	transform_axis_x, transform_axis_y, transform_axis_z: bool,
 }
@@ -75,6 +78,7 @@ Editor_Shortcut_Action :: enum {
 	Redo,
 	Duplicate_Entity,
 	Delete_Entity,
+	Focus_Selected,
 }
 
 Runtime_Pointer_Cursor :: enum {
@@ -244,7 +248,8 @@ runtime_window_size_for_usable_bounds :: proc(
 }
 
 close_runtime_window :: proc() {
-	if runtime_window != nil && runtime_scene_camera_look_active {
+	if runtime_window != nil &&
+	   (runtime_scene_camera_look_active || runtime_scene_camera_orbit_active) {
 		_ = sdl.SetWindowRelativeMouseMode(runtime_window, false)
 	}
 	if runtime_window != nil && runtime_editor_transform_pointer_active {
@@ -289,6 +294,7 @@ close_runtime_window :: proc() {
 	runtime_window_hidden = false
 	runtime_editor_gizmo_mode_requested = false
 	runtime_scene_camera_look_active = false
+	runtime_scene_camera_orbit_active = false
 	runtime_scene_camera_capture_warmup = 0
 	runtime_editor_transform_pointer_active = false
 	runtime_pointer_cursor = .Default
@@ -390,6 +396,7 @@ runtime_pointer_state :: proc() -> Pointer_State {
 		y = y,
 		wheel_y = runtime_wheel_y,
 		primary_down = .LEFT in buttons,
+		middle_down = .MIDDLE in buttons,
 		secondary_down = .RIGHT in buttons,
 		available = true,
 	}
@@ -445,7 +452,8 @@ set_runtime_editor_transform_pointer_active :: proc(active: bool) {
 		active &&
 		runtime_window != nil &&
 		!runtime_window_hidden &&
-		!runtime_scene_camera_look_active
+		!runtime_scene_camera_look_active &&
+		!runtime_scene_camera_orbit_active
 	if should_activate == runtime_editor_transform_pointer_active { return }
 	if runtime_window != nil {
 		_ = sdl.SetWindowMouseGrab(runtime_window, should_activate)
@@ -677,7 +685,7 @@ runtime_input_frame :: proc() -> shared.Input_Frame {
 	result.keyboard.buttons.released = runtime_key_released
 	pointer := runtime_pointer_state_in_pixels()
 	result.pointer.available = pointer.available
-	result.pointer.captured = runtime_scene_camera_look_active
+	result.pointer.captured = runtime_scene_camera_look_active || runtime_scene_camera_orbit_active
 	result.pointer.position = {pointer.x, pointer.y}
 	density := runtime_window_pixel_density()
 	result.pointer.delta = {runtime_pointer_delta.x * density, runtime_pointer_delta.y * density}
@@ -739,6 +747,8 @@ editor_shortcut_action :: proc(
 		#partial switch scancode {
 			case .BACKSPACE, .DELETE:
 				return .Delete_Entity, true
+			case .F:
+				return .Focus_Selected, true
 		}
 		return .Toggle_Editor, false
 	}
@@ -793,6 +803,8 @@ apply_editor_shortcut_action :: proc(input: ^Runtime_Text_Input, action: Editor_
 			input.duplicate_entity = true
 		case .Delete_Entity:
 			input.delete_entity = true
+		case .Focus_Selected:
+			input.focus_selected = true
 	}
 }
 
@@ -821,9 +833,10 @@ scene_camera_input_from_state :: proc(
 	keys: Scene_Camera_Key_State,
 	look_delta: shared.Vec2,
 	look_active: bool,
+	dolly: f32 = 0,
 ) -> shared.Editor_Fly_Camera_Input {
 	if !look_active {
-		return {}
+		return {dolly = dolly}
 	}
 	movement := shared.Vec3{}
 	if keys.right { movement.x += 1 }
@@ -835,9 +848,17 @@ scene_camera_input_from_state :: proc(
 	return {
 		movement = movement,
 		look_delta = look_delta,
+		dolly = dolly,
 		look_active = true,
 		move_fast = keys.fast,
 	}
+}
+
+scene_camera_orbit_input :: proc(
+	look_delta: shared.Vec2,
+	dolly: f32 = 0,
+) -> shared.Editor_Fly_Camera_Input {
+	return {look_delta = look_delta, dolly = dolly, orbit_active = true}
 }
 
 SCENE_CAMERA_CAPTURE_WARMUP_SAMPLES :: 2
@@ -858,12 +879,15 @@ keyboard_state_has :: proc(keyboard: [^]bool, key_count: int, scancode: sdl.Scan
 runtime_scene_camera_input :: proc(
 	enabled: bool,
 	viewport_x, viewport_y, viewport_width, viewport_height: f32,
+	allow_navigation: bool = true,
 ) -> shared.Editor_Fly_Camera_Input {
 	if runtime_window == nil || runtime_window_hidden || !enabled {
-		if runtime_window != nil && runtime_scene_camera_look_active {
+		if runtime_window != nil &&
+		   (runtime_scene_camera_look_active || runtime_scene_camera_orbit_active) {
 			_ = sdl.SetWindowRelativeMouseMode(runtime_window, false)
 		}
 		runtime_scene_camera_look_active = false
+		runtime_scene_camera_orbit_active = false
 		runtime_scene_camera_capture_warmup = 0
 		return {}
 	}
@@ -875,22 +899,33 @@ runtime_scene_camera_input :: proc(
 		pointer.y >= viewport_y &&
 		pointer.x < viewport_x + viewport_width &&
 		pointer.y < viewport_y + viewport_height
-	if !runtime_scene_camera_look_active {
-		if !pointer.secondary_down || !inside_viewport {
-			return {}
+	dolly := f32(0)
+	if allow_navigation && inside_viewport {
+		dolly = pointer.wheel_y
+	}
+	if !runtime_scene_camera_look_active && !runtime_scene_camera_orbit_active {
+		if !allow_navigation ||
+		   !inside_viewport ||
+		   (!pointer.secondary_down && !pointer.middle_down) {
+			return {dolly = dolly}
 		}
 		if !sdl.SetWindowRelativeMouseMode(runtime_window, true) {
 			return {}
 		}
-		runtime_scene_camera_look_active = true
+		runtime_scene_camera_orbit_active = pointer.middle_down
+		runtime_scene_camera_look_active = !runtime_scene_camera_orbit_active
 		runtime_scene_camera_capture_warmup = SCENE_CAMERA_CAPTURE_WARMUP_SAMPLES
 	}
 
 	delta_x, delta_y: f32
 	buttons := sdl.GetRelativeMouseState(&delta_x, &delta_y)
-	if .RIGHT not_in buttons {
+	required_button_down :=
+		(runtime_scene_camera_look_active && .RIGHT in buttons) ||
+		(runtime_scene_camera_orbit_active && .MIDDLE in buttons)
+	if !required_button_down {
 		_ = sdl.SetWindowRelativeMouseMode(runtime_window, false)
 		runtime_scene_camera_look_active = false
+		runtime_scene_camera_orbit_active = false
 		runtime_scene_camera_capture_warmup = 0
 		return {}
 	}
@@ -918,7 +953,10 @@ runtime_scene_camera_input :: proc(
 		{delta_x, delta_y},
 		&runtime_scene_camera_capture_warmup,
 	)
-	return scene_camera_input_from_state(keys, look_delta, true)
+	if runtime_scene_camera_orbit_active {
+		return scene_camera_orbit_input(look_delta, dolly)
+	}
+	return scene_camera_input_from_state(keys, look_delta, true, dolly)
 }
 
 runtime_window_pixel_size :: proc() -> (width, height: int, ok: bool) {

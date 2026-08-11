@@ -65,6 +65,49 @@ test_editor_picking_returns_nearest_transformed_triangle_hit :: proc(t: ^testing
 }
 
 @(test)
+test_editor_focus_bounds_include_direct_and_model_owned_renderables :: proc(t: ^testing.T) {
+	registry: resources.Registry
+	defer resources.destroy_registry(&registry)
+	desc, desc_err := resources.cube()
+	testing.expect(t, desc_err == "")
+	defer delete(desc.vertices)
+	defer delete(desc.indices)
+	handle, register_err := resources.register_geometry(&registry, "focus-cube", desc)
+	testing.expect(t, register_err == "")
+	selected := shared.Entity {
+		index = 4,
+		generation = 2,
+	}
+	selected_uuid, parsed := shared.entity_uuid_parse("a7000000-0000-4000-8000-000000000042")
+	testing.expect(t, parsed)
+	list: shared.Render_List
+	defer delete(list.instances)
+	append(
+		&list.instances,
+		shared.Render_Instance {
+			entity = {id = selected},
+			transform = {position = {-2, 0, 0}, scale = {1, 1, 1}},
+			geometry = {handle = handle},
+		},
+		shared.Render_Instance {
+			entity = {id = {index = 8, generation = 1}, model_owner = selected_uuid},
+			transform = {position = {2, 0, 0}, scale = {1, 1, 1}},
+			geometry = {handle = handle},
+		},
+	)
+	center, radius, found := editor_selection_focus_bounds(
+		nil,
+		&list,
+		&registry,
+		selected,
+		selected_uuid,
+	)
+	testing.expect(t, found)
+	testing.expect_value(t, center, shared.Vec3{})
+	testing.expect(t, math.abs(radius - math.sqrt(f32(6.75))) < 0.0001)
+}
+
+@(test)
 test_scene_raycast_rejects_off_ray_instance_bounds_before_triangle_tests :: proc(t: ^testing.T) {
 	registry: resources.Registry
 	defer resources.destroy_registry(&registry)

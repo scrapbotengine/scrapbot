@@ -1,5 +1,6 @@
 package render
 
+import ecs "../ecs"
 import resources "../resources"
 import shared "../shared"
 import ui "../ui"
@@ -30,6 +31,98 @@ Editor_Model_Placement :: struct {
 	contact: shared.Vec3,
 	normal: shared.Vec3,
 	grounded: bool,
+}
+
+editor_selection_focus_bounds :: proc(
+	world: ^shared.World,
+	render_list: ^shared.Render_List,
+	registry: ^resources.Registry,
+	selected: shared.Entity,
+	selected_uuid: shared.Entity_UUID,
+) -> (
+	shared.Vec3,
+	f32,
+	bool,
+) {
+	minimum, maximum: shared.Vec3
+	has_bounds := false
+	if render_list != nil && registry != nil {
+		for instance in render_list.instances {
+			matches :=
+				instance.entity.id == selected || instance.entity.model_owner == selected_uuid
+			if !matches && world != nil {
+				instance_index := int(instance.entity.id.index)
+				matches =
+					ecs.entity_is_alive(world, instance_index) &&
+					world.entities[instance_index].id == instance.entity.id &&
+					ecs.entity_is_descendant_of_uuid(world, instance_index, selected_uuid)
+			}
+			if !matches {
+				continue
+			}
+			geometry, found := resources.get_geometry(registry, instance.geometry.handle)
+			if !found {
+				continue
+			}
+			for x in 0 ..< 2 {
+				for y in 0 ..< 2 {
+					for z in 0 ..< 2 {
+						point := editor_transform_point(
+							instance.transform,
+							{
+								geometry.bounds.min.x if x == 0 else geometry.bounds.max.x,
+								geometry.bounds.min.y if y == 0 else geometry.bounds.max.y,
+								geometry.bounds.min.z if z == 0 else geometry.bounds.max.z,
+							},
+						)
+						if !has_bounds {
+							minimum = point
+							maximum = point
+							has_bounds = true
+						} else {
+							minimum = {
+								min(minimum.x, point.x),
+								min(minimum.y, point.y),
+								min(minimum.z, point.z),
+							}
+							maximum = {
+								max(maximum.x, point.x),
+								max(maximum.y, point.y),
+								max(maximum.z, point.z),
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	if has_bounds {
+		center := pick_mul(pick_add(minimum, maximum), 0.5)
+		half_extent := vec3_sub(maximum, center)
+		return center, max(math.sqrt(vec3_dot(half_extent, half_extent)), 0.25), true
+	}
+	if world == nil {
+		return {}, 0, false
+	}
+	selected_index := int(selected.index)
+	if !ecs.entity_is_alive(world, selected_index) ||
+	   world.entities[selected_index].id != selected ||
+	   world.entities[selected_index].transform_index < 0 {
+		return {}, 0, false
+	}
+	ecs.begin_world_transform_resolution(world)
+	transform, resolved := ecs.resolve_world_transform(world, selected_index)
+	if !resolved {
+		return {}, 0, false
+	}
+	radius :=
+		max(
+			math.abs(transform.scale.x),
+			math.abs(transform.scale.y),
+			math.abs(transform.scale.z),
+		) *
+		0.5
+	return transform.position, max(radius, 0.25), true
 }
 
 editor_pick_ray :: proc(

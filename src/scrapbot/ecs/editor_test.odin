@@ -128,6 +128,74 @@ test_editor_scene_camera_is_an_ecs_entity_and_fly_system_moves_it :: proc(t: ^te
 	}
 	boost_distance := math.sqrt(shared.camera_vec3_dot(boost_delta, boost_delta))
 	testing.expect(t, math.abs(boost_distance - EDITOR_SCENE_CAMERA_MOVE_SPEED * 4) < 0.0001)
+	dolly_start := boosted.transform.position
+	editor_scene_camera_system(&world, {dolly = 2}, 0, true)
+	dollied, _ := active_camera_instance(&world, true)
+	dolly_delta := shared.camera_vec3_add(
+		dollied.transform.position,
+		shared.camera_vec3_mul(dolly_start, -1),
+	)
+	testing.expect(
+		t,
+		math.abs(
+			math.sqrt(shared.camera_vec3_dot(dolly_delta, dolly_delta)) -
+			EDITOR_SCENE_CAMERA_MOVE_SPEED,
+		) <
+		0.0001,
+	)
+}
+
+@(test)
+test_editor_scene_camera_focus_preserves_view_direction_and_frames_bounds :: proc(t: ^testing.T) {
+	world: World
+	defer destroy_world(&world)
+	testing.expect(t, set_editor_scene_camera_pose(&world, {3, 4, 5}, {0.2, -0.7, 0}))
+	before, ok := active_camera_instance(&world, true)
+	testing.expect(t, ok)
+	forward := shared.camera_forward(before.transform.rotation)
+	target := shared.Vec3{-4, 2, 8}
+	radius := f32(3)
+	testing.expect(t, focus_editor_scene_camera(&world, target, radius, 16.0 / 9.0))
+	after, after_ok := active_camera_instance(&world, true)
+	testing.expect(t, after_ok)
+	testing.expect_value(t, after.transform.rotation, before.transform.rotation)
+	to_target := shared.camera_vec3_add(
+		target,
+		shared.camera_vec3_mul(after.transform.position, -1),
+	)
+	distance := math.sqrt(shared.camera_vec3_dot(to_target, to_target))
+	testing.expect(t, distance > radius)
+	testing.expect(
+		t,
+		shared.camera_vec3_dot(shared.camera_vec3_normalize(to_target), forward) > 0.9999,
+	)
+	_, component, component_ok := editor_scene_camera_entity(&world)
+	testing.expect(t, component_ok)
+	testing.expect_value(t, component.orbit_target, target)
+	testing.expect(t, math.abs(component.orbit_distance - distance) < 0.0001)
+
+	orbit_start := after.transform.position
+	editor_scene_camera_system(&world, {look_delta = {120, -80}, orbit_active = true}, 0, true)
+	orbited, orbit_ok := active_camera_instance(&world, true)
+	testing.expect(t, orbit_ok)
+	testing.expect(t, orbited.transform.position != orbit_start)
+	to_orbit_target := shared.camera_vec3_add(
+		target,
+		shared.camera_vec3_mul(orbited.transform.position, -1),
+	)
+	testing.expect(
+		t,
+		math.abs(math.sqrt(shared.camera_vec3_dot(to_orbit_target, to_orbit_target)) - distance) <
+		0.0001,
+	)
+	testing.expect(
+		t,
+		shared.camera_vec3_dot(
+			shared.camera_vec3_normalize(to_orbit_target),
+			shared.camera_forward(orbited.transform.rotation),
+		) >
+		0.9999,
+	)
 }
 
 @(test)

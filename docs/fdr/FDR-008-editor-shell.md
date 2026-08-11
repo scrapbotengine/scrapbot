@@ -38,7 +38,10 @@ The editor shell turns a running Scrapbot project into its own editing workspace
 - Project pointer coordinates are remapped into the project viewport, and pointer interaction is unavailable over editor chrome.
 - Opening the editor creates an editor-origin scene camera entity with Transform, Camera, and Editor Scene Camera components. Its initial view matches the project's camera, but subsequent editor navigation does not mutate the project camera.
 - Holding the right mouse button inside the viewport captures relative pointer input. While captured, mouse movement changes pitch and yaw, WASD moves along the view, Space moves up, Ctrl moves down, and Shift multiplies movement speed by four.
-- Releasing the right mouse button restores normal pointer interaction. Closing and reopening the editor preserves the scene-camera viewpoint for the current run.
+- Scrolling over unobstructed Game viewport content dollies the editor scene camera along its current view direction and consumes that wheel input before project UI can also scroll. Editor chrome retains its ordinary wheel behavior.
+- Dragging with the middle mouse button over unobstructed Game viewport content captures the pointer and orbits around the camera's retained point of interest. Fly translation carries that point with the camera, free-look retargets it along the new view direction, and `F` replaces it with the framed selection center and distance.
+- Pressing unmodified `F` with an entity selected frames its complete renderable subtree, including generated Model children. The camera preserves its current view direction, looks at the combined world-space bounds center, and fits the bounding sphere to the narrower horizontal or vertical field of view with a small margin. A selected entity without renderable bounds falls back to its resolved world Transform.
+- Releasing the active right or middle mouse button restores normal pointer interaction. Closing and reopening the editor preserves the scene-camera viewpoint for the current run.
 - Project cameras derive their view direction from transform rotation, and rendering, viewport picking, and transform gizmos use the same camera orientation.
 - Systems and Scene share the darker reusable ECS selectable-list surface with subtly rounded, edge-to-edge selection rows and no inner container padding. Their badge-free filters share the rows' exact outer bounds and use public input-icon fields for the leading search symbol.
 - Both panels compose an ordinary public `ui_input`, `ui_list`, and `ui_scroll_area`. Each list references its filter input by UUID and uses public uniform-row virtualization.
@@ -137,7 +140,7 @@ The editor shell turns a running Scrapbot project into its own editing workspace
 
 ### 8. Give the editor an ECS-owned scene camera
 
-**Decision:** Use a transient editor-origin entity for the scene camera and run captured fly navigation through a dedicated ECS system, following ADR-019.
+**Decision:** Use a transient editor-origin entity for the scene camera and run captured fly navigation, middle-mouse point-of-interest orbit, viewport wheel dolly, and bounds-aware selection framing through a dedicated ECS system, following ADR-019. Retain the orbit target and distance on that internal component. Resolve selected renderable bounds only on an explicit focus request, preserve the current view direction while fitting them to the live Game viewport aspect ratio, and make the framed center the next orbit pivot.
 **Why:** The camera remains inspectable and composable without mutating the project's gameplay camera or hiding tool state inside the renderer.
 **Tradeoff:** The world contains engine-owned entities during editing, so provenance and camera selection must explicitly distinguish project and editor ownership.
 
@@ -211,7 +214,7 @@ The editor shell turns a running Scrapbot project into its own editing workspace
 
 ### 19. Reserve command-modified keys for editor commands
 
-**Decision:** Decode editor shortcuts and transform-chord key edges into semantic actions in one platform mapping before routing them through the editor input path. Command-modified E, R, T, B, and D control the shell, transport, workspace, and entity duplication; unmodified Delete and Backspace request entity deletion. Opening the shell pauses active playback; closing starts or resumes it. Plain command-B toggles Browse, while Alt distinguishes the Inspect toggle. Reserve unmodified G/R/S and X/Y/Z for modal gizmo chords, and gate editor commands while project text input or fly-camera capture owns the keyboard. Entity actions are also gated while any text input owns focus.
+**Decision:** Decode editor shortcuts and transform-chord key edges into semantic actions in one platform mapping before routing them through the editor input path. Command-modified E, R, T, B, and D control the shell, transport, workspace, and entity duplication; unmodified Delete and Backspace request entity deletion, while unmodified F requests selection framing. Opening the shell pauses active playback; closing starts or resumes it. Plain command-B toggles Browse, while Alt distinguishes the Inspect toggle. Reserve unmodified G/R/S and X/Y/Z for modal gizmo chords, and gate editor commands while project text input or fly-camera capture owns the keyboard. Entity actions and selection framing are also gated while any text input owns focus.
 **Why:** Entering the editor should stabilize the inspected world immediately, and high-frequency workspace, playback, and entity controls need platform-native shortcuts without stealing ordinary text/project input or accidentally changing the active transform tool. Semantic decoding keeps physical key combinations separate from the authoring commands shared with toolbar buttons.
 **Tradeoff:** The shell toggle remains global by design. Other editor commands work only while the editor is visible and no higher-priority project or camera interaction owns input. Closing the shell deliberately resumes simulation, even from stopped authoring.
 
@@ -281,4 +284,4 @@ The editor shell turns a running Scrapbot project into its own editing workspace
 
 - Should Scrapbot eventually maintain concurrent authoring and playback worlds?
 - Which panel layout and sizing state should persist per project?
-- How should editor camera speed, bookmarks, and focus-selection navigation persist?
+- How should editor camera speed and bookmarks persist?

@@ -271,7 +271,8 @@ diagnostic_key_is_valid :: proc(key: string) -> bool {
 		     "toggle_left_sidebar",
 		     "toggle_right_sidebar",
 		     "duplicate_entity",
-		     "delete_entity":
+		     "delete_entity",
+		     "focus_selected":
 			return true
 	}
 	return false
@@ -820,6 +821,8 @@ diagnostic_keyboard_set :: proc(keyboard: ^Keyboard_Input, key: string) {
 			keyboard.duplicate_entity = true
 		case "delete_entity":
 			keyboard.delete_entity = true
+		case "focus_selected":
+			keyboard.focus_selected = true
 	}
 }
 

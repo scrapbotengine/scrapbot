@@ -545,12 +545,16 @@ Editor_Scene_Camera_Component :: struct {
 	entity_index: int,
 	move_speed: f32,
 	look_sensitivity: f32,
+	orbit_target: Vec3,
+	orbit_distance: f32,
 }
 
 Editor_Fly_Camera_Input :: struct {
 	movement: Vec3,
 	look_delta: Vec2,
+	dolly: f32,
 	look_active: bool,
+	orbit_active: bool,
 	move_fast: bool,
 }
 

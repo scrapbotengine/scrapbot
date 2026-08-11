@@ -5,8 +5,12 @@ import "core:math"
 
 EDITOR_SCENE_CAMERA_NAME :: "Editor Scene Camera"
 EDITOR_SCENE_CAMERA_MOVE_SPEED :: f32(5)
+EDITOR_SCENE_CAMERA_DOLLY_SCALE :: f32(0.5)
 EDITOR_SCENE_CAMERA_LOOK_SENSITIVITY :: f32(0.0025)
+EDITOR_SCENE_CAMERA_DEFAULT_ORBIT_DISTANCE :: f32(10)
+EDITOR_SCENE_CAMERA_MIN_ORBIT_DISTANCE :: f32(0.05)
 EDITOR_SCENE_CAMERA_NEAR :: f32(0.01)
+EDITOR_SCENE_CAMERA_FOCUS_MARGIN :: f32(1.1)
 
 reconcile_editor_scene_camera :: proc(
 	world: ^World,
@@ -62,6 +66,14 @@ reconcile_editor_scene_camera :: proc(
 			entity_index = entity_index,
 			move_speed = EDITOR_SCENE_CAMERA_MOVE_SPEED,
 			look_sensitivity = EDITOR_SCENE_CAMERA_LOOK_SENSITIVITY,
+			orbit_target = shared.camera_vec3_add(
+				transform.position,
+				shared.camera_vec3_mul(
+					shared.camera_forward(transform.rotation),
+					EDITOR_SCENE_CAMERA_DEFAULT_ORBIT_DISTANCE,
+				),
+			),
+			orbit_distance = EDITOR_SCENE_CAMERA_DEFAULT_ORBIT_DISTANCE,
 		},
 	)
 	sync_render_watch_memberships(world, entity_index)
@@ -105,7 +117,7 @@ editor_scene_camera_system :: proc(
 		return
 	}
 	transform := &world.transforms[entity.transform_index]
-	if input.look_active {
+	if input.look_active || input.orbit_active {
 		transform.rotation.y += input.look_delta.x * component.look_sensitivity
 		transform.rotation.x = clamp(
 			transform.rotation.x - input.look_delta.y * component.look_sensitivity,
@@ -113,6 +125,19 @@ editor_scene_camera_system :: proc(
 			math.to_radians(f32(89)),
 		)
 		transform.rotation.z = 0
+	}
+	if input.orbit_active {
+		component.orbit_distance = max(
+			component.orbit_distance,
+			EDITOR_SCENE_CAMERA_MIN_ORBIT_DISTANCE,
+		)
+		transform.position = shared.camera_vec3_add(
+			component.orbit_target,
+			shared.camera_vec3_mul(
+				shared.camera_forward(transform.rotation),
+				-component.orbit_distance,
+			),
+		)
 	}
 
 	direction := shared.camera_vec3_add(
@@ -127,10 +152,67 @@ editor_scene_camera_system :: proc(
 	if input.move_fast {
 		move_speed *= 4
 	}
+	movement := shared.camera_vec3_mul(direction, move_speed * max(delta_seconds, 0))
+	transform.position = shared.camera_vec3_add(transform.position, movement)
+	component.orbit_target = shared.camera_vec3_add(component.orbit_target, movement)
+	if input.look_active {
+		component.orbit_target = shared.camera_vec3_add(
+			transform.position,
+			shared.camera_vec3_mul(
+				shared.camera_forward(transform.rotation),
+				component.orbit_distance,
+			),
+		)
+	}
+	if input.dolly != 0 {
+		component.orbit_distance = max(
+			component.orbit_distance -
+			input.dolly * component.move_speed * EDITOR_SCENE_CAMERA_DOLLY_SCALE,
+			EDITOR_SCENE_CAMERA_MIN_ORBIT_DISTANCE,
+		)
+		transform.position = shared.camera_vec3_add(
+			component.orbit_target,
+			shared.camera_vec3_mul(
+				shared.camera_forward(transform.rotation),
+				-component.orbit_distance,
+			),
+		)
+	}
+}
+
+focus_editor_scene_camera :: proc(
+	world: ^World,
+	target: shared.Vec3,
+	radius: f32,
+	aspect: f32,
+) -> bool {
+	entity_index, component, ok := reconcile_editor_scene_camera(world, true)
+	if !ok || entity_index < 0 || entity_index >= len(world.entities) {
+		return false
+	}
+	entity := &world.entities[entity_index]
+	if entity.transform_index < 0 ||
+	   entity.transform_index >= len(world.transforms) ||
+	   entity.camera_index < 0 ||
+	   entity.camera_index >= len(world.cameras) {
+		return false
+	}
+	transform := world.transforms[entity.transform_index]
+	camera := world.cameras[entity.camera_index]
+	vertical_half_fov := math.to_radians(clamp(camera.fov, f32(1), f32(179))) * 0.5
+	horizontal_half_fov := math.atan(math.tan(vertical_half_fov) * max(aspect, 0.01))
+	limiting_half_fov := min(vertical_half_fov, horizontal_half_fov)
+	bounded_radius := max(radius, 0.25)
+	distance :=
+		bounded_radius / max(math.sin(limiting_half_fov), 0.01) * EDITOR_SCENE_CAMERA_FOCUS_MARGIN
 	transform.position = shared.camera_vec3_add(
-		transform.position,
-		shared.camera_vec3_mul(direction, move_speed * max(delta_seconds, 0)),
+		target,
+		shared.camera_vec3_mul(shared.camera_forward(transform.rotation), -distance),
 	)
+	component.orbit_target = target
+	component.orbit_distance = distance
+	add_transform(world, entity_index, transform)
+	return true
 }
 
 set_editor_scene_camera_pose :: proc(
@@ -138,7 +220,7 @@ set_editor_scene_camera_pose :: proc(
 	position: shared.Vec3,
 	rotation: shared.Vec3,
 ) -> bool {
-	entity_index, _, ok := reconcile_editor_scene_camera(world, true)
+	entity_index, component, ok := reconcile_editor_scene_camera(world, true)
 	if !ok || entity_index < 0 || entity_index >= len(world.entities) {
 		return false
 	}
@@ -155,6 +237,16 @@ set_editor_scene_camera_pose :: proc(
 		math.to_radians(f32(89)),
 	)
 	transform.rotation.z = 0
+	if component.orbit_distance <= 0 {
+		component.orbit_distance = EDITOR_SCENE_CAMERA_DEFAULT_ORBIT_DISTANCE
+	}
+	component.orbit_target = shared.camera_vec3_add(
+		transform.position,
+		shared.camera_vec3_mul(
+			shared.camera_forward(transform.rotation),
+			component.orbit_distance,
+		),
+	)
 	add_transform(world, entity_index, transform)
 	return true
 }

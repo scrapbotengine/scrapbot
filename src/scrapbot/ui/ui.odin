@@ -62,6 +62,7 @@ Keyboard_Input :: struct {
 	editor_toggle, run_stop, pause_step: bool,
 	toggle_left_sidebar, toggle_right_sidebar: bool,
 	duplicate_entity, delete_entity: bool,
+	focus_selected: bool,
 	transform_translate, transform_rotate, transform_scale: bool,
 	transform_axis_x, transform_axis_y, transform_axis_z: bool,
 }
@@ -448,6 +449,7 @@ State :: struct {
 	editor_playback_stop_requested: bool,
 	editor_scene_save_requested: bool,
 	editor_scene_revert_requested: bool,
+	editor_focus_selected_requested: bool,
 	editor_resource_reimport_requested: bool,
 	editor_resource_reimport_all_requested: bool,
 	editor_resource_reimport_id: shared.Resource_UUID,
@@ -872,6 +874,14 @@ consume_playback_stop_request :: proc(state: ^State) -> bool {
 		return false
 	}
 	state.editor_playback_stop_requested = false
+	return true
+}
+
+consume_editor_focus_selected_request :: proc(state: ^State) -> bool {
+	if state == nil || !state.editor_focus_selected_requested {
+		return false
+	}
+	state.editor_focus_selected_requested = false
 	return true
 }
 

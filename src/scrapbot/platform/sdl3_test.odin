@@ -71,6 +71,8 @@ test_editor_shortcuts_decode_to_centralized_semantic_actions :: proc(t: ^testing
 	testing.expect(t, ok && action == .Delete_Entity)
 	action, ok = editor_shortcut_action(.DELETE, {}, false)
 	testing.expect(t, ok && action == .Delete_Entity)
+	action, ok = editor_shortcut_action(.F, {}, false)
+	testing.expect(t, ok && action == .Focus_Selected)
 	_, ok = editor_shortcut_action(.D, {}, false)
 	testing.expect(t, !ok)
 	_, ok = editor_shortcut_action(.DELETE, sdl.Keymod{.LGUI}, false)
@@ -116,15 +118,23 @@ test_scene_camera_input_maps_navigation_only_while_looking :: proc(t: ^testing.T
 		up = true,
 		fast = true,
 	}
-	inactive := scene_camera_input_from_state(keys, {4, -2}, false)
+	inactive := scene_camera_input_from_state(keys, {4, -2}, false, 1.5)
 	testing.expect(t, !inactive.look_active)
 	testing.expect(t, inactive.movement == shared.Vec3{})
+	testing.expect_value(t, inactive.dolly, f32(1.5))
 
 	active := scene_camera_input_from_state(keys, {4, -2}, true)
 	testing.expect(t, active.look_active)
 	testing.expect(t, active.movement == shared.Vec3{-1, 1, 1})
 	testing.expect(t, active.look_delta == shared.Vec2{4, -2})
 	testing.expect(t, active.move_fast)
+
+	orbit := scene_camera_orbit_input({-3, 7}, 2)
+	testing.expect(t, orbit.orbit_active)
+	testing.expect(t, !orbit.look_active)
+	testing.expect_value(t, orbit.look_delta, shared.Vec2{-3, 7})
+	testing.expect_value(t, orbit.dolly, f32(2))
+	testing.expect_value(t, orbit.movement, shared.Vec3{})
 }
 
 @(test)
@@ -192,6 +202,8 @@ test_runtime_text_keys_preserve_navigation_modifiers_and_shortcuts :: proc(t: ^t
 	testing.expect(t, input.pause_step)
 	runtime_text_key(&input, .D, sdl.Keymod{.LGUI})
 	testing.expect(t, input.duplicate_entity)
+	runtime_text_key(&input, .F, sdl.Keymod{})
+	testing.expect(t, input.focus_selected)
 	runtime_text_key(&input, .BACKSPACE, sdl.Keymod{})
 	testing.expect(t, input.backspace && input.delete_entity)
 	runtime_text_key(&input, .DELETE, sdl.Keymod{})
@@ -202,6 +214,7 @@ test_runtime_text_keys_preserve_navigation_modifiers_and_shortcuts :: proc(t: ^t
 	runtime_text_key(&repeated, .T, sdl.Keymod{.LGUI}, true)
 	runtime_text_key(&repeated, .B, sdl.Keymod{.LGUI}, true)
 	runtime_text_key(&repeated, .D, sdl.Keymod{.LGUI}, true)
+	runtime_text_key(&repeated, .F, sdl.Keymod{}, true)
 	runtime_text_key(&repeated, .DELETE, sdl.Keymod{}, true)
 	testing.expect(
 		t,
@@ -211,7 +224,8 @@ test_runtime_text_keys_preserve_navigation_modifiers_and_shortcuts :: proc(t: ^t
 		!repeated.toggle_left_sidebar &&
 		!repeated.toggle_right_sidebar &&
 		!repeated.duplicate_entity &&
-		!repeated.delete_entity,
+		!repeated.delete_entity &&
+		!repeated.focus_selected,
 	)
 	runtime_text_key(&input, .ESCAPE, sdl.Keymod{.LCTRL})
 	testing.expect(t, !input.escape)

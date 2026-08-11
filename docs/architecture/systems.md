@@ -1,6 +1,6 @@
 # Engine Systems
 
-**Last verified:** 2026-08-10
+**Last verified:** 2026-08-11
 **Canonical names:** `engine_system_profile_name` in `src/scrapbot/scrapbot.odin`  
 **Execution boundaries:** `run_frame_system` in `src/scrapbot/render/render.odin` and WGPU frame encoding in `src/scrapbot/render/wgpu.odin`
 
@@ -11,7 +11,7 @@ These are the engine-owned rows published to the editor's Systems panel. They ar
 <!-- inventory:engine-systems:start -->
 | System | Responsibility | Runs when | Primary implementation |
 | --- | --- | --- | --- |
-| `scrapbot.camera` | Updates the transient editor fly camera from captured scene-view input. | An editor UI state exists; visibility/input determine whether it mutates. | `ecs.editor_scene_camera_system` |
+| `scrapbot.camera` | Updates the transient editor fly camera from captured fly/orbit input, viewport dolly, or explicit selection framing. | An editor UI state exists; visibility/input and one-shot focus requests determine whether it mutates. | `ecs.editor_scene_camera_system`, `ecs.focus_editor_scene_camera` |
 | `scrapbot.gizmo` | Reconciles camera visualization, transform gizmo interaction, and the editor-world overlay stream. | An editor UI state exists; most work is conditional on editor visibility and selection. | `render/render.odin`, `render/gizmo.odin`, `render/camera_visualizer.odin` |
 | `scrapbot.ui` | Reconciles retained ECS UI, editor composition, layout, interaction, and paint revisions. | An editor/UI state exists; stable domains skip unchanged work. | `ui/ui.odin`, `ui/editor_*.odin` |
 | `scrapbot.pick` | Resolves requested camera-mesh or exact scene-geometry picking and updates editor selection. | The phase is measured with editor state; intersection work runs only for a pending pick. | `render/picking.odin`, `render/camera_visualizer.odin` |
@@ -33,9 +33,9 @@ These are the engine-owned rows published to the editor's Systems panel. They ar
 ### `scrapbot.camera`
 
 - **Phase/order:** First engine-owned phase after scheduled project simulation.
-- **Inputs:** SDL scene-view input, editor visibility/capture state, editor-camera Transform and movement settings.
-- **Outputs:** Mutated transient editor-camera pose and input-capture state. The fly camera inherits the project lens and far plane but caps its near plane at one centimeter for close surface inspection.
-- **Stable-frame behavior:** With no captured movement/look input, it performs bounded camera/input checks and does not rebuild scene or render membership.
+- **Inputs:** SDL scene-view input, viewport wheel ownership, editor visibility/capture state, one-shot selected-entity focus requests, live Game viewport aspect ratio, retained renderable bounds, editor-camera Transform, lens, and movement settings.
+- **Outputs:** Mutated transient editor-camera pose, retained point-of-interest/distance, and input-capture state. The fly camera inherits the project lens and far plane but caps its near plane at one centimeter for close surface inspection. Middle-mouse input orbits the retained point; focus preserves view direction, fits the selected renderable subtree or Transform fallback to the narrower field-of-view axis, and replaces the orbit point.
+- **Stable-frame behavior:** With no captured movement/look/wheel input or focus request, it performs bounded camera/input checks and does not rebuild scene or render membership. Bounds traversal occurs only for an explicit focus request.
 - **Boundary:** Main-thread CPU editor system; never replaces or mutates the authored project camera.
 - **Source/tests:** `render/render.odin`, `ecs/editor.odin`; `ecs/editor_test.odin`, `render/render_test.odin`.
 
