@@ -12,7 +12,7 @@ import "core:strings"
 
 MAX_NODES :: 4096
 MAX_PAINT_COMMANDS :: 16384
-MAX_EDITOR_OVERLAY_PAINT_COMMANDS :: 1024
+MAX_EDITOR_OVERLAY_PAINT_COMMANDS :: 4096
 MAX_EMBEDDED_VIEWPORTS :: 8
 MAX_TEXT_LINES :: 256
 FONT_FIRST_CHAR :: shared.FONT_FIRST_CHAR
@@ -145,12 +145,27 @@ Editor_Gizmo_Handle :: enum {
 }
 EDITOR_GIZMO_RING_POINT_COUNT :: 64
 EDITOR_CAMERA_MESH_MAX_SEGMENTS :: 512
+EDITOR_SCENE_ICON_MAX_COUNT :: 256
 
 Editor_Camera_Mesh_Segment :: struct {
 	entity: shared.Entity,
 	start, end: shared.Vec2,
 	color: shared.Vec4,
 	thickness: f32,
+}
+
+Editor_Scene_Icon_Kind :: enum {
+	Camera,
+	Directional_Light,
+	Point_Light,
+}
+
+Editor_Scene_Icon :: struct {
+	entity: shared.Entity,
+	kind: Editor_Scene_Icon_Kind,
+	center: shared.Vec2,
+	clip: Rect,
+	selected: bool,
 }
 
 Font_Atlas :: struct {
@@ -539,6 +554,8 @@ State :: struct {
 	editor_scene_camera_captures_input: bool,
 	editor_camera_mesh_segments: [EDITOR_CAMERA_MESH_MAX_SEGMENTS]Editor_Camera_Mesh_Segment,
 	editor_camera_mesh_segment_count: int,
+	editor_scene_icons: [EDITOR_SCENE_ICON_MAX_COUNT]Editor_Scene_Icon,
+	editor_scene_icon_count: int,
 	editor_gizmo_visible: bool,
 	editor_gizmo_mode: shared.Editor_Gizmo_Mode,
 	editor_gizmo_space: shared.Editor_Gizmo_Space,
@@ -8503,6 +8520,9 @@ rebuild_editor_world_overlay :: proc(state: ^State) -> string {
 	if err := append_editor_camera_mesh(state); err != "" {
 		return err
 	}
+	if err := append_editor_scene_icons(state); err != "" {
+		return err
+	}
 	if err := append_editor_gizmo(state); err != "" {
 		return err
 	}
@@ -8608,6 +8628,234 @@ append_editor_camera_mesh :: proc(state: ^State) -> string {
 				line_thickness = segment.thickness,
 				corner_radius = segment.thickness * 0.5,
 			},
+		); err != "" {
+			return err
+		}
+	}
+	return ""
+}
+
+append_editor_scene_icons :: proc(state: ^State) -> string {
+	if state == nil || state.editor_scene_icon_count <= 0 {
+		return ""
+	}
+	scale := max(state.editor_pixel_density, 1)
+	count := min(state.editor_scene_icon_count, len(state.editor_scene_icons))
+	for icon in state.editor_scene_icons[:count] {
+		color := shared.Vec4{0.38, 0.72, 0.96, 1}
+		switch icon.kind {
+			case .Camera:
+			case .Directional_Light:
+				color = {1, 0.78, 0.28, 1}
+			case .Point_Light:
+				color = {1, 0.58, 0.22, 1}
+		}
+		if icon.selected {
+			color = {1, 0.68, 0.22, 1}
+		}
+		center := icon.center
+		size := f32(32) * scale
+		line_width := f32(1.75) * scale
+		if icon.selected {
+			line_width = 2.25 * scale
+		}
+		if err := append_paint(
+			state,
+			{
+				kind = .Panel,
+				rect = {center.x - size * 0.5, center.y - size * 0.5, size, size},
+				color = {0.035, 0.04, 0.05, 0.82},
+				corner_radius = 7 * scale,
+				border_color = color,
+				border_width = (1.25 if icon.selected else 0.75) * scale,
+				has_clip = true,
+				clip = icon.clip,
+			},
+		); err != "" {
+			return err
+		}
+		switch icon.kind {
+			case .Camera:
+				if err := append_editor_camera_icon(
+					state,
+					center,
+					color,
+					line_width,
+					scale,
+					icon.clip,
+				); err != "" {
+					return err
+				}
+			case .Directional_Light:
+				if err := append_editor_directional_light_icon(
+					state,
+					center,
+					color,
+					line_width,
+					scale,
+					icon.clip,
+				); err != "" {
+					return err
+				}
+			case .Point_Light:
+				if err := append_editor_point_light_icon(
+					state,
+					center,
+					color,
+					line_width,
+					scale,
+					icon.clip,
+				); err != "" {
+					return err
+				}
+		}
+	}
+	return ""
+}
+
+append_editor_icon_line :: proc(
+	state: ^State,
+	center, start, end: shared.Vec2,
+	color: shared.Vec4,
+	thickness, scale: f32,
+	clip: Rect,
+) -> string {
+	return append_paint(
+		state,
+		{
+			kind = .Line,
+			color = color,
+			line_start = {center.x + start.x * scale, center.y + start.y * scale},
+			line_end = {center.x + end.x * scale, center.y + end.y * scale},
+			line_thickness = thickness,
+			corner_radius = thickness * 0.5,
+			has_clip = true,
+			clip = clip,
+		},
+	)
+}
+
+append_editor_camera_icon :: proc(
+	state: ^State,
+	center: shared.Vec2,
+	color: shared.Vec4,
+	thickness, scale: f32,
+	clip: Rect,
+) -> string {
+	lines := [7][2]shared.Vec2 {
+		{{-9, -6}, {4, -6}},
+		{{4, -6}, {4, 6}},
+		{{4, 6}, {-9, 6}},
+		{{-9, 6}, {-9, -6}},
+		{{4, -3.5}, {10, -7}},
+		{{10, -7}, {10, 7}},
+		{{10, 7}, {4, 3.5}},
+	}
+	for line in lines {
+		if err := append_editor_icon_line(
+			state,
+			center,
+			line[0],
+			line[1],
+			color,
+			thickness,
+			scale,
+			clip,
+		); err != "" {
+			return err
+		}
+	}
+	return ""
+}
+
+append_editor_directional_light_icon :: proc(
+	state: ^State,
+	center: shared.Vec2,
+	color: shared.Vec4,
+	thickness, scale: f32,
+	clip: Rect,
+) -> string {
+	if err := append_paint(
+		state,
+		{
+			kind = .Ring,
+			color = color,
+			ring_center = center,
+			ring_axis_x = {5 * scale, 0},
+			ring_axis_y = {0, 5 * scale},
+			ring_thickness = thickness,
+			has_clip = true,
+			clip = clip,
+		},
+	); err != "" {
+		return err
+	}
+	rays := [8][2]shared.Vec2 {
+		{{0, -8}, {0, -11}},
+		{{0, 8}, {0, 11}},
+		{{-8, 0}, {-11, 0}},
+		{{8, 0}, {11, 0}},
+		{{-5.7, -5.7}, {-7.8, -7.8}},
+		{{5.7, -5.7}, {7.8, -7.8}},
+		{{-5.7, 5.7}, {-7.8, 7.8}},
+		{{5.7, 5.7}, {7.8, 7.8}},
+	}
+	for ray in rays {
+		if err := append_editor_icon_line(
+			state,
+			center,
+			ray[0],
+			ray[1],
+			color,
+			thickness,
+			scale,
+			clip,
+		); err != "" {
+			return err
+		}
+	}
+	return ""
+}
+
+append_editor_point_light_icon :: proc(
+	state: ^State,
+	center: shared.Vec2,
+	color: shared.Vec4,
+	thickness, scale: f32,
+	clip: Rect,
+) -> string {
+	bulb_center := shared.Vec2{center.x, center.y - 3 * scale}
+	if err := append_paint(
+		state,
+		{
+			kind = .Ring,
+			color = color,
+			ring_center = bulb_center,
+			ring_axis_x = {6 * scale, 0},
+			ring_axis_y = {0, 6 * scale},
+			ring_thickness = thickness,
+			has_clip = true,
+			clip = clip,
+		},
+	); err != "" {
+		return err
+	}
+	lines := [4][2]shared.Vec2 {
+		{{-4, 2}, {-3, 6}},
+		{{4, 2}, {3, 6}},
+		{{-3, 6}, {3, 6}},
+		{{-2, 9}, {2, 9}},
+	}
+	for line in lines {
+		if err := append_editor_icon_line(
+			state,
+			center,
+			line[0],
+			line[1],
+			color,
+			thickness,
+			scale,
+			clip,
 		); err != "" {
 			return err
 		}

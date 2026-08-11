@@ -9308,6 +9308,48 @@ test_editor_camera_mesh_appends_editor_viewport_lines :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_editor_scene_icons_paint_constant_size_billboards :: proc(t: ^testing.T) {
+	state := new(State)
+	defer free(state)
+	state.editor_pixel_density = 1
+	state.paint_editor_overlay = true
+	state.editor_scene_icon_count = 3
+	state.editor_scene_icons[0] = {
+		kind = .Camera,
+		center = {100, 120},
+		clip = {20, 30, 800, 600},
+	}
+	state.editor_scene_icons[1] = {
+		kind = .Directional_Light,
+		center = {240, 160},
+		clip = {20, 30, 800, 600},
+	}
+	state.editor_scene_icons[2] = {
+		kind = .Point_Light,
+		center = {400, 280},
+		clip = {20, 30, 800, 600},
+		selected = true,
+	}
+
+	testing.expect(t, append_editor_scene_icons(state) == "")
+	testing.expect_value(t, state.editor_overlay_paint_count, 24)
+	testing.expect_value(t, state.editor_overlay_paint[0].kind, Paint_Kind.Panel)
+	testing.expect_value(t, state.editor_overlay_paint[0].rect, Rect{84, 104, 32, 32})
+	testing.expect_value(t, state.editor_overlay_paint[8].kind, Paint_Kind.Panel)
+	testing.expect_value(t, state.editor_overlay_paint[8].rect.width, f32(32))
+	testing.expect_value(t, state.editor_overlay_paint[18].kind, Paint_Kind.Panel)
+	testing.expect_value(t, state.editor_overlay_paint[18].rect.width, f32(32))
+	testing.expect(
+		t,
+		state.editor_overlay_paint[18].border_width > state.editor_overlay_paint[8].border_width,
+	)
+	for command in state.editor_overlay_paint[:state.editor_overlay_paint_count] {
+		testing.expect(t, command.has_clip)
+		testing.expect_value(t, command.clip, Rect{20, 30, 800, 600})
+	}
+}
+
+@(test)
 test_editor_gizmo_modes_render_rings_and_square_scale_handles :: proc(t: ^testing.T) {
 	state := new(
 		State,

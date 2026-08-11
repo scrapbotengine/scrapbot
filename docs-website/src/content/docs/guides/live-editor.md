@@ -155,7 +155,7 @@ Transform instead.
 
 Closing and reopening the editor preserves the scene-camera viewpoint for the current run.
 
-While the editor is open, project and runtime cameras appear as blue, world-scaled wireframe bodies. A body naturally becomes smaller on screen as the scene viewpoint moves away.
+While the editor is open, project and runtime cameras appear as blue, world-scaled wireframe bodies. A body naturally becomes smaller on screen as the scene viewpoint moves away. Cameras also receive a blue, fixed-size billboard icon at their world origin. Directional lights receive a gold sun icon and point lights receive an orange bulb icon. A directional light without a Transform anchors its position-independent icon at the world origin. The editor fly camera is excluded, and selecting any icon changes it to the shared amber selection color.
 
 Selecting a camera highlights it in amber and reveals a projection-frustum preview derived from:
 
@@ -164,9 +164,9 @@ Selecting a camera highlights it in amber and reveals a projection-frustum previ
 - the current viewport aspect;
 - its resolved world transform.
 
-The preview stops after five world units, or at a shorter far clip plane, so an ordinary long far plane cannot flood the scene view. Click a visible body or selected frustum stroke to select its camera; camera visualizers take priority over triangle picking.
+The preview stops after five world units, or at a shorter far clip plane, so an ordinary long far plane cannot flood the scene view. Click a camera/light icon, visible camera body, or selected frustum stroke to select its entity; these editor visualizers take priority over triangle picking.
 
-These visualizers are editor-only. The separate fly camera is never shown as project content, and closing the editor removes them. Camera visualizers and transform gizmos stay inside the Game surface: they paint above project UI, while any editor tab or panel moved over that surface covers them.
+These visualizers are editor-only. They do not create renderable project geometry or persist to the scene. The separate fly camera is never shown as project content, and closing the editor removes them. Component icons, camera visualizers, and transform gizmos stay inside the Game surface: they paint above project UI, while any editor tab or panel moved over that surface covers them.
 
 ## Browse and inspect entities
 

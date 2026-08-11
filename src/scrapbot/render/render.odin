@@ -1328,6 +1328,14 @@ run_frame_system_unmeasured :: proc(
 			has_camera,
 			config.ui_state.editor_visible,
 		)
+		editor_scene_icon_system(
+			config.ui_state,
+			world,
+			viewport,
+			camera,
+			has_camera,
+			config.ui_state.editor_visible,
+		)
 		gizmo_keyboard := keyboard
 		if ui.has_text_focus(config.ui_state) ||
 		   ui.editor_ui_has_open_popup(config.ui_state, world) ||
@@ -1497,10 +1505,16 @@ run_frame_system_unmeasured :: proc(
 		}
 		if config.ui_state.editor_pick_requested {
 			config.ui_state.editor_pick_requested = false
-			picked, found := editor_pick_camera_mesh(
+			picked, found := editor_pick_scene_icon(
 				config.ui_state,
 				config.ui_state.editor_pick_position,
 			)
+			if !found {
+				picked, found = editor_pick_camera_mesh(
+					config.ui_state,
+					config.ui_state.editor_pick_position,
+				)
+			}
 			if !found && config.resource_registry != nil {
 				list := ecs.build_resource_render_list(
 					world,

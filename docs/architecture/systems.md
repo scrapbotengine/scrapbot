@@ -12,7 +12,7 @@ These are the engine-owned rows published to the editor's Systems panel. They ar
 | System | Responsibility | Runs when | Primary implementation |
 | --- | --- | --- | --- |
 | `scrapbot.camera` | Updates the transient editor fly camera from captured fly/orbit input, viewport dolly, or explicit selection framing. | An editor UI state exists; visibility/input and one-shot focus requests determine whether it mutates. | `ecs.editor_scene_camera_system`, `ecs.focus_editor_scene_camera` |
-| `scrapbot.gizmo` | Reconciles camera visualization, transform gizmo interaction, and the editor-world overlay stream. | An editor UI state exists; most work is conditional on editor visibility and selection. | `render/render.odin`, `render/gizmo.odin`, `render/camera_visualizer.odin` |
+| `scrapbot.gizmo` | Reconciles camera/light component visualization, transform gizmo interaction, and the editor-world overlay stream. | An editor UI state exists; most work is conditional on editor visibility and selection. | `render/render.odin`, `render/gizmo.odin`, `render/camera_visualizer.odin`, `render/scene_icons.odin` |
 | `scrapbot.ui` | Reconciles retained ECS UI, editor composition, layout, interaction, and paint revisions. | An editor/UI state exists; stable domains skip unchanged work. | `ui/ui.odin`, `ui/editor_*.odin` |
 | `scrapbot.pick` | Resolves requested camera-mesh or exact scene-geometry picking and updates editor selection. | The phase is measured with editor state; intersection work runs only for a pending pick. | `render/picking.odin`, `render/camera_visualizer.odin` |
 | `scrapbot.environment` | Reconciles the singleton authored world environment into retained resource handles plus imported-background and procedural-atmosphere presentation state. | Every rendered frame performs a cached revision check; UUID resolution and bounded atmosphere-value copies run only after membership or value changes. Resource reimports update the retained handles in place. | `resources.reconcile_world_environment` |
@@ -42,11 +42,11 @@ These are the engine-owned rows published to the editor's Systems panel. They ar
 ### `scrapbot.gizmo`
 
 - **Phase/order:** After editor camera and before retained UI.
-- **Inputs:** Editor selection, resolved world transforms, active editor camera and viewport, pointer state, gizmo mode/orientation/pivot, transient snap increments, retained selected-subtree bounds, camera components.
-- **Outputs:** Immediate free modal translation/view-axis rotation/uniform scaling, later axis-qualified Transform edits resolved against the same captured gesture, increment-snapped origin- or bounds-center-based Transform edits, camera visualization geometry, gizmo/overlay paint stream and interaction state.
+- **Inputs:** Editor selection, resolved world transforms, active editor camera and viewport, pointer state, gizmo mode/orientation/pivot, transient snap increments, retained selected-subtree bounds, and compact camera/directional-light/point-light membership.
+- **Outputs:** Immediate free modal translation/view-axis rotation/uniform scaling, later axis-qualified Transform edits resolved against the same captured gesture, increment-snapped origin- or bounds-center-based Transform edits, camera body/frustum geometry, constant-size camera/light icons, and the gizmo/overlay paint and interaction state.
 - **Stable-frame behavior:** Reuses retained overlay/camera geometry and a selected-subtree bounds center until selection, relevant render dirtiness, hierarchy/topology, Geometry, camera, viewport, mode, pivot, or interaction revisions change.
 - **Boundary:** Main-thread CPU editor tooling; visualization is an overlay consumer, not an authored renderable entity.
-- **Source/tests:** `render/gizmo.odin`, `render/camera_visualizer.odin`, `ui/editor_ecs.odin`; `render/gizmo_test.odin`, `render/camera_visualizer_test.odin`.
+- **Source/tests:** `render/gizmo.odin`, `render/camera_visualizer.odin`, `render/scene_icons.odin`, `ui/editor_ecs.odin`; `render/gizmo_test.odin`, `render/camera_visualizer_test.odin`, `render/scene_icons_test.odin`.
 
 ### `scrapbot.ui`
 
@@ -60,11 +60,11 @@ These are the engine-owned rows published to the editor's Systems panel. They ar
 ### `scrapbot.pick`
 
 - **Phase/order:** After UI has resolved whether the scene view owns the pointer and before render preparation.
-- **Inputs:** Pending editor pick request, scene-view coordinates, active editor camera, camera visualizer bounds, and each Geometry's resident vertices or position-only query proxy plus exact leaf topology.
+- **Inputs:** Pending editor pick request, scene-view coordinates, active editor camera, camera/light icon bounds, camera visualizer strokes, and each Geometry's resident vertices or position-only query proxy plus exact leaf topology.
 - **Outputs:** Editor selection UUID or cleared selection.
 - **Stable-frame behavior:** With no pending pick, exact intersection and camera-visualizer tests are skipped.
 - **Boundary:** Main-thread allocation-free CPU query against retained scene inputs; it does not load render payload pages or mutate project component data.
-- **Source/tests:** `render/picking.odin`, `render/camera_visualizer.odin`, `render/render.odin`; `render/picking_test.odin`, `render/camera_visualizer_test.odin`.
+- **Source/tests:** `render/picking.odin`, `render/camera_visualizer.odin`, `render/scene_icons.odin`, `render/render.odin`; `render/picking_test.odin`, `render/camera_visualizer_test.odin`, `render/scene_icons_test.odin`.
 
 ### `scrapbot.environment`
 
