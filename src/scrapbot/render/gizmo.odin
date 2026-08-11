@@ -336,23 +336,17 @@ editor_transform_gizmo_system :: proc(
 						state.editor_gizmo_drag_screen_axes[second],
 					)
 					if solved {
-						factors[first] = max(1 + first_amount, 0.01)
-						factors[second] = max(1 + second_amount, 0.01)
+						factor := max(1 + (first_amount + second_amount) * 0.5, 0.01)
 						scale_snap_step := editor_gizmo_effective_snap_step(
 							state.editor_scale_snap_step,
 							0.1,
 							keyboard.fine,
 						)
 						if scale_snap_step > 0 {
-							factors[first] = editor_gizmo_snap_scale_factor(
-								factors[first],
-								scale_snap_step,
-							)
-							factors[second] = editor_gizmo_snap_scale_factor(
-								factors[second],
-								scale_snap_step,
-							)
+							factor = editor_gizmo_snap_scale_factor(factor, scale_snap_step)
 						}
+						factors[first] = factor
+						factors[second] = factor
 						vec3_mul_axis(&candidate.scale, first, factors[first])
 						vec3_mul_axis(&candidate.scale, second, factors[second])
 					}

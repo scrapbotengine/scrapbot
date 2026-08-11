@@ -909,7 +909,7 @@ test_transform_gizmo_plane_handles_translate_and_scale_two_axes :: proc(t: ^test
 			editor_transform_gizmo_index = -1,
 		},
 	)
-	append_soa(&world.transforms, shared.Transform_Component{scale = {1, 1, 1}})
+	append_soa(&world.transforms, shared.Transform_Component{scale = {2, 4, 8}})
 	state := new(
 		ui.State,
 	); defer free(state); state.editor_visible = true; state.editor_has_selection = true; state.editor_selected_entity = {
@@ -1014,9 +1014,10 @@ test_transform_gizmo_plane_handles_translate_and_scale_two_axes :: proc(t: ^test
 		camera,
 		true,
 	)
-	testing.expect(t, world.transforms[0].scale.x > 1.24 && world.transforms[0].scale.x < 1.26)
-	testing.expect(t, world.transforms[0].scale.y == 1)
-	testing.expect(t, world.transforms[0].scale.z > 1.49 && world.transforms[0].scale.z < 1.51)
+	testing.expect(t, world.transforms[0].scale.x > 2.74 && world.transforms[0].scale.x < 2.76)
+	testing.expect(t, world.transforms[0].scale.y == 4)
+	testing.expect(t, world.transforms[0].scale.z > 10.99 && world.transforms[0].scale.z < 11.01)
+	testing.expect(t, world.transforms[0].scale.z / world.transforms[0].scale.x == 4)
 }
 
 @(test)
