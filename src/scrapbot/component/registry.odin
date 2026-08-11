@@ -488,6 +488,92 @@ init_registry :: proc(registry: ^Registry) {
 	)
 	register_engine_component(
 		registry,
+		"scrapbot.water_volume",
+		{
+			Field_Definition{name = "absorption", field_type = .Vec3, editor = {color = true}},
+			Field_Definition{name = "scattering", field_type = .Vec3, editor = {color = true}},
+			Field_Definition{name = "extents", field_type = .Vec2},
+			Field_Definition {
+				name = "depth",
+				field_type = .Number,
+				editor = {draggable = true, step = 1, has_minimum = true, minimum = 0.1},
+			},
+			Field_Definition {
+				name = "priority",
+				field_type = .Number,
+				editor = {draggable = true, step = 1},
+			},
+			Field_Definition {
+				name = "transition_size",
+				field_type = .Number,
+				editor = {draggable = true, step = 0.05, has_minimum = true, minimum = 0.01},
+			},
+			Field_Definition {
+				name = "surface_displacement_bound",
+				field_type = .Number,
+				editor = {draggable = true, step = 0.1, has_minimum = true, minimum = 0},
+			},
+			Field_Definition {
+				name = "max_distance",
+				field_type = .Number,
+				editor = {draggable = true, step = 1, has_minimum = true, minimum = 0.1},
+			},
+			Field_Definition {
+				name = "ambient_intensity",
+				field_type = .Number,
+				editor = {draggable = true, step = 0.05, has_minimum = true, minimum = 0},
+			},
+			Field_Definition {
+				name = "anisotropy",
+				field_type = .Number,
+				editor = {
+					draggable = true,
+					step = 0.01,
+					has_minimum = true,
+					minimum = -0.9,
+					has_maximum = true,
+					maximum = 0.9,
+				},
+			},
+			Field_Definition {
+				name = "distortion",
+				field_type = .Number,
+				editor = {draggable = true, step = 0.1, has_minimum = true, minimum = 0},
+			},
+			Field_Definition {
+				name = "distortion_scale",
+				field_type = .Number,
+				editor = {draggable = true, step = 0.01, has_minimum = true, minimum = 0.001},
+			},
+			Field_Definition {
+				name = "distortion_speed",
+				field_type = .Number,
+				editor = {draggable = true, step = 0.01},
+			},
+			Field_Definition {
+				name = "caustics_intensity",
+				field_type = .Number,
+				editor = {draggable = true, step = 0.05, has_minimum = true, minimum = 0},
+			},
+			Field_Definition {
+				name = "caustics_scale",
+				field_type = .Number,
+				editor = {draggable = true, step = 0.05, has_minimum = true, minimum = 0.1},
+			},
+			Field_Definition {
+				name = "caustics_speed",
+				field_type = .Number,
+				editor = {draggable = true, step = 0.01},
+			},
+			Field_Definition {
+				name = "caustics_max_depth",
+				field_type = .Number,
+				editor = {draggable = true, step = 1, has_minimum = true, minimum = 0.1},
+			},
+		},
+	)
+	register_engine_component(
+		registry,
 		"scrapbot.vignette",
 		{
 			Field_Definition{name = "color", field_type = .Vec3, editor = {color = true}},
@@ -1204,6 +1290,8 @@ engine_component_storage :: proc "contextless" (name: string) -> (Storage_Kind, 
 		case "scrapbot.world_environment":
 			return .World_Environment, .Authored
 		case "scrapbot.volumetric_fog":
+			return .Custom, .Authored
+		case "scrapbot.water_volume":
 			return .Custom, .Authored
 		case "scrapbot.vignette":
 			return .Custom, .Authored

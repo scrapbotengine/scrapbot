@@ -160,6 +160,13 @@ wind_direction = [0.94, 0.34]
 amplitude = 0.7
 small_wave_damping = 0.35
 choppiness = 0.9
+foam_generation = 1.8
+foam_decay = 0.3
+foam_coverage = 0.65
+foam_advection = [0.2, -0.075]
+band_count = 3
+band_patch_scale = 0.25
+band_amplitude_scale = 0.72
 ```
 
 The source defines `fn scrapbot_vertex(input: Scrapbot_Vertex) -> Scrapbot_Vertex` and `fn scrapbot_fragment(input: Scrapbot_Fragment) -> Scrapbot_Surface`. Scrapbot owns entry points, camera and instance transport, render targets, and blending. Vertex input includes the object model and normal matrices so displacement can be authored in world scale without hard-coding an entity's transform.
@@ -171,12 +178,17 @@ Fragment input exposes viewport-local `screen_uv` for procedural effects and ful
   frame index fixed and report zero delta;
 - `scrapbot_pixel_size` for viewport-local derivatives and `scrapbot_scene_pixel_size` for target texture offsets;
 - `scrapbot_scene_color`, `scrapbot_scene_depth`, and `scrapbot_scene_view_depth` for opaque-scene sampling;
+- `scrapbot_world_position_on_fragment_ray(input, view_depth)` to recover the world position at a sampled perspective view depth along the current fragment's camera ray;
+- `scrapbot_scene_position_on_fragment_ray(input)` and `scrapbot_water_column_depth(input, surface_normal)` for center-pixel opaque receiver position and world-scale water depth along a surface normal; these intentionally do not use the conservative neighboring depth selected for refraction;
+- `scrapbot_screen_space_reflection(input, world_normal, max_distance, thickness)` to ray-march from the actual custom-surface fragment through opaque scene depth and return reflected RGB plus hit confidence in alpha;
 - `scrapbot_scene_stable_uv` for a conservative nearest-depth cross sample when refraction must not magnify subpixel opaque-coverage gaps;
 - `scrapbot_scene_uv` and `scrapbot_scene_uv_valid` to convert and guard displaced samples inside the active viewport; and
-- `scrapbot_spectral_surface(world_xz)` for an enabled Shader's world-space displacement, reconstructed normal, and crest compression;
+- `scrapbot_spectral_surface(world_xz)` for an enabled Shader's world-space displacement, reconstructed normal, crest compression, and persistent foam history;
+- `scrapbot_spectral_foam(world_xz)` for a focused sample of that retained foam history;
 - `scrapbot_world_vector_to_object` and `scrapbot_world_normal_to_object` to apply world-space deformation correctly under rotated or non-uniformly scaled entities;
 - `scrapbot_environment_reflection` for the active roughness-filtered reflection environment,
-  including the sun highlight from a procedural atmosphere when no reflection cubemap is assigned.
+  including the sun highlight from a procedural atmosphere when no reflection cubemap is assigned; and
+- `scrapbot_directional_shadow_visibility(world_position, view_depth)` for 2×2-filtered first-directional-light visibility with the same cascade selection and cross-fade used by engine lighting.
 
 `[shader.spectral_surface]` is optional. When enabled, Scrapbot evolves a deterministic Phillips
 wind spectrum from the default ECS project clock and performs a 64×64 inverse FFT on the GPU only when that
@@ -184,23 +196,56 @@ time advances. `patch_size` is the repeating
 world-space width in metres, `wind_speed` is metres per second, `wind_direction` must be non-zero,
 `amplitude` scales spectral energy, and `small_wave_damping` suppresses the shortest waves.
 
+`band_count` selects one to three frequency-partitioned 64×64 cascades. The first uses
+`patch_size`; each later patch multiplies that width by `band_patch_scale` (`0.05`–`0.5`) and its
+energy by `band_amplitude_scale` (`0`–`2`). Adjacent bands cross-fade at the next patch's longest
+wavelength instead of simulating the same frequencies twice. One band is the least expensive pool
+or small-surface tier; two cover broad motion plus agitation; three add close ripple detail. This
+matches the production split-spectrum approach described by
+[Unity HDRP](https://docs.unity.cn/Packages/com.unity.render-pipelines.high-definition%4016.0/manual/WaterSystem-simulation.html)
+and [NVIDIA's cascaded ocean simulation](https://developer.download.nvidia.com/assets/gameworks/downloads/regular/events/cgdc15/CGDC2015_ocean_simulation_en.pdf).
+
 `choppiness` ranges from zero to one. Zero retains rounded vertical FFT motion. Larger values add
 frequency-domain horizontal orbital displacement, concentrating vertices into sharper
 Gerstner-style crests without changing the underlying wave spectrum.
 
-The returned `Scrapbot_Spectral_Surface` contains world-space `displacement`, its reconstructed
-`normal`, and a `crest` compression value. Apply the displacement and normal through the conversion
-helpers when the entity transform is not the identity. `scrapbot_spectral_displacement` and
-`scrapbot_spectral_crest` provide cheaper focused samples.
+`foam_generation` controls how quickly compressed crests deposit foam, `foam_decay` is the
+exponential loss per second, and `foam_coverage` lowers the compression threshold at which breaking
+starts. `foam_advection` is the world-XZ velocity in metres per second used to transport retained
+foam between updates. Its components range from -100 to 100. Generation and decay range from zero
+to 20; coverage ranges from zero to one. The history backtraces and bilinearly samples the previous
+field only when project time advances, so pausing freezes waves and foam together.
 
-Multiple materials that use the same Shader share one field and one three-dispatch simulation per
-frame. Shaders without the block pay no FFT work.
+The returned `Scrapbot_Spectral_Surface` contains world-space `displacement`, its reconstructed
+`normal`, a current-frame `crest` compression value, and retained `foam`. Apply displacement and normal through the conversion
+helpers when the entity transform is not the identity. `scrapbot_spectral_displacement` and
+`scrapbot_spectral_crest` provide cheaper focused samples; `scrapbot_spectral_foam` reads only the
+bilinearly filtered foam channel.
+
+Scrapbot evaluates `scrapbot_vertex` again with the previous project-time snapshot when producing
+custom-surface motion for TAA. In that evaluation the time helpers and spectral helpers expose their
+previous-frame values automatically, so time-driven or spectral displacement needs no duplicate
+motion-vector hook. A paused redraw uses the same values for both evaluations. Changes driven by
+arbitrary material parameters or an entity Transform do not yet retain previous values and therefore
+still rely on TAA's rejection and neighborhood clipping.
+
+Multiple materials that use the same Shader share its complete cascade and one three-dispatch
+simulation per frame. Band count scales the active Z workgroups, not command count; storage reserves
+the bounded three-band maximum so live quality changes do not reallocate it.
+Shaders without the block pay no FFT work.
 
 Scene sampling functions accept full-target UVs. Use `input.scene_uv` as the undisplaced sample; passing `input.screen_uv` directly is incorrect when rendering inside an offset editor or game viewport.
 
 Custom shaders currently require `alpha_mode = "blend"`. Opaque custom materials need matching displaced depth-prepass and shadow contracts before they can be enabled safely. Blended draws are sorted back-to-front per instance on the CPU; a bounded GPU sort for very large transparent sets remains tracked work.
 
 A shader that computes ordinary translucent coverage returns that coverage in `Scrapbot_Surface.color.a`. A single-layer transmission shader may instead sample the opaque scene, compose transmission and reflection itself, and return alpha one so the pass does not blend the background into the result twice.
+
+The camera post stack's material-aware SSR reconstructs opaque surfaces from the opaque depth buffer.
+It cannot locate a blended, no-depth-write water surface. A water shader should instead call
+`scrapbot_screen_space_reflection` from its fragment hook: the helper starts at that displaced water
+fragment, accepts only front-to-back crossings against opaque depth, fades uncertain/off-screen
+hits, and leaves environment reflection as the required miss fallback. Like all screen-space
+reflection, it cannot recover off-screen or fully occluded geometry.
 
 UI-theme resources customize the shared semantic recipe vocabulary:
 

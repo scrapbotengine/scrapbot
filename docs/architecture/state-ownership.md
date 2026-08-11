@@ -235,8 +235,13 @@ While query freeze is active, the renderer leaves the latest valid tail and indi
 ### Project spectral surfaces
 
 The Shader resource owns spectral parameters and versioning. Its WGPU cache owns the
-frequency-domain intermediate buffer, raw spatial displacement buffer, finalized
-displacement/normal/crest field, uniform, bind groups, and pipeline association.
+frequency-domain intermediate buffer, raw spatial displacement buffer, current and previous finalized
+displacement/normal/crest/foam fields, uniform, bind groups, and pipeline association. Storage reserves
+three fixed 64×64 bands; the authored one-to-three band count controls dispatched Z lanes and public
+sampling. Adjacent bands partition wavelengths and share the same command sequence. Each raw spatial
+band is frame-local FFT output; each finalized field band's normal lane publishes retained foam to
+project shaders. The previous finalized field is the authoritative history input for the next
+advance.
 
 The default `scrapbot.clock` component is the project simulation-time authority, with `world.time`
 retaining its high-precision boundary snapshot and `world.default_clock_uuid` retaining the selected
@@ -244,11 +249,42 @@ source identity so a default change adopts the replacement clock's own timeline.
 time helpers receive its elapsed time and frame index; shader delta is zero on a redraw without a simulation step. Each active
 spectral Shader updates its uniform and encodes one horizontal plus one vertical inverse FFT followed
 by one spatial finalization dispatch at most once per elapsed-time change, even when several
-transparent draws share it. Paused redraws retain the field without an upload or dispatch.
-Finalization derives the compression Jacobian used for crest foam. Inactive and non-spectral
+transparent draws share it. Before an advancing simulation overwrites the current field, a GPU copy
+retains it as previous-frame deformation input. Paused redraws retain both fields without an upload,
+copy, or dispatch.
+Finalization derives the compression Jacobian, deposits breaking foam, and exponentially decays
+the retained history after backtracing it through the Shader's uniform world-XZ foam-advection
+velocity. Bilinear periodic sampling transports foam consistently across each band's physical patch
+scale. No time advance means no foam mutation. Inactive and non-spectral
 Shaders encode no spectral work and bind the renderer's shared zero field.
 
-Changing the Shader version releases only that Shader's spectral state and render pipeline. Resizing the scene target rebuilds only per-Shader scene/depth bind groups; the spectral field survives.
+Changing the Shader version releases only that Shader's spectral state, including foam history, and
+render pipeline. Resizing the scene target rebuilds only per-Shader scene/depth bind groups; the
+spectral field survives.
+
+The post-target set owns one viewport-sized `RG16Float` custom-surface motion texture. Transparent
+custom shaders write previous viewport UVs; `[-1, -1]` is the invalid sentinel. The target clears
+once per frame and TAA samples it directly, so stable frames do not create CPU extraction or
+per-object uploads. Target resize recreates it with the other post targets.
+
+### Water volumes
+
+Each authored `scrapbot.water_volume` owns medium coefficients and horizontal bounds; its entity
+Transform owns center and mean surface height. WGPU visits the compact custom-component active set,
+resolves only candidate transforms, and selects by priority then scene order. The authored
+`surface_displacement_bound` conservatively expands this broad phase around animated waves.
+
+The renderer owns one 32-byte query uniform and one 16-byte retained query result. The render list's
+entity-to-instance index locates the selected owner without a world scan. When that instance uses a
+custom Shader, one compute invocation executes its canonical `scrapbot_vertex` deformation and
+iteratively inverts horizontal displacement at the camera position. The result buffer owns current
+height plus current/previous submersion; command ordering makes it directly visible to temporal
+composition without CPU readback. The CPU mean plane only selects the bounded candidate; it does
+not classify the camera medium. The temporal pass derives camera depth, ray exit, fog replacement,
+caustic water column, and crossing rejection from the queried height. Candidate removal invalidates
+the result. Receiver caustics still
+use current depth, surface normals, directional-light state, and shadow maps inside the existing
+temporal pass, so the height query adds no image target.
 
 Virtual Geometry caches additionally own any terminal-frontier shadow-proxy index range. The proxy aliases
 the already-pinned page-vertex allocation, is rebuilt only with that Geometry version, and is

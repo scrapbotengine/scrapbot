@@ -740,6 +740,11 @@ struct Temporal_AA_Uniform {
 	fog_color_density: vec4<f32>,
 	fog_height_distance: vec4<f32>,
 	fog_lighting: vec4<f32>,
+	water_surface: vec4<f32>,
+	water_absorption: vec4<f32>,
+	water_scattering: vec4<f32>,
+	water_optics: vec4<f32>,
+	water_caustics: vec4<f32>,
 };
 
 struct Render_Uniform {
@@ -769,6 +774,10 @@ struct Cluster_Uniform {
 	counts: vec4<u32>,
 };
 
+struct Water_Surface_Query_Result {
+	values: vec4<f32>,
+};
+
 @group(0) @binding(0) var current_color: texture_2d<f32>;
 @group(0) @binding(1) var linear_sampler: sampler;
 @group(0) @binding(2) var current_depth: texture_depth_2d;
@@ -786,6 +795,8 @@ struct Cluster_Uniform {
 @group(0) @binding(14) var shadow_sampler: sampler_comparison;
 @group(0) @binding(15) var volumetric_fog: texture_2d<f32>;
 @group(0) @binding(16) var volumetric_fog_output: texture_storage_2d<rgba16float, write>;
+@group(0) @binding(17) var custom_surface_motion: texture_2d<f32>;
+@group(0) @binding(18) var<storage, read> water_surface_query: Water_Surface_Query_Result;
 @group(1) @binding(0) var<storage, read> point_lights: array<Point_Light>;
 @group(1) @binding(1) var<storage, read_write> cluster_light_counts: array<u32>;
 @group(1) @binding(2) var<storage, read_write> cluster_light_indices: array<u32>;
@@ -915,6 +926,268 @@ fn current_color_at(pixel: vec2<i32>) -> vec3<f32> {
 		source_indirect_diffuse +
 		source_indirect_diffuse * ambient_visibility_at(pixel) +
 		reflection_color;
+}
+
+fn world_view_direction(pixel: vec2<i32>) -> vec3<f32> {
+	let sample_position = vec2<f32>(pixel) + vec2<f32>(0.5);
+	let viewport_uv = (sample_position - temporal.viewport.xy) / temporal.viewport.zw;
+	let ndc = viewport_uv * vec2<f32>(2.0, -2.0) + vec2<f32>(-1.0, 1.0);
+	let view_direction = normalize(vec3<f32>(
+		(ndc.x + temporal.parameters.x) / temporal.projection.x,
+		(ndc.y + temporal.parameters.y) / temporal.projection.y,
+		-1.0,
+	));
+	return normalize((temporal.inverse_view * vec4<f32>(view_direction, 0.0)).xyz);
+}
+
+fn effective_water_surface() -> vec4<f32> {
+	if (water_surface_query.values.w > 0.5) {
+		return vec4<f32>(
+			water_surface_query.values.x,
+			temporal.water_surface.y,
+			water_surface_query.values.y,
+			temporal.water_surface.w,
+		);
+	}
+	return temporal.water_surface;
+}
+
+fn underwater_distortion(pixel: vec2<i32>, view_direction: vec3<f32>) -> vec2<i32> {
+	if (temporal.water_optics.x <= 0.0) {
+		return pixel;
+	}
+	let camera_position = temporal.inverse_view[3].xyz;
+	let frequency = temporal.water_optics.y;
+	let phase = temporal.water_optics.z;
+	let sample_position = camera_position.xz + view_direction.xz * 6.0;
+	let first = vec2<f32>(
+		sin(dot(sample_position, vec2<f32>(0.83, 0.56)) * frequency + phase),
+		cos(dot(sample_position, vec2<f32>(-0.48, 0.88)) * frequency * 1.37 - phase * 0.81),
+	);
+	let second = vec2<f32>(
+		cos(dot(sample_position, vec2<f32>(0.31, -0.95)) * frequency * 2.13 - phase * 1.23),
+		sin(dot(sample_position, vec2<f32>(0.92, 0.39)) * frequency * 1.79 + phase * 0.67),
+	) * 0.35;
+	let offset = vec2<i32>(round(
+		(first + second) *
+		temporal.water_optics.x *
+			effective_water_surface().z,
+	));
+	return clamp(pixel + offset, viewport_minimum(), viewport_maximum());
+}
+
+fn underwater_world_position(pixel: vec2<i32>, depth: f32) -> vec3<f32> {
+	let view_position = reconstruct_view_position(pixel, depth);
+	return (temporal.inverse_view * vec4<f32>(view_position, 1.0)).xyz;
+}
+
+// A compact deep-water spectrum used to bend the sun's rays at the mean water
+// plane. Long waves carry most of the slope energy; progressively shorter,
+// directionally spread bands break up repetition. Screen-footprint attenuation
+// keeps sub-pixel bands from becoming sparkling noise in the post pass.
+fn underwater_caustic_normal(surface_position: vec2<f32>, footprint: f32) -> vec3<f32> {
+	let spectrum_scale = temporal.water_caustics.y;
+	let phase_time = temporal.water_caustics.z;
+	var wavelength = 4.6 * spectrum_scale;
+	var slope = vec2<f32>(0.0);
+	var slope_weight = 0.0;
+	for (var wave_index = 0u; wave_index < 10u; wave_index += 1u) {
+		let index = f32(wave_index);
+		let angle = index * 2.39996323 + sin(index * 5.713 + 1.17) * 0.42;
+		let direction = normalize(vec2<f32>(cos(angle), sin(angle)) + vec2<f32>(0.7, 0.18));
+		let wave_number = 6.28318530718 / max(wavelength, 0.02);
+		let dispersion = sqrt(9.81 * wave_number);
+		let offset = sin(index * 17.17) * 5.31 + cos(index * 9.23) * 3.7;
+		let phase = dot(surface_position, direction) * wave_number -
+			phase_time * dispersion + offset;
+		let resolved = 1.0 - smoothstep(wavelength * 0.16, wavelength * 0.7, footprint);
+		let band_weight = resolved * pow(0.88, index);
+		let steepness = mix(0.105, 0.045, index / 9.0);
+		slope += direction * cos(phase) * steepness * band_weight;
+		slope_weight += band_weight;
+		wavelength *= 0.64;
+	}
+	let normalization = max(slope_weight * 0.31, 1.0);
+	return normalize(vec3<f32>(-slope.x / normalization, 1.0, -slope.y / normalization));
+}
+
+fn underwater_caustic_projection(
+	surface_position: vec2<f32>,
+	receiver_height: f32,
+	sun_direction: vec3<f32>,
+	footprint: f32,
+) -> vec2<f32> {
+	let surface_normal = underwater_caustic_normal(surface_position, footprint);
+	let transmitted = refract(-sun_direction, surface_normal, 0.75018755);
+	let travel = (receiver_height - effective_water_surface().x) / min(transmitted.y, -0.001);
+	return surface_position + transmitted.xz * max(travel, 0.0);
+}
+
+fn underwater_caustic_radiance(pixel: vec2<i32>, depth: f32) -> vec3<f32> {
+	if (
+		temporal.water_caustics.x <= 0.0 ||
+		depth >= 0.999999 ||
+		render.light_counts.x == 0u
+	) {
+		return vec3<f32>(0.0);
+	}
+	let receiver_position = underwater_world_position(pixel, depth);
+	let water_column = effective_water_surface().x - receiver_position.y;
+	if (water_column <= 0.04 || water_column >= temporal.water_caustics.w) {
+		return vec3<f32>(0.0);
+	}
+	let sun_direction = normalize(-render.directional_direction_intensity[0].xyz);
+	if (sun_direction.y <= 0.025) {
+		return vec3<f32>(0.0);
+	}
+	let view_depth = max(-reconstruct_view_position(pixel, depth).z, 0.001);
+	let world_footprint = max(
+		view_depth * 2.0 /
+			max(temporal.projection.y * temporal.viewport.w, 1.0),
+		0.006,
+	);
+
+	// Invert the water-plane-to-receiver mapping. The fixed-point correction is
+	// cheap and follows bent rays around broad waves better than sampling directly
+	// at the receiver's X/Z coordinate.
+	var surface_position = receiver_position.xz;
+	for (var iteration = 0u; iteration < 3u; iteration += 1u) {
+		let projected = underwater_caustic_projection(
+			surface_position,
+			receiver_position.y,
+			sun_direction,
+			world_footprint,
+		);
+		surface_position -= (projected - receiver_position.xz) * 0.82;
+	}
+
+	// Concentration is the inverse area of the refracted mapping's finite
+	// differential. Values below one are unfocused illumination and contribute no
+	// extra caustic energy; the shoulder prevents singular white fireflies.
+	let differential = max(world_footprint * 1.75, 0.035 * temporal.water_caustics.y);
+	let center = underwater_caustic_projection(
+		surface_position,
+		receiver_position.y,
+		sun_direction,
+		world_footprint,
+	);
+	let projected_x = underwater_caustic_projection(
+		surface_position + vec2<f32>(differential, 0.0),
+		receiver_position.y,
+		sun_direction,
+		world_footprint,
+	);
+	let projected_y = underwater_caustic_projection(
+		surface_position + vec2<f32>(0.0, differential),
+		receiver_position.y,
+		sun_direction,
+		world_footprint,
+	);
+	let derivative_x = (projected_x - center) / differential;
+	let derivative_y = (projected_y - center) / differential;
+	let area = abs(derivative_x.x * derivative_y.y - derivative_x.y * derivative_y.x);
+	let concentration = 1.0 / max(area, 0.08);
+	let focused = max(concentration - 1.42, 0.0);
+	let focus = (1.0 - exp(-focused * 0.7)) * smoothstep(0.0, 0.38, focused);
+
+	let receiver_normal = octahedral_decode(textureLoad(surface_data, pixel, 0).xy);
+	let incidence = pow(max(dot(receiver_normal, sun_direction), 0.0), 0.55);
+	let shadow = fog_shadow_visibility(receiver_position, view_depth);
+	let extinction = max(
+		temporal.water_absorption.rgb + temporal.water_scattering.rgb,
+		vec3<f32>(0.0),
+	);
+	let refracted_path = water_column / max(-refract(
+		-sun_direction,
+		vec3<f32>(0.0, 1.0, 0.0),
+		0.75018755,
+	).y, 0.1);
+	let sunlight_transmittance = exp(-extinction * refracted_path);
+	let depth_fade = 1.0 - smoothstep(
+		temporal.water_caustics.w * 0.72,
+		temporal.water_caustics.w,
+		water_column,
+	);
+	return render.directional_color[0].rgb *
+		render.directional_direction_intensity[0].w *
+		temporal.water_caustics.x *
+		focus * incidence * shadow * depth_fade * sunlight_transmittance;
+}
+
+fn apply_underwater_medium(pixel: vec2<i32>, source_color: vec3<f32>) -> vec3<f32> {
+	let water_surface = effective_water_surface();
+	if (water_surface.w <= 0.5 || water_surface.z <= 0.0 || !inside_viewport(pixel)) {
+		return source_color;
+	}
+	let camera_position = temporal.inverse_view[3].xyz;
+	let view_direction = world_view_direction(pixel);
+	let depth = textureLoad(current_depth, pixel, 0);
+	var path_length = water_surface.y;
+	if (depth < 0.999999) {
+		path_length = min(length(reconstruct_view_position(pixel, depth)), path_length);
+	}
+	// An upward ray leaves the horizontal medium at the queried displaced surface.
+	// This analytic exit distance produces a stable waterline without depending
+	// on the transparent water mesh writing depth.
+	if (view_direction.y > 0.0001) {
+		let surface_distance =
+			(water_surface.x - camera_position.y) / view_direction.y;
+		if (surface_distance >= 0.0) {
+			path_length = min(path_length, surface_distance);
+		}
+	}
+	path_length = max(path_length, 0.0) * water_surface.z;
+	if (path_length <= 0.0001) {
+		return source_color;
+	}
+	let distorted_pixel = underwater_distortion(pixel, view_direction);
+	var refracted_color = source_color;
+	if (any(distorted_pixel != pixel)) {
+		refracted_color = current_color_at(distorted_pixel);
+	}
+	let distorted_depth = textureLoad(current_depth, distorted_pixel, 0);
+	let caustic_radiance = underwater_caustic_radiance(distorted_pixel, distorted_depth);
+	let receiver_response = mix(
+		vec3<f32>(0.08),
+		vec3<f32>(0.42),
+		sqrt(clamp(refracted_color, vec3<f32>(0.0), vec3<f32>(1.0))),
+	);
+	refracted_color += caustic_radiance * receiver_response * 0.34;
+	let absorption = max(temporal.water_absorption.rgb, vec3<f32>(0.0));
+	let scattering = max(temporal.water_scattering.rgb, vec3<f32>(0.0));
+	let extinction = max(absorption + scattering, vec3<f32>(0.000001));
+	let transmittance = exp(-extinction * path_length);
+	let single_scattering_albedo = scattering / extinction;
+	// The incident-light attenuation belongs to the same displaced surface as
+	// medium entry and ray exit. A CPU-authored mean-plane depth makes lighting
+	// visibly pop at troughs and crests even when the classifier itself is exact.
+	let camera_water_depth =
+		max(water_surface.x - camera_position.y, 0.0) * water_surface.z;
+	let camera_depth_attenuation = exp(
+		-extinction * camera_water_depth * 0.2,
+	);
+	var incident =
+		render.ambient.rgb *
+		render.ambient.w *
+		temporal.water_scattering.w;
+	if (render.light_counts.x > 0u) {
+		let light_direction = normalize(-render.directional_direction_intensity[0].xyz);
+		let phase = fog_phase(
+			dot(view_direction, light_direction),
+			temporal.water_optics.w,
+		) / FOG_PHASE_NORMALIZATION;
+		incident +=
+			render.directional_color[0].rgb *
+			render.directional_direction_intensity[0].w *
+			phase *
+			0.18;
+	}
+	let in_scattering =
+		(1.0 - transmittance) *
+		single_scattering_albedo *
+		incident *
+		camera_depth_attenuation;
+	return refracted_color * transmittance + in_scattering;
 }
 
 const VIRTUAL_TRANSITION_MARKER: f32 = 0.25;
@@ -1221,7 +1494,8 @@ fn apply_volumetric_fog(
 		return source_color;
 	}
 	let fog = volumetric_fog_at(pixel);
-	return source_color * fog.a + fog.rgb;
+	let fogged = source_color * fog.a + fog.rgb;
+	return mix(fogged, source_color, effective_water_surface().z);
 }
 
 fn temporal_tile_color(position: vec2<i32>) -> vec3<f32> {
@@ -1479,34 +1753,52 @@ fn temporal_aa_cs(
 		color = temporal_tile_color(vec2<i32>(local_pixel) + vec2<i32>(1));
 	}
 	let depth = textureLoad(current_depth, pixel, 0);
-	let fogged_color = apply_volumetric_fog(pixel, color);
+	let underwater_color = apply_underwater_medium(pixel, color);
+	let fogged_color = apply_volumetric_fog(pixel, underwater_color);
+	let custom_motion = textureLoad(custom_surface_motion, pixel, 0);
+	let custom_motion_valid = all(custom_motion.xy >= vec2<f32>(0.0));
 	var result = fogged_color;
 	if (
 		inside_viewport(pixel) &&
 		temporal.features.x <= 0.5 &&
 		temporal.features.y > 0.5
 	) {
-		result = apply_volumetric_fog(pixel, fast_antialias(local_pixel));
+		result = apply_volumetric_fog(
+			pixel,
+			apply_underwater_medium(pixel, fast_antialias(local_pixel)),
+		);
 	}
 	if (
 		inside_viewport(pixel) &&
-		depth < 0.999999 &&
+		(depth < 0.999999 || custom_motion_valid) &&
 		temporal.features.x > 0.5 &&
 		temporal.parameters.z > 0.5
 	) {
-		let view_position = reconstruct_view_position(pixel, depth);
-		let world_position = temporal.inverse_view * vec4<f32>(view_position, 1.0);
-		let previous_clip = temporal.previous_view_projection * world_position;
-		if (previous_clip.w > 0.0001) {
-			let previous_ndc = previous_clip.xy / previous_clip.w;
-			let previous_viewport_uv =
-				previous_ndc * vec2<f32>(0.5, -0.5) + vec2<f32>(0.5);
+		var previous_viewport_uv = custom_motion.xy;
+		var expected_linear_depth = 0.0;
+		var reprojection_valid = custom_motion_valid;
+		if (!custom_motion_valid) {
+			let view_position = reconstruct_view_position(pixel, depth);
+			let world_position = temporal.inverse_view * vec4<f32>(view_position, 1.0);
+			let previous_clip = temporal.previous_view_projection * world_position;
+			if (previous_clip.w > 0.0001) {
+				let previous_ndc = previous_clip.xy / previous_clip.w;
+				previous_viewport_uv =
+					previous_ndc * vec2<f32>(0.5, -0.5) + vec2<f32>(0.5);
+				expected_linear_depth = previous_clip.w;
+				reprojection_valid = true;
+			}
+		}
+		if (reprojection_valid) {
 			let previous_projected_pixel =
 				temporal.viewport.xy + previous_viewport_uv * temporal.viewport.zw;
-			let jitter_motion = vec2<f32>(
-				temporal.parameters.x * temporal.viewport.z * 0.5,
-				-temporal.parameters.y * temporal.viewport.w * 0.5,
-			);
+			var jitter_motion = vec2<f32>(0.0);
+			if (!custom_motion_valid) {
+				jitter_motion = vec2<f32>(
+					temporal.parameters.x * temporal.viewport.z * 0.5,
+					-temporal.parameters.y * temporal.viewport.w * 0.5,
+				);
+			}
 			// The reconstructed surface point comes from the current jittered
 			// sample ray. Remove that sample offset from the reprojected
 			// coordinate because history itself lives on the stable output grid.
@@ -1519,7 +1811,6 @@ fn temporal_aa_cs(
 				all(previous_viewport_uv <= vec2<f32>(1.0)) &&
 				inside_viewport(previous_pixel_i)
 			) {
-				let expected_linear_depth = previous_clip.w;
 				let history_sample = textureSampleLevel(
 					history_color,
 					linear_sampler,
@@ -1537,10 +1828,14 @@ fn temporal_aa_cs(
 					(stored_depth + temporal.previous_projection.z);
 				var closest_depth_delta =
 					abs(stored_linear_depth - expected_linear_depth);
+				var depth_valid = custom_motion_valid;
 				// Reprojection commonly lands between four history texels.
 				// The ordinary interior path needs one load; search the other
 				// candidates only when that first surface does not match.
-				if (stored_depth >= 0.999999 || closest_depth_delta > depth_tolerance) {
+				if (
+					!custom_motion_valid &&
+					(stored_depth >= 0.999999 || closest_depth_delta > depth_tolerance)
+				) {
 					for (var depth_y = 0; depth_y <= 1; depth_y += 1) {
 						for (var depth_x = 0; depth_x <= 1; depth_x += 1) {
 							let depth_pixel = clamp(
@@ -1565,10 +1860,12 @@ fn temporal_aa_cs(
 						}
 					}
 				}
-				if (
+				if (!custom_motion_valid) {
+					depth_valid =
 					stored_depth < 0.999999 &&
-					abs(stored_linear_depth - expected_linear_depth) <= depth_tolerance
-				) {
+						abs(stored_linear_depth - expected_linear_depth) <= depth_tolerance;
+				}
+				if (depth_valid) {
 					let source_bounds = current_neighborhood_from_tile(local_pixel);
 					// History contains resolved fog, while the inexpensive
 					// neighborhood samples are pre-fog. Translate the bounds
@@ -1592,6 +1889,16 @@ fn temporal_aa_cs(
 					);
 					if (transition_reactive) {
 						history_weight = max(history_weight, 0.9);
+					}
+					if (
+						water_surface_query.values.w > 0.5 &&
+						(water_surface_query.values.y >= 0.5) !=
+							(water_surface_query.values.z >= 0.5)
+					) {
+						history_weight = 0.0;
+					}
+					if (custom_motion_valid) {
+						history_weight = min(history_weight, 0.9);
 					}
 					result = mix(fogged_color, history, history_weight);
 				}

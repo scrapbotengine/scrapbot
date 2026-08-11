@@ -22,7 +22,7 @@ This file tracks current actionable engineering work. The broad product roadmap 
 - [ ] Add mip-resident texture streaming so projects can use 2K–8K source images without eagerly expanding every complete RGBA8 mip chain on the GPU.
 - [ ] Add sorted glTF `BLEND` transparency, richer PBR extensions, animation, skins, morph targets, and compressed geometry. (`OPAQUE`, `MASK`, alpha cutoffs, and double-sided materials are supported.)
 - [ ] Add a bounded GPU sort path for large transparent sets; project-shader transparency currently performs exact CPU back-to-front instance sorting.
-- [ ] Extend spectral surfaces into a reusable water resource/component with multiple frequency bands, current/deformation masks, caustics, underwater rendering, water-aware motion vectors, and scalable quality tiers.
+- [ ] Promote spectral surfaces into reusable water resources with authored water influences, water-body depth/shape, and adaptive quality; add simulation, foam, current, and deformation masks. See [FDR-003](fdr/FDR-003-pluggable-rendering-backends.md#25-generate-reusable-spectral-surfaces-for-project-shaders).
 - [ ] Add custom-vertex depth and shadow variants so displaced opaque geometry participates in the prepass and cascades without running a mismatched vertex contract.
 - [ ] Surface WGSL compilation and pipeline-validation failures as structured project diagnostics instead of allowing wgpu-native's default uncaptured-error handler to abort.
 - [ ] Add optional per-target post-processing, grids, axes, wireframe, and transparent presentation to embedded ECS viewports.

@@ -18,6 +18,7 @@ Most components use the same suffix in every public surface:
 | `scrapbot.world_environment` | `[entities.world_environment]` | `scrapbot.world_environment` | Use `scrapbot.Component{name = "scrapbot.world_environment"}` for membership. |
 | `scrapbot.clock` | `[entities.components.scrapbot.clock]` | `scrapbot.clock` | Use `scrapbot.Component{name = "scrapbot.clock"}` for membership. |
 | `scrapbot.volumetric_fog` | `[entities.components.scrapbot.volumetric_fog]` | `scrapbot.volumetric_fog` | Use `scrapbot.Component{name = "scrapbot.volumetric_fog"}` for membership. |
+| `scrapbot.water_volume` | `[entities.components.scrapbot.water_volume]` | `scrapbot.water_volume` | Use `scrapbot.Component{name = "scrapbot.water_volume"}` for membership. |
 | `scrapbot.vignette` | `[entities.components.scrapbot.vignette]` | `scrapbot.vignette` | Use `scrapbot.Component{name = "scrapbot.vignette"}` for membership. |
 | `scrapbot.lens_flare` | `[entities.components.scrapbot.lens_flare]` | `scrapbot.lens_flare` | Use `scrapbot.Component{name = "scrapbot.lens_flare"}` for membership. |
 | `scrapbot.lens_dirt` | `[entities.components.scrapbot.lens_dirt]` | `scrapbot.lens_dirt` | Use `scrapbot.Component{name = "scrapbot.lens_dirt"}` for membership. |
@@ -40,6 +41,7 @@ The generated `.scrapbot/types/scrapbot.d.luau` file is the precise type referen
 | `scrapbot.camera` | Data | Perspective camera projection. |
 | `scrapbot.world_environment` | Data/resource references | Singleton scene lighting, sky presentation, and base exposure. |
 | `scrapbot.volumetric_fog` | Data | Singleton global height/distance fog with shadowed directional and clustered point-light scattering. |
+| `scrapbot.water_volume` | Data | Camera-selectable horizontal underwater medium with absorption, scattering, and surface transition. |
 | `scrapbot.vignette` | Data | Singleton display-space edge framing composed after tone mapping. |
 | `scrapbot.lens_flare` | Data | Singleton HDR ghost-and-halo flare derived from visible bloom energy. |
 | `scrapbot.lens_dirt` | Data | Singleton procedural lens mask that modulates bloom and flare energy. |
@@ -252,6 +254,79 @@ When enabled, each midpoint reads every relevant point light from the same GPU-b
 Fog resolves dedicated scattering/transmittance history before depth-aware upsampling, temporal antialiasing, and bloom. An integer-scrambled 256-frame sequence feeds finite-surface and finite-medium background reprojection. Depth, motion, and radiometric confidence reject stale history, avoiding both a persistent sampling lattice and camera-motion shadow trails. Invalid, disabled, or newly enabled history uses midpoint sampling. Local fog volumes, froxels, and explicit authored quality controls remain follow-up work.
 
 Luau systems can query and write the complete payload after declaring `scrapbot.volumetric_fog` in their access lists. Presence enables the feature; removing the component or setting `density` to zero skips the fog dispatch. Changing `resolution_scale` explicitly invalidates the retained post targets; stable frames reuse them.
+
+### `scrapbot.water_volume`
+
+A Water Volume belongs on the entity whose Transform height defines the mean water surface. Multiple
+volumes may coexist. The renderer selects the highest-priority volume containing the active camera;
+equal priorities use scene order. The initial contract is horizontal: rotation does not tilt its
+surface. Zero extents mean an infinite ocean, while positive extents bound the volume around the
+entity's world-space X/Z position.
+
+```toml
+[entities.components.scrapbot.water_volume]
+absorption = [0.085, 0.028, 0.012]
+scattering = [0.008, 0.032, 0.045]
+extents = [0, 0]
+depth = 100
+priority = 0
+transition_size = 0.45
+surface_displacement_bound = 3
+max_distance = 90
+ambient_intensity = 0.65
+anisotropy = 0.62
+distortion = 0.8
+distortion_scale = 0.19
+distortion_speed = 0.055
+caustics_intensity = 1.2
+caustics_scale = 1
+caustics_speed = 0.08
+caustics_max_depth = 24
+```
+
+| Field | Type | Effective default | Meaning |
+| --- | --- | --- | --- |
+| `absorption` | Vec3 | `[0.11, 0.035, 0.015]` | Non-negative RGB absorption coefficient per world unit. Larger red absorption produces the familiar blue-green underwater transmission. |
+| `scattering` | Vec3 | `[0.006, 0.025, 0.035]` | Non-negative RGB out-of-path and in-scattering coefficient per world unit. |
+| `extents` | Vec2 | `[0, 0]` | X/Z half-extents around the entity. Both zero select an infinite horizontal volume. |
+| `depth` | number | `100` | Distance below the Transform height contained by the volume. |
+| `priority` | number | `0` | Selection priority when camera-containing volumes overlap. |
+| `transition_size` | number | `0.5` | Half-width of the soft camera transition around the queried displaced surface, or the mean Transform plane when no custom surface can be queried. |
+| `surface_displacement_bound` | number | `4` | Conservative maximum wave displacement above and below the mean Transform height. It broadens volume candidacy so the renderer can query a displaced crest or trough before crossing it. |
+| `max_distance` | number | `100` | Maximum camera-ray distance integrated through the medium. |
+| `ambient_intensity` | number | `0.5` | Ambient-light contribution to underwater in-scattering. |
+| `anisotropy` | number | `0.65` | Directional-light scattering bias from `-0.9` to `0.9`. |
+| `distortion` | number | `1` | Bounded refractive screen displacement in pixels. |
+| `distortion_scale` | number | `0.16` | World-space frequency of the two-band distortion field. |
+| `distortion_speed` | number | `0.08` | Project-clock animation rate; it stops when simulation time stops. |
+| `caustics_intensity` | number | `1` | Strength of focused sunlight projected onto opaque underwater receivers. Zero disables underwater caustics. |
+| `caustics_scale` | number | `1` | World-space scale of the multi-band water slopes used for caustic focusing. |
+| `caustics_speed` | number | `0.08` | Project-clock animation rate for caustic wave transport. |
+| `caustics_max_depth` | number | `24` | Maximum water-column depth at which receiver caustics are evaluated and faded. |
+
+The medium is applied after transparent world rendering and before temporal antialiasing. It uses
+Beer–Lambert transmittance from separate absorption and scattering coefficients. When the Water
+Volume entity also renders a custom-shader surface, WGPU evaluates that shader's
+`scrapbot_vertex` deformation at the camera's horizontal position. A short inverse-displacement
+iteration accounts for horizontal wave motion, so the resulting crest or trough height controls
+submersion, camera-depth attenuation, upward-ray exits, air-fog replacement, caustic water-column
+depth, and temporal crossing rejection. The CPU never classifies underwaterness against the mean
+plane while that query is valid. The Transform height remains only the mean plane and broad-phase origin;
+`surface_displacement_bound` must conservatively contain the authored waves. A volume without a
+queryable custom surface falls back to the mean Transform plane.
+
+Opaque submerged surfaces receive directional-light caustics reconstructed from scene depth. The
+post pass back-projects each receiver through animated, directionally spread surface slopes and uses
+the refracted mapping's finite-difference area Jacobian as focused-light energy. Receiver angle,
+cascade shadows, water-column extinction, distance footprint, and maximum depth suppress light
+where it is occluded, unresolved, or physically implausible. The animation uses project time and
+therefore pauses with the simulation.
+
+This follows the water-owned underwater-volume model used by
+[Unity HDRP](https://docs.unity.cn/Packages/com.unity.render-pipelines.high-definition%4017.0/manual/WaterSystem-Properties.html),
+[Unreal Engine](https://dev.epicgames.com/documentation/en-us/unreal-engine/water-body-actors-in-unreal-engine),
+and [Crest](https://crest.readthedocs.io/en/4.12/user/underwater.html). Luau systems can query and
+write the complete payload through `scrapbot.water_volume`.
 
 ### `scrapbot.vignette`
 

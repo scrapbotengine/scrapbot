@@ -29,7 +29,7 @@ fast_antialiasing = false
 ambient_occlusion = true
 ambient_occlusion_quality = 0.5
 ambient_occlusion_resolution_scale = 0.25
-screen_space_reflections = false
+screen_space_reflections = true
 screen_space_reflections_quality = 0.5
 bloom = true
 
@@ -124,6 +124,25 @@ primitive = "plane"
 
 [entities.material]
 resource = "7b000000-0000-4000-8000-000000000009"
+
+[entities.components.scrapbot.water_volume]
+absorption = [0.085, 0.028, 0.012]
+scattering = [0.008, 0.032, 0.045]
+extents = [0, 0]
+depth = 100
+priority = 0
+transition_size = 0.45
+surface_displacement_bound = 3
+max_distance = 90
+ambient_intensity = 0.65
+anisotropy = 0.62
+distortion = 0.8
+distortion_scale = 0.19
+distortion_speed = 0.055
+caustics_intensity = 1.1
+caustics_scale = 1
+caustics_speed = 0.075
+caustics_max_depth = 28
 
 [[entities]]
 id = "7b100000-0000-4000-8000-000000000040"
@@ -1027,9 +1046,9 @@ id = "7b100000-0000-4000-8000-000000000007"
 name = "Submerged Shelf Near"
 
 [entities.transform]
-position = [-4, -2.45, -10]
+position = [-6, -2, -12]
 rotation = [0, 2.72, 0]
-scale = [1.45, 0.58, 1.6]
+scale = [2.1, 0.52, 2.3]
 
 [entities.model]
 resource = "7b000000-0000-4000-8000-000000000010"

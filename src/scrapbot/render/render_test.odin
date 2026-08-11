@@ -34,6 +34,7 @@ test_active_world_tools_keep_pointer_input_over_editor_chrome :: proc(t: ^testin
 	}
 	testing.expect(t, ui.editor_pointer_consumed_by_chrome(state, pointer))
 	testing.expect(t, !editor_world_tool_pointer_input(state, pointer).available)
+	testing.expect_value(t, editor_world_tool_pointer_input(state, pointer, true), pointer)
 
 	state.editor_gizmo_captures_pointer = true
 	testing.expect_value(t, editor_world_tool_pointer_input(state, pointer), pointer)
@@ -107,6 +108,22 @@ test_project_shader_scene_sampling_uses_target_coordinates_and_linear_depth :: p
 		t,
 		strings.contains(WGPU_CUSTOM_SHADER_PRELUDE, "fn scrapbot_scene_view_depth("),
 	)
+	testing.expect(
+		t,
+		strings.contains(
+			WGPU_CUSTOM_SHADER_PRELUDE,
+			"fn scrapbot_world_position_on_fragment_ray(",
+		),
+	)
+	testing.expect(
+		t,
+		strings.contains(WGPU_CUSTOM_SHADER_PRELUDE, "fn scrapbot_screen_space_reflection("),
+	)
+	testing.expect(t, strings.contains(WGPU_CUSTOM_SHADER_PRELUDE, "previous_depth_delta > 0.0"))
+	testing.expect(
+		t,
+		strings.contains(WGPU_CUSTOM_SHADER_PRELUDE, "scrapbot_scene_color(scene_uv)"),
+	)
 	testing.expect(t, strings.contains(WGPU_CUSTOM_SHADER_PRELUDE, "fn scrapbot_scene_stable_uv("))
 	testing.expect(t, strings.contains(WGPU_CUSTOM_SHADER_PRELUDE, "near_plane * far_plane"))
 	testing.expect(
@@ -132,12 +149,35 @@ test_project_shader_time_tracks_ecs_simulation_steps :: proc(t: ^testing.T) {
 		elapsed_time = 42.5,
 		frame_index = 17,
 	}
-	advanced := wgpu_custom_shader_uniform(viewport, simulation_time, true)
+	previous_time := shared.Time_Resource {
+		delta_time = 0.02,
+		elapsed_time = 42.475,
+		frame_index = 16,
+	}
+	previous_view_projection := mat4_identity()
+	advanced := wgpu_custom_shader_uniform(
+		viewport,
+		simulation_time,
+		previous_time,
+		true,
+		previous_view_projection,
+		true,
+	)
 	testing.expect_value(t, advanced.viewport, [4]f32{12, 24, 640, 360})
-	testing.expect_value(t, advanced.time, [4]f32{42.5, 0.025, 17, 0})
+	testing.expect_value(t, advanced.time, [4]f32{42.5, 0.025, 17, 1})
+	testing.expect_value(t, advanced.previous_time, [4]f32{42.475, 0.02, 16, 1})
+	testing.expect_value(t, advanced.previous_view_projection, previous_view_projection)
 
-	paused := wgpu_custom_shader_uniform(viewport, simulation_time, false)
-	testing.expect_value(t, paused.time, [4]f32{42.5, 0, 17, 0})
+	paused := wgpu_custom_shader_uniform(
+		viewport,
+		simulation_time,
+		simulation_time,
+		false,
+		previous_view_projection,
+		true,
+	)
+	testing.expect_value(t, paused.time, [4]f32{42.5, 0, 17, 1})
+	testing.expect_value(t, paused.previous_time, [4]f32{42.5, 0, 17, 0})
 }
 
 @(test)
@@ -148,6 +188,45 @@ test_spectral_surface_updates_only_when_ecs_elapsed_time_changes :: proc(t: ^tes
 	entry.spectral_time_valid = true
 	testing.expect(t, !wgpu_spectral_surface_time_changed(&entry, 3.5))
 	testing.expect(t, wgpu_spectral_surface_time_changed(&entry, 3.75))
+}
+
+@(test)
+test_spectral_surface_uniform_packs_foam_history_controls :: proc(t: ^testing.T) {
+	config := shared.Shader_Spectral_Surface {
+		enabled = true,
+		foam_generation = 1.8,
+		foam_decay = 0.3,
+		foam_coverage = 0.65,
+		foam_advection = {0.2, -0.075},
+		band_count = 3,
+		band_patch_scale = 0.25,
+		band_amplitude_scale = 0.7,
+	}
+	uniform := wgpu_spectral_surface_uniform(config, 12.5, 0.125)
+	testing.expect_value(t, uniform.shape.y, f32(0.125))
+	testing.expect_value(t, uniform.shape.z, f32(0.2))
+	testing.expect_value(t, uniform.shape.w, f32(-0.075))
+	testing.expect_value(t, uniform.foam, [4]f32{1.8, 0.3, 0.65, 0})
+	testing.expect_value(t, uniform.bands, [4]f32{3, 0.25, 0.7, 0})
+}
+
+@(test)
+test_spectral_foam_history_backtraces_the_previous_field :: proc(t: ^testing.T) {
+	testing.expect(
+		t,
+		strings.contains(
+			WGPU_SPECTRAL_SURFACE_SHADER,
+			"spectral.shape.zw * delta_seconds / spacing",
+		),
+	)
+	testing.expect(t, strings.contains(WGPU_SPECTRAL_SURFACE_SHADER, "previous_foam_sample"))
+	testing.expect(
+		t,
+		strings.contains(
+			WGPU_SPECTRAL_SURFACE_SHADER,
+			"@binding(4) var<storage, read> previous_field",
+		),
+	)
 }
 
 @(test)
@@ -172,7 +251,32 @@ test_project_shaders_receive_object_transforms_and_environment_reflections :: pr
 	testing.expect(t, strings.contains(WGPU_CUSTOM_SHADER_PRELUDE, "sun_alignment"))
 	testing.expect(
 		t,
+		strings.contains(WGPU_CUSTOM_SHADER_PRELUDE, "fn scrapbot_directional_shadow_visibility("),
+	)
+	testing.expect(t, strings.contains(WGPU_CUSTOM_SHADER_PRELUDE, "scrapbot_shadow_map"))
+	testing.expect(t, strings.contains(WGPU_CUSTOM_SHADER_PRELUDE, "textureSampleCompareLevel("))
+	testing.expect(
+		t,
 		strings.contains(WGPU_CUSTOM_SHADER_FOOTER, "instance.model, instance.normal_model"),
+	)
+}
+
+@(test)
+test_project_shaders_expose_center_ray_water_column_depth :: proc(t: ^testing.T) {
+	testing.expect(
+		t,
+		strings.contains(WGPU_CUSTOM_SHADER_PRELUDE, "fn scrapbot_water_column_depth("),
+	)
+	testing.expect(
+		t,
+		strings.contains(WGPU_CUSTOM_SHADER_PRELUDE, "scrapbot_scene_view_depth(input.scene_uv)"),
+	)
+	testing.expect(
+		t,
+		!strings.contains(
+			WGPU_CUSTOM_SHADER_PRELUDE,
+			"scrapbot_scene_view_depth(scrapbot_scene_stable_uv(input.scene_uv))",
+		),
 	)
 }
 
@@ -191,7 +295,43 @@ test_project_shaders_can_sample_engine_spectral_surfaces :: proc(t: ^testing.T) 
 	testing.expect(t, strings.contains(WGPU_SPECTRAL_SURFACE_SHADER, "fn finalize("))
 	testing.expect(t, strings.contains(WGPU_SPECTRAL_SURFACE_SHADER, "displacement_x"))
 	testing.expect(t, strings.contains(WGPU_CUSTOM_SHADER_PRELUDE, "crest: f32"))
+	testing.expect(t, strings.contains(WGPU_CUSTOM_SHADER_PRELUDE, "foam: f32"))
+	testing.expect(t, strings.contains(WGPU_CUSTOM_SHADER_PRELUDE, "fn scrapbot_spectral_foam("))
+	testing.expect(t, strings.contains(WGPU_SPECTRAL_SURFACE_SHADER, "previous_foam"))
+	testing.expect(t, strings.contains(WGPU_SPECTRAL_SURFACE_SHADER, "band_window"))
+	testing.expect(t, strings.contains(WGPU_CUSTOM_SHADER_PRELUDE, "scrapbot_spectral_band_count"))
+	testing.expect(
+		t,
+		strings.contains(WGPU_SPECTRAL_SURFACE_SHADER, "exp(-decay * delta_seconds)"),
+	)
 	testing.expect(t, strings.contains(WGPU_SPECTRAL_SURFACE_SHADER, "workgroupBarrier()"))
+}
+
+@(test)
+test_custom_surface_motion_replays_previous_project_deformation_for_taa :: proc(t: ^testing.T) {
+	testing.expect(
+		t,
+		strings.contains(WGPU_CUSTOM_SHADER_PRELUDE, "scrapbot_previous_spectral_field"),
+	)
+	testing.expect(
+		t,
+		strings.contains(WGPU_CUSTOM_SHADER_PRELUDE, "scrapbot_previous_frame_context"),
+	)
+	testing.expect(
+		t,
+		strings.contains(WGPU_CUSTOM_SHADER_FOOTER, "custom_vertex(input, instance, true)"),
+	)
+	testing.expect(
+		t,
+		strings.contains(WGPU_CUSTOM_SHADER_FOOTER, "previous_view_projection * previous_world"),
+	)
+	testing.expect(t, strings.contains(WGPU_CUSTOM_SHADER_FOOTER, "select(vec2<f32>(-1.0)"))
+	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "custom_surface_motion"))
+	testing.expect(
+		t,
+		strings.contains(WGPU_TEMPORAL_AA_SHADER, "all(custom_motion.xy >= vec2<f32>(0.0))"),
+	)
+	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "min(history_weight, 0.9)"))
 }
 
 @(test)
@@ -4079,6 +4219,113 @@ test_volumetric_fog_settings_read_the_lowest_ordered_live_component :: proc(t: ^
 	testing.expect_value(t, settings.anisotropy, f32(0.9))
 	testing.expect_value(t, settings.max_distance, f32(0.1))
 	testing.expect_value(t, settings.point_light_intensity, f32(0.7))
+}
+
+@(test)
+test_water_volume_settings_select_and_clamp_the_camera_medium :: proc(t: ^testing.T) {
+	world: World
+	defer delete(world.entities)
+	defer delete(world.transforms)
+	defer delete(world.resolved_world_transforms)
+	defer delete(world.resolved_world_transform_epochs)
+	defer delete(world.resolved_world_transform_valid)
+	defer delete(world.resolving_world_transform_epochs)
+	defer delete(world.custom_components)
+	append(
+		&world.entities,
+		shared.World_Entity{alive = true, scene_order = 2, transform_index = 0},
+	)
+	append(
+		&world.transforms,
+		shared.Transform_Component{position = {10, 4, -6}, scale = {1, 1, 1}},
+	)
+	component := shared.Custom_Component {
+		entity_index = 0,
+	}
+	append(
+		&component.number_fields,
+		shared.Named_Number{name = "depth", value = 20},
+		shared.Named_Number{name = "transition_size", value = 1},
+		shared.Named_Number{name = "max_distance", value = -5},
+		shared.Named_Number{name = "anisotropy", value = 2},
+		shared.Named_Number{name = "distortion", value = 20},
+		shared.Named_Number{name = "caustics_intensity", value = 20},
+		shared.Named_Number{name = "caustics_scale", value = 0},
+		shared.Named_Number{name = "caustics_max_depth", value = -2},
+	)
+	append(&component.vec2_fields, shared.Named_Vec2{name = "extents", value = {8, 12}})
+	append(
+		&component.vec3_fields,
+		shared.Named_Vec3{name = "absorption", value = {-1, 0.04, 0.02}},
+		shared.Named_Vec3{name = "scattering", value = {0.01, 0.03, 0.05}},
+	)
+	defer delete(component.number_fields)
+	defer delete(component.vec2_fields)
+	defer delete(component.vec3_fields)
+	storage := shared.Custom_Component_Storage {
+		name = "scrapbot.water_volume",
+	}
+	append(&storage.components, component)
+	append(&storage.active_component_indices, 0)
+	defer delete(storage.components)
+	defer delete(storage.active_component_indices)
+	append(&world.custom_components, storage)
+
+	settings := wgpu_water_volume_settings(&world, {10, 3, -6})
+	testing.expect(t, settings.enabled)
+	testing.expect_value(t, settings.surface_height, f32(4))
+	testing.expect_value(t, settings.submersion, f32(1))
+	testing.expect_value(t, settings.max_distance, f32(0.1))
+	testing.expect_value(t, settings.absorption, shared.Vec3{0, 0.04, 0.02})
+	testing.expect_value(t, settings.anisotropy, f32(0.9))
+	testing.expect_value(t, settings.distortion, f32(8))
+	testing.expect_value(t, settings.caustics_intensity, f32(10))
+	testing.expect_value(t, settings.caustics_scale, f32(0.1))
+	testing.expect_value(t, settings.caustics_max_depth, f32(0.1))
+
+	crest_candidate := wgpu_water_volume_settings(&world, {10, 6, -6})
+	above := wgpu_water_volume_settings(&world, {10, 10, -6})
+	outside := wgpu_water_volume_settings(&world, {30, 3, -6})
+	testing.expect(t, crest_candidate.enabled)
+	testing.expect(t, !above.enabled)
+	testing.expect(t, !outside.enabled)
+}
+
+@(test)
+test_underwater_shader_uses_a_plane_exit_and_exponential_extinction :: proc(t: ^testing.T) {
+	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "surface_distance"))
+	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "exp(-extinction * path_length)"))
+	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "apply_underwater_medium"))
+}
+
+@(test)
+test_underwater_classifier_queries_the_exact_custom_vertex_surface :: proc(t: ^testing.T) {
+	testing.expect(t, strings.contains(WGPU_CUSTOM_SHADER_FOOTER, "water_surface_query_cs"))
+	testing.expect(
+		t,
+		strings.contains(WGPU_CUSTOM_SHADER_FOOTER, "custom_vertex(input, instance, false)"),
+	)
+	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "effective_water_surface"))
+	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "water_surface_query.values.y"))
+	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "camera_water_depth"))
+	testing.expect(
+		t,
+		strings.contains(WGPU_TEMPORAL_AA_SHADER, "max(water_surface.x - camera_position.y, 0.0)"),
+	)
+	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "history_weight = 0.0"))
+}
+
+@(test)
+test_underwater_shader_projects_shadowed_spectral_caustics_onto_receivers :: proc(t: ^testing.T) {
+	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "underwater_caustic_normal"))
+	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "underwater_caustic_projection"))
+	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "derivative_x.x * derivative_y.y"))
+	testing.expect(
+		t,
+		strings.contains(WGPU_TEMPORAL_AA_SHADER, "fog_shadow_visibility(receiver_position"),
+	)
+	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "sunlight_transmittance"))
+	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "temporal.water_caustics.z"))
 }
 
 @(test)

@@ -8,6 +8,10 @@ emissive = [0, 0, 0]
 metallic = 0
 roughness = 0.18
 shader = "7b000000-0000-4000-8000-000000000008"
-shader_parameters = [0.002, 0.022, 0.045, 30.0, 0.52, 0.19, 0.075, 5.0, 0.86, 0.92, 0.9, 0.2, 0.035, 0.82, 1.0, 0.24]
+# scattering coefficient.rgb, maximum optical depth
+# absorption coefficient.rgb, refraction radius in pixels
+# foam.rgb, shore-interaction width in world units
+# base roughness, detail-normal strength, foam animation speed, shore-foam strength
+shader_parameters = [0.002, 0.012, 0.028, 18.0, 0.68, 0.18, 0.055, 3.0, 0.9, 0.92, 0.9, 0.45, 0.045, 0.72, 0.35, 0.72]
 alpha_mode = "blend"
 double_sided = true

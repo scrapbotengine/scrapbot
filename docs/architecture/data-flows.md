@@ -193,8 +193,8 @@ typed ECS/resource mutation
                                       │
                  shadow + depth/sky/world + camera-selected debug/postprocessing
                                       │
- optional Shader spectrum → GPU inverse FFT → displacement/crest field ─┐
-                opaque scene copy + depth + environment ────────────────┤
+ optional Shader spectrum → GPU inverse FFT → displacement/crest/foam field ─┐
+ opaque scene copy + depth/ray reconstruction + environment + directional shadows ─┤
                                                                        ▼
                                                            project shader hooks
                                       │
@@ -243,6 +243,31 @@ Depth disagreement rejects disoccluded history. Radiometric rectification bounds
 
 Fog targets are retained and recreated only when their scale or another post-target dependency changes. Local fog volumes remain follow-up work.
 
+A camera near a selected `scrapbot.water_volume` receives a horizontal underwater medium after
+transparent world rendering and before temporal resolve. The Transform mean plane and authored
+displacement bound select a candidate. The renderer then uses the retained entity-to-instance index
+to dispatch one custom-shader invocation at the camera's X/Z position. Three local corrections
+invert horizontal vertex displacement, so the sampled height follows the same `scrapbot_vertex`
+crest or trough that renders the surface. Scene depth bounds opaque rays; upward rays stop at that
+displaced height without requiring transparent depth writes. RGB absorption plus scattering produce
+exponential transmittance and in-scattering. The same soft transition replaces global air fog, so
+the two media are not integrated twice. Camera-depth attenuation is also derived from the displaced
+height; while the custom-surface query is valid, no visual underwater decision consumes the CPU
+broad phase's mean-plane submersion.
+
+The query result is a retained four-float storage value shared with temporal composition. It shifts
+current submersion to previous submersion before writing the new value. Crossing the displaced
+surface therefore rejects scene-color history on the exact frame the medium changes, without CPU
+readback. Removing the candidate writes the invalid sentinel; surfaces without a custom Shader use
+the mean-plane values already packed in the temporal uniform.
+
+For finite opaque depth below the selected surface, the same post pass reconstructs the world-space
+receiver and back-projects it through a project-clock, multi-band water-slope field. A finite
+differential of the Snell-refracted surface mapping supplies the light-concentration Jacobian.
+Surface-data normals, directional-light cascade visibility, water-column extinction, projected
+pixel footprint, and the selected volume's caustic controls bound the contribution before it is
+attenuated along the camera path. This adds no retained caustic texture or independent dispatch.
+
 ### Instances and materials
 
 Stable renderable membership and instance records are not re-extracted or uploaded without a mutation signal. Transform-only changes upload compact position/rotation/scale/local-bounds records, then expand only those slots into GPU matrices and world bounds.
@@ -257,6 +282,36 @@ active camera, and encoded after opaque world shading. The pass samples a retain
 copy and read-only scene depth while preserving the opaque depth buffer. Its time helpers read the
 default `scrapbot.clock` snapshot retained in `world.time`. Redraws without a simulation step publish zero shader delta and retain
 spectral fields without another FFT dispatch.
+
+The retained previous spectral field also supplies foam history to finalization. Each output texel
+backtraces its world-XZ foam-advection velocity by project delta time, converts that displacement by
+the active band's physical texel spacing, and bilinearly samples periodic upstream foam before
+adding current crest breaking and exponential decay. This read-only previous-field dependency avoids
+order-dependent reads while the current field is written in parallel.
+
+The composed vertex entry evaluates each custom hook in current and previous project-frame
+contexts. An advancing spectral surface copies its finalized field before recomputation; paused
+frames reuse the current field for both evaluations. The transparent fragment stores the previous
+viewport UV in a compact motion target. TAA prefers this exact custom-surface reprojection to opaque
+camera/depth reconstruction, clips it against the current color neighborhood, and caps its history
+weight. Invalid pixels retain the ordinary opaque path.
+
+An enabled spectral Shader dispatches one horizontal FFT, one vertical FFT, and one finalization
+command with one-to-three Z lanes. Each lane owns a geometrically smaller patch and a disjoint
+wavelength window; public sampling sums displacement and slopes while taking the strongest crest and
+foam evidence. Band count therefore scales bounded dispatched work without multiplying command
+count or material instances; storage reserves the fixed three-band maximum.
+
+The custom fragment ABI can ray-march reflection rays from the actual displaced fragment against
+the retained opaque depth and color copies. A hit requires a front-to-back depth crossing within a
+bounded thickness and returns edge/distance confidence; project water blends misses back to its
+environment reflection. This is separate from camera post-SSR, whose surface origin is reconstructed
+from opaque depth and therefore cannot represent a blended no-depth-write water surface.
+
+Custom water hooks derive metric center-ray receiver position and normal-projected water-column
+depth from the exact opaque depth at the fragment pixel. Conservative nearest-cross depth remains a
+separate refraction-only helper. This separation prevents coverage stabilization from changing the
+authored world width of shoreline attenuation or foam.
 
 ### Camera-selected postprocessing
 

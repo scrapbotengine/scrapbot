@@ -33,6 +33,7 @@ export type Scrapbot = {
 	camera: ScrapbotCameraComponent,
 	world_environment: ScrapbotWorldEnvironmentComponent,
 	volumetric_fog: ScrapbotVolumetricFogComponent,
+	water_volume: ScrapbotWaterVolumeComponent,
 	vignette: ScrapbotVignetteComponent,
 	lens_flare: ScrapbotLensFlareComponent,
 	lens_dirt: ScrapbotLensDirtComponent,

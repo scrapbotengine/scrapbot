@@ -1102,11 +1102,13 @@ frame_active_seconds :: proc(start: time.Tick) -> f32 {
 editor_world_tool_pointer_input :: proc(
 	state: ^ui.State,
 	pointer: ui.Pointer_Input,
+	keyboard_transform_requested: bool = false,
 ) -> ui.Pointer_Input {
 	if state == nil {
 		return {}
 	}
-	if !state.editor_gizmo_keyboard_active &&
+	if !keyboard_transform_requested &&
+	   !state.editor_gizmo_keyboard_active &&
 	   !ui.editor_world_tool_captures_pointer(state) &&
 	   ui.editor_pointer_consumed_by_chrome(state, pointer) {
 		return {}
@@ -1331,7 +1333,21 @@ run_frame_system_unmeasured :: proc(
 		gizmo_system_start := time.tick_now()
 		config.ui_state.editor_keyboard_escape_consumed = false
 		editor_update_gizmo_bounds_center(config.ui_state, world, config.resource_registry)
-		gizmo_pointer := editor_world_tool_pointer_input(config.ui_state, pointer)
+		gizmo_keyboard := keyboard
+		if ui.has_text_focus(config.ui_state) ||
+		   ui.editor_ui_has_open_popup(config.ui_state, world) ||
+		   camera_input.look_active {
+			gizmo_keyboard = {}
+		}
+		keyboard_transform_requested :=
+			gizmo_keyboard.transform_translate ||
+			gizmo_keyboard.transform_rotate ||
+			gizmo_keyboard.transform_scale
+		gizmo_pointer := editor_world_tool_pointer_input(
+			config.ui_state,
+			pointer,
+			keyboard_transform_requested,
+		)
 		editor_camera_mesh_system(
 			config.ui_state,
 			world,
@@ -1348,12 +1364,6 @@ run_frame_system_unmeasured :: proc(
 			has_camera,
 			config.ui_state.editor_visible,
 		)
-		gizmo_keyboard := keyboard
-		if ui.has_text_focus(config.ui_state) ||
-		   ui.editor_ui_has_open_popup(config.ui_state, world) ||
-		   camera_input.look_active {
-			gizmo_keyboard = {}
-		}
 		light_gizmo_pointer := gizmo_pointer
 		if config.ui_state.editor_gizmo_captures_pointer {
 			light_gizmo_pointer = {}

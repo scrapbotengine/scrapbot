@@ -28,6 +28,7 @@ export type Scrapbot = {
 	camera: ScrapbotCameraComponent,
 	world_environment: ScrapbotWorldEnvironmentComponent,
 	volumetric_fog: ScrapbotVolumetricFogComponent,
+	water_volume: ScrapbotWaterVolumeComponent,
 	vignette: ScrapbotVignetteComponent,
 	lens_flare: ScrapbotLensFlareComponent,
 	lens_dirt: ScrapbotLensDirtComponent,
@@ -488,6 +489,48 @@ export type ReadonlyScrapbotVolumetricFog = {
 }
 
 export type ScrapbotVolumetricFogComponent = ScrapbotComponent<ScrapbotVolumetricFog, ReadonlyScrapbotVolumetricFog>
+
+export type ScrapbotWaterVolume = {
+	absorption: Vec3,
+	scattering: Vec3,
+	extents: Vec2,
+	depth: number,
+	priority: number,
+	transition_size: number,
+	surface_displacement_bound: number,
+	max_distance: number,
+	ambient_intensity: number,
+	anisotropy: number,
+	distortion: number,
+	distortion_scale: number,
+	distortion_speed: number,
+	caustics_intensity: number,
+	caustics_scale: number,
+	caustics_speed: number,
+	caustics_max_depth: number,
+}
+
+export type ReadonlyScrapbotWaterVolume = {
+	read absorption: ReadonlyVec3,
+	read scattering: ReadonlyVec3,
+	read extents: ReadonlyVec2,
+	read depth: number,
+	read priority: number,
+	read transition_size: number,
+	read surface_displacement_bound: number,
+	read max_distance: number,
+	read ambient_intensity: number,
+	read anisotropy: number,
+	read distortion: number,
+	read distortion_scale: number,
+	read distortion_speed: number,
+	read caustics_intensity: number,
+	read caustics_scale: number,
+	read caustics_speed: number,
+	read caustics_max_depth: number,
+}
+
+export type ScrapbotWaterVolumeComponent = ScrapbotComponent<ScrapbotWaterVolume, ReadonlyScrapbotWaterVolume>
 
 export type ScrapbotVignette = {
 	color: Vec3,

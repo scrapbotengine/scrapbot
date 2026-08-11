@@ -266,8 +266,21 @@ WGPU_Material_Uniform :: struct {
 WGPU_Custom_Shader_Uniform :: struct {
 	viewport: [4]f32,
 	time: [4]f32,
+	previous_time: [4]f32,
+	previous_view_projection: Mat4,
 }
-#assert(size_of(WGPU_Custom_Shader_Uniform) == 32)
+#assert(size_of(WGPU_Custom_Shader_Uniform) == 112)
+
+WGPU_Water_Surface_Query_Uniform :: struct {
+	object_position: [4]f32,
+	parameters: [4]f32,
+}
+#assert(size_of(WGPU_Water_Surface_Query_Uniform) == 32)
+
+WGPU_Water_Surface_Query_Result :: struct {
+	values: [4]f32,
+}
+#assert(size_of(WGPU_Water_Surface_Query_Result) == 16)
 
 WGPU_Environment_Uniform :: struct {
 	intensity: f32,
@@ -333,8 +346,13 @@ WGPU_Temporal_AA_Uniform :: struct {
 	fog_color_density: [4]f32,
 	fog_height_distance: [4]f32,
 	fog_lighting: [4]f32,
+	water_surface: [4]f32,
+	water_absorption: [4]f32,
+	water_scattering: [4]f32,
+	water_optics: [4]f32,
+	water_caustics: [4]f32,
 }
-#assert(size_of(WGPU_Temporal_AA_Uniform) == 272)
+#assert(size_of(WGPU_Temporal_AA_Uniform) == 352)
 
 WGPU_Temporal_Camera :: struct {
 	position: Vec3,
@@ -617,9 +635,11 @@ WGPU_Custom_Shader_Cache :: struct {
 	version: u32,
 	module: wgpu.ShaderModule,
 	blend_pipeline: wgpu.RenderPipeline,
+	water_surface_query_pipeline: wgpu.ComputePipeline,
 	spectral_intermediate_buffer: wgpu.Buffer,
 	spectral_spatial_buffer: wgpu.Buffer,
 	spectral_field_buffer: wgpu.Buffer,
+	spectral_previous_field_buffer: wgpu.Buffer,
 	spectral_uniform_buffer: wgpu.Buffer,
 	spectral_compute_bind_group: wgpu.BindGroup,
 	render_bind_group: wgpu.BindGroup,
@@ -635,6 +655,8 @@ WGPU_Spectral_Surface_Uniform :: struct {
 	parameters: [4]f32,
 	wind_time: [4]f32,
 	shape: [4]f32,
+	foam: [4]f32,
+	bands: [4]f32,
 }
 
 WGPU_Transparent_Draw :: struct {
@@ -1111,6 +1133,8 @@ WGPU_Renderer :: struct {
 	temporal_sample_index: u64,
 	temporal_history_valid: bool,
 	volumetric_fog_history_valid: bool,
+	water_candidate_active: bool,
+	water_candidate_entity_index: int,
 	temporal_camera_valid: bool,
 	automatic_exposure_bind_group_layout: wgpu.BindGroupLayout,
 	automatic_exposure_pipeline_layout: wgpu.PipelineLayout,
@@ -1155,6 +1179,8 @@ WGPU_Renderer :: struct {
 	surface_view: wgpu.TextureView,
 	indirect_diffuse_texture: wgpu.Texture,
 	indirect_diffuse_view: wgpu.TextureView,
+	custom_motion_texture: wgpu.Texture,
+	custom_motion_view: wgpu.TextureView,
 	editor_feedback_shader: wgpu.ShaderModule,
 	editor_feedback_pipeline: wgpu.RenderPipeline,
 	editor_feedback_pipeline_layout: wgpu.PipelineLayout,
@@ -1228,6 +1254,10 @@ WGPU_Renderer :: struct {
 	custom_shader_cache: [dynamic]WGPU_Custom_Shader_Cache,
 	custom_shader_bind_group_layout: wgpu.BindGroupLayout,
 	custom_shader_pipeline_layout: wgpu.PipelineLayout,
+	water_surface_query_uniform_buffer: wgpu.Buffer,
+	water_surface_query_result_buffer: wgpu.Buffer,
+	water_surface_query_entity_index: int,
+	water_surface_query_valid: bool,
 	custom_shader_uniform_buffer: wgpu.Buffer,
 	custom_shader_sampler: wgpu.Sampler,
 	custom_shader_scene_texture: wgpu.Texture,
@@ -3592,6 +3622,7 @@ wgpu_encode_render_pass :: proc(
 		renderer.render_list.camera.camera,
 		renderer.render_list.has_camera,
 		world,
+		config.resource_registry,
 		delta_time,
 		config.engine_time.elapsed_time,
 		ui.editor_play_mode_active(ui_state) && len(renderer.gpu_editor_selected_slots) > 0,

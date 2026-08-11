@@ -38,6 +38,13 @@ parse_project_resource :: proc(
 	resource.shader.spectral_surface.amplitude = 0.55
 	resource.shader.spectral_surface.small_wave_damping = 0.35
 	resource.shader.spectral_surface.choppiness = 0.85
+	resource.shader.spectral_surface.foam_generation = 1.4
+	resource.shader.spectral_surface.foam_decay = 0.28
+	resource.shader.spectral_surface.foam_coverage = 0.55
+	resource.shader.spectral_surface.foam_advection = {0, 0}
+	resource.shader.spectral_surface.band_count = 1
+	resource.shader.spectral_surface.band_patch_scale = 0.25
+	resource.shader.spectral_surface.band_amplitude_scale = 1
 	resource.material.base_color = {1, 1, 1, 1}
 	resource.material.roughness = 0.8
 	resource.material.alpha_cutoff = 0.5
@@ -287,6 +294,20 @@ parse_project_resource :: proc(
 					resource.shader.spectral_surface.small_wave_damping, found = parse_f32(value)
 				case "choppiness":
 					resource.shader.spectral_surface.choppiness, found = parse_f32(value)
+				case "foam_generation":
+					resource.shader.spectral_surface.foam_generation, found = parse_f32(value)
+				case "foam_decay":
+					resource.shader.spectral_surface.foam_decay, found = parse_f32(value)
+				case "foam_coverage":
+					resource.shader.spectral_surface.foam_coverage, found = parse_f32(value)
+				case "foam_advection":
+					resource.shader.spectral_surface.foam_advection, found = parse_vec2(value)
+				case "band_count":
+					resource.shader.spectral_surface.band_count, found = parse_int(value)
+				case "band_patch_scale":
+					resource.shader.spectral_surface.band_patch_scale, found = parse_f32(value)
+				case "band_amplitude_scale":
+					resource.shader.spectral_surface.band_amplitude_scale, found = parse_f32(value)
 				case:
 					return resource, fail(
 						.Invalid_Field,
@@ -704,6 +725,68 @@ parse_project_resource :: proc(
 				return resource, fail(
 					.Invalid_Field,
 					"shader.spectral_surface.choppiness must be between zero and one",
+				)
+			}
+			if math.is_nan(spectral.foam_generation) ||
+			   math.is_inf(spectral.foam_generation) ||
+			   spectral.foam_generation < 0 ||
+			   spectral.foam_generation > 20 {
+				return resource, fail(
+					.Invalid_Field,
+					"shader.spectral_surface.foam_generation must be between zero and 20",
+				)
+			}
+			if math.is_nan(spectral.foam_decay) ||
+			   math.is_inf(spectral.foam_decay) ||
+			   spectral.foam_decay < 0 ||
+			   spectral.foam_decay > 20 {
+				return resource, fail(
+					.Invalid_Field,
+					"shader.spectral_surface.foam_decay must be between zero and 20",
+				)
+			}
+			if math.is_nan(spectral.foam_coverage) ||
+			   math.is_inf(spectral.foam_coverage) ||
+			   spectral.foam_coverage < 0 ||
+			   spectral.foam_coverage > 1 {
+				return resource, fail(
+					.Invalid_Field,
+					"shader.spectral_surface.foam_coverage must be between zero and one",
+				)
+			}
+			if math.is_nan(spectral.foam_advection.x) ||
+			   math.is_inf(spectral.foam_advection.x) ||
+			   math.is_nan(spectral.foam_advection.y) ||
+			   math.is_inf(spectral.foam_advection.y) ||
+			   math.abs(spectral.foam_advection.x) > 100 ||
+			   math.abs(spectral.foam_advection.y) > 100 {
+				return resource, fail(
+					.Invalid_Field,
+					"shader.spectral_surface.foam_advection components must be finite and between -100 and 100",
+				)
+			}
+			if spectral.band_count < 1 || spectral.band_count > 3 {
+				return resource, fail(
+					.Invalid_Field,
+					"shader.spectral_surface.band_count must be between one and three",
+				)
+			}
+			if math.is_nan(spectral.band_patch_scale) ||
+			   math.is_inf(spectral.band_patch_scale) ||
+			   spectral.band_patch_scale < 0.05 ||
+			   spectral.band_patch_scale > 0.5 {
+				return resource, fail(
+					.Invalid_Field,
+					"shader.spectral_surface.band_patch_scale must be between 0.05 and 0.5",
+				)
+			}
+			if math.is_nan(spectral.band_amplitude_scale) ||
+			   math.is_inf(spectral.band_amplitude_scale) ||
+			   spectral.band_amplitude_scale < 0 ||
+			   spectral.band_amplitude_scale > 2 {
+				return resource, fail(
+					.Invalid_Field,
+					"shader.spectral_surface.band_amplitude_scale must be between zero and two",
 				)
 			}
 		}

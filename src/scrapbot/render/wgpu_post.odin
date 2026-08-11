@@ -1,5 +1,7 @@
 package render
 
+import ecs "../ecs"
+import resources "../resources"
 import shared "../shared"
 import ui "../ui"
 import "core:math"
@@ -16,6 +18,27 @@ WGPU_Volumetric_Fog_Settings :: struct {
 	ambient_intensity: f32,
 	light_intensity: f32,
 	point_light_intensity: f32,
+}
+
+WGPU_Water_Volume_Settings :: struct {
+	enabled: bool,
+	entity_index: int,
+	surface_height: f32,
+	surface_displacement_bound: f32,
+	transition_size: f32,
+	submersion: f32,
+	max_distance: f32,
+	absorption: shared.Vec3,
+	scattering: shared.Vec3,
+	ambient_intensity: f32,
+	anisotropy: f32,
+	distortion: f32,
+	distortion_scale: f32,
+	distortion_speed: f32,
+	caustics_intensity: f32,
+	caustics_scale: f32,
+	caustics_speed: f32,
+	caustics_max_depth: f32,
 }
 
 WGPU_Vignette_Settings :: struct {
@@ -183,6 +206,152 @@ wgpu_post_vec2 :: proc(
 		}
 	}
 	return fallback
+}
+
+wgpu_water_volume_settings :: proc(
+	world: ^shared.World,
+	camera_position: shared.Vec3,
+) -> WGPU_Water_Volume_Settings {
+	settings := WGPU_Water_Volume_Settings {
+		entity_index = -1,
+		max_distance = 100,
+		absorption = {0.11, 0.035, 0.015},
+		scattering = {0.006, 0.025, 0.035},
+		ambient_intensity = 0.5,
+		anisotropy = 0.65,
+		distortion = 1,
+		distortion_scale = 0.16,
+		distortion_speed = 0.08,
+		caustics_intensity = 1,
+		caustics_scale = 1,
+		caustics_speed = 0.08,
+		caustics_max_depth = 24,
+		surface_displacement_bound = 4,
+	}
+	if world == nil {
+		return settings
+	}
+	best_priority := f32(0)
+	best_scene_order := 0
+	for &storage in world.custom_components {
+		if storage.name != "scrapbot.water_volume" {
+			continue
+		}
+		ecs.begin_world_transform_resolution(world)
+		for component_index in storage.active_component_indices {
+			if component_index < 0 || component_index >= len(storage.components) {
+				continue
+			}
+			component := &storage.components[component_index]
+			entity_index := component.entity_index
+			if entity_index < 0 ||
+			   entity_index >= len(world.entities) ||
+			   !world.entities[entity_index].alive {
+				continue
+			}
+			transform, valid := ecs.resolve_world_transform(world, entity_index)
+			if !valid {
+				continue
+			}
+			extents := wgpu_post_vec2(component, "extents", {})
+			extents.x = max(extents.x, 0)
+			extents.y = max(extents.y, 0)
+			if (extents.x > 0 && abs(camera_position.x - transform.position.x) > extents.x) ||
+			   (extents.y > 0 && abs(camera_position.z - transform.position.z) > extents.y) {
+				continue
+			}
+			depth := max(wgpu_fog_number(component, "depth", 100), f32(0.1))
+			transition_size := max(wgpu_fog_number(component, "transition_size", 0.5), f32(0.01))
+			surface_displacement_bound := max(
+				wgpu_fog_number(component, "surface_displacement_bound", 4),
+				f32(0),
+			)
+			surface_height := transform.position.y
+			if camera_position.y > surface_height + transition_size + surface_displacement_bound ||
+			   camera_position.y < surface_height - depth - surface_displacement_bound {
+				continue
+			}
+			priority := wgpu_fog_number(component, "priority", 0)
+			scene_order := world.entities[entity_index].scene_order
+			if settings.enabled &&
+			   (priority < best_priority ||
+					   (priority == best_priority && scene_order >= best_scene_order)) {
+				continue
+			}
+			settings.enabled = true
+			settings.entity_index = entity_index
+			settings.surface_height = surface_height
+			settings.surface_displacement_bound = surface_displacement_bound
+			settings.transition_size = transition_size
+			settings.submersion = clamp(
+				(surface_height + transition_size - camera_position.y) / (2 * transition_size),
+				f32(0),
+				f32(1),
+			)
+			settings.max_distance = clamp(
+				wgpu_fog_number(component, "max_distance", settings.max_distance),
+				f32(0.1),
+				f32(10000),
+			)
+			settings.absorption = wgpu_fog_vec3(component, "absorption", settings.absorption)
+			settings.scattering = wgpu_fog_vec3(component, "scattering", settings.scattering)
+			settings.absorption.x = max(settings.absorption.x, 0)
+			settings.absorption.y = max(settings.absorption.y, 0)
+			settings.absorption.z = max(settings.absorption.z, 0)
+			settings.scattering.x = max(settings.scattering.x, 0)
+			settings.scattering.y = max(settings.scattering.y, 0)
+			settings.scattering.z = max(settings.scattering.z, 0)
+			settings.ambient_intensity = clamp(
+				wgpu_fog_number(component, "ambient_intensity", settings.ambient_intensity),
+				f32(0),
+				f32(10),
+			)
+			settings.anisotropy = clamp(
+				wgpu_fog_number(component, "anisotropy", settings.anisotropy),
+				f32(-0.9),
+				f32(0.9),
+			)
+			settings.distortion = clamp(
+				wgpu_fog_number(component, "distortion", settings.distortion),
+				f32(0),
+				f32(8),
+			)
+			settings.distortion_scale = clamp(
+				wgpu_fog_number(component, "distortion_scale", settings.distortion_scale),
+				f32(0.001),
+				f32(10),
+			)
+			settings.distortion_speed = clamp(
+				wgpu_fog_number(component, "distortion_speed", settings.distortion_speed),
+				f32(-10),
+				f32(10),
+			)
+			settings.caustics_intensity = clamp(
+				wgpu_fog_number(component, "caustics_intensity", settings.caustics_intensity),
+				f32(0),
+				f32(10),
+			)
+			settings.caustics_scale = clamp(
+				wgpu_fog_number(component, "caustics_scale", settings.caustics_scale),
+				f32(0.1),
+				f32(10),
+			)
+			settings.caustics_speed = clamp(
+				wgpu_fog_number(component, "caustics_speed", settings.caustics_speed),
+				f32(-10),
+				f32(10),
+			)
+			settings.caustics_max_depth = clamp(
+				wgpu_fog_number(component, "caustics_max_depth", settings.caustics_max_depth),
+				f32(0.1),
+				f32(1000),
+			)
+			best_priority = priority
+			best_scene_order = scene_order
+		}
+		break
+	}
+	return settings
 }
 
 wgpu_volumetric_fog_settings :: proc(world: ^shared.World) -> WGPU_Volumetric_Fog_Settings {
@@ -460,6 +629,19 @@ wgpu_create_post_process_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 			binding = 16,
 			visibility = {.Compute},
 			storageTexture = {access = .WriteOnly, format = .RGBA16Float, viewDimension = ._2D},
+		},
+		{
+			binding = 17,
+			visibility = {.Compute},
+			texture = {sampleType = .Float, viewDimension = ._2D},
+		},
+		{
+			binding = 18,
+			visibility = {.Compute},
+			buffer = {
+				type = .ReadOnlyStorage,
+				minBindingSize = u64(size_of(WGPU_Water_Surface_Query_Result)),
+			},
 		},
 	}
 	renderer.temporal_aa_bind_group_layout = wgpu.DeviceCreateBindGroupLayout(
@@ -1203,6 +1385,14 @@ wgpu_release_post_targets :: proc(renderer: ^WGPU_Renderer) {
 		wgpu.TextureRelease(renderer.indirect_diffuse_texture)
 		renderer.indirect_diffuse_texture = nil
 	}
+	if renderer.custom_motion_view != nil {
+		wgpu.TextureViewRelease(renderer.custom_motion_view)
+		renderer.custom_motion_view = nil
+	}
+	if renderer.custom_motion_texture != nil {
+		wgpu.TextureRelease(renderer.custom_motion_texture)
+		renderer.custom_motion_texture = nil
+	}
 	if renderer.editor_feedback_mask_view != nil {
 		wgpu.TextureViewRelease(renderer.editor_feedback_mask_view)
 		renderer.editor_feedback_mask_view = nil
@@ -1411,6 +1601,17 @@ wgpu_ensure_post_targets :: proc(
 	if err != "" {
 		return err
 	}
+	renderer.custom_motion_texture, renderer.custom_motion_view, err = wgpu_create_post_texture(
+		renderer,
+		"Scrapbot Custom Surface Motion",
+		width,
+		height,
+		.RG16Float,
+		{.RenderAttachment, .TextureBinding},
+	)
+	if err != "" {
+		return err
+	}
 	renderer.editor_feedback_mask_texture, renderer.editor_feedback_mask_view, err =
 		wgpu_create_post_texture(
 			renderer,
@@ -1574,7 +1775,7 @@ wgpu_ensure_post_targets :: proc(
 			return "failed to create ambient occlusion bind groups"
 		}
 	}
-	temporal_entries: [17]wgpu.BindGroupEntry
+	temporal_entries: [19]wgpu.BindGroupEntry
 	for output_index in 0 ..< len(renderer.temporal_color_views) {
 		history_index := 1 - output_index
 		temporal_entries = {
@@ -1605,6 +1806,12 @@ wgpu_ensure_post_targets :: proc(
 			{binding = 14, sampler = renderer.shadow_sampler},
 			{binding = 15, textureView = renderer.volumetric_fog_views[output_index]},
 			{binding = 16, textureView = renderer.volumetric_fog_dummy_view},
+			{binding = 17, textureView = renderer.custom_motion_view},
+			{
+				binding = 18,
+				buffer = renderer.water_surface_query_result_buffer,
+				size = u64(size_of(WGPU_Water_Surface_Query_Result)),
+			},
 		}
 		renderer.temporal_aa_bind_groups[output_index] = wgpu.DeviceCreateBindGroup(
 			renderer.device,
@@ -1887,6 +2094,7 @@ wgpu_encode_bloom_and_composite :: proc(
 	camera: shared.Camera_Component,
 	has_camera: bool,
 	world: ^shared.World,
+	registry: ^resources.Registry,
 	delta_time: f32,
 	engine_elapsed_time: f64,
 	animate_selection_outline: bool,
@@ -1906,6 +2114,10 @@ wgpu_encode_bloom_and_composite :: proc(
 	if render_feature_overrides.disable_volumetric_fog {
 		fog.density = 0
 	}
+	water: WGPU_Water_Volume_Settings
+	if has_camera && renderer.render_list.has_camera {
+		water = wgpu_water_volume_settings(world, renderer.render_list.camera.transform.position)
+	}
 	ambient_occlusion_resolution_scale := shared.camera_ambient_occlusion_resolution_scale(
 		resolved_camera,
 	)
@@ -1919,6 +2131,15 @@ wgpu_encode_bloom_and_composite :: proc(
 	); err != "" {
 		return err
 	}
+	if err := wgpu_encode_water_surface_query(
+		renderer,
+		encoder,
+		registry,
+		water,
+		renderer.render_list.camera.transform.position,
+	); err != "" {
+		return err
+	}
 	debug_view := resolved_camera.debug_view != .Lit
 	if debug_view {
 		resolved_camera.automatic_exposure = false
@@ -1927,6 +2148,26 @@ wgpu_encode_bloom_and_composite :: proc(
 		resolved_camera.ambient_occlusion = false
 		resolved_camera.screen_space_reflections = false
 		resolved_camera.bloom = false
+		water.enabled = false
+		water.submersion = 0
+	}
+	// The CPU broad phase only chooses a candidate volume. It must not classify
+	// the camera against the owner's mean Transform plane: the GPU surface query
+	// below is the authority for air/water crossings on an animated surface.
+	// Candidate changes still reject history because their optical coefficients
+	// and surface query owner may change discontinuously.
+	water_candidate_active := water.enabled
+	if renderer.water_candidate_active != water_candidate_active ||
+	   (water_candidate_active && renderer.water_candidate_entity_index != water.entity_index) {
+		renderer.temporal_history_valid = false
+		renderer.volumetric_fog_history_valid = false
+	}
+	renderer.water_candidate_active = water_candidate_active
+	renderer.water_candidate_entity_index = water.entity_index
+	if water.enabled {
+		// Exact air/water medium selection happens in the temporal shader from the
+		// custom surface query. Keep authored air fog available to that per-frame
+		// classification instead of suppressing it from the mean plane here.
 	}
 	temporal_output_index := renderer.temporal_output_index
 	ambient_occlusion_width := wgpu_post_scaled_dimension(
@@ -2096,6 +2337,36 @@ wgpu_encode_bloom_and_composite :: proc(
 		fog.light_intensity,
 		fog.point_light_intensity,
 		max(f32(16), f32(64) * adaptive_post_quality),
+	}
+	temporal_uniform.water_surface = {
+		water.surface_height,
+		water.max_distance,
+		water.submersion,
+		1 if water.enabled else 0,
+	}
+	temporal_uniform.water_absorption = {
+		water.absorption.x,
+		water.absorption.y,
+		water.absorption.z,
+		0,
+	}
+	temporal_uniform.water_scattering = {
+		water.scattering.x,
+		water.scattering.y,
+		water.scattering.z,
+		water.ambient_intensity,
+	}
+	temporal_uniform.water_optics = {
+		water.distortion,
+		water.distortion_scale,
+		f32(math.mod(renderer.custom_shader_time.elapsed_time, 4096)) * water.distortion_speed,
+		water.anisotropy,
+	}
+	temporal_uniform.water_caustics = {
+		water.caustics_intensity,
+		water.caustics_scale,
+		f32(math.mod(renderer.custom_shader_time.elapsed_time, 4096)) * water.caustics_speed,
+		water.caustics_max_depth,
 	}
 	wgpu.QueueWriteBuffer(
 		renderer.queue,

@@ -448,6 +448,13 @@ wind_direction = [0.8, 0.6]
 amplitude = 0.75
 small_wave_damping = 0.4
 choppiness = 0.9
+foam_generation = 1.8
+foam_decay = 0.3
+foam_coverage = 0.65
+foam_advection = [0.2, -0.075]
+band_count = 3
+band_patch_scale = 0.25
+band_amplitude_scale = 0.7
 `,
 	)
 	testing.expect(t, shader_result.err == .None)
@@ -459,6 +466,13 @@ choppiness = 0.9
 	testing.expect_value(t, shader.shader.spectral_surface.wind_direction, Vec2{0.8, 0.6})
 	testing.expect_value(t, shader.shader.spectral_surface.amplitude, f32(0.75))
 	testing.expect_value(t, shader.shader.spectral_surface.choppiness, f32(0.9))
+	testing.expect_value(t, shader.shader.spectral_surface.foam_generation, f32(1.8))
+	testing.expect_value(t, shader.shader.spectral_surface.foam_decay, f32(0.3))
+	testing.expect_value(t, shader.shader.spectral_surface.foam_coverage, f32(0.65))
+	testing.expect_value(t, shader.shader.spectral_surface.foam_advection, Vec2{0.2, -0.075})
+	testing.expect_value(t, shader.shader.spectral_surface.band_count, 3)
+	testing.expect_value(t, shader.shader.spectral_surface.band_patch_scale, f32(0.25))
+	testing.expect_value(t, shader.shader.spectral_surface.band_amplitude_scale, f32(0.7))
 
 	material, material_result := parse_project_resource(
 		`id = "a1000000-0000-4000-8000-000000000011"
@@ -511,6 +525,45 @@ choppiness = 1.1
 `,
 	)
 	testing.expect(t, invalid_choppiness.err == .Invalid_Field)
+
+	_, invalid_foam_coverage := parse_project_resource(
+		`id = "a1000000-0000-4000-8000-000000000015"
+type = "scrapbot.shader"
+name = "Blanket Foam"
+[shader]
+source = "shaders/water.wgsl"
+[shader.spectral_surface]
+enabled = true
+foam_coverage = 1.1
+`,
+	)
+	testing.expect(t, invalid_foam_coverage.err == .Invalid_Field)
+
+	_, invalid_foam_advection := parse_project_resource(
+		`id = "a1000000-0000-4000-8000-000000000018"
+type = "scrapbot.shader"
+name = "Impossible Current"
+[shader]
+source = "shaders/water.wgsl"
+[shader.spectral_surface]
+enabled = true
+foam_advection = [101, 0]
+`,
+	)
+	testing.expect(t, invalid_foam_advection.err == .Invalid_Field)
+
+	_, invalid_band_count := parse_project_resource(
+		`id = "a1000000-0000-4000-8000-000000000016"
+type = "scrapbot.shader"
+name = "Too Many Cascades"
+[shader]
+source = "shaders/water.wgsl"
+[shader.spectral_surface]
+enabled = true
+band_count = 4
+`,
+	)
+	testing.expect(t, invalid_band_count.err == .Invalid_Field)
 }
 
 @(test)

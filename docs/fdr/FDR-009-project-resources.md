@@ -63,9 +63,9 @@ Project resources are reusable, typed bags of authored data stored outside the E
 **Why:** Shader identity, safe source paths, hot reload, cache versioning, and cross-resource validation belong to the same project-resource pipeline as other reusable assets.
 
 **Tradeoff:** Parameters are intentionally fixed-size and unreflected in this slice. Spectral
-surfaces use one portable 64×64 field and expose displacement, reconstructed normals, and crest
-compression; larger grids, multiple frequency cascades, and scalable quality tiers remain
-follow-up work.
+surfaces reserve up to three portable 64×64 frequency bands and expose displacement, reconstructed
+normals, crest compression, and current-advected foam history. Larger grids, spatial current and
+shoreline masks, and scalable quality tiers remain follow-up work.
 
 ## Related
 

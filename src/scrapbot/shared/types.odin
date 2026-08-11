@@ -178,6 +178,13 @@ Shader_Spectral_Surface :: struct {
 	amplitude: f32,
 	small_wave_damping: f32,
 	choppiness: f32,
+	foam_generation: f32,
+	foam_decay: f32,
+	foam_coverage: f32,
+	foam_advection: Vec2,
+	band_count: int,
+	band_patch_scale: f32,
+	band_amplitude_scale: f32,
 }
 
 Project_Material_Resource :: struct {

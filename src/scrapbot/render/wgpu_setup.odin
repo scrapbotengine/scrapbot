@@ -770,7 +770,7 @@ wgpu_create_render_pipeline :: proc(renderer: ^WGPU_Renderer) -> string {
 		},
 		{
 			binding = 6,
-			visibility = {.Vertex, .Fragment},
+			visibility = {.Vertex, .Fragment, .Compute},
 			buffer = {type = .Uniform, minBindingSize = u64(size_of(WGPU_Material_Uniform))},
 		},
 		{binding = 7, visibility = {.Fragment}, sampler = {type = .Filtering}},

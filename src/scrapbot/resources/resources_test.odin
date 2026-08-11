@@ -157,6 +157,13 @@ test_project_shader_registry_versions_hook_source :: proc(t: ^testing.T) {
 				amplitude = 0.7,
 				small_wave_damping = 0.35,
 				choppiness = 0.9,
+				foam_generation = 1.8,
+				foam_decay = 0.3,
+				foam_coverage = 0.65,
+				foam_advection = {0.2, -0.075},
+				band_count = 3,
+				band_patch_scale = 0.25,
+				band_amplitude_scale = 0.72,
 			},
 		},
 	}
@@ -171,6 +178,13 @@ test_project_shader_registry_versions_hook_source :: proc(t: ^testing.T) {
 		testing.expect_value(t, shader.spectral_surface.patch_size, f32(192))
 		testing.expect_value(t, shader.spectral_surface.amplitude, f32(0.7))
 		testing.expect_value(t, shader.spectral_surface.choppiness, f32(0.9))
+		testing.expect_value(t, shader.spectral_surface.foam_generation, f32(1.8))
+		testing.expect_value(t, shader.spectral_surface.foam_decay, f32(0.3))
+		testing.expect_value(t, shader.spectral_surface.foam_coverage, f32(0.65))
+		testing.expect_value(t, shader.spectral_surface.foam_advection, shared.Vec2{0.2, -0.075})
+		testing.expect_value(t, shader.spectral_surface.band_count, 3)
+		testing.expect_value(t, shader.spectral_surface.band_patch_scale, f32(0.25))
+		testing.expect_value(t, shader.spectral_surface.band_amplitude_scale, f32(0.72))
 		testing.expect_value(t, shader.version, u32(1))
 	}
 

@@ -1,7 +1,7 @@
 # FDR-003: Pluggable rendering backends
 
 **Status:** Active
-**Last reviewed:** 2026-08-10
+**Last reviewed:** 2026-08-11
 
 ## Overview
 
@@ -461,22 +461,59 @@ quality/residency ceiling for portable compact submission, not a correctness bou
 
 **Decision:** Let projects provide `scrapbot_vertex` and `scrapbot_fragment` WGSL hooks while the backend owns entry points, resources, instance transport, render targets, and pass ordering.
 
-Vertex hooks receive the object's model and normal matrices. Fragment hooks receive both viewport-local `screen_uv` and full-target `scene_uv`, plus helpers for guarded viewport sampling, conservative nearest-depth stabilization, device-to-view depth conversion, and roughness-filtered environment reflection. The reflection helper preserves the configured procedural atmosphere and its sun highlight when a project does not assign a reflection cubemap.
+Vertex hooks receive the object's model and normal matrices. Fragment hooks receive viewport-local
+`screen_uv`, full-target `scene_uv`, and guarded scene-sampling and reconstruction helpers.
+
+The environment helper preserves the procedural atmosphere and sun highlight when no reflection
+cubemap is assigned. The custom-surface reflection helper ray-marches from the actual fragment,
+confirms front-to-back crossings against opaque depth, and returns hit confidence for environment
+fallback. The shadow helper selects and cross-fades the engine's cascades so project-authored
+lighting remains consistent with opaque world lighting.
 
 Blended hooks receive the opaque scene color/depth and render in a depth-tested, no-depth-write pass. This supports both conventional alpha blending and single-layer transmission shaders that return an already-composited result with alpha one.
 
+For temporal reprojection, WGPU evaluates the same vertex hook once in the current project-time
+context and once against the previous project-time snapshot. The previous context also samples the
+retained previous spectral field. The fragment writes the previous viewport position to a compact
+custom-surface motion target, and TAA consumes it in preference to camera/depth reconstruction.
+Redraws without a simulation advance evaluate both contexts from the same time and field, so pausing
+does not invent deformation motion.
+
 **Why:** Projects need expressive surface and displacement effects without copying Scrapbot's backend ABI or turning the editor/example into a private renderer.
 
-**Tradeoff:** The first portable path sorts transparent instances back-to-front on the CPU. Scene color is the opaque pre-water result, so intersecting transparent layers do not recursively refract one another. A bounded GPU sort for large transparent sets, imported glTF blending, structured compiler diagnostics, and displaced depth/shadow variants remain explicit follow-up work.
+**Tradeoff:** The first portable path sorts transparent instances back-to-front on the CPU. Scene
+color is the opaque pre-water result, so intersecting transparent layers do not recursively refract
+one another. Custom-surface SSR sees only current-frame, on-screen opaque geometry and uses a bounded
+20-step march; it cannot recover off-screen or transparent reflectors.
+
+Previous hook evaluation tracks engine project time and spectral fields, but arbitrary project
+parameter changes and object transforms do not yet retain their previous values. A bounded GPU sort,
+imported glTF blending, structured compiler diagnostics, displaced depth/shadow variants, and
+general per-object motion remain explicit follow-up work.
 
 ### 25. Generate reusable spectral surfaces for project shaders
 
-**Decision:** Let a Shader resource opt into a renderer-owned 64×64 spectral surface. WGPU builds a deterministic Phillips wind spectrum, evolves its deep-water dispersion when the default ECS project clock advances, and performs horizontal and vertical inverse FFT passes entirely on the GPU.
+**Decision:** Let a Shader resource opt into a renderer-owned one-to-three-band 64×64 spectral
+surface. WGPU builds deterministic frequency-partitioned Phillips wind spectra, evolves deep-water
+dispersion when the default ECS project clock advances, and performs horizontal and vertical inverse
+FFT passes entirely on the GPU. Later bands shrink patch width and scale energy geometrically;
+adjacent wavelength windows cross-fade so cascades add detail without double-counting energy.
 
 Project hooks sample the periodic world-space field through `scrapbot_spectral_surface`. The helper
-returns displacement, a reconstructed normal, and crest compression. A bounded `choppiness`
+returns displacement, a reconstructed normal, crest compression, and retained foam history. A bounded `choppiness`
 parameter converts the evolved height spectrum into frequency-domain horizontal orbital
 displacement, producing the sharpened crests and broad troughs associated with Gerstner waves.
+Spatial finalization deposits foam where the horizontal-displacement Jacobian is sufficiently
+compressed. It semi-Lagrangian-backtraces the retained previous field through the authored
+world-XZ foam-advection velocity, bilinearly samples that history, and exponentially decays it.
+Generation, decay, coverage, and advection remain Shader-resource controls.
+
+Transparent hooks receive two deliberately separate opaque-depth contracts. Conservative
+`scrapbot_scene_stable_uv` sampling may select the nearest cross-neighbor to keep refraction from
+magnifying subpixel coverage holes. Metric shoreline effects instead use
+`scrapbot_water_column_depth`, which reconstructs the opaque receiver on the fragment's center ray
+and projects the separation onto the supplied surface normal. A refraction-stability heuristic
+therefore cannot dilate object silhouettes into world-space foam bands.
 
 The engine owns bindings, allocation, and one cached field per Shader resource. The ECS `Time`
 resource is the single time authority for project-shader helpers and spectral evolution, so paused
@@ -490,8 +527,29 @@ advance.
 
 **Why:** Water, windblown terrain, and other broad stochastic surfaces need coherent low-frequency motion without copying backend bindings or compute orchestration into each project.
 
-**Tradeoff:** The first field has fixed resolution and one frequency band. It does not yet provide
-currents, interaction masks, caustics, underwater rendering, or water-aware motion vectors.
+**Tradeoff:** Each band retains a fixed 64×64 resolution. Foam advection is one uniform world-space
+velocity rather than a spatial current map, and the field does not yet provide interaction or
+shoreline masks. Future shoreline work must use water-body depth/shape or bounded authored water
+influences for simulation attenuation, foam, currents, and deformation. Unsigned distance to
+arbitrary scene Geometry is not a shoreline signal: seabeds, props, undersides, and open scan shells
+are all valid nearest surfaces and can incorrectly saturate complete water regions. A separate
+public `scrapbot.water_volume` owns
+camera-medium selection and underwater composition: resolved Transform height defines the mean
+horizontal surface, bounds plus a conservative displacement limit select candidates, and priority
+resolves overlap. For a Water Volume entity rendered by a custom Shader, WGPU evaluates the same
+`scrapbot_vertex` hook at the camera X/Z position and iteratively inverts horizontal displacement.
+The resulting animated crest/trough height drives submersion, analytic surface exit, air-fog
+replacement, camera-depth attenuation, caustic depth, and crossing-history rejection without CPU
+readback. The CPU mean-plane test is only a conservative candidate broad phase, never the medium
+classifier. Mean-plane fallback
+remains available when no queryable custom surface exists. WGPU applies Beer–Lambert
+absorption/scattering after transparents and before TAA. When the camera is submerged, the post pass also projects
+the primary directional light onto opaque receivers through an animated multi-band refracted-ray
+mapping. Its finite-difference Jacobian supplies light concentration; receiver angle, cascaded
+shadows, footprint, water-column extinction, and authored maximum depth bound the result. Project
+shaders can independently build
+screen-space caustics from public scene-depth, shadow, and world-reconstruction helpers, but the
+spectral resource does not own a general caustics contract.
 
 ### 26. Choose geometry submission with a layered stable policy
 

@@ -1,6 +1,6 @@
 # Engine Components
 
-**Last verified:** 2026-08-10
+**Last verified:** 2026-08-11
 **Source of truth:** `src/scrapbot/component/registry.odin`  
 **Canonical public field reference:** `docs-website/src/content/docs/reference/components.md`
 
@@ -23,6 +23,7 @@ Lifecycle meanings:
 | `scrapbot.camera` | Spatial/render | Authored | Yes | Selects projection, coordinated GPU-budgeted world/shadow/post bounds, exposure, and per-view TAA/fast-AA/AO/SSR/bloom policy; project camera is distinct from the editor fly camera. |
 | `scrapbot.world_environment` | Environment/render | Authored | Yes | Singleton scene selection for imported lighting, procedural or imported sky presentation, and base exposure. |
 | `scrapbot.volumetric_fog` | Environment/render | Authored | Yes | Singleton global height/distance medium with ambient, shadowed directional, and clustered point-light scattering. |
+| `scrapbot.water_volume` | Environment/render | Authored | Yes | Priority-selected horizontal underwater medium whose mean plane comes from Transform and whose rendered custom surface can drive exact camera submersion. |
 | `scrapbot.vignette` | Postprocessing | Authored | Yes | Singleton display-space edge framing composed after tone mapping. |
 | `scrapbot.lens_flare` | Postprocessing | Authored | Yes | Singleton bounded ghost-and-halo optical response derived from HDR bloom energy. |
 | `scrapbot.lens_dirt` | Postprocessing | Authored | Yes | Singleton deterministic procedural dirt mask that modulates bloom and flare energy. |
@@ -141,6 +142,17 @@ These entries deliberately omit exhaustive field/default documentation. Follow t
 - **Invalidation:** Membership and value mutation use ordinary custom-component lifecycle/revisions. The current bounded frame input visits only the fog storage's compact active set; it never scans entities or component capacity. No fog-specific GPU target is allocated, and zero density takes the shader no-op branch.
 - **Surfaces:** Public in scene TOML, generated Luau query data/writeback, native membership, runtime-generated editor inspection, history, and persistence; see the [public component reference](../../docs-website/src/content/docs/reference/components.md#scrapbotvolumetric_fog).
 - **Source/tests:** `component/registry.odin`, `project/project.odin`, `render/wgpu_post.odin`, `render/wgpu_shader.odin`; `component/registry_test.odin`, `render/render_test.odin`, Sponza WGPU framegrab smoke tests.
+
+### `scrapbot.water_volume`
+
+- **Contract:** An authored entity owns one horizontal underwater volume. Its resolved Transform supplies center and mean surface height; positive component extents bound X/Z, while both zero mean infinite. Depth bounds the volume below the surface. The highest priority containing volume wins, with scene order as a deterministic tie-break.
+- **Storage/lifecycle:** Registry-defined custom ECS storage with canonical Number/Vec2/Vec3 fields; authored and non-singleton.
+- **Producers:** Scene loading, automatic type-inspected editor controls/history, validated Luau writes, component membership commands, and playback restore.
+- **Consumers:** WGPU postprocessing visits only the compact Water Volume storage and resolves candidate owner transforms. `surface_displacement_bound` expands the mean-plane broad phase, which chooses a candidate but never decides underwaterness. The retained render-list entity index then locates the volume's render instance in O(1); a one-invocation compute pass evaluates the same project `scrapbot_vertex` hook used for rendering, iteratively inverts horizontal displacement, and retains current/previous submersion. The temporal pass uses that displaced height for medium entry, camera-depth attenuation, ray exit, air-fog replacement, caustic water-column depth, and crossing-history rejection. It otherwise falls back to the Transform mean plane. Receiver caustics remain reconstructed from opaque depth and filtered by receiver angle, cascade shadows, footprint, extinction, and authored maximum depth.
+- **Invalidation:** Ordinary custom-component and Transform changes feed the next bounded candidate selection. The GPU query rejects TAA history when current and previous displaced-surface submersion straddle the midpoint; changing or removing the selected candidate rejects post history once on the CPU. Stable volume values allocate no image target, and a camera outside every candidate bound takes the shader no-op branch.
+- **Boundaries:** The current volume is horizontal and affects the active camera only. It does not yet tilt with Transform rotation, classify arbitrary closed meshes, supply water-aware object motion vectors, or replace the project shader that draws the surface.
+- **Surfaces:** Public in scene TOML, generated Luau query data/writeback, native membership, runtime-generated editor inspection, history, and persistence; see the [public component reference](../../docs-website/src/content/docs/reference/components.md#scrapbotwater_volume).
+- **Source/tests:** `component/registry.odin`, `render/wgpu_post.odin`, `render/wgpu_shader.odin`; `component/registry_test.odin`, `render/render_test.odin`, Virtual Wilds above/below-water framegrabs.
 
 ### `scrapbot.vignette`
 

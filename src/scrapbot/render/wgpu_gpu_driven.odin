@@ -1508,7 +1508,7 @@ wgpu_create_gpu_driven_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 	world_entries := [?]wgpu.BindGroupLayoutEntry {
 		{
 			binding = 0,
-			visibility = {.Vertex, .Fragment},
+			visibility = {.Vertex, .Fragment, .Compute},
 			buffer = {type = .Uniform, minBindingSize = u64(size_of(WGPU_GPU_Render_Uniform))},
 		},
 		{
@@ -1519,7 +1519,7 @@ wgpu_create_gpu_driven_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 		{binding = 2, visibility = {.Fragment}, sampler = {type = .Comparison}},
 		{
 			binding = 3,
-			visibility = {.Vertex},
+			visibility = {.Vertex, .Compute},
 			buffer = {type = .ReadOnlyStorage, minBindingSize = u64(size_of(WGPU_GPU_Instance))},
 		},
 		{

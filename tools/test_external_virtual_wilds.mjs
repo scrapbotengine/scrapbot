@@ -206,7 +206,7 @@ function main() {
     "--json",
   ]);
   if (
-    simulated.result?.renderables !== 347 ||
+    simulated.result?.renderables !== 356 ||
     simulated.result?.draw_batches !== 20
   ) {
     throw new Error(
@@ -278,7 +278,7 @@ function main() {
     ]);
     const stats = rendered.result?.render_stats;
     if (
-      rendered.result?.renderables !== 347 ||
+      rendered.result?.renderables !== 356 ||
       rendered.result?.draw_batches !== 20 ||
       stats?.virtual_geometry !== true ||
       stats?.virtual_geometry_compacted !== true ||
@@ -343,6 +343,76 @@ function main() {
           "--editor",
           "--ui-script",
           "tests/fixtures/ui/virtual-wilds-grounded-firs.json",
+        ],
+      },
+      {
+        name: "water-caustics",
+        arguments: [
+          "--warmup",
+          "0",
+          "--frames",
+          "110",
+          "--capture-range",
+          "100:107",
+          "--editor",
+          "--ui-script",
+          "tests/fixtures/ui/virtual-wilds-water-caustics.json",
+        ],
+      },
+      {
+        name: "water-whitecaps",
+        arguments: [
+          "--warmup",
+          "0",
+          "--frames",
+          "330",
+          "--capture-range",
+          "312:319",
+          "--editor",
+          "--ui-script",
+          "tests/fixtures/ui/virtual-wilds-water-whitecaps.json",
+        ],
+      },
+      {
+        name: "water-foam-close",
+        arguments: [
+          "--warmup",
+          "0",
+          "--frames",
+          "220",
+          "--capture-range",
+          "202:209",
+          "--editor",
+          "--ui-script",
+          "tests/fixtures/ui/virtual-wilds-water-foam-close.json",
+        ],
+      },
+      {
+        name: "water-underwater",
+        arguments: [
+          "--warmup",
+          "0",
+          "--frames",
+          "150",
+          "--capture-range",
+          "132:139",
+          "--editor",
+          "--ui-script",
+          "tests/fixtures/ui/virtual-wilds-water-underwater-shore.json",
+        ],
+      },
+      {
+        name: "water-surface-crossing",
+        arguments: [
+          "--warmup",
+          "0",
+          "--frames",
+          "130",
+          "--capture-range",
+          "56:67",
+          "--editor",
+          "--ui-script",
+          "tests/fixtures/ui/virtual-wilds-water-surface-crossing.json",
         ],
       },
       {
