@@ -2383,13 +2383,13 @@ add_scene_custom_component :: proc(
 ) {
 	storage := ensure_custom_component_storage(
 		world,
-		shared.INVALID_COMPONENT_ID,
+		scene_component.component_id,
 		scene_component.name,
 	)
 	ensure_custom_component_entity_capacity(storage, entity_index + 1)
 	world_component := Custom_Component {
 		entity_index = entity_index,
-		component_id = shared.INVALID_COMPONENT_ID,
+		component_id = storage.component_id,
 		name = clone_world_string(world, scene_component.name),
 	}
 	for field in scene_component.number_fields {

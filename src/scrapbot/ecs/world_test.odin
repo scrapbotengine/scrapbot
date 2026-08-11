@@ -950,6 +950,26 @@ test_query_matches_entities_with_all_requested_components :: proc(t: ^testing.T)
 }
 
 @(test)
+test_scene_custom_component_addition_preserves_bound_runtime_identity :: proc(t: ^testing.T) {
+	world: World
+	defer destroy_world(&world)
+	entity_index, created := create_world_entity(&world, "Runtime Copy")
+	testing.expect(t, created)
+	component_id := shared.Component_ID(42)
+	bind_custom_component_storage(&world, "float", component_id)
+	add_scene_custom_component(
+		&world,
+		entity_index,
+		shared.Custom_Component{component_id = component_id, name = "float"},
+	)
+	value, found := custom_component_for_entity_ref(&world, entity_index, component_id, "float")
+	testing.expect(t, found)
+	if found {
+		testing.expect(t, value.component_id == component_id)
+	}
+}
+
+@(test)
 test_query_cursor_uses_the_smallest_custom_component_storage :: proc(t: ^testing.T) {
 	world: World
 	defer destroy_world(&world)

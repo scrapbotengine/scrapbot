@@ -1,5 +1,6 @@
 package render
 
+import diagnostic "../diagnostic"
 import ecs "../ecs"
 import platform "../platform"
 import resources "../resources"
@@ -3036,8 +3037,9 @@ wgpu_geometry_cache :: proc(
 					renderer.max_storage_buffer_binding_size,
 				)
 				if !page_vertices_addressable {
-					return nil,
-						"pinned virtual-geometry vertices exceed the device storage-binding window"
+					return nil, diagnostic.engine_task_failure(
+						"pinned virtual-geometry vertices exceed the device storage-binding window",
+					)
 				}
 				page_index_range, page_indices_addressable := wgpu_arena_allocate_bounded(
 					&renderer.geometry_index_arena.allocator,
@@ -3050,8 +3052,9 @@ wgpu_geometry_cache :: proc(
 						&renderer.geometry_vertex_arena.allocator,
 						page_vertex_range,
 					)
-					return nil,
-						"pinned virtual-geometry indices exceed the device storage-binding window"
+					return nil, diagnostic.engine_task_failure(
+						"pinned virtual-geometry indices exceed the device storage-binding window",
+					)
 				}
 				shadow_indices := wgpu_build_virtual_terminal_frontier_indices(
 					geometry,

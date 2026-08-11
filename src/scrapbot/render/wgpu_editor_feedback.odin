@@ -14,6 +14,7 @@ WGPU_Editor_Feedback_Instance :: struct {
 
 WGPU_Editor_Feedback_Draw :: struct {
 	geometry: shared.Geometry_Handle,
+	geometry_mode: shared.Geometry_Mode,
 	material: shared.Material_Handle,
 	instance: WGPU_Editor_Feedback_Instance,
 }
@@ -237,6 +238,7 @@ wgpu_release_editor_feedback_resources :: proc(renderer: ^WGPU_Renderer) {
 wgpu_append_editor_feedback_draw :: proc(
 	draws: ^[dynamic]WGPU_Editor_Feedback_Draw,
 	geometry: shared.Geometry_Handle,
+	geometry_mode: shared.Geometry_Mode,
 	material: shared.Material_Handle,
 	model, view_projection: Mat4,
 	selection, preview, alpha: f32,
@@ -248,6 +250,7 @@ wgpu_append_editor_feedback_draw :: proc(
 		draws,
 		WGPU_Editor_Feedback_Draw {
 			geometry = geometry,
+			geometry_mode = geometry_mode,
 			material = material,
 			instance = {
 				mvp = mat4_mul(view_projection, model),
@@ -300,6 +303,7 @@ wgpu_append_editor_model_feedback_draws :: proc(
 			wgpu_append_editor_feedback_draw(
 				draws,
 				primitive.geometry,
+				.Inherit,
 				material,
 				mat4_mul(root_model, node_model),
 				view_projection,
@@ -339,6 +343,7 @@ wgpu_collect_editor_feedback_draws :: proc(
 		wgpu_append_editor_feedback_draw(
 			&draws,
 			instance.geometry.handle,
+			instance.geometry.geometry_mode,
 			instance.material.handle,
 			wgpu_build_model(instance.transform),
 			view_projection,
@@ -393,7 +398,7 @@ wgpu_encode_editor_feedback_pass :: proc(
 			renderer,
 			registry,
 			draw.geometry,
-			.Conventional,
+			draw.geometry_mode,
 		); geometry_err != "" {
 			return geometry_err
 		}
@@ -452,19 +457,27 @@ wgpu_encode_editor_feedback_pass :: proc(
 			wgpu.WHOLE_SIZE,
 		)
 		for draw, index in draws {
-			geometry, _ := wgpu_geometry_cache(renderer, registry, draw.geometry, .Conventional)
+			geometry, _ := wgpu_geometry_cache(
+				renderer,
+				registry,
+				draw.geometry,
+				draw.geometry_mode,
+			)
 			material, _ := wgpu_material_cache(renderer, registry, draw.material)
-			resource, alive := resources.get_geometry(registry, draw.geometry)
-			if !alive {
+			if geometry == nil {
+				continue
+			}
+			command := wgpu_geometry_indirect_template(geometry, 0, false)
+			if command.index_count == 0 {
 				continue
 			}
 			wgpu.RenderPassEncoderSetBindGroup(pass, 1, material.bind_group)
 			wgpu.RenderPassEncoderDrawIndexed(
 				pass,
-				u32(resources.geometry_fallback_index_count(resource)),
+				command.index_count,
 				1,
-				u32(geometry.index_range.offset / u64(size_of(u32))),
-				i32(geometry.vertex_range.offset / u64(size_of(resources.Vertex))),
+				command.first_index,
+				command.base_vertex,
 				u32(index),
 			)
 		}

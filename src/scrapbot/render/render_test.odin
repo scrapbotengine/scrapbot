@@ -879,7 +879,11 @@ test_editor_feedback_draws_are_suppressed_while_editor_is_hidden :: proc(t: ^tes
 	defer ecs.destroy_render_list(&render_list)
 	append(
 		&render_list.instances,
-		Render_Instance{slot = 0, geometry = {handle = geometry}, material = {handle = material}},
+		Render_Instance {
+			slot = 0,
+			geometry = {handle = geometry, geometry_mode = .Virtual},
+			material = {handle = material},
+		},
 	)
 	append(&render_list.instance_index_by_slot, 0)
 	render_list.instance_slot_count = 1
@@ -891,6 +895,7 @@ test_editor_feedback_draws_are_suppressed_while_editor_is_hidden :: proc(t: ^tes
 	state.editor_visible = true
 	visible_draws := wgpu_collect_editor_feedback_draws(&renderer, &registry, &render_list, state)
 	testing.expect_value(t, len(visible_draws), 1)
+	testing.expect_value(t, visible_draws[0].geometry_mode, shared.Geometry_Mode.Virtual)
 
 	state.editor_visible = false
 	hidden_draws := wgpu_collect_editor_feedback_draws(&renderer, &registry, &render_list, state)
@@ -4684,6 +4689,46 @@ test_distance_field_gpu_packing_preserves_signed_odd_length_samples :: proc(t: ^
 		testing.expect_value(t, wgpu_unpack_distance_field_sample(packed, index), sample)
 	}
 	testing.expect_value(t, u16(packed[2] >> 16), u16(0))
+}
+
+@(test)
+test_transform_dirty_slot_reconciliation_retires_stale_gpu_membership :: proc(t: ^testing.T) {
+	renderer: WGPU_Renderer
+	resize(&renderer.gpu_instance_records, 1)
+	resize(&renderer.gpu_instance_transform_records, 1)
+	resize(&renderer.gpu_instance_sources, 1)
+	resize(&renderer.gpu_instance_source_transforms, 1)
+	resize(&renderer.gpu_active_slots, 1)
+	defer delete(renderer.gpu_instance_records)
+	defer delete(renderer.gpu_instance_transform_records)
+	defer delete(renderer.gpu_instance_sources)
+	defer delete(renderer.gpu_instance_source_transforms)
+	defer delete(renderer.gpu_active_slots)
+	defer delete(renderer.gpu_dirty_indices)
+	renderer.gpu_active_slots[0] = true
+
+	render_list: Render_List
+	render_list.instance_slot_count = 1
+	resize(&render_list.instance_index_by_slot, 1)
+	defer delete(render_list.instance_index_by_slot)
+	render_list.instance_index_by_slot[0] = -1
+	cache: WGPU_Draw_Batch_Cache
+	registry: resources.Registry
+
+	instance, layout_changed, err := wgpu_reconcile_transform_dirty_slot(
+		&renderer,
+		&cache,
+		&render_list,
+		&registry,
+		0,
+		false,
+	)
+	testing.expect_value(t, err, "")
+	testing.expect(t, instance == nil)
+	testing.expect(t, !layout_changed)
+	testing.expect(t, !renderer.gpu_active_slots[0])
+	testing.expect_value(t, len(renderer.gpu_dirty_indices), 1)
+	testing.expect_value(t, renderer.gpu_dirty_indices[0], 0)
 }
 
 @(test)

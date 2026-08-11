@@ -131,7 +131,9 @@ Profile_Command_Result :: struct {
 Error_Result :: struct {}
 
 main :: proc() {
+	diagnostic.init_crash_reporting()
 	code := run()
+	diagnostic.destroy_crash_reporting()
 	os.exit(code)
 }
 

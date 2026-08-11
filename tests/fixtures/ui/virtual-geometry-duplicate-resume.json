@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "timeout_frames": 240,
+  "actions": [
+    {"action": "scroll", "target": {"name": "__scrapbot_editor_scene_list", "origin": "editor"}, "wheel_y": -3.2},
+    {"action": "wait", "frames": 12},
+    {"action": "click", "target": {"text": "Near Great Cliff", "origin": "editor"}},
+    {"action": "key", "key": "pause_step"},
+    {"action": "key", "key": "duplicate_entity"},
+    {"action": "key", "key": "duplicate_entity"},
+    {"action": "key", "key": "duplicate_entity"},
+    {"action": "key", "key": "run_stop"},
+    {"action": "wait", "frames": 12},
+    {"action": "capture", "target": {"name": "__scrapbot_editor_viewport", "origin": "editor"}}
+  ]
+}

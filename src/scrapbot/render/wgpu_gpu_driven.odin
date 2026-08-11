@@ -1,5 +1,6 @@
 package render
 
+import diagnostic "../diagnostic"
 import resources "../resources"
 import shared "../shared"
 import ui "../ui"
@@ -4208,6 +4209,54 @@ wgpu_sync_dirty_instance_slot :: proc(
 	return
 }
 
+wgpu_reconcile_transform_dirty_slot :: proc(
+	renderer: ^WGPU_Renderer,
+	cache: ^WGPU_Draw_Batch_Cache,
+	render_list: ^Render_List,
+	registry: ^resources.Registry,
+	slot: int,
+	cpu_culling: bool,
+) -> (
+	instance: ^Render_Instance,
+	batch_layout_changed: bool,
+	err: string,
+) {
+	instance = wgpu_render_instance_pointer_by_slot(render_list, slot)
+	gpu_active := renderer.gpu_active_slots[slot]
+	if (instance == nil) == !gpu_active {
+		return
+	}
+
+	batch_layout_changed, err = wgpu_sync_dirty_instance_slot(
+		renderer,
+		cache,
+		render_list,
+		registry,
+		slot,
+		cpu_culling,
+	)
+	if err != "" {
+		return
+	}
+	instance = wgpu_render_instance_pointer_by_slot(render_list, slot)
+	if instance == nil && !renderer.gpu_active_slots[slot] {
+		return
+	}
+	if instance == nil || !renderer.gpu_active_slots[slot] {
+		diagnostic.fatal_engine_error(
+			fmt.tprintf(
+				"transform-dirty GPU slot %d could not be reconciled (render list: %v, GPU: %v, static dirty: %v)",
+				slot,
+				instance != nil,
+				renderer.gpu_active_slots[slot],
+				slice.contains(render_list.dirty_instance_slots[:], slot),
+			),
+		)
+		return
+	}
+	return
+}
+
 wgpu_rebuild_instance_batch_cache :: proc(
 	renderer: ^WGPU_Renderer,
 	cache: ^WGPU_Draw_Batch_Cache,
@@ -4897,32 +4946,20 @@ wgpu_prepare_gpu_draw_batches :: proc(
 			if slot < 0 || slot >= slot_count {
 				continue
 			}
-			instance := wgpu_render_instance_pointer_by_slot(render_list, slot)
-			if instance == nil && !renderer.gpu_active_slots[slot] {
+			instance, layout_changed, sync_err := wgpu_reconcile_transform_dirty_slot(
+				renderer,
+				cache,
+				render_list,
+				registry,
+				slot,
+				cpu_culling,
+			)
+			if sync_err != "" {
+				return nil, 0, sync_err
+			}
+			batch_layout_changed = batch_layout_changed || layout_changed
+			if instance == nil {
 				continue
-			}
-			if instance != nil && !renderer.gpu_active_slots[slot] {
-				layout_changed, sync_err := wgpu_sync_dirty_instance_slot(
-					renderer,
-					cache,
-					render_list,
-					registry,
-					slot,
-					cpu_culling,
-				)
-				if sync_err != "" {
-					return nil, 0, sync_err
-				}
-				batch_layout_changed = batch_layout_changed || layout_changed
-			}
-			if instance == nil || !renderer.gpu_active_slots[slot] {
-				return nil, 0, fmt.tprintf(
-					"transform-dirty GPU slot %d could not be reconciled (render list: %v, GPU: %v, static dirty: %v)",
-					slot,
-					instance != nil,
-					renderer.gpu_active_slots[slot],
-					slice.contains(render_list.dirty_instance_slots[:], slot),
-				)
 			}
 			previous := &renderer.gpu_instance_sources[slot]
 			if !wgpu_instance_batch_key_matches(previous^, instance^) ||
