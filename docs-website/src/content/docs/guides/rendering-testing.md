@@ -467,6 +467,12 @@ Region coordinates are `x,y,width,height` from the top-left of the complete fram
 
 Use `--ui-script` to reproduce interactions against public project UI or transient editor UI by UUID, entity name, or visible text. The driver resolves the target from the retained tree, reveals it through clipped ancestor scroll areas, and feeds ordinary pointer and keyboard state back through the normal reconciler. `--ui-dump` writes the final tree even when the run fails, including hierarchy, text, control kinds, clipping, raw and visible screen rectangles, scroll offset/extent, paint order, hover/active/focus state, embedded-viewport orbit/distance state, and the pending script action. Structured WGPU results additionally expose `ui_viewport_active_targets`, `ui_viewport_target_pixels`, `ui_viewport_target_resizes`, `ui_viewport_redraws`, and `ui_viewport_cache_hits` for target-pool and cache diagnostics.
 
+## Engine failure reports
+
+Scrapbot's development and optimized CLI builds retain native debug symbols. An engine panic, failed internal invariant, or unexpected renderer task failure prints its exact detection site and a best-effort bounded platform stack. Panics and fatal invariants trap; task failures still return through the ordinary CLI error path. The `bin/scrapbot-dev` build also maintains an instrumented Odin call stack, so these engine failures include a reliable source-level backtrace even on platforms where native unwinding cannot cross optimized Odin frames.
+
+Use `mise build-dev`, then reproduce the failure with `bin/scrapbot-dev ...` when a complete engine call chain matters. Expected project, asset, command-line, and unsupported renderer-capability failures remain ordinary text or `--json` diagnostics; they do not emit a misleading crash trace.
+
 The checked-in component-picker scenario exercises live and stopped component addition, removes components through a reusable icon button placed in the panel title, verifies Stop-time disposal, and requests a tight action crop:
 
 ```sh
@@ -481,6 +487,10 @@ bin/scrapbot run examples/ecs-showcase \
 ```
 
 `tests/fixtures/ui/playback-authoring.json` covers the editor transport boundary: it stops initial playback, creates an unsaved authored entity, plays, stops again, and asserts that the entity survives restoration.
+
+`tests/fixtures/ui/entity-actions.json` selects an authored entity during playback, duplicates it through the semantic keyboard command, verifies that the disposable copy is visible, deletes it through the matching command, and captures the icon toolbar. The focused unit contract separately proves that duplication moves editor selection to the copy and that playback actions do not enter authoring history.
+
+`tests/fixtures/ui/virtual-geometry-duplicate-resume.json` selects a streamed Model root, pauses playback, duplicates the selected copy repeatedly, resumes, and retains twelve subsequent frames. It guards the boundary where editor selection feedback must reuse virtual Geometry's pinned proxy instead of creating a conventional cache that consumes its bounded storage-address window.
 
 `tests/fixtures/ui/authoring-history.json` covers the authoring-history boundary: it edits a scene Transform, verifies dirty state across Undo and Redo, uses Revert to reload scene entities without restarting project code, asserts the disk-authored value, and captures the transport controls.
 

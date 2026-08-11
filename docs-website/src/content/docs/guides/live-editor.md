@@ -58,6 +58,9 @@ The transport also has command shortcuts while the editor is open:
 | `Cmd/Ctrl+Alt+B` | Hide or show the right Inspect sidebar. |
 | `Cmd/Ctrl+R` | Play when stopped, resume when paused, and stop when running. |
 | `Cmd/Ctrl+T` | Pause when running; advance one fixed step when paused or stopped. |
+| `Cmd/Ctrl+D` | Duplicate the selected entity and select the copy. The operation is authored while stopped and disposable during playback. |
+| `Delete` / `Backspace` | Delete the selected entity as an authored operation while stopped or a disposable operation during playback. |
+| `Escape` | Deselect the selected entity. A focused field or open popup consumes Escape first. |
 
 Opening the shell pauses active playback without changing the current runtime world. Leaving it always enters running playback, so a paused project resumes and a stopped authoring world captures its in-memory playback baseline before project systems advance. Use the explicit Play, Pause, Stop, and Step controls or their shortcuts while editing.
 
@@ -127,6 +130,7 @@ Use the `VIEW / CAMERA` menu inside the Game surface to inspect the rendered inp
 | `A` / `D` | Move left / right |
 | `Space` | Move up |
 | `Ctrl` | Move down |
+| `Shift` | Move 4× faster while held |
 | Release right mouse button | Return to normal pointer interaction |
 
 The transient fly camera inherits the project camera's field of view, far plane, and render policy,
@@ -179,7 +183,7 @@ The reusable gesture paints an insertion line or tints the reparent target. Pare
 
 While stopped, scene entities may use only scene parents, and one completed drag is one undoable, saveable structural transaction. Save emits TOML blocks in authored order without moving live ECS storage handles. During playback, hierarchy and order edits are disposable. An authored parent with children must currently be emptied before deletion.
 
-`+` creates a scene entity with a Transform, `DUP` duplicates the selected scene or runtime entity into a new authored UUID, `DEL` removes the selected authored entity, and `KEEP` explicitly promotes a selected runtime entity into scene data. The hierarchy shows scene-authored entities by default, so high-churn runtime spawns do not create thousands of editor rows. A runtime entity selected through the viewport or another tool is surfaced in muted gray and remains fully inspectable. Transient editor-origin entities—including the shell itself and scene camera—stay hidden from the browser and inspector.
+The compact icon toolbar creates a scene entity with a Transform, duplicates the selected scene or runtime entity, removes the selected entity, or explicitly pins a selected runtime entity into scene data. Create and pin are available while stopped. Duplicate and Delete create undoable authored changes while stopped; while Running or Paused, they instead mutate disposable runtime state and Stop removes or restores those changes with the playback baseline. `Cmd/Ctrl+D` uses the same duplicate action and selects the copy; unmodified Delete or Backspace uses the same delete action. Entity shortcuts are ignored while a text input owns focus. The hierarchy shows scene-authored entities by default, so high-churn runtime spawns do not create thousands of editor rows. A runtime entity selected through the viewport or another tool is surfaced in muted gray and remains fully inspectable. Transient editor-origin entities—including the shell itself and scene camera—stay hidden from the browser and inspector.
 
 The shell is built from transient ECS entities using the same public components as project UI: responsive layouts, stacks, draggable separators, dock spaces and items, scroll areas, lists, progress bars, panels, tables, text, buttons, inputs, and checkboxes. Editor origin keeps those tool entities out of project data while making the editor exercise the ordinary UI system.
 
@@ -199,7 +203,7 @@ Directional targets take priority over nested tab stacks at an enabled edge; cen
 
 Sidebar and inspector sizing uses public per-axis fill, minimum-size, ordering, and fit-to-content policies. See [ECS UI](/guides/ecs-ui/) for the project-facing component model.
 
-Click an entry to select it, or click rendered geometry in the viewport. Viewport picking tests the rendered triangles and selects the nearest hit; clicking empty viewport space clears the selection. The browser scrolls to reveal a viewport-picked entity and automatically clears selection if that entity despawns.
+Click an entry to select it, or click rendered geometry in the viewport. Viewport picking rejects meshes and streamed-geometry regions outside the pointer ray, then tests the surviving rendered triangles and selects the nearest hit. Clicking empty viewport space clears the selection. The browser scrolls to reveal a viewport-picked entity and automatically clears selection if that entity despawns.
 
 The inspector reports the selected entity's editable name, identity, provenance, attached components, fields, and current values.
 
@@ -284,13 +288,17 @@ Scene and Resources use the public virtualized-list contract, so scrolling visit
 
 ## Transform an entity
 
-Selecting an entity with a Transform adds a screen-legible transform gizmo. Choose a mode with the standard shortcuts:
+Selecting an entity with a Transform adds a screen-legible transform gizmo. Pointer drags remain available on its visible handles. Blender-style keyboard chords start a constrained modal transform:
 
-| Shortcut | Mode | Handles |
+| Chord | Result |
 | --- | --- | --- |
-| `W` | Move | Axis rails, plane walls, and a free-move center |
-| `E` | Rotate | Axis rings |
-| `R` | Scale | Axis rails, plane walls, and a uniform-scale center |
+| `G`, then `X`, `Y`, or `Z` | Translate on that axis |
+| `G`, then `Shift+X`, `Shift+Y`, or `Shift+Z` | Translate on the plane excluding that axis |
+| `R`, then `X`, `Y`, or `Z` (with optional Shift) | Rotate in the complementary plane, around that axis |
+| `S`, then `X`, `Y`, or `Z` | Scale on that axis |
+| `S`, then `Shift+X`, `Shift+Y`, or `Shift+Z` | Scale on the plane excluding that axis |
+
+Move the pointer after completing the chord. Click or press Enter to commit; Escape restores the transform from before the chord. An uppercase axis means the Shift-modified excluded-plane form, not a different coordinate system. Chords use the current World or Local orientation.
 
 The axis colors remain consistent in every mode:
 
@@ -298,7 +306,7 @@ The axis colors remain consistent in every mode:
 - Green moves along Y.
 - Blue moves along Z.
 
-Hover an axis to affect one component, or hover an XY, XZ, or YZ wall to affect that pair. In move mode, the center handle translates freely in the camera plane. In scale mode, it changes all three scale components uniformly. Gizmo ownership and mode are represented by a transient editor component on the selected entity; the component is removed when selection changes or the editor closes. W/E/R mode shortcuts are ignored while the right mouse button is capturing fly-camera input.
+Hover an axis to affect one component, or hover an XY, XZ, or YZ wall to affect that pair. In move mode, the center handle translates freely in the camera plane. In scale mode, it changes all three scale components uniformly. Gizmo ownership and mode are represented by a transient editor component on the selected entity; the component is removed when selection changes or the editor closes. Transform chords are ignored while the right mouse button is capturing fly-camera input or a text field owns keyboard focus.
 
 Use the `WORLD` and `LOCAL` controls in the viewport's upper-left corner to choose the gizmo orientation. World keeps the rails, walls, and rings aligned to the scene axes. Local rotates them with the selected entity's resolved world orientation: movement follows its rotated axes, rotation composes around those axes, and scale continues to edit the corresponding local X, Y, or Z scale. The selected space is stored on the transient gizmo component. A drag freezes its basis when it begins, so the handle stays stable even while the transform changes. For a parented entity, the gizmo edits its world pose and derives the new local Transform automatically.
 
