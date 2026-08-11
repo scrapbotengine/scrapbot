@@ -65,7 +65,7 @@ During development, use `mise build` to compile the optimized CLI and `mise scra
 - Toggleable ECS-built shell (`Cmd/Ctrl+E`, or `--editor` to start open) whose Browse, Game, and Inspect tabs each host a public panel stack around an aspect-correct live viewport, resizable tools, status bar, and scroll panes.
 - Entity browser, expandable UUID-backed hierarchy with icon authoring actions, drag-to-reparent, `Cmd/Ctrl+D` duplication, Delete/Backspace removal, and runtime type-inspected component panels — no per-component UI code, everything derives from the component registry.
 - Play/Pause/Step (`Cmd/Ctrl+R`, `Cmd/Ctrl+T`) with a non-destructive in-memory authoring baseline, stopped-mode Undo/Redo, explicit project-wide Save, and scene Revert.
-- RMB-captured WASD fly camera with Shift boost, MMB point-of-interest orbit, viewport wheel dolly, selected-entity framing, a depth-tested infinite world grid, pickable billboard icons for cameras and lights, precise entity picking, consumable UI interaction propagation, and snapped translation/rotation/scale gizmos with pointer handles plus Blender-style free modal transforms and later axis constraints.
+- RMB-captured WASD fly camera with Shift boost, MMB point-of-interest orbit, viewport wheel dolly, selected-entity framing, a depth-tested infinite world grid, decluttered pickable billboard icons for cameras and lights, direct point-range and directional-light handles, precise entity picking, consumable UI interaction propagation, and snapped translation/rotation/scale gizmos with pointer handles plus Blender-style free modal transforms and later axis constraints.
 - System profiler publishing engine, project-Odin, Luau, and CPU render-phase timings from a rolling window.
 - Bounded headless render profiler with exact frame-correlated GPU pass timestamps, active-CPU timing, per-frame upload/rebuild counters, resolution metadata, and optional lossless replay captures.
 - Token-authenticated loopback live debug API with JSON/CBOR camera, viewport, renderer, and virtual-geometry snapshots plus bounded frame-matched color, raw depth, depth-preview, and meshlet-visibility evidence. Windowed editor runs enable it automatically.
@@ -306,6 +306,7 @@ trends; they are not portable performance thresholds.
   - [x] RMB-captured WASD/Space/Ctrl scene-camera navigation
   - [x] Pickable editor-only wireframe bodies and projection frusta for project camera entities
   - [x] Pickable editor-only billboard icons for camera and light entities
+  - [x] Decluttered light icons and selected-light range/direction manipulation
   - [x] World/local translation, rotation, and scale gizmo orientation
   - [x] Translation, rotation, and scale gizmo modes
   - [x] Two-axis plane handles and center free/uniform transform handles

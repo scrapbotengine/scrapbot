@@ -163,9 +163,21 @@ Editor_Scene_Icon_Kind :: enum {
 Editor_Scene_Icon :: struct {
 	entity: shared.Entity,
 	kind: Editor_Scene_Icon_Kind,
-	center: shared.Vec2,
+	anchor, center: shared.Vec2,
 	clip: Rect,
 	selected: bool,
+}
+
+EDITOR_LIGHT_GIZMO_MAX_SEGMENTS :: 192
+
+Editor_Light_Gizmo_Kind :: enum {
+	None,
+	Point_Range,
+	Directional_Direction,
+}
+
+Editor_Light_Gizmo_Segment :: struct {
+	start, end: shared.Vec2,
 }
 
 Font_Atlas :: struct {
@@ -556,6 +568,21 @@ State :: struct {
 	editor_camera_mesh_segment_count: int,
 	editor_scene_icons: [EDITOR_SCENE_ICON_MAX_COUNT]Editor_Scene_Icon,
 	editor_scene_icon_count: int,
+	editor_light_gizmo_segments: [EDITOR_LIGHT_GIZMO_MAX_SEGMENTS]Editor_Light_Gizmo_Segment,
+	editor_light_gizmo_segment_count: int,
+	editor_light_gizmo_kind: Editor_Light_Gizmo_Kind,
+	editor_light_gizmo_entity: shared.Entity,
+	editor_light_gizmo_origin, editor_light_gizmo_handle: shared.Vec2,
+	editor_light_gizmo_clip: Rect,
+	editor_light_gizmo_visible: bool,
+	editor_light_gizmo_hovered: bool,
+	editor_light_gizmo_active: bool,
+	editor_light_gizmo_captures_pointer: bool,
+	editor_light_gizmo_drag_range: f32,
+	editor_light_gizmo_drag_direction: shared.Vec3,
+	editor_light_gizmo_drag_origin: shared.Vec3,
+	editor_light_gizmo_drag_world_size: f32,
+	editor_light_gizmo_drag_pixels_per_world: f32,
 	editor_gizmo_visible: bool,
 	editor_gizmo_mode: shared.Editor_Gizmo_Mode,
 	editor_gizmo_space: shared.Editor_Gizmo_Space,
@@ -805,6 +832,7 @@ editor_toggle :: proc(state: ^State) {
 		editor_pause(state)
 	} else {
 		editor_play(state)
+		state.editor_light_gizmo_visible = false
 	}
 	state.editor_snapshot_valid = false
 }
@@ -945,6 +973,8 @@ editor_world_restored :: proc(
 	state.editor_snapshot_valid = false
 	state.editor_gizmo_active_handle = .None
 	state.editor_gizmo_captures_pointer = false
+	state.editor_light_gizmo_active = false
+	state.editor_light_gizmo_captures_pointer = false
 	state.editor_transport_visual_valid = false
 	state.editor_sidebar_visual_valid = false
 	clear_input_focus(state)
@@ -1454,7 +1484,9 @@ reconcile :: proc(
 		height,
 		surface_width,
 		surface_height,
-	); if state.editor_gizmo_captures_pointer { project_pointer = {} }
+	); if state.editor_gizmo_captures_pointer || state.editor_light_gizmo_captures_pointer {
+		project_pointer = {}
+	}
 	editor_pointer := pointer
 	if editor_pointer.available { editor_pointer.position.x /= editor_scale; editor_pointer.position.y /= editor_scale }
 	layout_project :=
@@ -2206,7 +2238,10 @@ editor_clear_selection :: proc(state: ^State) {if state == nil { return }
 	for &node in state.nodes[:state.node_count] { if node.editor_role == .Inspector_Scroll { node.scroll_offset = 0; node.scroll_target = 0 } }
 	state.editor_gizmo_active_handle = .None
 	state.editor_gizmo_captures_pointer = false
-	state.editor_gizmo_visible = false}
+	state.editor_gizmo_visible = false
+	state.editor_light_gizmo_active = false
+	state.editor_light_gizmo_captures_pointer = false
+	state.editor_light_gizmo_visible = false}
 
 editor_set_gizmo_mode :: proc(state: ^State, mode: shared.Editor_Gizmo_Mode) {
 	if state == nil || state.editor_gizmo_mode == mode { return }
@@ -2306,9 +2341,12 @@ editor_select_entity :: proc(
 	if !state.editor_has_selection ||
 	   state.editor_selected_entity !=
 		   selected_entity { for &node in state.nodes[:state.node_count] { if node.editor_role == .Inspector_Scroll { node.scroll_offset = 0; node.scroll_target = 0 } } }
-	if !state.editor_has_selection ||
-	   state.editor_selected_entity !=
-		   selected_entity { state.editor_gizmo_active_handle = .None; state.editor_gizmo_captures_pointer = false }
+	if !state.editor_has_selection || state.editor_selected_entity != selected_entity {
+		state.editor_gizmo_active_handle = .None
+		state.editor_gizmo_captures_pointer = false
+		state.editor_light_gizmo_active = false
+		state.editor_light_gizmo_captures_pointer = false
+	}
 	state.editor_selected_entity = selected_entity
 	state.editor_has_selection = true
 	state.editor_has_resource_selection = false
@@ -8523,6 +8561,9 @@ rebuild_editor_world_overlay :: proc(state: ^State) -> string {
 	if err := append_editor_scene_icons(state); err != "" {
 		return err
 	}
+	if err := append_editor_light_gizmo(state); err != "" {
+		return err
+	}
 	if err := append_editor_gizmo(state); err != "" {
 		return err
 	}
@@ -8654,6 +8695,25 @@ append_editor_scene_icons :: proc(state: ^State) -> string {
 			color = {1, 0.68, 0.22, 1}
 		}
 		center := icon.center
+		anchor_delta := shared.Vec2{center.x - icon.anchor.x, center.y - icon.anchor.y}
+		if anchor_delta.x * anchor_delta.x + anchor_delta.y * anchor_delta.y > scale * scale {
+			leader_color := color
+			leader_color.w = 0.5
+			if err := append_paint(
+				state,
+				{
+					kind = .Line,
+					color = leader_color,
+					line_start = icon.anchor,
+					line_end = center,
+					line_thickness = scale,
+					has_clip = true,
+					clip = icon.clip,
+				},
+			); err != "" {
+				return err
+			}
+		}
 		size := f32(32) * scale
 		line_width := f32(1.75) * scale
 		if icon.selected {
@@ -8711,6 +8771,86 @@ append_editor_scene_icons :: proc(state: ^State) -> string {
 		}
 	}
 	return ""
+}
+
+append_editor_light_gizmo :: proc(state: ^State) -> string {
+	if state == nil || !state.editor_light_gizmo_visible {
+		return ""
+	}
+	scale := max(state.editor_pixel_density, 1)
+	color := shared.Vec4{1, 0.68, 0.22, 0.72}
+	line_width := f32(1.4) * scale
+	count := min(state.editor_light_gizmo_segment_count, len(state.editor_light_gizmo_segments))
+	for segment in state.editor_light_gizmo_segments[:count] {
+		if err := append_paint(
+			state,
+			{
+				kind = .Line,
+				color = color,
+				line_start = segment.start,
+				line_end = segment.end,
+				line_thickness = line_width,
+				has_clip = true,
+				clip = state.editor_light_gizmo_clip,
+			},
+		); err != "" {
+			return err
+		}
+	}
+	if state.editor_light_gizmo_kind == .Directional_Direction {
+		delta := shared.Vec2 {
+			state.editor_light_gizmo_handle.x - state.editor_light_gizmo_origin.x,
+			state.editor_light_gizmo_handle.y - state.editor_light_gizmo_origin.y,
+		}
+		length := math.sqrt(delta.x * delta.x + delta.y * delta.y)
+		if length > 0.001 {
+			direction := shared.Vec2{delta.x / length, delta.y / length}
+			perpendicular := shared.Vec2{-direction.y, direction.x}
+			back := shared.Vec2 {
+				state.editor_light_gizmo_handle.x - direction.x * 12 * scale,
+				state.editor_light_gizmo_handle.y - direction.y * 12 * scale,
+			}
+			signs := [2]f32{-1, 1}
+			for sign in signs {
+				if err := append_paint(
+					state,
+					{
+						kind = .Line,
+						color = color,
+						line_start = state.editor_light_gizmo_handle,
+						line_end = {
+							back.x + perpendicular.x * sign * 6 * scale,
+							back.y + perpendicular.y * sign * 6 * scale,
+						},
+						line_thickness = line_width,
+						has_clip = true,
+						clip = state.editor_light_gizmo_clip,
+					},
+				); err != "" {
+					return err
+				}
+			}
+		}
+	}
+	handle_color := shared.Vec4{1, 0.68, 0.22, 0.95}
+	handle_radius := f32(5) * scale
+	if state.editor_light_gizmo_hovered || state.editor_light_gizmo_active {
+		handle_color = {1, 0.86, 0.48, 1}
+		handle_radius = 7 * scale
+	}
+	return append_paint(
+		state,
+		{
+			kind = .Ring,
+			color = handle_color,
+			ring_center = state.editor_light_gizmo_handle,
+			ring_axis_x = {handle_radius, 0},
+			ring_axis_y = {0, handle_radius},
+			ring_thickness = 2 * scale,
+			has_clip = true,
+			clip = state.editor_light_gizmo_clip,
+		},
+	)
 }
 
 append_editor_icon_line :: proc(

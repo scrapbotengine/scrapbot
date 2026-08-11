@@ -137,3 +137,37 @@ test_editor_scene_icon_projection_keeps_constant_screen_size_data :: proc(t: ^te
 		testing.expect(t, found)
 	}
 }
+
+@(test)
+test_editor_scene_icon_decluttering_offsets_overlaps_but_keeps_selection_anchored :: proc(
+	t: ^testing.T,
+) {
+	state := new(ui.State)
+	defer free(state)
+	state.editor_pixel_density = 1
+	state.editor_scene_icon_count = 3
+	clip := ui.Rect{0, 0, 800, 600}
+	anchor := shared.Vec2{400, 300}
+	for index in 0 ..< state.editor_scene_icon_count {
+		state.editor_scene_icons[index] = {
+			entity = {index = u32(index), generation = 1},
+			anchor = anchor,
+			center = anchor,
+			clip = clip,
+			selected = index == 1,
+		}
+	}
+
+	editor_scene_icons_declutter(state)
+
+	testing.expect_value(t, state.editor_scene_icons[1].center, anchor)
+	for icon, index in state.editor_scene_icons[:state.editor_scene_icon_count] {
+		if index != 1 {
+			testing.expect(t, icon.center != anchor)
+		}
+		for other in state.editor_scene_icons[:index] {
+			delta := shared.Vec2{icon.center.x - other.center.x, icon.center.y - other.center.y}
+			testing.expect(t, delta.x * delta.x + delta.y * delta.y >= 34 * 34)
+		}
+	}
+}

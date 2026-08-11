@@ -155,7 +155,11 @@ Transform instead.
 
 Closing and reopening the editor preserves the scene-camera viewpoint for the current run.
 
-While the editor is open, project and runtime cameras appear as blue, world-scaled wireframe bodies. A body naturally becomes smaller on screen as the scene viewpoint moves away. Cameras also receive a blue, fixed-size billboard icon at their world origin. Directional lights receive a gold sun icon and point lights receive an orange bulb icon. A directional light without a Transform anchors its position-independent icon at the world origin. The editor fly camera is excluded, and selecting any icon changes it to the shared amber selection color.
+While the editor is open, project and runtime cameras appear as blue, world-scaled wireframe bodies. A body naturally becomes smaller on screen as the scene viewpoint moves away. Cameras also receive a blue, fixed-size billboard icon at their world origin. The editor fly camera is excluded.
+
+Directional lights receive a gold sun icon and point lights receive an orange bulb icon. A directional light without a Transform anchors its position-independent icon at the world origin. Selecting any icon changes it to the shared amber selection color. Overlapping icons spread into separate pick targets with leader lines; the selected icon stays on its exact projected origin.
+
+Selecting a point light displays three range rings. Drag the amber radial handle to edit its positive `range`. Selecting a directional light displays an arrow; drag its endpoint over the spherical direction map to edit the normalized `direction`. Both handles capture the initiating click so it cannot also select another entity. Release commits one Undo/Redo gesture while stopped, and Escape restores the value from before the drag. Running and paused edits remain disposable playback changes like other inspector and gizmo edits.
 
 Selecting a camera highlights it in amber and reveals a projection-frustum preview derived from:
 

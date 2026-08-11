@@ -9316,16 +9316,19 @@ test_editor_scene_icons_paint_constant_size_billboards :: proc(t: ^testing.T) {
 	state.editor_scene_icon_count = 3
 	state.editor_scene_icons[0] = {
 		kind = .Camera,
+		anchor = {100, 120},
 		center = {100, 120},
 		clip = {20, 30, 800, 600},
 	}
 	state.editor_scene_icons[1] = {
 		kind = .Directional_Light,
+		anchor = {240, 160},
 		center = {240, 160},
 		clip = {20, 30, 800, 600},
 	}
 	state.editor_scene_icons[2] = {
 		kind = .Point_Light,
+		anchor = {400, 280},
 		center = {400, 280},
 		clip = {20, 30, 800, 600},
 		selected = true,

@@ -1342,16 +1342,31 @@ run_frame_system_unmeasured :: proc(
 		   camera_input.look_active {
 			gizmo_keyboard = {}
 		}
-		editor_transform_gizmo_system(
+		light_gizmo_pointer := gizmo_pointer
+		if config.ui_state.editor_gizmo_captures_pointer {
+			light_gizmo_pointer = {}
+		}
+		editor_light_gizmo_system(
 			config.ui_state,
 			world,
-			gizmo_pointer,
+			light_gizmo_pointer,
 			viewport,
 			camera,
 			has_camera,
 			gizmo_keyboard,
 		)
-		editor_gizmo_apply_pointer_wrap(config.ui_state, gizmo_pointer_wrap)
+		if !config.ui_state.editor_light_gizmo_captures_pointer {
+			editor_transform_gizmo_system(
+				config.ui_state,
+				world,
+				gizmo_pointer,
+				viewport,
+				camera,
+				has_camera,
+				gizmo_keyboard,
+			)
+			editor_gizmo_apply_pointer_wrap(config.ui_state, gizmo_pointer_wrap)
+		}
 		if err := ui.rebuild_editor_world_overlay(config.ui_state); err != "" {
 			return err
 		}
