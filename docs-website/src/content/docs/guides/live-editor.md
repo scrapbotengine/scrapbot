@@ -298,7 +298,7 @@ Selecting an entity with a Transform adds a screen-legible transform gizmo. Poin
 | `S`, then `X`, `Y`, or `Z` | Scale on that axis |
 | `S`, then `Shift+X`, `Shift+Y`, or `Shift+Z` | Scale on the plane excluding that axis |
 
-Move the pointer after completing the chord. Click or press Enter to commit; Escape restores the transform from before the chord. An uppercase axis means the Shift-modified excluded-plane form, not a different coordinate system. Chords use the current World or Local orientation.
+Move the pointer after completing the chord. The cursor remains visible, stays confined to the editor window, and wraps to the opposite edge when it reaches a boundary, so a long transform can continue without running out of pointer travel. Click or press Enter to commit; Escape restores the transform from before the chord. An uppercase axis means the Shift-modified excluded-plane form, not a different coordinate system. Chords use the current World or Local orientation.
 
 The axis colors remain consistent in every mode:
 

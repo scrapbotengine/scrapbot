@@ -1,6 +1,6 @@
 # Major Data Flows
 
-**Last verified:** 2026-08-10
+**Last verified:** 2026-08-11
 
 ## Project load and world bootstrap
 
@@ -454,7 +454,7 @@ The interaction pass dispatches pointer activation from the topmost hit entity t
 
 The retained interaction pass derives a backend-neutral cursor intent from the topmost reusable control and any active workspace gesture after applying project-canvas pointer inversion. The windowed renderer maps pointer, text-edit, directional-resize, move, and not-allowed intents to cached SDL system cursors; headless runs retain the same UI interaction behavior without initializing the platform cursor boundary.
 
-SDL maps command-modified editor keys and unmodified transform-chord edges into backend-neutral one-frame commands before UI reconciliation. The gizmo consumes modal confirmation or cancellation before general editor shortcuts, so Escape cancels one transform without also deselecting its entity. Opening the shell pauses active playback; closing resumes it. Sidebar commands update retained left/right visibility state and hide only the corresponding public dock-space layout, allowing the ordinary fill HStack to reallocate the center workspace. Transport changes also update the retained play-mode badge, viewport frame, and status copy without a stable-frame rebuild.
+SDL maps command-modified editor keys and unmodified transform-chord edges into backend-neutral one-frame commands before UI reconciliation. While a modal transform is active, the platform boundary confines and edge-wraps the visible pointer. Render orchestration applies each warp displacement to the gizmo's retained start and previous-pointer anchors after the current motion is evaluated, keeping translation, rotation, and scale continuous while ordinary UI retains physical in-window coordinates. The grab ends with commit, cancellation, selection loss, or editor closure. Modal ownership bypasses editor-chrome masking, and a commit click is consumed before UI reconciliation. The gizmo also consumes Escape cancellation before general editor shortcuts, so it cancels one transform without deselecting its entity. Opening the shell pauses active playback; closing resumes it. Sidebar commands update retained left/right visibility state and hide only the corresponding public dock-space layout, allowing the ordinary fill HStack to reallocate the center workspace. Transport changes also update the retained play-mode badge, viewport frame, and status copy without a stable-frame rebuild.
 
 ## Authoring persistence
 

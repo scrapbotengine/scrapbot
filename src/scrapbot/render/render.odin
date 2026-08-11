@@ -1170,6 +1170,13 @@ run_frame_system_unmeasured :: proc(
 		   err != "" { return err }
 	}
 	if config.ui_state != nil {
+		defer {
+			platform.set_runtime_editor_transform_pointer_active(
+				config.ui_driver == nil &&
+				config.ui_state.editor_visible &&
+				config.ui_state.editor_gizmo_keyboard_active,
+			)
+		}
 		config.last_drawable_width = drawable_width
 		config.last_drawable_height = drawable_height
 		config.ui_state.editor_pixel_density = platform.runtime_window_pixel_density()
@@ -1199,6 +1206,10 @@ run_frame_system_unmeasured :: proc(
 		)
 		record_system_profile_phase(config, .Editor_Camera, camera_system_start)
 		platform_pointer := platform.runtime_pointer_state_in_pixels()
+		gizmo_pointer_wrap: shared.Vec2
+		if config.ui_driver == nil && config.ui_state.editor_gizmo_keyboard_active {
+			gizmo_pointer_wrap = platform.runtime_editor_transform_pointer_wrap(platform_pointer)
+		}
 		pointer := ui.Pointer_Input {
 			position = {platform_pointer.x, platform_pointer.y},
 			wheel_y = platform_pointer.wheel_y,
@@ -1265,7 +1276,8 @@ run_frame_system_unmeasured :: proc(
 		gizmo_system_start := time.tick_now()
 		config.ui_state.editor_keyboard_escape_consumed = false
 		gizmo_pointer := pointer
-		if ui.editor_pointer_consumed_by_chrome(config.ui_state, pointer) {
+		if !config.ui_state.editor_gizmo_keyboard_active &&
+		   ui.editor_pointer_consumed_by_chrome(config.ui_state, pointer) {
 			gizmo_pointer = {}
 		}
 		editor_camera_mesh_system(
@@ -1291,6 +1303,7 @@ run_frame_system_unmeasured :: proc(
 			has_camera,
 			gizmo_keyboard,
 		)
+		editor_gizmo_apply_pointer_wrap(config.ui_state, gizmo_pointer_wrap)
 		if err := ui.rebuild_editor_world_overlay(config.ui_state); err != "" {
 			return err
 		}

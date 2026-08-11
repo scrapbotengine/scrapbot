@@ -23,6 +23,7 @@ runtime_input_generation: u64
 runtime_input_sampled_generation: u64
 runtime_scene_camera_look_active: bool
 runtime_scene_camera_capture_warmup: int
+runtime_editor_transform_pointer_active: bool
 runtime_pointer_cursor: Runtime_Pointer_Cursor
 runtime_pointer_hand_cursor: ^sdl.Cursor
 runtime_text_edit_cursor: ^sdl.Cursor
@@ -246,6 +247,9 @@ close_runtime_window :: proc() {
 	if runtime_window != nil && runtime_scene_camera_look_active {
 		_ = sdl.SetWindowRelativeMouseMode(runtime_window, false)
 	}
+	if runtime_window != nil && runtime_editor_transform_pointer_active {
+		_ = sdl.SetWindowMouseGrab(runtime_window, false)
+	}
 	if runtime_window != nil {
 		if runtime_pointer_cursor != .Default {
 			_ = sdl.SetCursor(sdl.GetDefaultCursor())
@@ -286,6 +290,7 @@ close_runtime_window :: proc() {
 	runtime_editor_gizmo_mode_requested = false
 	runtime_scene_camera_look_active = false
 	runtime_scene_camera_capture_warmup = 0
+	runtime_editor_transform_pointer_active = false
 	runtime_pointer_cursor = .Default
 	runtime_wheel_x = 0
 	runtime_wheel_y = 0
@@ -402,6 +407,80 @@ runtime_pointer_state_in_pixels :: proc() -> Pointer_State {
 	pointer.x *= f32(pixel_width) / f32(window_width)
 	pointer.y *= f32(pixel_height) / f32(window_height)
 	return pointer
+}
+
+RUNTIME_EDITOR_POINTER_WRAP_MARGIN :: f32(8)
+
+runtime_editor_pointer_wrap_target :: proc(
+	position: shared.Vec2,
+	width, height, margin: f32,
+) -> (
+	shared.Vec2,
+	bool,
+) {
+	if width <= margin * 2 + 1 || height <= margin * 2 + 1 {
+		return position, false
+	}
+	target := position
+	wrapped := false
+	if position.x <= margin {
+		target.x = width - margin - 1
+		wrapped = true
+	} else if position.x >= width - margin {
+		target.x = margin + 1
+		wrapped = true
+	}
+	if position.y <= margin {
+		target.y = height - margin - 1
+		wrapped = true
+	} else if position.y >= height - margin {
+		target.y = margin + 1
+		wrapped = true
+	}
+	return target, wrapped
+}
+
+set_runtime_editor_transform_pointer_active :: proc(active: bool) {
+	should_activate :=
+		active &&
+		runtime_window != nil &&
+		!runtime_window_hidden &&
+		!runtime_scene_camera_look_active
+	if should_activate == runtime_editor_transform_pointer_active { return }
+	if runtime_window != nil {
+		_ = sdl.SetWindowMouseGrab(runtime_window, should_activate)
+	}
+	runtime_editor_transform_pointer_active = should_activate
+}
+
+runtime_editor_transform_pointer_wrap :: proc(pointer: Pointer_State) -> shared.Vec2 {
+	if !runtime_editor_transform_pointer_active ||
+	   !pointer.available ||
+	   runtime_window == nil { return {} }
+
+	window_width, window_height: c.int
+	pixel_width, pixel_height: c.int
+	if !sdl.GetWindowSize(runtime_window, &window_width, &window_height) ||
+	   !sdl.GetWindowSizeInPixels(runtime_window, &pixel_width, &pixel_height) ||
+	   window_width <= 0 ||
+	   window_height <= 0 ||
+	   pixel_width <= 0 ||
+	   pixel_height <= 0 { return {} }
+
+	target, wrapped := runtime_editor_pointer_wrap_target(
+		{pointer.x, pointer.y},
+		f32(pixel_width),
+		f32(pixel_height),
+		RUNTIME_EDITOR_POINTER_WRAP_MARGIN,
+	)
+	if !wrapped { return {} }
+
+	sdl.WarpMouseInWindow(
+		runtime_window,
+		target.x * f32(window_width) / f32(pixel_width),
+		target.y * f32(window_height) / f32(pixel_height),
+	)
+	return {target.x - pointer.x, target.y - pointer.y}
 }
 
 input_key_from_scancode :: proc "contextless" (

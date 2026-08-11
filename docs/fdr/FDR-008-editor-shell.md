@@ -1,7 +1,7 @@
 # FDR-008: Editor shell
 
 **Status:** Active
-**Last reviewed:** 2026-08-10
+**Last reviewed:** 2026-08-11
 
 ## Overview
 
@@ -81,7 +81,7 @@ The editor shell turns a running Scrapbot project into its own editing workspace
 - The Scene and Resource browsers and component inspector have independent pixel offsets and targets, frame-time smoothing without row or field snapping, clipping, and proportional scrollbars. Browser scrolling lays out only visible 32-pixel rows plus bounded overscan; filter/content/hierarchy revisions rebuild compact row order, while stable frames and scroll-only frames do not scan all rows. Selecting a different entity resets the inspector to its beginning.
 - Clicking rendered geometry in the live viewport selects the nearest intersected entity using the active camera and current viewport dimensions.
 - Viewport selection reveals the entity in the scene browser; clicking empty viewport space clears selection.
-- A selected entity with a Transform displays a transform gizmo in the viewport. Pointer handles retain direct translation, rotation, and scale gestures. `G`, `R`, or `S` followed by an axis starts a modal translation, rotation, or scale gesture; Shift plus an axis selects the complementary plane for translation and scale. Click or Enter commits, while Escape restores the captured Transform. A commit click is consumed through the editor interaction edge so it cannot also trigger viewport selection. An ECS-built viewport toolbar chooses World or Local orientation and appears only while a transform-bearing entity is selected.
+- A selected entity with a Transform displays a transform gizmo in the viewport. Pointer handles retain direct translation, rotation, and scale gestures. `G`, `R`, or `S` followed by an axis starts a modal translation, rotation, or scale gesture; Shift plus an axis selects the complementary plane for translation and scale. During the modal gesture, the visible pointer is confined to the window and wraps across its edges while the gesture anchors absorb each warp to keep the transform continuous. Click or Enter commits, while Escape restores the captured Transform. A commit click is consumed through the editor interaction edge so it cannot also trigger viewport selection or editor chrome. An ECS-built viewport toolbar chooses World or Local orientation and appears only while a transform-bearing entity is selected.
 - Move and scale modes include XY, XZ, and YZ plane walls. Their center handle provides camera-plane free translation in move mode and uniform XYZ scaling in scale mode.
 - The editor expresses gizmo ownership as a transient `EditorTransformGizmo` component on the selected entity; its mode and World/Local space are ECS-visible, and changing selection or closing the editor removes it.
 - World space keeps canonical scene axes. Local space derives the visible rails, walls, and rings from the selected entity's resolved world rotation; translation follows those rotated axes, rotation composes around them, and scale edits the matching local scale components. A gesture freezes its world and screen bases at pointer-down so its active handles remain stable throughout the drag. For parented entities, gizmos manipulate the world pose and convert the result back into local Transform values.

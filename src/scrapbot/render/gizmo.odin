@@ -8,6 +8,14 @@ import "core:math"
 EDITOR_GIZMO_SCREEN_SIZE :: f32(92)
 EDITOR_GIZMO_HIT_RADIUS :: f32(10)
 
+editor_gizmo_apply_pointer_wrap :: proc(state: ^ui.State, displacement: shared.Vec2) {
+	if state == nil || !state.editor_gizmo_keyboard_active { return }
+	state.editor_gizmo_drag_pointer.x += displacement.x
+	state.editor_gizmo_drag_pointer.y += displacement.y
+	state.editor_gizmo_drag_last_pointer.x += displacement.x
+	state.editor_gizmo_drag_last_pointer.y += displacement.y
+}
+
 editor_transform_gizmo_system :: proc(
 	state: ^ui.State,
 	world: ^shared.World,

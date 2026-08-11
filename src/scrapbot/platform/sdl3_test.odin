@@ -43,6 +43,21 @@ test_runtime_window_size_preserves_requested_aspect_and_fits_usable_display :: p
 }
 
 @(test)
+test_editor_transform_pointer_wraps_at_window_edges :: proc(t: ^testing.T) {
+	target, wrapped := runtime_editor_pointer_wrap_target({640, 360}, 1280, 720, 8)
+	testing.expect(t, !wrapped && target == shared.Vec2{640, 360})
+
+	target, wrapped = runtime_editor_pointer_wrap_target({1273, 360}, 1280, 720, 8)
+	testing.expect(t, wrapped && target == shared.Vec2{9, 360})
+
+	target, wrapped = runtime_editor_pointer_wrap_target({4, 715}, 1280, 720, 8)
+	testing.expect(t, wrapped && target == shared.Vec2{1271, 9})
+
+	target, wrapped = runtime_editor_pointer_wrap_target({1, 1}, 16, 16, 8)
+	testing.expect(t, !wrapped && target == shared.Vec2{1, 1})
+}
+
+@(test)
 test_editor_shortcuts_decode_to_centralized_semantic_actions :: proc(t: ^testing.T) {
 	action, ok := editor_shortcut_action(.E, sdl.Keymod{.LCTRL}, false)
 	testing.expect(t, ok && action == .Toggle_Editor)
