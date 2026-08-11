@@ -18,6 +18,7 @@ Geometry_Query_Iterator :: struct {
 	geometry: ^Geometry,
 	canonical_triangle: int,
 	cluster_index: int,
+	cluster_end: int,
 	cluster_triangle: int,
 }
 
@@ -204,6 +205,13 @@ geometry_query_iterator :: proc "contextless" (geometry: ^Geometry) -> Geometry_
 	return {geometry = geometry}
 }
 
+geometry_query_cluster_iterator :: proc "contextless" (
+	geometry: ^Geometry,
+	cluster_index: int,
+) -> Geometry_Query_Iterator {
+	return {geometry = geometry, cluster_index = cluster_index, cluster_end = cluster_index + 1}
+}
+
 geometry_query_next :: proc "contextless" (
 	iterator: ^Geometry_Query_Iterator,
 ) -> (
@@ -235,7 +243,11 @@ geometry_query_next :: proc "contextless" (
 			},
 			true
 	}
-	for iterator.cluster_index < len(geometry.clusters) {
+	cluster_end := len(geometry.clusters)
+	if iterator.cluster_end > 0 {
+		cluster_end = min(iterator.cluster_end, cluster_end)
+	}
+	for iterator.cluster_index < cluster_end {
 		cluster := geometry.clusters[iterator.cluster_index]
 		if cluster.refined_group != -1 ||
 		   iterator.cluster_triangle >= int(cluster.triangle_count) {

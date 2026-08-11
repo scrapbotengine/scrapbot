@@ -579,6 +579,18 @@ test_nonresident_geometry_reconstructs_every_exact_leaf_page :: proc(t: ^testing
 		triangle_count += 1
 	}
 	testing.expect_value(t, triangle_count, 2)
+	first_cluster := geometry_query_cluster_iterator(&resource, 0)
+	first_triangle, first_ok := geometry_query_next(&first_cluster)
+	testing.expect(t, first_ok)
+	testing.expect_value(t, first_triangle.a, positions[0])
+	_, first_exhausted := geometry_query_next(&first_cluster)
+	testing.expect(t, !first_exhausted)
+	second_cluster := geometry_query_cluster_iterator(&resource, 1)
+	second_triangle, second_ok := geometry_query_next(&second_cluster)
+	testing.expect(t, second_ok)
+	testing.expect_value(t, second_triangle.a, positions[1])
+	_, second_exhausted := geometry_query_next(&second_cluster)
+	testing.expect(t, !second_exhausted)
 }
 
 test_registered_geometry_builds_bounded_meshlets :: proc(t: ^testing.T) {

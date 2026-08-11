@@ -15,6 +15,16 @@ Scene_Ray_Hit :: struct {
 	distance: f32,
 }
 
+Scene_Raycast_Stats :: struct {
+	instance_tests: u64,
+	instance_bounds_rejections: u64,
+	group_tests: u64,
+	group_bounds_rejections: u64,
+	cluster_tests: u64,
+	cluster_bounds_rejections: u64,
+	triangle_tests: u64,
+}
+
 Editor_Model_Placement :: struct {
 	position: shared.Vec3,
 	contact: shared.Vec3,
@@ -65,6 +75,7 @@ editor_pick_entity :: proc(
 	registry: ^resources.Registry,
 	position: shared.Vec2,
 	viewport: ui.Rect,
+	stats: ^Scene_Raycast_Stats = nil,
 ) -> (
 	shared.Entity,
 	bool,
@@ -76,7 +87,7 @@ editor_pick_entity :: proc(
 	if !ray_ok {
 		return {}, false
 	}
-	hit, found := scene_raycast_nearest(render_list, registry, ray)
+	hit, found := scene_raycast_nearest(render_list, registry, ray, stats)
 	return hit.entity, found
 }
 
@@ -84,6 +95,7 @@ scene_raycast_nearest :: proc(
 	render_list: ^shared.Render_List,
 	registry: ^resources.Registry,
 	ray: Pick_Ray,
+	stats: ^Scene_Raycast_Stats = nil,
 ) -> (
 	Scene_Ray_Hit,
 	bool,
@@ -95,33 +107,224 @@ scene_raycast_nearest :: proc(
 	result: Scene_Ray_Hit
 	found := false
 	for instance in render_list.instances {
+		if stats != nil {
+			stats.instance_tests += 1
+		}
 		geometry, ok := resources.get_geometry(registry, instance.geometry.handle)
 		if !ok {
 			continue
 		}
 		model := wgpu_build_model(instance.transform)
-		iterator := resources.geometry_query_iterator(geometry)
-		for {
-			triangle, triangle_ok := resources.geometry_query_next(&iterator)
-			if !triangle_ok {
-				break
+		bounds_entry, bounds_hit := pick_ray_transformed_bounds(ray, geometry.bounds, model)
+		if !bounds_hit || bounds_entry > nearest {
+			if stats != nil {
+				stats.instance_bounds_rejections += 1
 			}
-			a := pick_transform_point(model, triangle.a)
-			b := pick_transform_point(model, triangle.b)
-			c := pick_transform_point(model, triangle.c)
-			if distance, hit := pick_ray_triangle(ray, a, b, c); hit && distance < nearest {
-				nearest = distance
-				result = {
-					entity = instance.entity.id,
-					position = pick_add(ray.origin, pick_mul(ray.direction, distance)),
-					normal = vec3_normalize(vec3_cross(vec3_sub(b, a), vec3_sub(c, a))),
-					distance = distance,
+			continue
+		}
+		if !resources.geometry_has_resident_canonical(geometry) && len(geometry.clusters) > 0 {
+			for group in geometry.cluster_groups {
+				if stats != nil {
+					stats.group_tests += 1
 				}
-				found = true
+				group_center := pick_transform_point(
+					model,
+					{group.bounds[0], group.bounds[1], group.bounds[2]},
+				)
+				group_radius :=
+					group.bounds[3] *
+					max(
+						math.abs(instance.transform.scale.x),
+						math.abs(instance.transform.scale.y),
+						math.abs(instance.transform.scale.z),
+					)
+				group_entry, group_hit := pick_ray_sphere(ray, group_center, group_radius)
+				if !group_hit || group_entry > nearest {
+					if stats != nil {
+						stats.group_bounds_rejections += 1
+					}
+					continue
+				}
+				cluster_start := int(group.cluster_offset)
+				cluster_end := min(
+					cluster_start + int(group.cluster_count),
+					len(geometry.clusters),
+				)
+				for cluster, cluster_offset in geometry.clusters[cluster_start:cluster_end] {
+					if cluster.refined_group != -1 {
+						continue
+					}
+					if stats != nil {
+						stats.cluster_tests += 1
+					}
+					center := pick_transform_point(
+						model,
+						{cluster.bounds[0], cluster.bounds[1], cluster.bounds[2]},
+					)
+					radius :=
+						cluster.bounds[3] *
+						max(
+							math.abs(instance.transform.scale.x),
+							math.abs(instance.transform.scale.y),
+							math.abs(instance.transform.scale.z),
+						)
+					cluster_entry, cluster_hit := pick_ray_sphere(ray, center, radius)
+					if !cluster_hit || cluster_entry > nearest {
+						if stats != nil {
+							stats.cluster_bounds_rejections += 1
+						}
+						continue
+					}
+					iterator := resources.geometry_query_cluster_iterator(
+						geometry,
+						cluster_start + cluster_offset,
+					)
+					pick_query_triangles(
+						&iterator,
+						model,
+						ray,
+						instance.entity.id,
+						&nearest,
+						&result,
+						&found,
+						stats,
+					)
+				}
 			}
+		} else {
+			iterator := resources.geometry_query_iterator(geometry)
+			pick_query_triangles(
+				&iterator,
+				model,
+				ray,
+				instance.entity.id,
+				&nearest,
+				&result,
+				&found,
+				stats,
+			)
 		}
 	}
 	return result, found
+}
+
+pick_query_triangles :: proc(
+	iterator: ^resources.Geometry_Query_Iterator,
+	model: Mat4,
+	ray: Pick_Ray,
+	entity: shared.Entity,
+	nearest: ^f32,
+	result: ^Scene_Ray_Hit,
+	found: ^bool,
+	stats: ^Scene_Raycast_Stats,
+) {
+	for {
+		triangle, triangle_ok := resources.geometry_query_next(iterator)
+		if !triangle_ok {
+			return
+		}
+		if stats != nil {
+			stats.triangle_tests += 1
+		}
+		a := pick_transform_point(model, triangle.a)
+		b := pick_transform_point(model, triangle.b)
+		c := pick_transform_point(model, triangle.c)
+		if distance, hit := pick_ray_triangle(ray, a, b, c); hit && distance < nearest^ {
+			nearest^ = distance
+			result^ = {
+				entity = entity,
+				position = pick_add(ray.origin, pick_mul(ray.direction, distance)),
+				normal = vec3_normalize(vec3_cross(vec3_sub(b, a), vec3_sub(c, a))),
+				distance = distance,
+			}
+			found^ = true
+		}
+	}
+}
+
+pick_ray_sphere :: proc(ray: Pick_Ray, center: shared.Vec3, radius: f32) -> (f32, bool) {
+	if radius < 0 {
+		return 0, false
+	}
+	offset := vec3_sub(ray.origin, center)
+	half_b := vec3_dot(offset, ray.direction)
+	constant := vec3_dot(offset, offset) - radius * radius
+	discriminant := half_b * half_b - constant
+	if discriminant < 0 {
+		return 0, false
+	}
+	root := math.sqrt(discriminant)
+	exit := -half_b + root
+	if exit < 0 {
+		return 0, false
+	}
+	return max(-half_b - root, 0), true
+}
+
+pick_ray_transformed_bounds :: proc(
+	ray: Pick_Ray,
+	bounds: resources.Bounds,
+	model: Mat4,
+) -> (
+	f32,
+	bool,
+) {
+	minimum := shared.Vec3{f32(3.4028235e38), f32(3.4028235e38), f32(3.4028235e38)}
+	maximum := shared.Vec3{f32(-3.4028235e38), f32(-3.4028235e38), f32(-3.4028235e38)}
+	for x in 0 ..< 2 {
+		for y in 0 ..< 2 {
+			for z in 0 ..< 2 {
+				point := pick_transform_point(
+					model,
+					{
+						bounds.min.x if x == 0 else bounds.max.x,
+						bounds.min.y if y == 0 else bounds.max.y,
+						bounds.min.z if z == 0 else bounds.max.z,
+					},
+				)
+				minimum = {
+					min(minimum.x, point.x),
+					min(minimum.y, point.y),
+					min(minimum.z, point.z),
+				}
+				maximum = {
+					max(maximum.x, point.x),
+					max(maximum.y, point.y),
+					max(maximum.z, point.z),
+				}
+			}
+		}
+	}
+	return pick_ray_bounds(ray, minimum, maximum)
+}
+
+pick_ray_bounds :: proc(ray: Pick_Ray, minimum, maximum: shared.Vec3) -> (f32, bool) {
+	entry := f32(0)
+	exit := f32(3.4028235e38)
+	origins := [3]f32{ray.origin.x, ray.origin.y, ray.origin.z}
+	directions := [3]f32{ray.direction.x, ray.direction.y, ray.direction.z}
+	minimums := [3]f32{minimum.x, minimum.y, minimum.z}
+	maximums := [3]f32{maximum.x, maximum.y, maximum.z}
+	for axis in 0 ..< 3 {
+		if math.abs(directions[axis]) < 0.000001 {
+			if origins[axis] < minimums[axis] || origins[axis] > maximums[axis] {
+				return 0, false
+			}
+			continue
+		}
+		inverse := 1 / directions[axis]
+		near := (minimums[axis] - origins[axis]) * inverse
+		far := (maximums[axis] - origins[axis]) * inverse
+		if near > far {
+			near, far = far, near
+		}
+		entry = max(entry, near)
+		exit = min(exit, far)
+		if exit < entry {
+			return 0, false
+		}
+	}
+	return entry, exit >= 0
 }
 
 scene_ray_plane_intersection :: proc(

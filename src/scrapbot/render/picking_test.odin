@@ -40,12 +40,15 @@ test_editor_picking_returns_nearest_transformed_triangle_hit :: proc(t: ^testing
 	testing.expect(t, entity == shared.Entity{index = 2, generation = 3})
 	ray, ray_ok := editor_pick_ray(&list, {500, 350}, viewport)
 	testing.expect(t, ray_ok)
-	hit, hit_found := scene_raycast_nearest(&list, &registry, ray)
+	stats: Scene_Raycast_Stats
+	hit, hit_found := scene_raycast_nearest(&list, &registry, ray, &stats)
 	testing.expect(t, hit_found)
 	testing.expect_value(t, hit.entity, shared.Entity{index = 2, generation = 3})
 	testing.expect(t, math.abs(hit.position.z - 2.5) < 0.001)
 	testing.expect(t, math.abs(hit.distance - 3.5) < 0.001)
 	testing.expect(t, math.abs(hit.normal.z) > 0.999)
+	testing.expect_value(t, stats.instance_tests, u64(2))
+	testing.expect_value(t, stats.triangle_tests, u64(24))
 	placement, placement_found := editor_model_placement_position(
 		&list,
 		&registry,
@@ -59,6 +62,50 @@ test_editor_picking_returns_nearest_transformed_triangle_hit :: proc(t: ^testing
 	testing.expect_value(t, placement.contact, shared.Vec3{0, 0, 2.5})
 	_, found = editor_pick_entity(&list, &registry, {105, 55}, viewport)
 	testing.expect(t, !found)
+}
+
+@(test)
+test_scene_raycast_rejects_off_ray_instance_bounds_before_triangle_tests :: proc(t: ^testing.T) {
+	registry: resources.Registry
+	defer resources.destroy_registry(&registry)
+	desc, desc_err := resources.cube()
+	testing.expect(t, desc_err == "")
+	defer delete(desc.vertices)
+	defer delete(desc.indices)
+	handle, register_err := resources.register_geometry(&registry, "pick-bounds-cube", desc)
+	testing.expect(t, register_err == "")
+	list := shared.Render_List{}
+	defer delete(list.instances)
+	for index in 0 ..< 128 {
+		append(
+			&list.instances,
+			shared.Render_Instance {
+				entity = {id = {index = u32(index), generation = 1}, alive = true},
+				transform = {position = {100 + f32(index) * 2, 0, 0}, scale = {1, 1, 1}},
+				geometry = {handle = handle},
+			},
+		)
+	}
+	stats: Scene_Raycast_Stats
+	_, found := scene_raycast_nearest(
+		&list,
+		&registry,
+		Pick_Ray{origin = {0, 0, 6}, direction = {0, 0, -1}},
+		&stats,
+	)
+	testing.expect(t, !found)
+	testing.expect_value(t, stats.instance_tests, u64(128))
+	testing.expect_value(t, stats.instance_bounds_rejections, u64(128))
+	testing.expect_value(t, stats.triangle_tests, u64(0))
+}
+
+@(test)
+test_pick_ray_sphere_reports_forward_entry_and_rejects_misses :: proc(t: ^testing.T) {
+	entry, hit := pick_ray_sphere(Pick_Ray{origin = {0, 0, 6}, direction = {0, 0, -1}}, {}, 1)
+	testing.expect(t, hit)
+	testing.expect(t, math.abs(entry - 5) < 0.0001)
+	_, hit = pick_ray_sphere(Pick_Ray{origin = {0, 0, 6}, direction = {0, 0, -1}}, {4, 0, 0}, 1)
+	testing.expect(t, !hit)
 }
 
 @(test)
