@@ -53,6 +53,7 @@ This file tracks current actionable engineering work. The broad product roadmap 
 
 ## Testing And Diagnostics
 
+- [ ] Bound live-debug and profile capture resident memory across multi-frame Virtual Wilds replays; the current combined artifact run can grow into tens of gigabytes.
 - [ ] Restore deterministic transition coverage in the virtual-geometry pressure GPU fixture after startup residency eliminated its hard-coded transition window.
 - [ ] Auto-enable live debug whenever the windowed editor shell is visible, including the default source-project launch.
 - [ ] Add scoped screen-space regions and a per-pixel geometry-identity image to live-debug captures when visibility records alone cannot isolate overlapping clusters ([ADR-053](adr/ADR-053-expose-live-debugging-through-a-transport-independent-service.md)).

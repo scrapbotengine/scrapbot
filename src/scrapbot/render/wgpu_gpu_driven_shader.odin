@@ -2826,7 +2826,12 @@ fn copy_depth(@builtin(global_invocation_id) invocation: vec3<u32>) {
 	if (any(invocation.xy >= size)) {
 		return;
 	}
-	textureStore(destination_depth, invocation.xy, vec4<f32>(textureLoad(source_depth, vec2<i32>(invocation.xy), 0)));
+	let source_size = textureDimensions(source_depth);
+	var depth = 1.0;
+	if (all(invocation.xy < source_size)) {
+		depth = textureLoad(source_depth, vec2<i32>(invocation.xy), 0);
+	}
+	textureStore(destination_depth, invocation.xy, vec4<f32>(depth));
 }
 `
 

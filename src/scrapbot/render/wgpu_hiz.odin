@@ -14,6 +14,15 @@ wgpu_hiz_mip_count :: proc(width, height: u32) -> int {
 	return count
 }
 
+wgpu_hiz_padded_dimension :: proc "contextless" (dimension: u32) -> u32 {
+	result := u32(1)
+	target := max(dimension, 1)
+	for result < target {
+		result *= 2
+	}
+	return result
+}
+
 wgpu_create_hiz_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 	chain := wgpu.ShaderSourceWGSL {
 		chain = {sType = .ShaderSourceWGSL},
@@ -301,8 +310,12 @@ wgpu_release_hiz :: proc(renderer: ^WGPU_Renderer) {
 }
 
 wgpu_ensure_hiz_targets :: proc(renderer: ^WGPU_Renderer, width, height: u32) -> string {
-	width := max(width, 1)
-	height := max(height, 1)
+	// A native mip chain halves with floor division. Building it directly from a
+	// non-power-of-two render target therefore drops the trailing row or column
+	// whenever a level is odd. Pad level zero instead, and let the copy shader
+	// initialize the padding to far depth so every edge query remains conservative.
+	width := wgpu_hiz_padded_dimension(width)
+	height := wgpu_hiz_padded_dimension(height)
 	if renderer.gpu_hiz_texture != nil &&
 	   renderer.gpu_hiz_width == width &&
 	   renderer.gpu_hiz_height == height {

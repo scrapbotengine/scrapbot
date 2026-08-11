@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "timeout_frames": 180,
+  "actions": [
+    {"action": "set_editor_camera", "position": {"x": -3.62749958, "y": 10.86572170, "z": -131.86172485}, "rotation": {"x": -0.01707044, "y": 5.62390995, "z": 0.0}},
+    {"action": "click", "target": {"text": "VIEW / CAMERA", "origin": "editor"}},
+    {"action": "click", "target": {"text": "OCCLUSION QUERIES", "origin": "editor"}},
+    {"action": "wait", "frames": 90},
+    {"action": "capture", "target": {"name": "__scrapbot_editor_viewport", "origin": "editor"}, "padding": 4}
+  ]
+}

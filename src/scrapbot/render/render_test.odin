@@ -2168,6 +2168,17 @@ test_wgpu_hiz_build_waits_for_stable_instance_data :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_wgpu_hiz_pads_non_power_of_two_edges_before_mip_reduction :: proc(t: ^testing.T) {
+	testing.expect_value(t, wgpu_hiz_padded_dimension(0), u32(1))
+	testing.expect_value(t, wgpu_hiz_padded_dimension(1), u32(1))
+	testing.expect_value(t, wgpu_hiz_padded_dimension(1_837), u32(2_048))
+	testing.expect_value(t, wgpu_hiz_padded_dimension(1_934), u32(2_048))
+	testing.expect_value(t, wgpu_hiz_padded_dimension(1_580), u32(2_048))
+	testing.expect(t, strings.contains(WGPU_HIZ_COPY_SHADER, "all(invocation.xy < source_size)"))
+	testing.expect(t, strings.contains(WGPU_HIZ_COPY_SHADER, "var depth = 1.0;"))
+}
+
+@(test)
 test_wgpu_visible_batch_bitset_is_bounded_and_word_aligned :: proc(t: ^testing.T) {
 	testing.expect_value(t, wgpu_visible_batch_word_count(-1), 0)
 	testing.expect_value(t, wgpu_visible_batch_word_count(0), 0)
