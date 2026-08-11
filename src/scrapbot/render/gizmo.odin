@@ -173,11 +173,6 @@ editor_transform_gizmo_system :: proc(
 				}
 				for endpoint, index in state.editor_gizmo_endpoints { state.editor_gizmo_drag_screen_axes[index] = screen_sub(endpoint, state.editor_gizmo_origin) }
 				state.editor_gizmo_drag_world_axes = world_axes
-				state.editor_gizmo_drag_camera_right = shared.camera_right(
-					camera.transform.rotation,
-				)
-				state.editor_gizmo_drag_camera_up = shared.camera_up(camera.transform.rotation)
-				if !has_camera { state.editor_gizmo_drag_camera_right = {1, 0, 0}; state.editor_gizmo_drag_camera_up = {0, 1, 0} }
 				state.editor_gizmo_drag_pixels = pixels
 				state.editor_gizmo_drag_world_scale = world_size
 			}
@@ -210,58 +205,20 @@ editor_transform_gizmo_system :: proc(
 			true; state.editor_gizmo_hovered_handle = state.editor_gizmo_active_handle
 		switch gizmo.mode {
 			case .Translate:
-				delta := screen_sub(pointer.position, state.editor_gizmo_drag_pointer)
-				candidate := state.editor_gizmo_drag_world_transform
-				if first, second, ok := editor_gizmo_pair_axes(state.editor_gizmo_active_handle);
-				   ok {
-					first_amount, second_amount, solved := screen_solve_basis(
-						delta,
-						state.editor_gizmo_drag_screen_axes[first],
-						state.editor_gizmo_drag_screen_axes[second],
-					)
-					if solved {
-						candidate.position = vec3_add(
-							candidate.position,
-							vec3_mul(
-								state.editor_gizmo_drag_world_axes[first],
-								first_amount * state.editor_gizmo_drag_world_scale,
-							),
-						)
-						candidate.position = vec3_add(
-							candidate.position,
-							vec3_mul(
-								state.editor_gizmo_drag_world_axes[second],
-								second_amount * state.editor_gizmo_drag_world_scale,
-							),
-						)
-					}
-				} else if state.editor_gizmo_active_handle == .Center {
-					world_per_pixel :=
-						state.editor_gizmo_drag_world_scale / EDITOR_GIZMO_SCREEN_SIZE
-					candidate.position = vec3_add(
-						candidate.position,
-						vec3_mul(state.editor_gizmo_drag_camera_right, delta.x * world_per_pixel),
-					)
-					candidate.position = vec3_add(
-						candidate.position,
-						vec3_mul(state.editor_gizmo_drag_camera_up, -delta.y * world_per_pixel),
-					)
-				} else {
-					pixels :=
-						delta.x * state.editor_gizmo_drag_direction.x +
-						delta.y *
-							state.editor_gizmo_drag_direction.y; amount := pixels / state.editor_gizmo_drag_pixels * state.editor_gizmo_drag_world_scale
-					axis_index, axis_ok := editor_gizmo_single_axis(
-						state.editor_gizmo_active_handle,
-					)
-					if axis_ok {
-						candidate.position = vec3_add(
-							candidate.position,
-							vec3_mul(state.editor_gizmo_drag_world_axes[axis_index], amount),
-						)
-					}
+				if position, solved := editor_gizmo_translation_position(
+					state.editor_gizmo_drag_world_transform.position,
+					state.editor_gizmo_active_handle,
+					state.editor_gizmo_drag_world_axes,
+					state.editor_gizmo_drag_pointer,
+					pointer.position,
+					viewport,
+					camera,
+					has_camera,
+				); solved {
+					candidate := state.editor_gizmo_drag_world_transform
+					candidate.position = position
+					editor_gizmo_apply_world_transform(world, entity_index, candidate)
 				}
-				editor_gizmo_apply_world_transform(world, entity_index, candidate)
 			case .Rotate:
 				previous := screen_sub(
 					state.editor_gizmo_drag_last_pointer,
@@ -545,6 +502,86 @@ editor_camera_eye_fov :: proc(
 ) {eye := shared.Vec3{0, 2, 6}; fov := f32(60); if has_camera {eye = camera.transform.position
 		if camera.camera.fov > 0 { fov = camera.camera.fov }}
 	return eye, fov}
+
+editor_gizmo_translation_position :: proc(
+	origin: shared.Vec3,
+	handle: ui.Editor_Gizmo_Handle,
+	axes: [3]shared.Vec3,
+	start_pointer, pointer: shared.Vec2,
+	viewport: ui.Rect,
+	camera: shared.Camera_Instance,
+	has_camera: bool,
+) -> (
+	shared.Vec3,
+	bool,
+) {
+	start_ray, start_ok := editor_camera_pick_ray(camera, has_camera, start_pointer, viewport)
+	current_ray, current_ok := editor_camera_pick_ray(camera, has_camera, pointer, viewport)
+	if !start_ok || !current_ok {
+		return {}, false
+	}
+	if axis, ok := editor_gizmo_single_axis(handle); ok {
+		start_amount, start_solved := editor_gizmo_ray_axis_parameter(
+			start_ray,
+			origin,
+			axes[axis],
+		)
+		current_amount, current_solved := editor_gizmo_ray_axis_parameter(
+			current_ray,
+			origin,
+			axes[axis],
+		)
+		if !start_solved || !current_solved {
+			return {}, false
+		}
+		return vec3_add(origin, vec3_mul(axes[axis], current_amount - start_amount)), true
+	}
+
+	plane_normal: shared.Vec3
+	first, second, pair := editor_gizmo_pair_axes(handle)
+	if pair {
+		plane_normal = vec3_normalize(vec3_cross(axes[first], axes[second]))
+	} else if handle == .Center {
+		plane_normal = vec3_normalize(vec3_sub({}, shared.Vec3{0, 2, 6}))
+		if has_camera {
+			plane_normal = shared.camera_forward(camera.transform.rotation)
+		}
+	} else {
+		return {}, false
+	}
+	start_point, start_solved := scene_ray_plane_intersection(start_ray, origin, plane_normal)
+	current_point, current_solved := scene_ray_plane_intersection(
+		current_ray,
+		origin,
+		plane_normal,
+	)
+	if !start_solved || !current_solved {
+		return {}, false
+	}
+	delta := vec3_sub(current_point, start_point)
+	if pair {
+		delta = vec3_add(
+			vec3_mul(axes[first], vec3_dot(delta, axes[first])),
+			vec3_mul(axes[second], vec3_dot(delta, axes[second])),
+		)
+	}
+	return vec3_add(origin, delta), true
+}
+
+editor_gizmo_ray_axis_parameter :: proc(ray: Pick_Ray, origin, axis: shared.Vec3) -> (f32, bool) {
+	direction := vec3_normalize(axis)
+	axis_ray_dot := vec3_dot(direction, ray.direction)
+	denominator := 1 - axis_ray_dot * axis_ray_dot
+	if denominator < 0.000001 {
+		return 0, false
+	}
+	offset := vec3_sub(origin, ray.origin)
+	amount :=
+		(axis_ray_dot * vec3_dot(ray.direction, offset) - vec3_dot(direction, offset)) /
+		denominator
+	ray_amount := axis_ray_dot * amount + vec3_dot(ray.direction, offset)
+	return amount, ray_amount >= 0
+}
 
 editor_gizmo_hit_handle :: proc(
 	point, origin: shared.Vec2,

@@ -133,24 +133,41 @@ editor_pick_ray :: proc(
 	Pick_Ray,
 	bool,
 ) {
+	camera: shared.Camera_Instance
+	has_camera := render_list != nil && render_list.has_camera
+	if has_camera {
+		camera = render_list.camera
+	}
+	return editor_camera_pick_ray(camera, has_camera, position, viewport)
+}
+
+editor_camera_pick_ray :: proc(
+	camera: shared.Camera_Instance,
+	has_camera: bool,
+	position: shared.Vec2,
+	viewport: ui.Rect,
+) -> (
+	Pick_Ray,
+	bool,
+) {
 	if viewport.width <= 0 || viewport.height <= 0 {
 		return {}, false
 	}
 	eye := shared.Vec3{0, 2, 6}
 	fov := f32(60)
-	if render_list != nil && render_list.has_camera {
-		eye = render_list.camera.transform.position
-		if render_list.camera.camera.fov > 0 {
-			fov = render_list.camera.camera.fov
+	if has_camera {
+		eye = camera.transform.position
+		if camera.camera.fov > 0 {
+			fov = camera.camera.fov
 		}
 	}
 	forward := vec3_normalize(vec3_sub({}, eye))
 	side := vec3_normalize(vec3_cross(forward, {0, 1, 0}))
 	true_up := vec3_cross(side, forward)
-	if render_list != nil && render_list.has_camera {
-		forward = shared.camera_forward(render_list.camera.transform.rotation)
-		side = shared.camera_right(render_list.camera.transform.rotation)
-		true_up = shared.camera_up(render_list.camera.transform.rotation)
+	if has_camera {
+		forward = shared.camera_forward(camera.transform.rotation)
+		side = shared.camera_right(camera.transform.rotation)
+		true_up = shared.camera_up(camera.transform.rotation)
 	}
 	ndc_x := (position.x - viewport.x) / viewport.width * 2 - 1
 	ndc_y := 1 - (position.y - viewport.y) / viewport.height * 2

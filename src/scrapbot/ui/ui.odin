@@ -564,8 +564,6 @@ State :: struct {
 	editor_gizmo_drag_direction: shared.Vec2,
 	editor_gizmo_drag_screen_axes: [3]shared.Vec2,
 	editor_gizmo_drag_world_axes: [3]shared.Vec3,
-	editor_gizmo_drag_camera_right: shared.Vec3,
-	editor_gizmo_drag_camera_up: shared.Vec3,
 	editor_gizmo_drag_pixels: f32,
 	editor_gizmo_drag_world_scale: f32,
 	err: string,

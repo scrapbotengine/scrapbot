@@ -45,6 +45,67 @@ test_transform_chord_constraints_map_axes_and_excluded_planes :: proc(t: ^testin
 }
 
 @(test)
+test_translation_handles_follow_cursor_rays_in_world_constraints :: proc(t: ^testing.T) {
+	camera := shared.Camera_Instance {
+		transform = {position = {}},
+		camera = {fov = 60, near = 0.1, far = 100},
+	}
+	viewport := ui.Rect{0, 0, 800, 600}
+	axes := [3]shared.Vec3{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}
+	origin := shared.Vec3{0, 0, -10}
+	start, start_ok := editor_project_world(origin, viewport, camera, true)
+	testing.expect(t, start_ok)
+
+	view_target := shared.Vec3{2, 1.5, -10}
+	view_pointer, view_ok := editor_project_world(view_target, viewport, camera, true)
+	testing.expect(t, view_ok)
+	view_position, view_solved := editor_gizmo_translation_position(
+		origin,
+		.Center,
+		axes,
+		start,
+		view_pointer,
+		viewport,
+		camera,
+		true,
+	)
+	testing.expect(t, view_solved)
+	testing.expect(t, gizmo_vec3_near(view_position, view_target))
+
+	axis_target := shared.Vec3{3, 0, -10}
+	axis_pointer, axis_ok := editor_project_world(axis_target, viewport, camera, true)
+	testing.expect(t, axis_ok)
+	axis_position, axis_solved := editor_gizmo_translation_position(
+		origin,
+		.X,
+		axes,
+		start,
+		axis_pointer,
+		viewport,
+		camera,
+		true,
+	)
+	testing.expect(t, axis_solved)
+	testing.expect(t, gizmo_vec3_near(axis_position, axis_target))
+
+	plane_target := shared.Vec3{-2, 2.5, -10}
+	plane_pointer, plane_ok := editor_project_world(plane_target, viewport, camera, true)
+	testing.expect(t, plane_ok)
+	plane_position, plane_solved := editor_gizmo_translation_position(
+		origin,
+		.XY,
+		axes,
+		start,
+		plane_pointer,
+		viewport,
+		camera,
+		true,
+	)
+	testing.expect(t, plane_solved)
+	testing.expect(t, gizmo_vec3_near(plane_position, plane_target))
+}
+
+@(test)
 test_transform_chord_g_x_starts_modal_axis_translation :: proc(t: ^testing.T) {
 	world: shared.World
 	defer ecs.destroy_world(&world)
