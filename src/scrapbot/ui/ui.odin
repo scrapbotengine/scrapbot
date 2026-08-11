@@ -170,7 +170,7 @@ Editor_Scene_Icon_Kind :: enum {
 Editor_Scene_Icon :: struct {
 	entity: shared.Entity,
 	kind: Editor_Scene_Icon_Kind,
-	anchor, center: shared.Vec2,
+	center: shared.Vec2,
 	clip: Rect,
 	selected: bool,
 }
@@ -8702,25 +8702,6 @@ append_editor_scene_icons :: proc(state: ^State) -> string {
 			color = {1, 0.68, 0.22, 1}
 		}
 		center := icon.center
-		anchor_delta := shared.Vec2{center.x - icon.anchor.x, center.y - icon.anchor.y}
-		if anchor_delta.x * anchor_delta.x + anchor_delta.y * anchor_delta.y > scale * scale {
-			leader_color := color
-			leader_color.w = 0.5
-			if err := append_paint(
-				state,
-				{
-					kind = .Line,
-					color = leader_color,
-					line_start = icon.anchor,
-					line_end = center,
-					line_thickness = scale,
-					has_clip = true,
-					clip = icon.clip,
-				},
-			); err != "" {
-				return err
-			}
-		}
 		size := f32(32) * scale
 		line_width := f32(1.75) * scale
 		if icon.selected {

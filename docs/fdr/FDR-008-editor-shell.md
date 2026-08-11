@@ -288,13 +288,13 @@ The editor shell turns a running Scrapbot project into its own editing workspace
 
 ### 29. Identify cameras and lights with screen-facing component icons
 
-**Decision:** Project every non-editor camera and point light with a valid Transform into the editor overlay, plus every directional light at its Transform or the world origin when it has none. Draw one fixed-pixel icon per entity, use component-kind color and selected emphasis, and resolve icon clicks before camera strokes and rendered triangles. Deterministically separate overlapping icons with leader lines while keeping the selected icon at its true anchor. Preserve the camera's world-scaled body and selected-only frustum as separate orientation and lens feedback.
+**Decision:** Project every non-editor camera and point light with a valid Transform into the editor overlay, plus every directional light at its Transform or the world origin when it has none. Draw one fixed-pixel icon per entity at its exact projected position, use component-kind color and selected emphasis, and resolve icon clicks before camera strokes and rendered triangles. Preserve the camera's world-scaled body and selected-only frustum as separate orientation and lens feedback.
 
 For a selected point light, project three range rings and expose a radial range handle. For a selected directional light, project its direction arrow and expose a spherical direction handle. Capture each drag ahead of scene selection and editor chrome, retain it across the complete editor window, write the canonical component field, normalize direction, and commit one stopped-mode history transaction. Escape restores the captured value.
 
 **Why:** Cameras and lights are often non-renderable scene objects. Their locations must remain recognizable and selectable at any camera distance without adding authored geometry or weakening the useful camera-frustum visualization. See ADR-018.
 
-**Tradeoff:** Icons and light tools remain visible through scene geometry. Decluttering changes only the screen-space icon position, not its world anchor, and searches a bounded neighborhood; exceptionally dense or edge-constrained clusters may retain overlap. An entity with multiple visualized component kinds exposes only the highest-priority icon rather than a stack of coincident symbols, and the overlay displays at most 256 component icons per frame. Point influence uses a spherical visualization even though project shading may attenuate smoothly within that range.
+**Tradeoff:** Icons and light tools remain visible through scene geometry. Coincident or tightly clustered entities intentionally produce overlapping icons; picking resolves the topmost icon in stable paint order rather than moving any icon away from its world position. An entity with multiple visualized component kinds exposes only the highest-priority icon rather than a stack of coincident symbols, and the overlay displays at most 256 component icons per frame. Point influence uses a spherical visualization even though project shading may attenuate smoothly within that range.
 
 ## Related
 

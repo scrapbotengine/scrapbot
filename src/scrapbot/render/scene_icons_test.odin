@@ -139,35 +139,38 @@ test_editor_scene_icon_projection_keeps_constant_screen_size_data :: proc(t: ^te
 }
 
 @(test)
-test_editor_scene_icon_decluttering_offsets_overlaps_but_keeps_selection_anchored :: proc(
-	t: ^testing.T,
-) {
+test_editor_scene_icon_projection_preserves_overlapping_world_positions :: proc(t: ^testing.T) {
+	scene: shared.Scene
+	defer delete(scene.entities)
+	for index in 0 ..< 3 {
+		append(
+			&scene.entities,
+			shared.Scene_Entity {
+				name = "Overlapping Lamp",
+				has_transform = true,
+				transform = {position = {0, 0, 0}, scale = {1, 1, 1}},
+				has_point_light = true,
+				point_light = {color = {1, 1, 1}, intensity = f32(index + 1), range = 4},
+			},
+		)
+	}
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
 	state := new(ui.State)
 	defer free(state)
+	state.editor_visible = true
 	state.editor_pixel_density = 1
-	state.editor_scene_icon_count = 3
-	clip := ui.Rect{0, 0, 800, 600}
-	anchor := shared.Vec2{400, 300}
-	for index in 0 ..< state.editor_scene_icon_count {
-		state.editor_scene_icons[index] = {
-			entity = {index = u32(index), generation = 1},
-			anchor = anchor,
-			center = anchor,
-			clip = clip,
-			selected = index == 1,
-		}
+	view_camera := shared.Camera_Instance {
+		transform = {position = {0, 0, 8}, scale = {1, 1, 1}},
+		camera = {fov = 60, near = 0.1, far = 100},
 	}
+	viewport := ui.Rect{0, 0, 800, 600}
 
-	editor_scene_icons_declutter(state)
+	editor_scene_icon_system(state, &world, viewport, view_camera, true, true)
 
-	testing.expect_value(t, state.editor_scene_icons[1].center, anchor)
-	for icon, index in state.editor_scene_icons[:state.editor_scene_icon_count] {
-		if index != 1 {
-			testing.expect(t, icon.center != anchor)
-		}
-		for other in state.editor_scene_icons[:index] {
-			delta := shared.Vec2{icon.center.x - other.center.x, icon.center.y - other.center.y}
-			testing.expect(t, delta.x * delta.x + delta.y * delta.y >= 34 * 34)
-		}
+	testing.expect_value(t, state.editor_scene_icon_count, 3)
+	center := state.editor_scene_icons[0].center
+	for icon in state.editor_scene_icons[:state.editor_scene_icon_count] {
+		testing.expect_value(t, icon.center, center)
 	}
 }
