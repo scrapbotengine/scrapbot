@@ -496,6 +496,8 @@ bin/scrapbot run examples/ecs-showcase \
 
 `tests/fixtures/ui/gizmo-center-pivot.json` selects a renderable entity, activates the transient Center manipulation pivot through the public ECS toolbar, and captures its selected visual state.
 
+`tests/fixtures/ui/infinite-grid.json` fixes the editor camera, lets the procedural ground grid settle through the world/post chain, and captures the complete Game viewport so depth intersection, axis color, line scale, and distance fade remain visually reviewable.
+
 Scripts use schema version 1 and execute actions sequentially:
 
 ```json

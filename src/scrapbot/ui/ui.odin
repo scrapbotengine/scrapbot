@@ -534,6 +534,8 @@ State :: struct {
 	editor_model_placement_preview_origin: shared.Vec2,
 	editor_model_placement_preview_clip: Rect,
 	editor_placement_snap_step: f32,
+	editor_rotation_snap_step: f32,
+	editor_scale_snap_step: f32,
 	editor_scene_camera_captures_input: bool,
 	editor_camera_mesh_segments: [EDITOR_CAMERA_MESH_MAX_SEGMENTS]Editor_Camera_Mesh_Segment,
 	editor_camera_mesh_segment_count: int,
@@ -715,6 +717,8 @@ init :: proc(state: ^State) -> string {
 	state.editor_simulation_playing = true
 	state.editor_history_clean_valid = true
 	state.editor_placement_snap_step = 0.5
+	state.editor_rotation_snap_step = math.to_radians(f32(15))
+	state.editor_scale_snap_step = 0.1
 	state.active_split_handle = -1
 	state.active_dock_tab = -1
 	state.dock_drop_space_node = -1

@@ -238,6 +238,13 @@ editor_ui_handle_activation :: proc(
 						case:
 							state.editor_placement_snap_step = 0
 					}
+					if state.editor_placement_snap_step > 0 {
+						state.editor_rotation_snap_step = math.to_radians(f32(15))
+						state.editor_scale_snap_step = 0.1
+					} else {
+						state.editor_rotation_snap_step = 0
+						state.editor_scale_snap_step = 0
+					}
 					editor_ui_update_placement_snap_button(state, world)
 					return
 				case .Debug_View_Item:

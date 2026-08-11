@@ -273,6 +273,9 @@ wgpu_init_renderer :: proc(
 	if err = wgpu_create_editor_feedback_resources(&renderer); err != "" {
 		return renderer, err
 	}
+	if err = wgpu_create_editor_grid_resources(&renderer); err != "" {
+		return renderer, err
+	}
 	if ui_state !=
 	   nil { if err = wgpu_create_ui_pipeline(&renderer, ui_state); err != "" { return renderer, err } }
 
@@ -297,6 +300,7 @@ wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
 	}
 	wgpu_release_post_process(renderer)
 	wgpu_release_editor_feedback_resources(renderer)
+	wgpu_release_editor_grid_resources(renderer)
 	if renderer.ui_pipeline != nil { wgpu.RenderPipelineRelease(renderer.ui_pipeline) }
 	if renderer.ui_viewport_pipeline != nil {
 		wgpu.RenderPipelineRelease(renderer.ui_viewport_pipeline)

@@ -42,8 +42,8 @@ These are the engine-owned rows published to the editor's Systems panel. They ar
 ### `scrapbot.gizmo`
 
 - **Phase/order:** After editor camera and before retained UI.
-- **Inputs:** Editor selection, resolved world transforms, active editor camera and viewport, pointer state, gizmo mode/orientation/pivot, retained selected-subtree bounds, camera components.
-- **Outputs:** Immediate free modal translation/view-axis rotation/uniform scaling, later axis-qualified Transform edits resolved against the same captured gesture, origin- or bounds-center-based Transform edits, camera visualization geometry, gizmo/overlay paint stream and interaction state.
+- **Inputs:** Editor selection, resolved world transforms, active editor camera and viewport, pointer state, gizmo mode/orientation/pivot, transient snap increments, retained selected-subtree bounds, camera components.
+- **Outputs:** Immediate free modal translation/view-axis rotation/uniform scaling, later axis-qualified Transform edits resolved against the same captured gesture, increment-snapped origin- or bounds-center-based Transform edits, camera visualization geometry, gizmo/overlay paint stream and interaction state.
 - **Stable-frame behavior:** Reuses retained overlay/camera geometry and a selected-subtree bounds center until selection, relevant render dirtiness, hierarchy/topology, Geometry, camera, viewport, mode, pivot, or interaction revisions change.
 - **Boundary:** Main-thread CPU editor tooling; visualization is an overlay consumer, not an authored renderable entity.
 - **Source/tests:** `render/gizmo.odin`, `render/camera_visualizer.odin`, `ui/editor_ecs.odin`; `render/gizmo_test.odin`, `render/camera_visualizer_test.odin`.

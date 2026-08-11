@@ -4377,6 +4377,40 @@ test_editor_shell_is_an_editor_origin_ecs_ui_tree :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_editor_snap_control_updates_every_transform_increment :: proc(t: ^testing.T) {
+	world := ecs.build_world(&shared.Scene{})
+	defer ecs.destroy_world(&world)
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	state.editor_visible = true
+	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
+	snap, found := editor_ui_entity(&world, .Placement_Snap)
+	testing.expect(t, found)
+	if !found {
+		return
+	}
+
+	editor_ui_handle_activation(state, &world, world.entities[snap].id, {})
+	testing.expect_value(t, state.editor_placement_snap_step, f32(1))
+	editor_ui_handle_activation(state, &world, world.entities[snap].id, {})
+	testing.expect_value(t, state.editor_placement_snap_step, f32(0))
+	testing.expect_value(t, state.editor_rotation_snap_step, f32(0))
+	testing.expect_value(t, state.editor_scale_snap_step, f32(0))
+	testing.expect_value(
+		t,
+		world.ui_buttons[world.entities[snap].ui_button_index].text,
+		"SNAP OFF",
+	)
+
+	editor_ui_handle_activation(state, &world, world.entities[snap].id, {})
+	testing.expect_value(t, state.editor_placement_snap_step, f32(0.25))
+	testing.expect(t, state.editor_rotation_snap_step > 0)
+	testing.expect_value(t, state.editor_scale_snap_step, f32(0.1))
+}
+
+@(test)
 test_editor_gizmo_toolbar_controls_space_and_pivot :: proc(t: ^testing.T) {
 	scene := shared.Scene{}
 	defer delete(scene.entities)

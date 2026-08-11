@@ -107,6 +107,8 @@ Unpromoted runtime and editor-owned entities are never written. Changes made whi
 
 The editor creates an editor-owned scene-camera entity whose initial view matches the project camera. Moving it does not change the project's camera.
 
+An editor-only infinite grid lies on the canonical XZ plane. Close views show one-unit cells regardless of the current snapping increment. The complete plane uses one resolution chosen from the camera's height above it. As the camera moves away, minor lines smoothly fade into every tenth major line before the grid advances through 10-unit, 100-unit, and 1,000-unit levels. Red X and blue Z axes preserve world orientation, while a planar-distance fade bounds the apparent infinite field. Scene depth lets opaque geometry cover the grid. It never creates an entity or enters scene persistence.
+
 Use the `VIEW / CAMERA` menu inside the Game surface to inspect the rendered inputs:
 
 - Lit shows the ordinary HDR result.
@@ -249,7 +251,7 @@ While stopped, select a Model resource and click **Add to Scene** to create a pe
 
 You can also drag a Model row onto an exact point in the Game viewport. A translucent amber ghost shows the complete Model at its proposed world transform while a contact reticle follows the resolved surface; a tether shows any offset between that contact and the Model root. The release uses the same previewed position. Dragging onto empty Scene space uses the viewport center; dropping on an existing Scene row additionally parents the new model there while preserving its world placement. These gestures use the public `ui_action` drag/drop contract; the editor only interprets the resource and scene meaning.
 
-The **Snap** overlay cycles through off, 0.25, 0.5, and 1-unit world grids. Snapping quantizes the contact before bound-aware support placement. It does not rotate the Model's imported orientation to the surface normal, and transform-gizmo snapping remains separate follow-up work.
+The **Snap** overlay cycles through off, 0.25, 0.5, and 1-unit translation increments. The same setting quantizes Model-placement contacts and transform gestures. It does not rotate the Model's imported orientation to the surface normal.
 
 Selecting an entity with rendered geometry adds an amber silhouette outline. Selecting a Model root outlines the combined projected silhouette of all generated mesh primitives owned by that root. During Running and Paused play mode, the outline becomes animated dashes to signal that live scene changes are temporary; run-global engine time keeps the animation active while ECS project clocks are paused. Stopped authoring mode keeps the steady solid outline. Closing the editor hides the outline but preserves the selection for when you reopen it. The outline intentionally appears through occluding geometry so selection remains identifiable in dense scenes, but it does not fill or recolor the selected surface. This is transient editor feedback: it does not modify materials, components, or saved project data.
 
@@ -316,6 +318,8 @@ Selecting an entity with a Transform adds a screen-legible transform gizmo. Poin
 
 Move the pointer as soon as you press `G`, `R`, or `S`. Pressing an axis key during the gesture re-evaluates the complete transform from its starting value under that constraint, like Blender's modal transform map. The cursor remains visible, stays confined to the editor window, and wraps to the opposite edge when it reaches a boundary, so a long transform can continue without running out of pointer travel. Click or press Enter to commit; Escape restores the transform from before the chord. An uppercase axis means the Shift-modified excluded-plane form, not a different coordinate system. Axis constraints use the current World or Local orientation.
 
+The viewport's **Snap** control applies to pointer handles and modal chords. Translation uses the displayed world-unit increment along the gesture's frozen axes, rotation uses 15-degree increments, and scale uses 0.1-factor increments around the starting size. `SNAP OFF` disables all three. Hold `Cmd/Ctrl` during a gesture to temporarily invert the setting: it disables configured snapping, or enables the default 0.5-unit, 15-degree, and 0.1-factor increments while snapping is off.
+
 The axis colors remain consistent in every mode:
 
 - Red moves along X.
@@ -330,7 +334,7 @@ Use `ORIGIN` or `CENTER` beside them to choose the manipulation pivot. Origin us
 
 The selected space and pivot are stored on the transient gizmo component. A drag freezes its basis and pivot when it begins, so the handle stays stable even while the transform changes. For a parented entity, the gizmo edits its world pose and derives the new local Transform automatically.
 
-While stopped, transform edits to scene-authored entities participate in explicit Save. During running or paused playback they affect only runtime state. A complete gizmo drag is one undoable transaction, including multi-axis handles and the coupled position change produced by Center rotation or scale. Editing asset origins, custom pivots, snapping, and multi-selection are not implemented yet.
+While stopped, transform edits to scene-authored entities participate in explicit Save. During running or paused playback they affect only runtime state. A complete gizmo drag is one undoable transaction, including multi-axis handles, snapping, and the coupled position change produced by Center rotation or scale. Editing asset origins, custom pivots, arbitrary surface snapping, and multi-selection are not implemented yet.
 
 ## Capture the editor
 

@@ -903,6 +903,48 @@ test_editor_feedback_draws_are_suppressed_while_editor_is_hidden :: proc(t: ^tes
 }
 
 @(test)
+test_editor_grid_is_procedural_depth_tested_and_uses_decimal_world_units :: proc(t: ^testing.T) {
+	testing.expect(t, strings.contains(WGPU_EDITOR_GRID_SHADER, "@builtin(vertex_index)"))
+	testing.expect(t, strings.contains(WGPU_EDITOR_GRID_SHADER, "fwidth(coordinate)"))
+	testing.expect(
+		t,
+		strings.contains(WGPU_EDITOR_GRID_SHADER, "let camera_height = abs(camera.y)"),
+	)
+	testing.expect(t, strings.contains(WGPU_EDITOR_GRID_SHADER, "let primary_steps = 10.0"))
+	testing.expect(t, strings.contains(WGPU_EDITOR_GRID_SHADER, "camera_height / base_spacing"))
+	testing.expect(t, strings.contains(WGPU_EDITOR_GRID_SHADER, "/ log(10.0)"))
+	testing.expect(t, strings.contains(WGPU_EDITOR_GRID_SHADER, "grid.spacing_lod_fade.z"))
+	testing.expect(t, strings.contains(WGPU_EDITOR_GRID_SHADER, "grid.spacing_lod_fade.w"))
+	testing.expect(t, strings.contains(WGPU_EDITOR_GRID_SHADER, "pow(primary_steps, level)"))
+	testing.expect(t, strings.contains(WGPU_EDITOR_GRID_SHADER, "1.0 - transition"))
+	testing.expect(
+		t,
+		strings.contains(WGPU_EDITOR_GRID_SHADER, "minor_spacing) * 0.5 * (1.0 - transition)"),
+	)
+	testing.expect(t, strings.contains(WGPU_EDITOR_GRID_SHADER, "major_spacing) * 0.5"))
+	testing.expect(t, strings.contains(WGPU_EDITOR_GRID_SHADER, "planar_distance / fade_radius"))
+	testing.expect(t, !strings.contains(WGPU_EDITOR_GRID_SHADER, "angle_fade"))
+	testing.expect(t, !strings.contains(WGPU_EDITOR_GRID_SHADER, "world_units_per_pixel"))
+	testing.expect(t, strings.contains(WGPU_EDITOR_GRID_SHADER, "x_axis"))
+	testing.expect(t, strings.contains(WGPU_EDITOR_GRID_SHADER, "z_axis"))
+
+	renderer: WGPU_Renderer
+	renderer.gpu_render_uniform.view_projection = mat4_identity()
+	renderer.gpu_render_uniform.camera_position = {12, 4, -8, 1}
+	renderer.gpu_render_uniform.camera_clip = {0.1, 800, 0, 0}
+	state := new(ui.State)
+	defer free(state)
+	state.editor_placement_snap_step = 0.25
+	uniform := wgpu_editor_grid_uniform(&renderer, state)
+	testing.expect_value(t, uniform.camera_center_extent, [4]f32{12, 4, -8, 800})
+	testing.expect_value(t, uniform.spacing_lod_fade, [4]f32{1, 10, 0, 4})
+
+	state.editor_placement_snap_step = 0
+	uniform = wgpu_editor_grid_uniform(&renderer, state)
+	testing.expect_value(t, uniform.spacing_lod_fade, [4]f32{1, 10, 0, 4})
+}
+
+@(test)
 test_material_revision_marks_only_dependent_active_gpu_slots_for_sync :: proc(t: ^testing.T) {
 	registry: resources.Registry
 	defer resources.destroy_registry(&registry)

@@ -45,6 +45,32 @@ test_transform_chord_constraints_map_axes_and_excluded_planes :: proc(t: ^testin
 }
 
 @(test)
+test_transform_snapping_quantizes_shared_gizmo_displacements :: proc(t: ^testing.T) {
+	axes := [3]shared.Vec3{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}
+	free := editor_gizmo_snap_displacement({0.37, -0.74, 1.26}, .Center, axes, 0.5)
+	testing.expect(t, gizmo_vec3_near(free, {0.5, -0.5, 1.5}))
+
+	axis := editor_gizmo_snap_displacement({0.37, -0.74, 1.26}, .X, axes, 0.5)
+	testing.expect(t, gizmo_vec3_near(axis, {0.5, 0, 0}))
+
+	plane := editor_gizmo_snap_displacement({0.37, -0.74, 1.26}, .XZ, axes, 0.5)
+	testing.expect(t, gizmo_vec3_near(plane, {0.5, 0, 1.5}))
+	testing.expect(
+		t,
+		math.abs(
+			editor_gizmo_snap_scalar(math.to_radians(f32(22)), math.to_radians(f32(15))) -
+			math.to_radians(f32(15)),
+		) <
+		0.001,
+	)
+	testing.expect(t, math.abs(editor_gizmo_snap_scale_factor(1.26, 0.1) - 1.3) < 0.001)
+
+	testing.expect(t, editor_gizmo_effective_snap_step(0.5, 0.5, false) == 0.5)
+	testing.expect(t, editor_gizmo_effective_snap_step(0.5, 0.5, true) == 0)
+	testing.expect(t, editor_gizmo_effective_snap_step(0, 0.5, true) == 0.5)
+}
+
+@(test)
 test_translation_handles_follow_cursor_rays_in_world_constraints :: proc(t: ^testing.T) {
 	camera := shared.Camera_Instance {
 		transform = {position = {}},

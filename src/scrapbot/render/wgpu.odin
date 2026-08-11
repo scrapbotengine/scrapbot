@@ -1165,6 +1165,14 @@ WGPU_Renderer :: struct {
 	editor_feedback_mask_view: wgpu.TextureView,
 	editor_feedback_mask_initialized: bool,
 	editor_feedback_mask_active: bool,
+	editor_grid_shader: wgpu.ShaderModule,
+	editor_grid_pipeline: wgpu.RenderPipeline,
+	editor_grid_pipeline_layout: wgpu.PipelineLayout,
+	editor_grid_bind_group_layout: wgpu.BindGroupLayout,
+	editor_grid_bind_group: wgpu.BindGroup,
+	editor_grid_uniform_buffer: wgpu.Buffer,
+	editor_grid_uniform: WGPU_Editor_Grid_Uniform,
+	editor_grid_uniform_valid: bool,
 	bloom_textures: [WGPU_BLOOM_LEVELS]wgpu.Texture,
 	bloom_views: [WGPU_BLOOM_LEVELS]wgpu.TextureView,
 	bloom_compute_bind_groups: [2][WGPU_BLOOM_LEVELS]wgpu.BindGroup,
@@ -3507,6 +3515,15 @@ wgpu_encode_render_pass :: proc(
 		}
 	}
 	wgpu.RenderPassEncoderEnd(render_pass)
+	if err := wgpu_encode_editor_grid_pass(
+		renderer,
+		encoder,
+		render_depth_view,
+		ui_state,
+		layout.render_viewport,
+	); err != "" {
+		return err
+	}
 	wgpu_prepare_transparent_draws(renderer, registry, &renderer.render_list)
 	if err := wgpu_encode_transparent_pass(
 		renderer,

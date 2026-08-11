@@ -245,13 +245,30 @@ editor_transform_gizmo_system :: proc(
 					has_camera,
 				); solved {
 					candidate := state.editor_gizmo_drag_world_transform
+					displacement := vec3_sub(position, state.editor_gizmo_drag_pivot)
+					snap_step := editor_gizmo_effective_snap_step(
+						state.editor_placement_snap_step,
+						0.5,
+						keyboard.fine,
+					)
+					if snap_step > 0 {
+						displacement = editor_gizmo_snap_displacement(
+							displacement,
+							state.editor_gizmo_active_handle,
+							state.editor_gizmo_drag_world_axes,
+							snap_step,
+						)
+					}
 					candidate.position = vec3_add(
-						candidate.position,
-						vec3_sub(position, state.editor_gizmo_drag_pivot),
+						state.editor_gizmo_drag_world_transform.position,
+						displacement,
 					)
 					editor_gizmo_apply_world_transform(world, entity_index, candidate)
 					if gizmo.pivot == .Center && state.editor_gizmo_bounds_valid {
-						state.editor_gizmo_bounds_center = position
+						state.editor_gizmo_bounds_center = vec3_add(
+							state.editor_gizmo_drag_pivot,
+							displacement,
+						)
 					}
 				}
 			case .Rotate:
@@ -262,20 +279,29 @@ editor_transform_gizmo_system :: proc(
 				current := screen_sub(pointer.position, state.editor_gizmo_origin)
 				state.editor_gizmo_drag_angle += screen_rotation_delta(previous, current)
 				state.editor_gizmo_drag_last_pointer = pointer.position
+				angle := state.editor_gizmo_drag_angle
+				rotation_snap_step := editor_gizmo_effective_snap_step(
+					state.editor_rotation_snap_step,
+					math.to_radians(f32(15)),
+					keyboard.fine,
+				)
+				if rotation_snap_step > 0 {
+					angle = editor_gizmo_snap_scalar(angle, rotation_snap_step)
+				}
 				candidate := state.editor_gizmo_drag_world_transform
 				if state.editor_gizmo_active_handle == .Center {
 					axis := state.editor_gizmo_drag_view_axis
 					candidate.rotation = editor_gizmo_rotated_euler_around_world_axis(
 						state.editor_gizmo_drag_world_transform.rotation,
 						axis,
-						state.editor_gizmo_drag_angle,
+						angle,
 					)
 					if gizmo.pivot == .Center {
 						candidate.position = editor_gizmo_rotated_position(
 							state.editor_gizmo_drag_world_transform.position,
 							state.editor_gizmo_drag_pivot,
 							axis,
-							state.editor_gizmo_drag_angle,
+							angle,
 						)
 					}
 					editor_gizmo_apply_world_transform(world, entity_index, candidate)
@@ -285,7 +311,7 @@ editor_transform_gizmo_system :: proc(
 					candidate.rotation = editor_gizmo_rotated_euler(
 						state.editor_gizmo_drag_world_transform.rotation,
 						axis_index,
-						state.editor_gizmo_drag_angle,
+						angle,
 						gizmo.space,
 					)
 					if gizmo.pivot == .Center {
@@ -293,7 +319,7 @@ editor_transform_gizmo_system :: proc(
 							state.editor_gizmo_drag_world_transform.position,
 							state.editor_gizmo_drag_pivot,
 							state.editor_gizmo_drag_world_axes[axis_index],
-							state.editor_gizmo_drag_angle,
+							angle,
 						)
 					}
 					editor_gizmo_apply_world_transform(world, entity_index, candidate)
@@ -312,6 +338,21 @@ editor_transform_gizmo_system :: proc(
 					if solved {
 						factors[first] = max(1 + first_amount, 0.01)
 						factors[second] = max(1 + second_amount, 0.01)
+						scale_snap_step := editor_gizmo_effective_snap_step(
+							state.editor_scale_snap_step,
+							0.1,
+							keyboard.fine,
+						)
+						if scale_snap_step > 0 {
+							factors[first] = editor_gizmo_snap_scale_factor(
+								factors[first],
+								scale_snap_step,
+							)
+							factors[second] = editor_gizmo_snap_scale_factor(
+								factors[second],
+								scale_snap_step,
+							)
+						}
 						vec3_mul_axis(&candidate.scale, first, factors[first])
 						vec3_mul_axis(&candidate.scale, second, factors[second])
 					}
@@ -320,6 +361,14 @@ editor_transform_gizmo_system :: proc(
 						delta.x * state.editor_gizmo_drag_direction.x +
 						delta.y *
 							state.editor_gizmo_drag_direction.y; factor := max(1 + pixels / state.editor_gizmo_drag_pixels, 0.01)
+					scale_snap_step := editor_gizmo_effective_snap_step(
+						state.editor_scale_snap_step,
+						0.1,
+						keyboard.fine,
+					)
+					if scale_snap_step > 0 {
+						factor = editor_gizmo_snap_scale_factor(factor, scale_snap_step)
+					}
 					switch state.editor_gizmo_active_handle {case .X:
 							candidate.scale.x *= factor; factors[0] = factor; case .Y:
 							candidate.scale.y *= factor; factors[1] = factor; case .Z:
@@ -359,6 +408,53 @@ editor_transform_gizmo_system :: proc(
 			has_camera,
 		)
 	}
+}
+
+editor_gizmo_effective_snap_step :: proc(
+	configured_step, fallback_step: f32,
+	modifier_held: bool,
+) -> f32 {
+	if modifier_held {
+		if configured_step > 0 {
+			return 0
+		}
+		return fallback_step
+	}
+	return max(configured_step, 0)
+}
+
+editor_gizmo_snap_scalar :: proc(value, step: f32) -> f32 {
+	if step <= 0 {
+		return value
+	}
+	return math.round(value / step) * step
+}
+
+editor_gizmo_snap_scale_factor :: proc(factor, step: f32) -> f32 {
+	return max(1 + editor_gizmo_snap_scalar(factor - 1, step), 0.01)
+}
+
+editor_gizmo_snap_displacement :: proc(
+	displacement: shared.Vec3,
+	handle: ui.Editor_Gizmo_Handle,
+	axes: [3]shared.Vec3,
+	step: f32,
+) -> shared.Vec3 {
+	if step <= 0 {
+		return displacement
+	}
+	result: shared.Vec3
+	for axis, index in axes {
+		include := handle == .Center || handle == ui.Editor_Gizmo_Handle(index + 1)
+		if first, second, pair := editor_gizmo_pair_axes(handle); pair {
+			include = index == first || index == second
+		}
+		if include {
+			amount := editor_gizmo_snap_scalar(vec3_dot(displacement, axis), step)
+			result = vec3_add(result, vec3_mul(axis, amount))
+		}
+	}
+	return result
 }
 
 editor_gizmo_keyboard_handle :: proc(
