@@ -290,10 +290,7 @@ editor_select_first_resource_usage :: proc(
 		}
 		resource_id, valid := shared.resource_uuid_parse(entity.material_resource)
 		if valid && resource_id == id {
-			state.editor_selected_entity = world.entities[index].id
-			state.editor_has_selection = true
-			state.editor_has_resource_selection = false
-			state.editor_snapshot_valid = false
+			_ = editor_select_entity(state, world, world.entities[index].id, 0)
 			return true
 		}
 	}
@@ -344,7 +341,7 @@ editor_authoring_create_resource :: proc(state: ^State) -> bool {
 	editor_mark_resource_dirty(state, id)
 	state.editor_selected_resource = id
 	state.editor_has_resource_selection = true
-	state.editor_has_selection = false
+	editor_clear_selection(state)
 	state.editor_snapshot_valid = false
 	return true
 }

@@ -342,6 +342,15 @@ Editor_Resource_Structural_Change :: struct {
 	before: ^resources.Project_Material_Snapshot,
 	after: ^resources.Project_Material_Snapshot,
 }
+Editor_Transform_Batch_Item :: struct {
+	target_uuid: shared.Entity_UUID,
+	component_revision: u64,
+	before: shared.Transform_Component,
+	after: shared.Transform_Component,
+}
+Editor_Transform_Batch_Change :: struct {
+	items: [dynamic]Editor_Transform_Batch_Item,
+}
 Editor_Edit_Transaction :: struct {
 	changes: [EDITOR_TRANSACTION_MAX_CHANGES]Editor_Edit_Change,
 	change_count: int,
@@ -350,6 +359,15 @@ Editor_Edit_Transaction :: struct {
 	structural: ^Editor_Structural_Change,
 	component_structural: ^Editor_Component_Structural_Change,
 	resource_structural: ^Editor_Resource_Structural_Change,
+	transform_batch: ^Editor_Transform_Batch_Change,
+}
+
+Editor_Gizmo_Transform_Snapshot :: struct {
+	target: shared.Entity,
+	target_uuid: shared.Entity_UUID,
+	component_revision: u64,
+	local: shared.Transform_Component,
+	world: shared.Transform_Component,
 }
 
 Editor_Transport_Visual_State :: struct {
@@ -502,8 +520,9 @@ State :: struct {
 	editor_pixel_density: f32,
 	editor_paint_start: int,
 	editor_selected_entity: shared.Entity,
-	editor_render_selected_entity: shared.Entity,
-	editor_render_selected_uuid: shared.Entity_UUID,
+	editor_selected_uuids: [dynamic]shared.Entity_UUID,
+	editor_selection_revision: u64,
+	editor_selection_toggle_modifier: bool,
 	editor_has_selection: bool,
 	editor_selected_resource: shared.Resource_UUID,
 	editor_has_resource_selection: bool,
@@ -514,10 +533,10 @@ State :: struct {
 	editor_snapshot_selected_entity: shared.Entity,
 	editor_snapshot_refresh_count: u64,
 	editor_browser_snapshot_valid: bool,
-	editor_browser_snapshot_has_selection: bool,
-	editor_browser_snapshot_selected_entity: shared.Entity,
+	editor_browser_snapshot_selection_revision: u64,
 	editor_inspector_snapshot_valid: bool,
 	editor_inspector_snapshot_entity: shared.Entity,
+	editor_inspector_snapshot_selection_revision: u64,
 	editor_inspector_snapshot_component_revision: u64,
 	editor_inspector_snapshot_has_resource: bool,
 	editor_inspector_snapshot_resource: shared.Resource_UUID,
@@ -559,6 +578,7 @@ State :: struct {
 	editor_history_clean_valid: bool,
 	editor_pick_requested: bool,
 	editor_pick_position: shared.Vec2,
+	editor_pick_toggle_selection: bool,
 	editor_model_placement_requested: bool,
 	editor_model_placement_request: Editor_Model_Placement_Request,
 	editor_model_placement_preview_visible: bool,
@@ -595,7 +615,7 @@ State :: struct {
 	editor_gizmo_space: shared.Editor_Gizmo_Space,
 	editor_gizmo_pivot: shared.Editor_Gizmo_Pivot,
 	editor_gizmo_bounds_center: shared.Vec3,
-	editor_gizmo_bounds_selected: shared.Entity_UUID,
+	editor_gizmo_bounds_selection_revision: u64,
 	editor_gizmo_bounds_world_uuid: shared.Entity_UUID,
 	editor_gizmo_bounds_render_topology_revision: u64,
 	editor_gizmo_bounds_render_hierarchy_revision: u64,
@@ -622,6 +642,7 @@ State :: struct {
 	editor_gizmo_drag_rotation: shared.Vec3,
 	editor_gizmo_drag_scale: shared.Vec3,
 	editor_gizmo_drag_world_transform: shared.Transform_Component,
+	editor_gizmo_drag_selection: [dynamic]Editor_Gizmo_Transform_Snapshot,
 	editor_gizmo_drag_pivot: shared.Vec3,
 	editor_gizmo_drag_direction: shared.Vec2,
 	editor_gizmo_drag_screen_axes: [3]shared.Vec2,
@@ -961,22 +982,105 @@ editor_selected_uuid :: proc(state: ^State, world: ^shared.World) -> (shared.Ent
 	return world.entities[entity_index].uuid, true
 }
 
+editor_entity_selected :: proc(state: ^State, id: shared.Entity_UUID) -> bool {
+	if state == nil || id == (shared.Entity_UUID{}) {
+		return false
+	}
+	for selected in state.editor_selected_uuids {
+		if selected == id {
+			return true
+		}
+	}
+	return false
+}
+
+editor_selection_count :: proc(state: ^State) -> int {
+	if state == nil {
+		return 0
+	}
+	return len(state.editor_selected_uuids)
+}
+
+editor_selection_uuids :: proc(state: ^State) -> []shared.Entity_UUID {
+	if state == nil {
+		return nil
+	}
+	return state.editor_selected_uuids[:]
+}
+
+editor_selection_changed :: proc(state: ^State) {
+	if state == nil {
+		return
+	}
+	state.editor_selection_revision += 1
+	state.editor_has_selection = len(state.editor_selected_uuids) > 0
+	state.editor_snapshot_valid = false
+	state.editor_browser_snapshot_valid = false
+	state.editor_inspector_snapshot_valid = false
+	state.editor_gizmo_bounds_valid = false
+}
+
+editor_sync_selection :: proc(state: ^State, world: ^shared.World) {
+	if state == nil || world == nil {
+		return
+	}
+	changed := false
+	if len(state.editor_selected_uuids) == 0 && state.editor_has_selection {
+		active_index := int(state.editor_selected_entity.index)
+		if ecs.entity_is_alive(world, active_index) &&
+		   world.entities[active_index].id == state.editor_selected_entity &&
+		   world.entities[active_index].origin != .Editor {
+			append(&state.editor_selected_uuids, world.entities[active_index].uuid)
+			changed = true
+		}
+	}
+	write_index := 0
+	for id in state.editor_selected_uuids {
+		entity_index, found := ecs.entity_index_by_uuid(world, id)
+		if !found || world.entities[entity_index].origin == .Editor {
+			changed = true
+			continue
+		}
+		state.editor_selected_uuids[write_index] = id
+		write_index += 1
+	}
+	if write_index != len(state.editor_selected_uuids) {
+		resize(&state.editor_selected_uuids, write_index)
+	}
+	if write_index > 0 {
+		active_uuid := state.editor_selected_uuids[write_index - 1]
+		active_index, _ := ecs.entity_index_by_uuid(world, active_uuid)
+		active := world.entities[active_index].id
+		if state.editor_selected_entity != active {
+			state.editor_selected_entity = active
+			changed = true
+		}
+	} else if state.editor_has_selection {
+		state.editor_selected_entity = {}
+		changed = true
+	}
+	if changed {
+		editor_selection_changed(state)
+	} else {
+		state.editor_has_selection = write_index > 0
+	}
+}
+
 editor_world_restored :: proc(
 	state: ^State,
 	world: ^shared.World,
-	selected_uuid: shared.Entity_UUID,
-	had_selection: bool,
+	selected_uuid: shared.Entity_UUID = {},
+	had_selection: bool = false,
 ) {
 	if state == nil || world == nil {
 		return
 	}
-	state.editor_has_selection = false
-	if had_selection {
-		if entity_index, found := ecs.entity_index_by_uuid(world, selected_uuid); found {
-			state.editor_selected_entity = world.entities[entity_index].id
-			state.editor_has_selection = true
-		}
+	if len(state.editor_selected_uuids) == 0 &&
+	   had_selection &&
+	   selected_uuid != (shared.Entity_UUID{}) {
+		append(&state.editor_selected_uuids, selected_uuid)
 	}
+	editor_sync_selection(state, world)
 	state.editor_snapshot_valid = false
 	state.editor_gizmo_active_handle = .None
 	state.editor_gizmo_captures_pointer = false
@@ -1123,6 +1227,8 @@ destroy :: proc(state: ^State) {
 	delete(state.editor_dirty_entity_lookup)
 	delete(state.editor_dirty_resources)
 	delete(state.editor_dirty_resource_lookup)
+	delete(state.editor_selected_uuids)
+	delete(state.editor_gizmo_drag_selection)
 	delete(state.editor_collapsed_entities)
 	delete(state.editor_resource_reimport_message)
 	state^ = {}
@@ -1418,6 +1524,7 @@ reconcile :: proc(
 	if state == nil || world == nil { return "UI state or world is unavailable" }
 	state.event_count = 0
 	world.ui_events.latest_pass_after_sequence = ecs.ui_event_latest_sequence(world)
+	state.editor_selection_toggle_modifier = keyboard.shift
 	editor_ui_handle_shortcuts(state, world, keyboard)
 	when ODIN_TEST {
 		state.layout_node_visit_count = 0
@@ -1817,15 +1924,7 @@ reconcile :: proc(
 	if input_event_entity_index >= 0 {
 		editor_ui_consume_input_state(state, world, input_event_entity_index)
 	}
-	if state.editor_has_selection {
-		index := int(state.editor_selected_entity.index)
-		if index < 0 ||
-		   index >= len(world.entities) ||
-		   !world.entities[index].alive ||
-		   world.entities[index].origin == .Editor ||
-		   world.entities[index].id.generation !=
-			   state.editor_selected_entity.generation { editor_clear_selection(state) }
-	}
+	editor_sync_selection(state, world)
 	if state.editor_visible {
 		state.editor_snapshot_elapsed += max(delta_seconds, 0)
 		system_profile_changed :=
@@ -2240,8 +2339,10 @@ project_pointer_input :: proc(
 }
 
 editor_clear_selection :: proc(state: ^State) {if state == nil { return }
-	state.editor_has_selection = false
-	state.editor_snapshot_valid = false
+	if len(state.editor_selected_uuids) == 0 && !state.editor_has_selection { return }
+	clear(&state.editor_selected_uuids)
+	state.editor_selected_entity = {}
+	editor_selection_changed(state)
 	for &node in state.nodes[:state.node_count] { if node.editor_role == .Inspector_Scroll { node.scroll_offset = 0; node.scroll_target = 0 } }
 	state.editor_gizmo_active_handle = .None
 	state.editor_gizmo_captures_pointer = false
@@ -2249,6 +2350,26 @@ editor_clear_selection :: proc(state: ^State) {if state == nil { return }
 	state.editor_light_gizmo_active = false
 	state.editor_light_gizmo_captures_pointer = false
 	state.editor_light_gizmo_visible = false}
+
+editor_remove_selection_uuid :: proc(state: ^State, world: ^shared.World, id: shared.Entity_UUID) {
+	if state == nil || id == (shared.Entity_UUID{}) {
+		return
+	}
+	for selected, selection_index in state.editor_selected_uuids {
+		if selected != id { continue }
+		ordered_remove(&state.editor_selected_uuids, selection_index)
+		if world != nil && len(state.editor_selected_uuids) > 0 {
+			active_uuid := state.editor_selected_uuids[len(state.editor_selected_uuids) - 1]
+			if active_index, found := ecs.entity_index_by_uuid(world, active_uuid); found {
+				state.editor_selected_entity = world.entities[active_index].id
+			}
+		} else if len(state.editor_selected_uuids) == 0 {
+			state.editor_selected_entity = {}
+		}
+		editor_selection_changed(state)
+		return
+	}
+}
 
 editor_set_gizmo_mode :: proc(state: ^State, mode: shared.Editor_Gizmo_Mode) {
 	if state == nil || state.editor_gizmo_mode == mode { return }
@@ -2325,6 +2446,7 @@ editor_select_entity :: proc(
 	world: ^shared.World,
 	entity: shared.Entity,
 	height: f32,
+	toggle: bool = false,
 ) -> bool {
 	_ = height
 	if state == nil || world == nil { return false }; index := int(entity.index)
@@ -2345,23 +2467,85 @@ editor_select_entity :: proc(
 			selected_entity = world.entities[owner_index].id
 		}
 	}
-	if !state.editor_has_selection ||
-	   state.editor_selected_entity !=
-		   selected_entity { for &node in state.nodes[:state.node_count] { if node.editor_role == .Inspector_Scroll { node.scroll_offset = 0; node.scroll_target = 0 } } }
-	if !state.editor_has_selection || state.editor_selected_entity != selected_entity {
+	selected_index := int(selected_entity.index)
+	selected_uuid := world.entities[selected_index].uuid
+	already_selected := editor_entity_selected(state, selected_uuid)
+	if toggle && already_selected {
+		for id, selection_index in state.editor_selected_uuids {
+			if id != selected_uuid { continue }
+			ordered_remove(&state.editor_selected_uuids, selection_index)
+			break
+		}
+		if len(state.editor_selected_uuids) > 0 {
+			active_uuid := state.editor_selected_uuids[len(state.editor_selected_uuids) - 1]
+			active_index, _ := ecs.entity_index_by_uuid(world, active_uuid)
+			state.editor_selected_entity = world.entities[active_index].id
+		} else {
+			state.editor_selected_entity = {}
+		}
+		editor_selection_changed(state)
+		return true
+	}
+	selection_replaced := !toggle && (len(state.editor_selected_uuids) != 1 || !already_selected)
+	active_changed := state.editor_selected_entity != selected_entity
+	if selection_replaced || active_changed {
+		for &node in state.nodes[:state.node_count] { if node.editor_role == .Inspector_Scroll { node.scroll_offset = 0; node.scroll_target = 0 } }
+	}
+	if selection_replaced || active_changed || !already_selected {
 		state.editor_gizmo_active_handle = .None
 		state.editor_gizmo_captures_pointer = false
 		state.editor_light_gizmo_active = false
 		state.editor_light_gizmo_captures_pointer = false
 	}
+	if !toggle {
+		clear(&state.editor_selected_uuids)
+	}
+	if !already_selected || !toggle {
+		append(&state.editor_selected_uuids, selected_uuid)
+	} else if active_changed {
+		for id, selection_index in state.editor_selected_uuids {
+			if id != selected_uuid { continue }
+			ordered_remove(&state.editor_selected_uuids, selection_index)
+			append(&state.editor_selected_uuids, selected_uuid)
+			break
+		}
+	}
 	state.editor_selected_entity = selected_entity
-	state.editor_has_selection = true
 	state.editor_has_resource_selection = false
-	state.editor_snapshot_valid = false
+	if selection_replaced || active_changed || !already_selected {
+		editor_selection_changed(state)
+	}
 	row_slot := -1
 	for component in world.editor_uis { if (component.role == .Browser_Row || component.role == .Browser_Row_Label) && component.target == selected_entity { row_slot = component.slot; break } }
 	if row_slot >=
 	   0 { for &node in state.nodes[:state.node_count] { if node.editor_role != .Browser_Scroll { continue }; row_top := f32(row_slot) * EDITOR_ENTITY_ROW_HEIGHT; row_bottom := row_top + EDITOR_ENTITY_ROW_HEIGHT; if row_top < node.scroll_target { node.scroll_target = row_top } else if row_bottom > node.scroll_target + node.rect.height { node.scroll_target = row_bottom - node.rect.height }; break } }
+	return true
+}
+
+editor_activate_entity :: proc(
+	state: ^State,
+	world: ^shared.World,
+	entity: shared.Entity,
+) -> bool {
+	if state == nil || world == nil {
+		return false
+	}
+	entity_index := int(entity.index)
+	if !ecs.entity_is_alive(world, entity_index) || world.entities[entity_index].id != entity {
+		return false
+	}
+	id := world.entities[entity_index].uuid
+	if !editor_entity_selected(state, id) {
+		return editor_select_entity(state, world, entity, 0)
+	}
+	for selected, selection_index in state.editor_selected_uuids {
+		if selected != id { continue }
+		ordered_remove(&state.editor_selected_uuids, selection_index)
+		append(&state.editor_selected_uuids, id)
+		break
+	}
+	state.editor_selected_entity = entity
+	editor_selection_changed(state)
 	return true
 }
 

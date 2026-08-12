@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "timeout_frames": 120,
+  "actions": [
+    {"action": "click", "target": {"name": "__scrapbot_editor_row_label_0", "origin": "editor"}},
+    {"action": "click", "target": {"name": "__scrapbot_editor_row_label_1", "origin": "editor"}, "shift": true},
+    {"action": "capture", "target": {"name": "__scrapbot_editor_scene", "origin": "editor"}, "padding": 8}
+  ]
+}

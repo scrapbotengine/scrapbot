@@ -34,6 +34,7 @@ Diagnostic_Action :: struct {
 	delta_y: f32,
 	padding: f32,
 	hold: bool,
+	shift: bool,
 }
 
 Diagnostic_Script :: struct {
@@ -308,6 +309,7 @@ diagnostic_driver_input :: proc(
 	action := driver.script.actions[driver.action_index]
 	pointer := driver.last_pointer
 	keyboard: Keyboard_Input
+	keyboard.shift = action.shift
 
 	switch action.action {
 		case "set_editor_camera":

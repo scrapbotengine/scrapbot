@@ -6633,6 +6633,43 @@ test_editor_selection_promotes_derived_model_entity_to_authored_root :: proc(t: 
 }
 
 @(test)
+test_editor_multi_selection_replaces_adds_toggles_and_promotes_last_remaining :: proc(
+	t: ^testing.T,
+) {
+	scene: shared.Scene
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity{id = ui_test_id("Multi A"), name = "A"},
+		shared.Scene_Entity{id = ui_test_id("Multi B"), name = "B"},
+		shared.Scene_Entity{id = ui_test_id("Multi C"), name = "C"},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	state := new(State)
+	defer free(state)
+	defer destroy(state)
+	testing.expect(t, init(state) == "")
+
+	testing.expect(t, editor_select_entity(state, &world, world.entities[0].id, 0))
+	testing.expect_value(t, editor_selection_count(state), 1)
+	testing.expect(t, editor_entity_selected(state, world.entities[0].uuid))
+	testing.expect(t, editor_select_entity(state, &world, world.entities[1].id, 0, true))
+	testing.expect_value(t, editor_selection_count(state), 2)
+	testing.expect_value(t, state.editor_selected_entity, world.entities[1].id)
+	testing.expect(t, editor_select_entity(state, &world, world.entities[1].id, 0, true))
+	testing.expect_value(t, editor_selection_count(state), 1)
+	testing.expect_value(t, state.editor_selected_entity, world.entities[0].id)
+	testing.expect(t, editor_select_entity(state, &world, world.entities[2].id, 0))
+	testing.expect_value(t, editor_selection_count(state), 1)
+	testing.expect(t, !editor_entity_selected(state, world.entities[0].uuid))
+	testing.expect(t, editor_entity_selected(state, world.entities[2].uuid))
+	editor_clear_selection(state)
+	testing.expect_value(t, editor_selection_count(state), 0)
+	testing.expect(t, !state.editor_has_selection)
+}
+
+@(test)
 test_editor_browser_builds_collapsible_transform_tree_and_reparents_with_history :: proc(
 	t: ^testing.T,
 ) {

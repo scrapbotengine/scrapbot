@@ -1020,8 +1020,7 @@ WGPU_Renderer :: struct {
 	gpu_instance_source_transforms: [dynamic]shared.Transform_Component,
 	gpu_active_slots: [dynamic]bool,
 	gpu_dirty_indices: [dynamic]int,
-	gpu_editor_selected_entity: shared.Entity,
-	gpu_editor_selected_uuid: shared.Entity_UUID,
+	gpu_editor_selection_revision: u64,
 	gpu_editor_selected_slots: [dynamic]int,
 	gpu_editor_selected_slot_indices: [dynamic]int,
 	gpu_transform_updates: [dynamic]WGPU_GPU_Instance_Transform,
@@ -4449,8 +4448,8 @@ wgpu_draw_frame :: proc(
 		layout.render_width,
 		layout.render_height,
 		config.cpu_culling,
-		config.ui_state.editor_render_selected_entity if config.ui_state != nil else shared.Entity{},
-		config.ui_state.editor_render_selected_uuid if config.ui_state != nil else shared.Entity_UUID{},
+		ui.editor_selection_uuids(config.ui_state) if config.ui_state != nil && config.ui_state.editor_visible else nil,
+		config.ui_state.editor_selection_revision * 2 + (u64(1) if config.ui_state.editor_visible else 0) if config.ui_state != nil else 0,
 	)
 	if prepare_err != "" {
 		return false, false, prepare_err
@@ -4807,8 +4806,8 @@ wgpu_render_offscreen_frame :: proc(
 		layout.render_width,
 		layout.render_height,
 		config.cpu_culling,
-		config.ui_state.editor_render_selected_entity if config.ui_state != nil else shared.Entity{},
-		config.ui_state.editor_render_selected_uuid if config.ui_state != nil else shared.Entity_UUID{},
+		ui.editor_selection_uuids(config.ui_state) if config.ui_state != nil && config.ui_state.editor_visible else nil,
+		config.ui_state.editor_selection_revision * 2 + (u64(1) if config.ui_state.editor_visible else 0) if config.ui_state != nil else 0,
 	)
 	if prepare_err != "" {
 		return prepare_err

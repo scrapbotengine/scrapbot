@@ -18,6 +18,7 @@ gizmo_vec3_near :: proc(a, b: shared.Vec3, epsilon: f32 = 0.001) -> bool {
 test_transform_gizmos_absorb_pointer_wrap_into_drag_anchors :: proc(t: ^testing.T) {
 	state := new(ui.State)
 	defer free(state)
+	defer ui.destroy(state)
 	state^ = ui.State {
 		editor_gizmo_keyboard_active = true,
 		editor_gizmo_captures_pointer = true,
@@ -170,6 +171,7 @@ test_center_pivot_free_translation_preserves_origin_offset :: proc(t: ^testing.T
 	)
 	state := new(ui.State)
 	defer free(state)
+	defer ui.destroy(state)
 	state.editor_visible = true
 	state.editor_has_selection = true
 	state.editor_selected_entity = {
@@ -208,6 +210,99 @@ test_center_pivot_free_translation_preserves_origin_offset :: proc(t: ^testing.T
 }
 
 @(test)
+test_multi_selection_transforms_share_pivot_and_commit_one_history_transaction :: proc(
+	t: ^testing.T,
+) {
+	scene: shared.Scene
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = shared.entity_uuid_from_engine_name("multi-gizmo-a"),
+			name = "A",
+			has_transform = true,
+			transform = {position = {-1, 0, 0}, scale = {1, 1, 1}},
+		},
+		shared.Scene_Entity {
+			id = shared.entity_uuid_from_engine_name("multi-gizmo-b"),
+			name = "B",
+			has_transform = true,
+			transform = {position = {1, 0, 0}, scale = {1, 1, 1}},
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	state := new(ui.State)
+	defer free(state)
+	defer ui.destroy(state)
+	testing.expect(t, ui.init(state) == "")
+	state.editor_simulation_stopped = true
+	_ = ui.editor_select_entity(state, &world, world.entities[0].id, 0)
+	_ = ui.editor_select_entity(state, &world, world.entities[1].id, 0, true)
+
+	editor_gizmo_capture_selection(state, &world)
+	state.editor_gizmo_drag_pivot = {}
+	state.editor_gizmo_drag_world_axes = editor_gizmo_axes({}, .World)
+	editor_gizmo_apply_selection_translation(state, &world, {2, 0, 0})
+	testing.expect(t, gizmo_vec3_near(world.transforms[0].position, {1, 0, 0}))
+	testing.expect(t, gizmo_vec3_near(world.transforms[1].position, {3, 0, 0}))
+	ui.editor_history_push_transform_batch(state, &world, state.editor_gizmo_drag_selection[:])
+	testing.expect_value(t, state.editor_history_count, 1)
+	testing.expect(t, state.editor_history[0].transform_batch != nil)
+	testing.expect_value(t, len(state.editor_history[0].transform_batch.items), 2)
+	testing.expect(t, ui.editor_history_apply(state, &world, false))
+	testing.expect(t, gizmo_vec3_near(world.transforms[0].position, {-1, 0, 0}))
+	testing.expect(t, gizmo_vec3_near(world.transforms[1].position, {1, 0, 0}))
+	testing.expect(t, ui.editor_history_apply(state, &world, true))
+	testing.expect(t, gizmo_vec3_near(world.transforms[0].position, {1, 0, 0}))
+	testing.expect(t, gizmo_vec3_near(world.transforms[1].position, {3, 0, 0}))
+
+	editor_gizmo_restore_selection(state, &world)
+	editor_gizmo_apply_selection_rotation(state, &world, {0, 0, 1}, math.PI / 2, true)
+	testing.expect(t, gizmo_vec3_near(world.transforms[0].position, {0, -1, 0}))
+	testing.expect(t, gizmo_vec3_near(world.transforms[1].position, {0, 1, 0}))
+	editor_gizmo_restore_selection(state, &world)
+	editor_gizmo_apply_selection_scale(state, &world, {2, 1, 1}, true)
+	testing.expect(t, gizmo_vec3_near(world.transforms[0].position, {-2, 0, 0}))
+	testing.expect(t, gizmo_vec3_near(world.transforms[1].position, {2, 0, 0}))
+}
+
+@(test)
+test_multi_selection_parent_and_child_transform_without_double_application :: proc(t: ^testing.T) {
+	parent_id := shared.entity_uuid_from_engine_name("multi-parent")
+	child_id := shared.entity_uuid_from_engine_name("multi-child")
+	scene: shared.Scene
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = parent_id,
+			name = "Parent",
+			has_transform = true,
+			transform = {position = {1, 0, 0}, scale = {1, 1, 1}},
+		},
+		shared.Scene_Entity {
+			id = child_id,
+			name = "Child",
+			has_transform = true,
+			transform = {position = {1, 0, 0}, scale = {1, 1, 1}, parent = parent_id},
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	state := new(ui.State)
+	defer free(state)
+	defer ui.destroy(state)
+	testing.expect(t, ui.init(state) == "")
+	_ = ui.editor_select_entity(state, &world, world.entities[0].id, 0)
+	_ = ui.editor_select_entity(state, &world, world.entities[1].id, 0, true)
+	editor_gizmo_capture_selection(state, &world)
+	editor_gizmo_apply_selection_translation(state, &world, {3, 0, 0})
+	testing.expect(t, gizmo_vec3_near(world.transforms[0].position, {4, 0, 0}))
+	testing.expect(t, gizmo_vec3_near(world.transforms[1].position, {1, 0, 0}))
+}
+
+@(test)
 test_transform_chord_g_starts_free_translation_then_x_constrains_it :: proc(t: ^testing.T) {
 	world: shared.World
 	defer ecs.destroy_world(&world)
@@ -226,6 +321,7 @@ test_transform_chord_g_starts_free_translation_then_x_constrains_it :: proc(t: ^
 	)
 	state := new(ui.State)
 	defer free(state)
+	defer ui.destroy(state)
 	state.editor_visible = true
 	state.editor_has_selection = true
 	state.editor_selected_entity = {
@@ -317,6 +413,7 @@ test_transform_chord_r_starts_view_rotation_then_x_constrains_it :: proc(t: ^tes
 	)
 	state := new(ui.State)
 	defer free(state)
+	defer ui.destroy(state)
 	state.editor_visible = true
 	state.editor_has_selection = true
 	state.editor_selected_entity = {
@@ -381,6 +478,7 @@ test_transform_chord_s_starts_uniform_scale_then_x_constrains_it :: proc(t: ^tes
 	append_soa(&world.transforms, shared.Transform_Component{scale = {1, 1, 1}})
 	state := new(ui.State)
 	defer free(state)
+	defer ui.destroy(state)
 	state.editor_visible = true
 	state.editor_has_selection = true
 	state.editor_selected_entity = {
@@ -448,6 +546,7 @@ test_keyboard_transform_click_commit_consumes_viewport_activation :: proc(t: ^te
 	append_soa(&world.transforms, shared.Transform_Component{scale = {1, 1, 1}})
 	state := new(ui.State)
 	defer free(state)
+	defer ui.destroy(state)
 	state.editor_visible = true
 	state.editor_has_selection = true
 	state.editor_selected_entity = {
@@ -558,6 +657,7 @@ test_transform_gizmo_local_x_translation_uses_and_freezes_the_rotated_axis :: pr
 	)
 	state := new(ui.State)
 	defer free(state)
+	defer ui.destroy(state)
 	state.editor_visible = true
 	state.editor_has_selection = true
 	state.editor_selected_entity = {
@@ -725,7 +825,7 @@ test_transform_gizmo_hides_for_entities_without_transform :: proc(t: ^testing.T)
 	world: shared.World; defer ecs.destroy_world(&world); append(&world.entities, shared.World_Entity{id = {index = 0, generation = 1}, alive = true, transform_index = -1, editor_transform_gizmo_index = -1})
 	state := new(
 		ui.State,
-	); defer free(state); state.editor_visible = true; state.editor_has_selection = true; state.editor_selected_entity = {
+	); defer free(state); defer ui.destroy(state); state.editor_visible = true; state.editor_has_selection = true; state.editor_selected_entity = {
 		index = 0,
 		generation = 1,
 	}; state.editor_gizmo_visible = true
@@ -749,7 +849,7 @@ test_rotation_gizmo_projects_rings_and_rotates_one_axis :: proc(t: ^testing.T) {
 	append_soa(&world.transforms, shared.Transform_Component{scale = {1, 1, 1}})
 	state := new(
 		ui.State,
-	); defer free(state); state.editor_visible = true; state.editor_has_selection = true; state.editor_selected_entity = {
+	); defer free(state); defer ui.destroy(state); state.editor_visible = true; state.editor_has_selection = true; state.editor_selected_entity = {
 		index = 0,
 		generation = 1,
 	}; state.editor_gizmo_mode = .Rotate
@@ -844,7 +944,7 @@ test_scale_gizmo_drags_one_axis_without_moving_entity :: proc(t: ^testing.T) {
 	)
 	state := new(
 		ui.State,
-	); defer free(state); state.editor_visible = true; state.editor_has_selection = true; state.editor_selected_entity = {
+	); defer free(state); defer ui.destroy(state); state.editor_visible = true; state.editor_has_selection = true; state.editor_selected_entity = {
 		index = 0,
 		generation = 1,
 	}; state.editor_gizmo_mode = .Scale
@@ -912,7 +1012,7 @@ test_transform_gizmo_plane_handles_translate_and_scale_two_axes :: proc(t: ^test
 	append_soa(&world.transforms, shared.Transform_Component{scale = {2, 4, 8}})
 	state := new(
 		ui.State,
-	); defer free(state); state.editor_visible = true; state.editor_has_selection = true; state.editor_selected_entity = {
+	); defer free(state); defer ui.destroy(state); state.editor_visible = true; state.editor_has_selection = true; state.editor_selected_entity = {
 		index = 0,
 		generation = 1,
 	}
@@ -1035,7 +1135,7 @@ test_transform_gizmo_center_handle_free_translates_and_uniformly_scales :: proc(
 	append_soa(&world.transforms, shared.Transform_Component{scale = {1, 1, 1}})
 	state := new(
 		ui.State,
-	); defer free(state); state.editor_visible = true; state.editor_has_selection = true; state.editor_selected_entity = {
+	); defer free(state); defer ui.destroy(state); state.editor_visible = true; state.editor_has_selection = true; state.editor_selected_entity = {
 		index = 0,
 		generation = 1,
 	}

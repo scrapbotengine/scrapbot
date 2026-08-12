@@ -16,6 +16,216 @@ editor_gizmo_apply_pointer_wrap :: proc(state: ^ui.State, displacement: shared.V
 	state.editor_gizmo_drag_last_pointer.y += displacement.y
 }
 
+editor_gizmo_capture_selection :: proc(state: ^ui.State, world: ^shared.World) {
+	if state == nil || world == nil {
+		return
+	}
+	clear(&state.editor_gizmo_drag_selection)
+	ecs.begin_world_transform_resolution(world)
+	selected_uuids := ui.editor_selection_uuids(state)
+	if len(selected_uuids) == 0 && state.editor_has_selection {
+		active_index := int(state.editor_selected_entity.index)
+		if ecs.entity_is_alive(world, active_index) &&
+		   world.entities[active_index].id == state.editor_selected_entity {
+			entity := world.entities[active_index]
+			if entity.transform_index >= 0 && entity.transform_index < len(world.transforms) {
+				world_transform, valid := ecs.resolve_world_transform(world, active_index)
+				if valid {
+					append(
+						&state.editor_gizmo_drag_selection,
+						ui.Editor_Gizmo_Transform_Snapshot {
+							target = entity.id,
+							target_uuid = entity.uuid,
+							component_revision = entity.component_revision,
+							local = world.transforms[entity.transform_index],
+							world = world_transform,
+						},
+					)
+				}
+			}
+		}
+		return
+	}
+	for id in selected_uuids {
+		entity_index, found := ecs.entity_index_by_uuid(world, id)
+		if !found {
+			continue
+		}
+		entity := world.entities[entity_index]
+		if entity.transform_index < 0 || entity.transform_index >= len(world.transforms) {
+			continue
+		}
+		world_transform, valid := ecs.resolve_world_transform(world, entity_index)
+		if !valid {
+			continue
+		}
+		append(
+			&state.editor_gizmo_drag_selection,
+			ui.Editor_Gizmo_Transform_Snapshot {
+				target = entity.id,
+				target_uuid = id,
+				component_revision = entity.component_revision,
+				local = world.transforms[entity.transform_index],
+				world = world_transform,
+			},
+		)
+	}
+}
+
+editor_gizmo_snapshot_entity_index :: proc(
+	world: ^shared.World,
+	snapshot: ui.Editor_Gizmo_Transform_Snapshot,
+) -> (
+	int,
+	bool,
+) {
+	entity_index := int(snapshot.target.index)
+	if ecs.entity_is_alive(world, entity_index) &&
+	   world.entities[entity_index].id == snapshot.target {
+		return entity_index, true
+	}
+	if snapshot.target_uuid != (shared.Entity_UUID{}) {
+		return ecs.entity_index_by_uuid(world, snapshot.target_uuid)
+	}
+	return -1, false
+}
+
+editor_gizmo_restore_selection :: proc(state: ^ui.State, world: ^shared.World) {
+	if state == nil || world == nil {
+		return
+	}
+	for snapshot in state.editor_gizmo_drag_selection {
+		entity_index, found := editor_gizmo_snapshot_entity_index(world, snapshot)
+		if !found || world.entities[entity_index].transform_index < 0 {
+			continue
+		}
+		world.transforms[world.entities[entity_index].transform_index] = snapshot.local
+		ecs.mark_render_transform_dirty(world, entity_index)
+	}
+}
+
+editor_gizmo_apply_selection_targets :: proc(
+	state: ^ui.State,
+	world: ^shared.World,
+	targets: []shared.Transform_Component,
+) {
+	if state == nil || world == nil || len(targets) != len(state.editor_gizmo_drag_selection) {
+		return
+	}
+	for snapshot, snapshot_index in state.editor_gizmo_drag_selection {
+		entity_index, found := editor_gizmo_snapshot_entity_index(world, snapshot)
+		if !found || world.entities[entity_index].transform_index < 0 {
+			continue
+		}
+		local := targets[snapshot_index]
+		parent := snapshot.local.parent
+		if parent != (shared.Entity_UUID{}) {
+			parent_world: shared.Transform_Component
+			parent_valid := false
+			for parent_snapshot, parent_index in state.editor_gizmo_drag_selection {
+				if parent_snapshot.target_uuid == parent {
+					parent_world = targets[parent_index]
+					parent_valid = true
+					break
+				}
+			}
+			if !parent_valid {
+				if parent_entity_index, parent_found := ecs.entity_index_by_uuid(world, parent);
+				   parent_found {
+					ecs.begin_world_transform_resolution(world)
+					parent_world, parent_valid = ecs.resolve_world_transform(
+						world,
+						parent_entity_index,
+					)
+				}
+			}
+			if parent_valid {
+				local = shared.transform_relative_to(parent_world, targets[snapshot_index])
+			}
+		}
+		local.parent = parent
+		world.transforms[world.entities[entity_index].transform_index] = local
+		ecs.mark_render_transform_dirty(world, entity_index)
+		ui.editor_mark_scene_dirty(state, &world.entities[entity_index])
+	}
+}
+
+editor_gizmo_apply_selection_translation :: proc(
+	state: ^ui.State,
+	world: ^shared.World,
+	displacement: shared.Vec3,
+) {
+	targets := make(
+		[]shared.Transform_Component,
+		len(state.editor_gizmo_drag_selection),
+		context.temp_allocator,
+	)
+	for snapshot, index in state.editor_gizmo_drag_selection {
+		targets[index] = snapshot.world
+		targets[index].position = vec3_add(snapshot.world.position, displacement)
+	}
+	editor_gizmo_apply_selection_targets(state, world, targets)
+}
+
+editor_gizmo_apply_selection_rotation :: proc(
+	state: ^ui.State,
+	world: ^shared.World,
+	axis: shared.Vec3,
+	angle: f32,
+	move_around_pivot: bool,
+) {
+	targets := make(
+		[]shared.Transform_Component,
+		len(state.editor_gizmo_drag_selection),
+		context.temp_allocator,
+	)
+	for snapshot, index in state.editor_gizmo_drag_selection {
+		targets[index] = snapshot.world
+		targets[index].rotation = editor_gizmo_rotated_euler_around_world_axis(
+			snapshot.world.rotation,
+			axis,
+			angle,
+		)
+		if move_around_pivot {
+			targets[index].position = editor_gizmo_rotated_position(
+				snapshot.world.position,
+				state.editor_gizmo_drag_pivot,
+				axis,
+				angle,
+			)
+		}
+	}
+	editor_gizmo_apply_selection_targets(state, world, targets)
+}
+
+editor_gizmo_apply_selection_scale :: proc(
+	state: ^ui.State,
+	world: ^shared.World,
+	factors: [3]f32,
+	move_around_pivot: bool,
+) {
+	targets := make(
+		[]shared.Transform_Component,
+		len(state.editor_gizmo_drag_selection),
+		context.temp_allocator,
+	)
+	for snapshot, index in state.editor_gizmo_drag_selection {
+		targets[index] = snapshot.world
+		targets[index].scale.x *= factors[0]
+		targets[index].scale.y *= factors[1]
+		targets[index].scale.z *= factors[2]
+		if move_around_pivot {
+			targets[index].position = editor_gizmo_scaled_position(
+				snapshot.world.position,
+				state.editor_gizmo_drag_pivot,
+				state.editor_gizmo_drag_world_axes,
+				factors,
+			)
+		}
+	}
+	editor_gizmo_apply_selection_targets(state, world, targets)
+}
+
 editor_transform_gizmo_system :: proc(
 	state: ^ui.State,
 	world: ^shared.World,
@@ -28,22 +238,8 @@ editor_transform_gizmo_system :: proc(
 	if state == nil || world == nil { editor_hide_gizmo(state); return }
 	if state.editor_gizmo_keyboard_active &&
 	   (!state.editor_visible || !state.editor_has_selection) {
-		selected_index := int(state.editor_selected_entity.index)
-		if selected_index >= 0 &&
-		   selected_index < len(world.entities) &&
-		   world.entities[selected_index].alive &&
-		   world.entities[selected_index].id == state.editor_selected_entity {
-			selected := &world.entities[selected_index]
-			if selected.transform_index >= 0 && selected.transform_index < len(world.transforms) {
-				world.transforms[selected.transform_index].position =
-					state.editor_gizmo_drag_position
-				world.transforms[selected.transform_index].rotation =
-					state.editor_gizmo_drag_rotation
-				world.transforms[selected.transform_index].scale = state.editor_gizmo_drag_scale
-				ecs.mark_render_transform_dirty(world, selected_index)
-				ui.editor_recompute_scene_dirty(state)
-			}
-		}
+		editor_gizmo_restore_selection(state, world)
+		ui.editor_recompute_scene_dirty(state)
 	}
 	ecs.reconcile_editor_transform_gizmo(
 		world,
@@ -68,10 +264,7 @@ editor_transform_gizmo_system :: proc(
 		}
 		state.editor_keyboard_escape_consumed = escape_event.cancelled
 		if state.editor_gizmo_keyboard_active {
-			transform.position = state.editor_gizmo_drag_position
-			transform.rotation = state.editor_gizmo_drag_rotation
-			transform.scale = state.editor_gizmo_drag_scale
-			ecs.mark_render_transform_dirty(world, entity_index)
+			editor_gizmo_restore_selection(state, world)
 			ui.editor_recompute_scene_dirty(state)
 			if state.editor_gizmo_pivot == .Center && state.editor_gizmo_bounds_valid {
 				state.editor_gizmo_bounds_center = state.editor_gizmo_drag_pivot
@@ -101,7 +294,8 @@ editor_transform_gizmo_system :: proc(
 	ecs.begin_world_transform_resolution(world)
 	world_transform, _ := ecs.resolve_world_transform(world, entity_index)
 	gizmo_position := world_transform.position
-	if gizmo.pivot == .Center && state.editor_gizmo_bounds_valid {
+	effective_center := gizmo.pivot == .Center || ui.editor_selection_count(state) > 1
+	if effective_center && state.editor_gizmo_bounds_valid {
 		gizmo_position = state.editor_gizmo_bounds_center
 	}
 	if state.editor_gizmo_active_handle != .None {
@@ -204,30 +398,47 @@ editor_transform_gizmo_system :: proc(
 				}
 				state.editor_gizmo_drag_pixels = pixels
 				state.editor_gizmo_drag_world_scale = world_size
+				editor_gizmo_capture_selection(state, world)
 			}
 		}
 	} else if state.editor_gizmo_keyboard_active && (just_pressed || keyboard.enter) {
 		if just_pressed {
 			ui.consume_editor_pointer_activation(state, pointer)
 		}
-		editor_gizmo_commit_history(
-			state,
-			world,
-			entity_index,
-			world.transforms[entity.transform_index],
-			gizmo.mode,
-		)
+		if len(state.editor_gizmo_drag_selection) <= 1 {
+			editor_gizmo_commit_history(
+				state,
+				world,
+				entity_index,
+				world.transforms[entity.transform_index],
+				gizmo.mode,
+			)
+		} else {
+			ui.editor_history_push_transform_batch(
+				state,
+				world,
+				state.editor_gizmo_drag_selection[:],
+			)
+		}
 		state.editor_gizmo_active_handle = .None
 		state.editor_gizmo_captures_pointer = false
 		state.editor_gizmo_keyboard_active = false
 	} else if !state.editor_gizmo_keyboard_active && !pointer.primary_down {
-		editor_gizmo_commit_history(
-			state,
-			world,
-			entity_index,
-			world.transforms[entity.transform_index],
-			gizmo.mode,
-		)
+		if len(state.editor_gizmo_drag_selection) <= 1 {
+			editor_gizmo_commit_history(
+				state,
+				world,
+				entity_index,
+				world.transforms[entity.transform_index],
+				gizmo.mode,
+			)
+		} else {
+			ui.editor_history_push_transform_batch(
+				state,
+				world,
+				state.editor_gizmo_drag_selection[:],
+			)
+		}
 		state.editor_gizmo_active_handle = .None; state.editor_gizmo_captures_pointer = false
 	} else {
 		state.editor_gizmo_captures_pointer =
@@ -244,7 +455,6 @@ editor_transform_gizmo_system :: proc(
 					camera,
 					has_camera,
 				); solved {
-					candidate := state.editor_gizmo_drag_world_transform
 					displacement := vec3_sub(position, state.editor_gizmo_drag_pivot)
 					snap_step := editor_gizmo_effective_snap_step(
 						state.editor_placement_snap_step,
@@ -259,12 +469,8 @@ editor_transform_gizmo_system :: proc(
 							snap_step,
 						)
 					}
-					candidate.position = vec3_add(
-						state.editor_gizmo_drag_world_transform.position,
-						displacement,
-					)
-					editor_gizmo_apply_world_transform(world, entity_index, candidate)
-					if gizmo.pivot == .Center && state.editor_gizmo_bounds_valid {
+					editor_gizmo_apply_selection_translation(state, world, displacement)
+					if effective_center && state.editor_gizmo_bounds_valid {
 						state.editor_gizmo_bounds_center = vec3_add(
 							state.editor_gizmo_drag_pivot,
 							displacement,
@@ -288,45 +494,28 @@ editor_transform_gizmo_system :: proc(
 				if rotation_snap_step > 0 {
 					angle = editor_gizmo_snap_scalar(angle, rotation_snap_step)
 				}
-				candidate := state.editor_gizmo_drag_world_transform
 				if state.editor_gizmo_active_handle == .Center {
 					axis := state.editor_gizmo_drag_view_axis
-					candidate.rotation = editor_gizmo_rotated_euler_around_world_axis(
-						state.editor_gizmo_drag_world_transform.rotation,
+					editor_gizmo_apply_selection_rotation(
+						state,
+						world,
 						axis,
 						angle,
+						effective_center,
 					)
-					if gizmo.pivot == .Center {
-						candidate.position = editor_gizmo_rotated_position(
-							state.editor_gizmo_drag_world_transform.position,
-							state.editor_gizmo_drag_pivot,
-							axis,
-							angle,
-						)
-					}
-					editor_gizmo_apply_world_transform(world, entity_index, candidate)
 				} else if axis_index, axis_ok := editor_gizmo_single_axis(
 					state.editor_gizmo_active_handle,
 				); axis_ok {
-					candidate.rotation = editor_gizmo_rotated_euler(
-						state.editor_gizmo_drag_world_transform.rotation,
-						axis_index,
+					editor_gizmo_apply_selection_rotation(
+						state,
+						world,
+						state.editor_gizmo_drag_world_axes[axis_index],
 						angle,
-						gizmo.space,
+						effective_center,
 					)
-					if gizmo.pivot == .Center {
-						candidate.position = editor_gizmo_rotated_position(
-							state.editor_gizmo_drag_world_transform.position,
-							state.editor_gizmo_drag_pivot,
-							state.editor_gizmo_drag_world_axes[axis_index],
-							angle,
-						)
-					}
-					editor_gizmo_apply_world_transform(world, entity_index, candidate)
 				}
 			case .Scale:
 				delta := screen_sub(pointer.position, state.editor_gizmo_drag_pointer)
-				candidate := state.editor_gizmo_drag_world_transform
 				factors := [3]f32{1, 1, 1}
 				if first, second, ok := editor_gizmo_pair_axes(state.editor_gizmo_active_handle);
 				   ok {
@@ -347,8 +536,6 @@ editor_transform_gizmo_system :: proc(
 						}
 						factors[first] = factor
 						factors[second] = factor
-						vec3_mul_axis(&candidate.scale, first, factors[first])
-						vec3_mul_axis(&candidate.scale, second, factors[second])
 					}
 				} else {
 					pixels :=
@@ -363,23 +550,19 @@ editor_transform_gizmo_system :: proc(
 					if scale_snap_step > 0 {
 						factor = editor_gizmo_snap_scale_factor(factor, scale_snap_step)
 					}
-					switch state.editor_gizmo_active_handle {case .X:
-							candidate.scale.x *= factor; factors[0] = factor; case .Y:
-							candidate.scale.y *= factor; factors[1] = factor; case .Z:
-							candidate.scale.z *= factor; factors[2] = factor; case .Center:
-							candidate.scale.x *= factor; candidate.scale.y *= factor
-							candidate.scale.z *=
-								factor; factors = {factor, factor, factor}; case .None, .XY, .XZ, .YZ:}
+					switch state.editor_gizmo_active_handle {
+						case .X:
+							factors[0] = factor
+						case .Y:
+							factors[1] = factor
+						case .Z:
+							factors[2] = factor
+						case .Center:
+							factors = {factor, factor, factor}
+						case .None, .XY, .XZ, .YZ:
+					}
 				}
-				if gizmo.pivot == .Center {
-					candidate.position = editor_gizmo_scaled_position(
-						state.editor_gizmo_drag_world_transform.position,
-						state.editor_gizmo_drag_pivot,
-						state.editor_gizmo_drag_world_axes,
-						factors,
-					)
-				}
-				editor_gizmo_apply_world_transform(world, entity_index, candidate)
+				editor_gizmo_apply_selection_scale(state, world, factors, effective_center)
 		}
 		ui.editor_mark_scene_dirty(state, entity)
 		ecs.begin_world_transform_resolution(world)

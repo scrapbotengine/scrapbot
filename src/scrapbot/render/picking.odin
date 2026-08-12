@@ -44,18 +44,46 @@ editor_selection_focus_bounds :: proc(
 	f32,
 	bool,
 ) {
+	_ = selected
+	return editor_selection_focus_bounds_many(
+		world,
+		render_list,
+		registry,
+		[]shared.Entity_UUID{selected_uuid},
+	)
+}
+
+editor_selection_focus_bounds_many :: proc(
+	world: ^shared.World,
+	render_list: ^shared.Render_List,
+	registry: ^resources.Registry,
+	selected_uuids: []shared.Entity_UUID,
+) -> (
+	shared.Vec3,
+	f32,
+	bool,
+) {
 	minimum, maximum: shared.Vec3
 	has_bounds := false
+	selected_has_render := make([]bool, len(selected_uuids), context.temp_allocator)
 	if render_list != nil && registry != nil {
 		for instance in render_list.instances {
-			matches :=
-				instance.entity.id == selected || instance.entity.model_owner == selected_uuid
-			if !matches && world != nil {
-				instance_index := int(instance.entity.id.index)
+			matches := false
+			for selected_uuid, selection_index in selected_uuids {
 				matches =
-					ecs.entity_is_alive(world, instance_index) &&
-					world.entities[instance_index].id == instance.entity.id &&
-					ecs.entity_is_descendant_of_uuid(world, instance_index, selected_uuid)
+					instance.entity.uuid == selected_uuid ||
+					instance.entity.model_owner == selected_uuid
+				if !matches && world != nil {
+					instance_index := int(instance.entity.id.index)
+					matches =
+						ecs.entity_is_alive(world, instance_index) &&
+						world.entities[instance_index].id == instance.entity.id &&
+						ecs.entity_is_descendant_of_uuid(world, instance_index, selected_uuid)
+				}
+				if matches {
+					selected_has_render[selection_index] = true
+					break
+				}
 			}
 			if !matches {
 				continue
@@ -96,33 +124,44 @@ editor_selection_focus_bounds :: proc(
 			}
 		}
 	}
-	if has_bounds {
-		center := pick_mul(pick_add(minimum, maximum), 0.5)
-		half_extent := vec3_sub(maximum, center)
-		return center, max(math.sqrt(vec3_dot(half_extent, half_extent)), 0.25), true
+	if world != nil {
+		ecs.begin_world_transform_resolution(world)
+		for selected_uuid, selection_index in selected_uuids {
+			if selected_has_render[selection_index] { continue }
+			selected_index, found := ecs.entity_index_by_uuid(world, selected_uuid)
+			if !found || world.entities[selected_index].transform_index < 0 { continue }
+			transform, resolved := ecs.resolve_world_transform(world, selected_index)
+			if !resolved { continue }
+			extent :=
+				max(
+					math.abs(transform.scale.x),
+					math.abs(transform.scale.y),
+					math.abs(transform.scale.z),
+				) *
+				0.5
+			point_min := vec3_sub(transform.position, {extent, extent, extent})
+			point_max := vec3_add(transform.position, {extent, extent, extent})
+			if !has_bounds {
+				minimum, maximum = point_min, point_max
+				has_bounds = true
+			} else {
+				minimum = {
+					min(minimum.x, point_min.x),
+					min(minimum.y, point_min.y),
+					min(minimum.z, point_min.z),
+				}
+				maximum = {
+					max(maximum.x, point_max.x),
+					max(maximum.y, point_max.y),
+					max(maximum.z, point_max.z),
+				}
+			}
+		}
 	}
-	if world == nil {
-		return {}, 0, false
-	}
-	selected_index := int(selected.index)
-	if !ecs.entity_is_alive(world, selected_index) ||
-	   world.entities[selected_index].id != selected ||
-	   world.entities[selected_index].transform_index < 0 {
-		return {}, 0, false
-	}
-	ecs.begin_world_transform_resolution(world)
-	transform, resolved := ecs.resolve_world_transform(world, selected_index)
-	if !resolved {
-		return {}, 0, false
-	}
-	radius :=
-		max(
-			math.abs(transform.scale.x),
-			math.abs(transform.scale.y),
-			math.abs(transform.scale.z),
-		) *
-		0.5
-	return transform.position, max(radius, 0.25), true
+	if !has_bounds { return {}, 0, false }
+	center := pick_mul(pick_add(minimum, maximum), 0.5)
+	half_extent := vec3_sub(maximum, center)
+	return center, max(math.sqrt(vec3_dot(half_extent, half_extent)), 0.25), true
 }
 
 editor_gizmo_bounds_entity_matches_selection :: proc(
@@ -143,24 +182,30 @@ editor_gizmo_bounds_entity_matches_selection :: proc(
 
 editor_gizmo_bounds_dirty_for_selection :: proc(
 	world: ^shared.World,
-	selected_uuid: shared.Entity_UUID,
+	selected_uuids: []shared.Entity_UUID,
 ) -> bool {
 	if world == nil {
 		return false
 	}
 	for entity_index in world.render_dirty_entities {
-		if editor_gizmo_bounds_entity_matches_selection(world, entity_index, selected_uuid) {
-			return true
+		for selected_uuid in selected_uuids {
+			if editor_gizmo_bounds_entity_matches_selection(world, entity_index, selected_uuid) {
+				return true
+			}
 		}
 	}
 	for entity_index in world.render_extract_dirty_entities {
-		if editor_gizmo_bounds_entity_matches_selection(world, entity_index, selected_uuid) {
-			return true
+		for selected_uuid in selected_uuids {
+			if editor_gizmo_bounds_entity_matches_selection(world, entity_index, selected_uuid) {
+				return true
+			}
 		}
 	}
 	for entity_index in world.render_transform_dirty_entities {
-		if editor_gizmo_bounds_entity_matches_selection(world, entity_index, selected_uuid) {
-			return true
+		for selected_uuid in selected_uuids {
+			if editor_gizmo_bounds_entity_matches_selection(world, entity_index, selected_uuid) {
+				return true
+			}
 		}
 	}
 	return false
@@ -174,24 +219,24 @@ editor_update_gizmo_bounds_center :: proc(
 	if state == nil ||
 	   world == nil ||
 	   registry == nil ||
-	   state.editor_gizmo_pivot != .Center ||
+	   (state.editor_gizmo_pivot != .Center && ui.editor_selection_count(state) <= 1) ||
 	   state.editor_gizmo_active_handle != .None {
 		return
 	}
-	selected_uuid, selected := ui.editor_selected_uuid(state, world)
-	if !selected {
+	selected_uuids := ui.editor_selection_uuids(state)
+	if len(selected_uuids) == 0 {
 		state.editor_gizmo_bounds_valid = false
 		return
 	}
 	invalid :=
 		!state.editor_gizmo_bounds_valid ||
-		state.editor_gizmo_bounds_selected != selected_uuid ||
+		state.editor_gizmo_bounds_selection_revision != state.editor_selection_revision ||
 		state.editor_gizmo_bounds_world_uuid != world.instance_uuid ||
 		state.editor_gizmo_bounds_render_topology_revision != world.render_topology_revision ||
 		state.editor_gizmo_bounds_render_hierarchy_revision != world.render_hierarchy_revision ||
 		state.editor_gizmo_bounds_geometry_topology_revision !=
 			registry.geometry_topology_revision ||
-		editor_gizmo_bounds_dirty_for_selection(world, selected_uuid)
+		editor_gizmo_bounds_dirty_for_selection(world, selected_uuids)
 	if !invalid {
 		return
 	}
@@ -202,16 +247,15 @@ editor_update_gizmo_bounds_center :: proc(
 			append(&render_list.instances, instance)
 		}
 	}
-	center, _, bounded := editor_selection_focus_bounds(
+	center, _, bounded := editor_selection_focus_bounds_many(
 		world,
 		&render_list,
 		registry,
-		state.editor_selected_entity,
-		selected_uuid,
+		selected_uuids,
 	)
 	ecs.destroy_render_list(&render_list)
 	state.editor_gizmo_bounds_center = center
-	state.editor_gizmo_bounds_selected = selected_uuid
+	state.editor_gizmo_bounds_selection_revision = state.editor_selection_revision
 	state.editor_gizmo_bounds_world_uuid = world.instance_uuid
 	state.editor_gizmo_bounds_render_topology_revision = world.render_topology_revision
 	state.editor_gizmo_bounds_render_hierarchy_revision = world.render_hierarchy_revision

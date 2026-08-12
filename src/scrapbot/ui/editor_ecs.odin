@@ -155,13 +155,19 @@ editor_ui_handle_activation :: proc(
 					}
 					return
 				case .Browser_Row, .Browser_Row_Label:
-					_ = editor_select_entity(state, world, binding.target, 0)
+					_ = editor_select_entity(
+						state,
+						world,
+						binding.target,
+						0,
+						state.editor_selection_toggle_modifier,
+					)
 					return
 				case .Project_Resource_Row, .Project_Resource_Row_Label:
 					if binding.resource_id != (shared.Resource_UUID{}) {
+						editor_clear_selection(state)
 						state.editor_selected_resource = binding.resource_id
 						state.editor_has_resource_selection = true
-						state.editor_has_selection = false
 						state.editor_snapshot_valid = false
 					}
 					return
@@ -423,6 +429,7 @@ editor_ui_handle_activation :: proc(
 					if !state.editor_gizmo_captures_pointer {
 						state.editor_pick_requested = true
 						state.editor_pick_position = position
+						state.editor_pick_toggle_selection = state.editor_selection_toggle_modifier
 					}
 					return
 				case .None,
@@ -6051,7 +6058,7 @@ editor_hierarchy_visible_entities :: proc(
 		last_child[index] = -1
 		next_sibling[index] = -1
 		entity := world.entities[index]
-		selected_runtime := state.editor_has_selection && state.editor_selected_entity == entity.id
+		selected_runtime := editor_entity_selected(state, entity.uuid)
 		eligible[index] = entity.alive && (entity.origin == .Scene || selected_runtime)
 	}
 	ordered_indices: [dynamic]int
@@ -6124,9 +6131,7 @@ refresh_editor_ecs_snapshot :: proc(state: ^State, world: ^shared.World) {
 	refresh_browser :=
 		!state.editor_browser_snapshot_valid ||
 		!state.editor_snapshot_valid ||
-		state.editor_browser_snapshot_has_selection != state.editor_has_selection ||
-		(state.editor_has_selection &&
-				state.editor_browser_snapshot_selected_entity != state.editor_selected_entity)
+		state.editor_browser_snapshot_selection_revision != state.editor_selection_revision
 	if refresh_browser {
 		hierarchy_indices, hierarchy_depths: [MAX_NODES]int
 		hierarchy_has_children: [MAX_NODES]bool
@@ -6155,6 +6160,10 @@ refresh_editor_ecs_snapshot :: proc(state: ^State, world: ^shared.World) {
 			world.editor_uis[world.entities[label].editor_ui_index].target = entity.id
 			row_uuid_by_entity[entity_index] = world.entities[row].uuid
 			row_layout := &world.ui_layouts[world.entities[row].ui_layout_index]
+			row_layout.background = {}
+			if editor_entity_selected(state, entity.uuid) {
+				row_layout.background = theme.palette.selection
+			}
 			row_layout.tree_item = true
 			row_layout.tree_parent = {}
 			row_layout.tree_order = entity.scene_order
@@ -6214,8 +6223,7 @@ refresh_editor_ecs_snapshot :: proc(state: ^State, world: ^shared.World) {
 			}
 		}
 		state.editor_browser_snapshot_valid = true
-		state.editor_browser_snapshot_has_selection = state.editor_has_selection
-		state.editor_browser_snapshot_selected_entity = state.editor_selected_entity
+		state.editor_browser_snapshot_selection_revision = state.editor_selection_revision
 	}
 	resource_count := 0
 	selected_resource_row: shared.Entity_UUID
@@ -6442,6 +6450,7 @@ refresh_editor_ecs_snapshot :: proc(state: ^State, world: ^shared.World) {
 		(state.editor_simulation_playing &&
 				state.editor_snapshot_elapsed >= EDITOR_SNAPSHOT_INTERVAL) ||
 		state.editor_inspector_snapshot_entity != state.editor_selected_entity ||
+		state.editor_inspector_snapshot_selection_revision != state.editor_selection_revision ||
 		state.editor_inspector_snapshot_component_revision != selected_component_revision ||
 		state.editor_inspector_snapshot_has_resource != state.editor_has_resource_selection ||
 		state.editor_inspector_snapshot_resource != state.editor_selected_resource ||
@@ -6469,7 +6478,21 @@ refresh_editor_ecs_snapshot :: proc(state: ^State, world: ^shared.World) {
 					if entity.origin == .Runtime { origin = "RUNTIME ENTITY" }
 					id_buffer: [36]u8
 					id := shared.entity_uuid_to_string(entity.uuid, id_buffer[:])
-					editor_ui_set_text(world, header, fmt.tprintf("%s  /  %s", origin, id))
+					selection_count := editor_selection_count(state)
+					if selection_count > 1 {
+						editor_ui_set_text(
+							world,
+							header,
+							fmt.tprintf(
+								"%d SELECTED  /  ACTIVE %s  /  %s",
+								selection_count,
+								entity.name,
+								id,
+							),
+						)
+					} else {
+						editor_ui_set_text(world, header, fmt.tprintf("%s  /  %s", origin, id))
+					}
 				}
 			}
 		}
@@ -6689,6 +6712,7 @@ refresh_editor_ecs_snapshot :: proc(state: ^State, world: ^shared.World) {
 		}
 		state.editor_inspector_snapshot_valid = true
 		state.editor_inspector_snapshot_entity = state.editor_selected_entity
+		state.editor_inspector_snapshot_selection_revision = state.editor_selection_revision
 		state.editor_inspector_snapshot_component_revision = selected_component_revision
 		state.editor_inspector_snapshot_has_resource = state.editor_has_resource_selection
 		state.editor_inspector_snapshot_resource = state.editor_selected_resource

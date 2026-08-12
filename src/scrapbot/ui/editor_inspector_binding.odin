@@ -750,7 +750,8 @@ editor_history_push_transaction :: proc(state: ^State, transaction: Editor_Edit_
 	   transaction.resource_change_count <= 0 &&
 	   transaction.structural == nil &&
 	   transaction.component_structural == nil &&
-	   transaction.resource_structural == nil {
+	   transaction.resource_structural == nil &&
+	   transaction.transform_batch == nil {
 		editor_recompute_scene_dirty(state)
 		return
 	}
@@ -841,19 +842,10 @@ editor_history_apply :: proc(state: ^State, world: ^shared.World, redo: bool) ->
 			desired := change.before
 			if redo { desired = change.after }
 			applied := false
-			deleting_selected := false
-			selected: shared.Entity
 			if desired == nil {
-				if entity_index, found := ecs.entity_index_by_uuid(world, change.target_uuid);
-				   found {
-					deleting_selected =
-						state.editor_has_selection &&
-						state.editor_selected_entity == world.entities[entity_index].id
-				}
 				applied = ecs.delete_entity_by_uuid(world, change.target_uuid)
 			} else if entity_index, ok := ecs.apply_entity_snapshot(world, desired); ok {
 				applied = true
-				selected = world.entities[entity_index].id
 			}
 			if applied && len(change.before_order) > 0 {
 				order := change.before_order[:]
@@ -865,12 +857,12 @@ editor_history_apply :: proc(state: ^State, world: ^shared.World, redo: bool) ->
 			if applied {
 				editor_mark_scene_uuid_dirty(state, change.target_uuid)
 				if desired == nil {
-					if deleting_selected {
-						state.editor_has_selection = false
-					}
-				} else {
-					state.editor_selected_entity = selected
-					state.editor_has_selection = true
+					editor_remove_selection_uuid(state, world, change.target_uuid)
+				} else if entity_index, found := ecs.entity_index_by_uuid(
+					world,
+					change.target_uuid,
+				); found {
+					_ = editor_select_entity(state, world, world.entities[entity_index].id, 0)
 				}
 				if redo { state.editor_history_cursor = index + 1 } else { state.editor_history_cursor = index }
 				editor_recompute_scene_dirty(state)
@@ -909,8 +901,7 @@ editor_history_apply :: proc(state: ^State, world: ^shared.World, redo: bool) ->
 			   desired != nil &&
 			   ecs.apply_registered_component_snapshot(world, entity_index, desired) {
 				editor_mark_scene_uuid_dirty(state, change.target_uuid)
-				state.editor_selected_entity = world.entities[entity_index].id
-				state.editor_has_selection = true
+				_ = editor_activate_entity(state, world, world.entities[entity_index].id)
 				if redo {
 					state.editor_history_cursor = index + 1
 				} else {
@@ -942,6 +933,35 @@ editor_history_apply :: proc(state: ^State, world: ^shared.World, redo: bool) ->
 				} else {
 					state.editor_history_cursor = index
 				}
+				editor_recompute_scene_dirty(state)
+				return true
+			}
+			editor_history_remove(state, index)
+			continue
+		}
+		if transaction.transform_batch != nil {
+			batch := transaction.transform_batch
+			valid := len(batch.items) > 0
+			for item in batch.items {
+				entity_index, found := ecs.entity_index_by_uuid(world, item.target_uuid)
+				if !found ||
+				   world.entities[entity_index].transform_index < 0 ||
+				   world.entities[entity_index].component_revision != item.component_revision {
+					valid = false
+					break
+				}
+			}
+			if valid {
+				for item in batch.items {
+					entity_index, _ := ecs.entity_index_by_uuid(world, item.target_uuid)
+					transform_index := world.entities[entity_index].transform_index
+					value := item.before
+					if redo { value = item.after }
+					world.transforms[transform_index] = value
+					ecs.mark_render_transform_dirty(world, entity_index)
+					editor_mark_scene_uuid_dirty(state, item.target_uuid)
+				}
+				if redo { state.editor_history_cursor = index + 1 } else { state.editor_history_cursor = index }
 				editor_recompute_scene_dirty(state)
 				return true
 			}
@@ -1034,7 +1054,48 @@ editor_history_destroy_transaction :: proc(transaction: ^Editor_Edit_Transaction
 		}
 		free(change)
 	}
+	if transaction.transform_batch != nil {
+		delete(transaction.transform_batch.items)
+		free(transaction.transform_batch)
+	}
 	transaction^ = {}
+}
+
+editor_history_push_transform_batch :: proc(
+	state: ^State,
+	world: ^shared.World,
+	snapshots: []Editor_Gizmo_Transform_Snapshot,
+) {
+	if state == nil || world == nil || len(snapshots) == 0 {
+		return
+	}
+	change := new(Editor_Transform_Batch_Change)
+	for snapshot in snapshots {
+		entity_index, found := ecs.entity_index_by_uuid(world, snapshot.target_uuid)
+		if !found || world.entities[entity_index].transform_index < 0 {
+			continue
+		}
+		after := world.transforms[world.entities[entity_index].transform_index]
+		if after == snapshot.local {
+			continue
+		}
+		append(
+			&change.items,
+			Editor_Transform_Batch_Item {
+				target_uuid = snapshot.target_uuid,
+				component_revision = snapshot.component_revision,
+				before = snapshot.local,
+				after = after,
+			},
+		)
+	}
+	if len(change.items) == 0 {
+		delete(change.items)
+		free(change)
+		editor_recompute_scene_dirty(state)
+		return
+	}
+	editor_history_push_transaction(state, {transform_batch = change})
 }
 
 editor_history_clear :: proc(state: ^State) {

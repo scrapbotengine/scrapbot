@@ -85,7 +85,7 @@ test_editor_focus_bounds_include_direct_and_model_owned_renderables :: proc(t: ^
 	append(
 		&list.instances,
 		shared.Render_Instance {
-			entity = {id = selected},
+			entity = {id = selected, uuid = selected_uuid},
 			transform = {position = {-2, 0, 0}, scale = {1, 1, 1}},
 			geometry = {handle = handle},
 		},

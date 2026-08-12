@@ -58,9 +58,9 @@ The transport also has command shortcuts while the editor is open:
 | `Cmd/Ctrl+Alt+B` | Hide or show the right Inspect sidebar. |
 | `Cmd/Ctrl+R` | Play when stopped, resume when paused, and stop when running. |
 | `Cmd/Ctrl+T` | Pause when running; advance one fixed step when paused or stopped. |
-| `Cmd/Ctrl+D` | Duplicate the selected entity and select the copy. The operation is authored while stopped and disposable during playback. |
-| `Delete` / `Backspace` | Delete the selected entity as an authored operation while stopped or a disposable operation during playback. |
-| `Escape` | Deselect the selected entity. A focused field or open popup consumes Escape first. |
+| `Cmd/Ctrl+D` | Duplicate the active entity and select the copy. The operation is authored while stopped and disposable during playback. |
+| `Delete` / `Backspace` | Delete the active entity as an authored operation while stopped or a disposable operation during playback. |
+| `Escape` | Clear the entity selection. A focused field or open popup consumes Escape first. |
 
 Opening the shell pauses active playback without changing the current runtime world. Leaving it always enters running playback, so a paused project resumes and a stopped authoring world captures its in-memory playback baseline before project systems advance. Use the explicit Play, Pause, Stop, and Step controls or their shortcuts while editing.
 
@@ -135,12 +135,12 @@ Use the `VIEW / CAMERA` menu inside the Game surface to inspect the rendered inp
 | `Shift` | Move 4× faster while held |
 | Hold middle mouse button and drag | Orbit around the current point of interest |
 | Mouse wheel over Game | Dolly forward or backward |
-| `F` | Frame the selected entity and make it the orbit target |
+| `F` | Frame all selected entities and make their shared center the orbit target |
 | Release the active right or middle mouse button | Return to normal pointer interaction |
 
 The point of interest follows ordinary fly translation and the center of free-look. Framing a
-selection replaces it with the selected renderable bounds, so subsequent middle-mouse movement
-orbits that entity without changing its Transform.
+selection replaces it with the selected renderables' combined bounds, so subsequent middle-mouse
+movement orbits their shared center without changing any Transform.
 
 The transient fly camera inherits the project camera's field of view, far plane, and render policy,
 but uses a near plane no larger than one centimeter. This keeps close surface inspection coherent;
@@ -149,15 +149,14 @@ still reveals its back-face-culled interior.
 
 Wheel dolly applies only when unobstructed Game viewport content owns the pointer. Sidebar scrolling,
 menus, and other editor chrome keep their ordinary wheel behavior. `F` preserves the current viewing
-direction and frames the selected entity's complete rendered subtree, including generated children
-of a Model root. If the selection has no renderable geometry, the camera frames its resolved world
-Transform instead.
+direction and frames every selected entity's complete rendered subtree, including generated children
+of Model roots. Entities without renderable geometry contribute their resolved world Transforms.
 
 Closing and reopening the editor preserves the scene-camera viewpoint for the current run.
 
 While the editor is open, project and runtime cameras appear as blue, world-scaled wireframe bodies. A body naturally becomes smaller on screen as the scene viewpoint moves away. Cameras also receive a blue, fixed-size billboard icon at their world origin. The editor fly camera is excluded.
 
-Directional lights receive a gold sun icon and point lights receive an orange bulb icon. A directional light without a Transform anchors its position-independent icon at the world origin. Selecting any icon changes it to the shared amber selection color. Overlapping icons spread into separate pick targets with leader lines; the selected icon stays on its exact projected origin.
+Directional lights receive a gold sun icon and point lights receive an orange bulb icon. A directional light without a Transform anchors its position-independent icon at the world origin. Selecting any icon changes it to the shared amber selection color. Overlapping icons remain at their exact projected positions and may cover one another.
 
 Selecting a point light displays three range rings. Drag the amber radial handle to edit its positive `range`. Selecting a directional light displays an arrow; drag its endpoint over the spherical direction map to edit the normalized `direction`. Both handles capture the initiating click and continue tracking across sidebars, toolbars, and other editor chrome until release. Release commits one Undo/Redo gesture while stopped, and Escape restores the value from before the drag. Running and paused edits remain disposable playback changes like other inspector and gizmo edits.
 
@@ -202,7 +201,7 @@ The reusable gesture paints an insertion line or tints the reparent target. Pare
 
 While stopped, scene entities may use only scene parents, and one completed drag is one undoable, saveable structural transaction. Save emits TOML blocks in authored order without moving live ECS storage handles. During playback, hierarchy and order edits are disposable. An authored parent with children must currently be emptied before deletion.
 
-The compact icon toolbar creates a scene entity with a Transform, duplicates the selected scene or runtime entity, removes the selected entity, or explicitly pins a selected runtime entity into scene data. Create and pin are available while stopped. Duplicate and Delete create undoable authored changes while stopped; while Running or Paused, they instead mutate disposable runtime state and Stop removes or restores those changes with the playback baseline. `Cmd/Ctrl+D` uses the same duplicate action and selects the copy; unmodified Delete or Backspace uses the same delete action. Entity shortcuts are ignored while a text input owns focus. The hierarchy shows scene-authored entities by default, so high-churn runtime spawns do not create thousands of editor rows. A runtime entity selected through the viewport or another tool is surfaced in muted gray and remains fully inspectable. Transient editor-origin entities—including the shell itself and scene camera—stay hidden from the browser and inspector.
+The compact icon toolbar creates a scene entity with a Transform, duplicates the active scene or runtime entity, removes the active entity, or explicitly pins an active runtime entity into scene data. Create and pin are available while stopped. Duplicate and Delete create undoable authored changes while stopped; while Running or Paused, they instead mutate disposable runtime state and Stop removes or restores those changes with the playback baseline. `Cmd/Ctrl+D` uses the same duplicate action and selects the copy; unmodified Delete or Backspace uses the same delete action. Entity shortcuts are ignored while a text input owns focus. The hierarchy shows scene-authored entities by default, so high-churn runtime spawns do not create thousands of editor rows. A runtime entity selected through the viewport or another tool is surfaced in muted gray and remains fully inspectable. Transient editor-origin entities—including the shell itself and scene camera—stay hidden from the browser and inspector.
 
 The shell is built from transient ECS entities using the same public components as project UI: responsive layouts, stacks, draggable separators, dock spaces and items, scroll areas, lists, progress bars, panels, tables, text, buttons, inputs, and checkboxes. Editor origin keeps those tool entities out of project data while making the editor exercise the ordinary UI system.
 
@@ -222,9 +221,9 @@ Directional targets take priority over nested tab stacks at an enabled edge; cen
 
 Sidebar and inspector sizing uses public per-axis fill, minimum-size, ordering, and fit-to-content policies. See [ECS UI](/guides/ecs-ui/) for the project-facing component model.
 
-Click an entry to select it, or click rendered geometry in the viewport. Viewport picking rejects meshes and streamed-geometry regions outside the pointer ray, then tests the surviving rendered triangles and selects the nearest hit. Clicking empty viewport space clears the selection. The browser scrolls to reveal a viewport-picked entity and automatically clears selection if that entity despawns.
+Click an entry or rendered geometry to replace the selection. Shift-click an entity in either surface to toggle its membership; the most recently added entity becomes active for the inspector and local gizmo orientation. Shift-clicking empty viewport space preserves the set, while a plain empty-space click clears it. Viewport picking rejects meshes and streamed-geometry regions outside the pointer ray, then tests the surviving rendered triangles and selects the nearest hit. The browser scrolls to reveal the active viewport-picked entity and removes despawned entities from the set.
 
-The inspector reports the selected entity's editable name, identity, provenance, attached components, fields, and current values.
+The inspector reports the active entity's editable name, identity, provenance, attached components, fields, and current values. With several entities selected, its header reports the count and active entity; field edits currently target only that active entity.
 
 Component cards are runtime-generated:
 
@@ -332,15 +331,15 @@ The axis colors remain consistent in every mode:
 
 Hover an axis to affect one component, or hover an XY, XZ, or YZ wall to affect that pair. Translation follows the 3D ray under the pointer: an axis handle finds the closest point on its world/local axis, a plane wall intersects its world/local plane, and the center handle intersects the camera-facing plane through the entity's starting position. The result stays spatially attached to what the pointer indicates at the entity's depth instead of scaling raw screen motion into world units. It does not snap to arbitrary scene surfaces. Pair scaling applies one linked multiplier to both included axes, preserving their relative proportions while leaving the excluded axis unchanged. In scale mode, the center handle changes all three scale components uniformly.
 
-After a pointer handle starts dragging, it keeps ownership across the complete editor window instead of stopping at the Game boundary. Transform drags remain confined to the window and wrap at its outer edges, with their captured anchors adjusted so the edit stays continuous. Gizmo ownership and mode are represented by a transient editor component on the selected entity; the component is removed when selection changes or the editor closes. Transform chords are ignored while the scene camera is capturing fly or orbit input, or a text field owns keyboard focus.
+After a pointer handle starts dragging, it keeps ownership across the complete editor window instead of stopping at the Game boundary. Transform drags remain confined to the window and wrap at its outer edges, with their captured anchors adjusted so the edit stays continuous. Gizmo ownership and mode are represented by a transient editor component on the active entity; the component is removed when selection changes or the editor closes. Transform chords are ignored while the scene camera is capturing fly or orbit input, or a text field owns keyboard focus.
 
-Use `WORLD` or `LOCAL` in the viewport's upper-left corner to choose gizmo orientation. World keeps the rails, walls, and rings aligned to scene axes. Local rotates them with the selected entity's resolved world orientation: movement follows its rotated axes, rotation composes around those axes, and scale continues to edit the corresponding local X, Y, or Z scale.
+Use `WORLD` or `LOCAL` in the viewport's upper-left corner to choose gizmo orientation. World keeps the rails, walls, and rings aligned to scene axes. Local rotates them with the active entity's resolved world orientation: movement follows its rotated axes, rotation composes around those axes, and scale continues to edit the corresponding local X, Y, or Z scale.
 
 Use `ORIGIN` or `CENTER` beside them to choose the manipulation pivot. Origin uses the entity's resolved Transform position—the canonical point inherited by children. Center uses the combined rendered-bounds center of the entity, its Transform descendants, and generated Model children, falling back to Origin for a transform-only entity. Center translation preserves the origin offset; Center rotation and scale move the origin around the center. This is transient editor policy: it does not add a serialized pivot or alter an imported asset origin.
 
 The selected space and pivot are stored on the transient gizmo component. A drag freezes its basis and pivot when it begins, so the handle stays stable even while the transform changes. For a parented entity, the gizmo edits its world pose and derives the new local Transform automatically.
 
-While stopped, transform edits to scene-authored entities participate in explicit Save. During running or paused playback they affect only runtime state. A complete gizmo drag is one undoable transaction, including multi-axis handles, snapping, and the coupled position change produced by Center rotation or scale. Editing asset origins, custom pivots, arbitrary surface snapping, and multi-selection are not implemented yet.
+While stopped, transform edits to scene-authored entities participate in explicit Save. During running or paused playback they affect only runtime state. A complete single- or multi-entity gizmo drag is one undoable transaction, including multi-axis handles, snapping, shared-pivot movement, and parent/child selections. Editing asset origins, custom pivots, and arbitrary surface snapping are not implemented yet.
 
 ## Capture the editor
 

@@ -48,7 +48,7 @@ This matrix records which authority changes at each major boundary. “World rep
 - **Disposable playback:** Running/paused simulation and editor changes are temporary. Duplicate creates and selects a runtime-origin copy; Delete immediately removes any selected non-editor entity. Neither action enters authoring history or dirty candidates, and Stop restores the Play baseline without loading code or disk state.
 - **Disk authority:** Revert and project/world hot reload are the boundaries that reread scene/resource source files.
 - **Transactional replacement:** Construct and validate replacement state before destroying active world/runtime ownership whenever the boundary permits it.
-- **Selection safety:** Editor selection is UUID-based and must be cleared or rebound after world replacement; transient indexes must never survive replacement as references.
+- **Selection safety:** Editor selection is an ordered UUID set. World replacement drops missing UUIDs and rebinds the surviving last member as active; transient indexes never survive replacement as authority.
 
 ## Primary implementation and tests
 

@@ -142,7 +142,7 @@ Native chunk descriptors compile into retained per-system plans that resolve the
 ## Component inspection and authoring
 
 ```text
-selected entity + component-registry membership
+active entity + ordered selection revision + component-registry membership
                     │
           storage-kind payload locator
                     │

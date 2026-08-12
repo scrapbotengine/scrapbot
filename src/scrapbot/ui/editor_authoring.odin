@@ -329,8 +329,7 @@ editor_authoring_delete_entity :: proc(
 		return false
 	}
 	push_structural_change(state, id, before, nil)
-	state.editor_has_selection = false
-	state.editor_snapshot_valid = false
+	editor_remove_selection_uuid(state, world, id)
 	return true
 }
 
@@ -345,14 +344,11 @@ editor_delete_entity :: proc(state: ^State, world: ^shared.World, entity_index: 
 	   world.entities[entity_index].origin == .Editor {
 		return false
 	}
-	id := world.entities[entity_index].id
-	if !ecs.delete_entity_by_uuid(world, world.entities[entity_index].uuid) {
+	id := world.entities[entity_index].uuid
+	if !ecs.delete_entity_by_uuid(world, id) {
 		return false
 	}
-	if state.editor_has_selection && state.editor_selected_entity == id {
-		state.editor_has_selection = false
-		state.editor_snapshot_valid = false
-	}
+	editor_remove_selection_uuid(state, world, id)
 	return true
 }
 
@@ -767,8 +763,5 @@ push_component_structural_change :: proc(
 }
 
 editor_authoring_select :: proc(state: ^State, world: ^shared.World, entity_index: int) {
-	state.editor_selected_entity = world.entities[entity_index].id
-	state.editor_has_selection = true
-	state.editor_has_resource_selection = false
-	state.editor_snapshot_valid = false
+	_ = editor_select_entity(state, world, world.entities[entity_index].id, 0)
 }

@@ -4551,8 +4551,8 @@ wgpu_prepare_gpu_draw_batches :: proc(
 	viewport: ui.Rect,
 	target_width, target_height: u32,
 	cpu_culling: bool,
-	editor_selected_entity: shared.Entity,
-	editor_selected_uuid: shared.Entity_UUID,
+	editor_selected_uuids: []shared.Entity_UUID,
+	editor_selection_revision: u64,
 ) -> (
 	[]WGPU_Draw_Batch,
 	int,
@@ -5018,8 +5018,8 @@ wgpu_prepare_gpu_draw_batches :: proc(
 	wgpu_apply_editor_selection(
 		renderer,
 		render_list,
-		editor_selected_entity,
-		editor_selected_uuid,
+		editor_selected_uuids,
+		editor_selection_revision,
 	)
 	instance_data_changed :=
 		len(renderer.gpu_dirty_indices) > 0 || len(renderer.gpu_transform_updates) > 1
@@ -5133,15 +5133,13 @@ wgpu_prepare_gpu_draw_batches :: proc(
 wgpu_apply_editor_selection :: proc(
 	renderer: ^WGPU_Renderer,
 	render_list: ^Render_List,
-	selected_entity: shared.Entity,
-	selected_uuid: shared.Entity_UUID,
+	selected_uuids: []shared.Entity_UUID,
+	selection_revision: u64,
 ) {
 	if renderer == nil || render_list == nil {
 		return
 	}
-	selection_changed :=
-		renderer.gpu_editor_selected_entity != selected_entity ||
-		renderer.gpu_editor_selected_uuid != selected_uuid
+	selection_changed := renderer.gpu_editor_selection_revision != selection_revision
 	if !selection_changed && len(renderer.gpu_dirty_indices) == 0 {
 		return
 	}
@@ -5158,30 +5156,19 @@ wgpu_apply_editor_selection :: proc(
 			index = -1
 		}
 		for instance in render_list.instances {
-			wgpu_apply_editor_selection_to_instance(
-				renderer,
-				instance,
-				selected_entity,
-				selected_uuid,
-			)
+			wgpu_apply_editor_selection_to_instance(renderer, instance, selected_uuids)
 		}
 	} else {
 		dirty_count := len(renderer.gpu_dirty_indices)
 		for slot in renderer.gpu_dirty_indices[:dirty_count] {
 			if instance, found := wgpu_render_instance_by_slot(render_list, slot); found {
-				wgpu_apply_editor_selection_to_instance(
-					renderer,
-					instance,
-					selected_entity,
-					selected_uuid,
-				)
+				wgpu_apply_editor_selection_to_instance(renderer, instance, selected_uuids)
 			} else {
 				wgpu_set_editor_selected_slot(renderer, slot, false)
 			}
 		}
 	}
-	renderer.gpu_editor_selected_entity = selected_entity
-	renderer.gpu_editor_selected_uuid = selected_uuid
+	renderer.gpu_editor_selection_revision = selection_revision
 }
 
 wgpu_set_editor_selected_slot :: proc(renderer: ^WGPU_Renderer, slot: int, selected: bool) {
@@ -5215,17 +5202,20 @@ wgpu_set_editor_selected_slot :: proc(renderer: ^WGPU_Renderer, slot: int, selec
 wgpu_apply_editor_selection_to_instance :: proc(
 	renderer: ^WGPU_Renderer,
 	instance: Render_Instance,
-	selected_entity: shared.Entity,
-	selected_uuid: shared.Entity_UUID,
+	selected_uuids: []shared.Entity_UUID,
 ) {
 	if renderer == nil ||
 	   instance.slot < 0 ||
 	   instance.slot >= len(renderer.gpu_instance_records) {
 		return
 	}
-	selected :=
-		selected_entity != (shared.Entity{}) && instance.entity.id == selected_entity ||
-		selected_uuid != (shared.Entity_UUID{}) && instance.entity.model_owner == selected_uuid
+	selected := false
+	for selected_uuid in selected_uuids {
+		if instance.entity.uuid == selected_uuid || instance.entity.model_owner == selected_uuid {
+			selected = true
+			break
+		}
+	}
 	value := f32(0)
 	if selected {
 		value = 1

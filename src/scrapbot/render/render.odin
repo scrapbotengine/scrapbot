@@ -1141,7 +1141,6 @@ run_frame_system_unmeasured :: proc(
 		}
 	}
 	if ui.consume_playback_stop_request(config.ui_state) {
-		selected_uuid, had_selection := ui.editor_selected_uuid(config.ui_state, world)
 		if config.runtime_playback_stop == nil {
 			return "editor stop requires an authoring restore callback"
 		}
@@ -1149,7 +1148,7 @@ run_frame_system_unmeasured :: proc(
 		   err != "" {
 			return err
 		}
-		ui.editor_world_restored(config.ui_state, world, selected_uuid, had_selection)
+		ui.editor_world_restored(config.ui_state, world)
 	}
 	if ui.consume_scene_save_request(config.ui_state) {
 		save_err := "editor save requires a runtime save callback"
@@ -1167,14 +1166,13 @@ run_frame_system_unmeasured :: proc(
 		}
 	}
 	if ui.consume_scene_revert_request(config.ui_state) {
-		selected_uuid, had_selection := ui.editor_selected_uuid(config.ui_state, world)
 		revert_err := "editor revert requires a runtime revert callback"
 		if config.runtime_revert != nil {
 			revert_err = config.runtime_revert(config.runtime_revert_data, world)
 		}
 		ui.complete_scene_revert(config.ui_state, revert_err == "")
 		if revert_err == "" {
-			ui.editor_world_restored(config.ui_state, world, selected_uuid, had_selection)
+			ui.editor_world_restored(config.ui_state, world)
 		} else {
 			fmt.eprintf("[editor] failed to revert scene: %s\n", revert_err)
 		}
@@ -1237,15 +1235,14 @@ run_frame_system_unmeasured :: proc(
 		)
 		if ui.consume_editor_focus_selected_request(config.ui_state) &&
 		   config.ui_state.editor_visible {
-			if selected_uuid, selected := ui.editor_selected_uuid(config.ui_state, world);
-			   selected {
+			if selected_uuids := ui.editor_selection_uuids(config.ui_state);
+			   len(selected_uuids) > 0 {
 				list := ecs.build_resource_render_list(world, config.resource_registry, true)
-				center, radius, bounded := editor_selection_focus_bounds(
+				center, radius, bounded := editor_selection_focus_bounds_many(
 					world,
 					&list,
 					config.resource_registry,
-					config.ui_state.editor_selected_entity,
-					selected_uuid,
+					selected_uuids,
 				)
 				ecs.destroy_render_list(&list)
 				if bounded {
@@ -1542,6 +1539,8 @@ run_frame_system_unmeasured :: proc(
 		}
 		if config.ui_state.editor_pick_requested {
 			config.ui_state.editor_pick_requested = false
+			toggle_selection := config.ui_state.editor_pick_toggle_selection
+			config.ui_state.editor_pick_toggle_selection = false
 			picked, found := editor_pick_scene_icon(
 				config.ui_state,
 				config.ui_state.editor_pick_position,
@@ -1571,16 +1570,11 @@ run_frame_system_unmeasured :: proc(
 					world,
 					picked,
 					drawable_height / max(config.ui_state.editor_pixel_density, 1),
+					toggle_selection,
 				)
-			} else {
+			} else if !toggle_selection {
 				ui.editor_clear_selection(config.ui_state)
 			}
-		}
-		config.ui_state.editor_render_selected_entity = {}
-		config.ui_state.editor_render_selected_uuid = {}
-		if selected_uuid, selected := ui.editor_selected_uuid(config.ui_state, world); selected {
-			config.ui_state.editor_render_selected_entity = config.ui_state.editor_selected_entity
-			config.ui_state.editor_render_selected_uuid = selected_uuid
 		}
 		record_system_profile_phase(config, .Picking, picking_system_start)
 		return ""
