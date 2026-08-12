@@ -427,9 +427,22 @@ editor_ui_handle_activation :: proc(
 					return
 				case .Viewport:
 					if !state.editor_gizmo_captures_pointer {
-						state.editor_pick_requested = true
-						state.editor_pick_position = position
-						state.editor_pick_toggle_selection = state.editor_selection_toggle_modifier
+						state.editor_box_select_armed = true
+						state.editor_box_select_active = false
+						state.editor_box_select_start = position
+						state.editor_box_select_current = position
+						state.editor_box_select_toggle_selection =
+							state.editor_selection_toggle_modifier
+						if node_index := find_node(state, entity.id); node_index >= 0 {
+							node := state.nodes[node_index]
+							state.editor_box_select_clip = node.rect
+							if node.has_clip {
+								state.editor_box_select_clip = rect_intersection(
+									node.rect,
+									node.clip,
+								)
+							}
+						}
 					}
 					return
 				case .None,

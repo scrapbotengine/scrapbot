@@ -285,6 +285,7 @@ struct Vertex_Output {
 	@location(8) @interpolate(flat) meshlet_identity: u32,
 	@location(9) @interpolate(flat) lod_level: u32,
 	@location(10) @interpolate(flat) virtual_transition: vec2<f32>,
+	@location(11) @interpolate(flat) instance_slot: u32,
 };
 
 fn selected_lod(instance: GPU_Instance) -> u32 {
@@ -454,6 +455,7 @@ fn render_virtual_shadow_error(cascade_index: u32) -> f32 {
 fn transform_vertex(
 	input: Vertex_Input,
 	instance: GPU_Instance,
+	instance_slot: u32,
 	meshlet_identity: u32,
 	virtual_transition: vec2<f32>,
 ) -> Vertex_Output {
@@ -474,6 +476,7 @@ fn transform_vertex(
 	output.meshlet_identity = meshlet_identity;
 	output.lod_level = select(0u, selected_lod(instance), render.debug.x == 7u);
 	output.virtual_transition = virtual_transition;
+	output.instance_slot = instance_slot;
 	return output;
 }
 
@@ -491,12 +494,14 @@ fn discarded_vertex_output() -> Vertex_Output {
 	output.meshlet_identity = 0u;
 	output.lod_level = 0u;
 	output.virtual_transition = vec2<f32>(0.0, 1.0);
+	output.instance_slot = 0u;
 	return output;
 }
 
 @vertex
 fn vs_main(input: Vertex_Input, @builtin(instance_index) visible_index: u32) -> Vertex_Output {
-	let instance = instances[visible_instances[visible_index]];
+	let instance_slot = visible_instances[visible_index];
+	let instance = instances[instance_slot];
 	let packed_identity = meshlet_identities[visible_index];
 	var identity = 0u;
 	if ((render.debug.x == 6u || render.debug.x == 8u || render.debug.x == 11u) && render.debug.y != 0u) {
@@ -507,7 +512,7 @@ fn vs_main(input: Vertex_Input, @builtin(instance_index) visible_index: u32) -> 
 	if (meshlet_token != 0u) {
 		transition = virtual_coverage_for(instance, meshlets[meshlet_token - 1u]);
 	}
-	return transform_vertex(input, instance, identity, transition);
+	return transform_vertex(input, instance, instance_slot, identity, transition);
 }
 
 @vertex
@@ -520,6 +525,7 @@ fn compact_vs(record: Compact_Input, @builtin(vertex_index) vertex_index: u32) -
 	return transform_vertex(
 		load_compact_vertex(record, vertex_index),
 		instance,
+		record.instance_slot,
 		meshlet.identity,
 		virtual_coverage_for(instance, meshlet),
 	);
@@ -899,6 +905,15 @@ struct Fragment_Output {
 	@location(1) surface: vec4<f32>,
 	@location(2) indirect_diffuse: vec4<f32>,
 };
+
+@fragment
+fn fs_selection(input: Vertex_Output) -> @location(0) u32 {
+	let base_color_sample = textureSample(base_color_texture, base_color_sampler, input.uv);
+	if (material.flags.z > 0.5 && base_color_sample.a * input.color.a < material.alpha.x) {
+		discard;
+	}
+	return input.instance_slot + 1u;
+}
 
 fn octahedral_encode(direction: vec3<f32>) -> vec2<f32> {
 	let denominator = abs(direction.x) + abs(direction.y) + abs(direction.z);

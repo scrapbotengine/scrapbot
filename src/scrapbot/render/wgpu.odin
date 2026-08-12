@@ -33,6 +33,7 @@ WGPU_BLOOM_LEVELS :: 5
 WGPU_DEFAULT_AMBIENT_OCCLUSION_RESOLUTION_SCALE :: f32(0.25)
 WGPU_DEFAULT_VOLUMETRIC_FOG_RESOLUTION_SCALE :: f32(0.25)
 WGPU_GPU_TIMESTAMP_FRAMES :: 4
+WGPU_SELECTION_READBACK_FRAMES :: 3
 WGPU_MAX_HIZ_LEVELS :: 16
 WGPU_HIZ_MIN_INSTANCES :: 256
 WGPU_LEGACY_MAX_POINT_LIGHTS :: 16
@@ -635,6 +636,7 @@ WGPU_Custom_Shader_Cache :: struct {
 	version: u32,
 	module: wgpu.ShaderModule,
 	blend_pipeline: wgpu.RenderPipeline,
+	selection_pipeline: wgpu.RenderPipeline,
 	water_surface_query_pipeline: wgpu.ComputePipeline,
 	spectral_intermediate_buffer: wgpu.Buffer,
 	spectral_spatial_buffer: wgpu.Buffer,
@@ -746,6 +748,34 @@ WGPU_Buffer_Map_State :: struct {
 	message_length: int,
 }
 
+WGPU_Selection_Readback :: struct {
+	buffer: wgpu.Buffer,
+	map_state: WGPU_Buffer_Map_State,
+	pending: bool,
+	serial: u64,
+	world_uuid: shared.Entity_UUID,
+	width, height, row_stride: u32,
+	toggle: bool,
+	marquee: bool,
+	slot_uuids: [dynamic]shared.Entity_UUID,
+	contained_uuids: [dynamic]shared.Entity_UUID,
+	overlay_uuids: [dynamic]shared.Entity_UUID,
+}
+
+WGPU_Selection_State :: struct {
+	shader: wgpu.ShaderModule,
+	texture: wgpu.Texture,
+	view: wgpu.TextureView,
+	depth_texture: wgpu.Texture,
+	depth_view: wgpu.TextureView,
+	width, height: u32,
+	readbacks: [WGPU_SELECTION_READBACK_FRAMES]WGPU_Selection_Readback,
+	next_slot: int,
+	active_slot: int,
+	next_serial: u64,
+	latest_applied_serial: u64,
+}
+
 WGPU_Renderer :: struct {
 	instance: wgpu.Instance,
 	surface: wgpu.Surface,
@@ -853,6 +883,10 @@ WGPU_Renderer :: struct {
 	gpu_driven_double_sided_pipeline: wgpu.RenderPipeline,
 	gpu_compact_pipeline: wgpu.RenderPipeline,
 	gpu_compact_double_sided_pipeline: wgpu.RenderPipeline,
+	gpu_selection_pipeline: wgpu.RenderPipeline,
+	gpu_selection_double_sided_pipeline: wgpu.RenderPipeline,
+	gpu_compact_selection_pipeline: wgpu.RenderPipeline,
+	gpu_compact_selection_double_sided_pipeline: wgpu.RenderPipeline,
 	gpu_driven_depth_pipeline: wgpu.RenderPipeline,
 	gpu_driven_depth_double_sided_pipeline: wgpu.RenderPipeline,
 	gpu_driven_depth_mask_pipeline: wgpu.RenderPipeline,
@@ -1023,6 +1057,7 @@ WGPU_Renderer :: struct {
 	gpu_editor_selection_revision: u64,
 	gpu_editor_selected_slots: [dynamic]int,
 	gpu_editor_selected_slot_indices: [dynamic]int,
+	selection: WGPU_Selection_State,
 	gpu_transform_updates: [dynamic]WGPU_GPU_Instance_Transform,
 	gpu_live_slots: [dynamic]int,
 	gpu_batch_indices_by_slot: [dynamic][shared.MAX_GEOMETRY_LODS]u32,
@@ -3563,6 +3598,10 @@ wgpu_encode_render_pass :: proc(
 	); err != "" {
 		return err
 	}
+	if err := wgpu_selection_encode(renderer, encoder, world, ui_state, batches, registry, layout);
+	   err != "" {
+		return err
+	}
 	if err := wgpu_encode_editor_feedback_pass(
 		renderer,
 		encoder,
@@ -4654,6 +4693,7 @@ wgpu_draw_frame :: proc(
 	submit_start := time.tick_now()
 	wgpu.QueueSubmit(renderer.queue, []wgpu.CommandBuffer{command_buffer})
 	wgpu_gpu_timing_after_submit(renderer)
+	wgpu_selection_after_submit(renderer)
 	if !config.cpu_culling {
 		wgpu_visibility_after_submit(renderer)
 	}
@@ -5023,6 +5063,7 @@ wgpu_render_offscreen_frame :: proc(
 	submit_start := time.tick_now()
 	wgpu.QueueSubmit(renderer.queue, []wgpu.CommandBuffer{command_buffer})
 	wgpu_gpu_timing_after_submit(renderer)
+	wgpu_selection_after_submit(renderer)
 	if !config.cpu_culling {
 		wgpu_visibility_after_submit(renderer)
 	}

@@ -537,6 +537,7 @@ struct Custom_Vertex_Output {
 	@location(3) color: vec4<f32>,
 	@location(4) view_depth: f32,
 	@location(5) previous_clip_position: vec4<f32>,
+	@location(6) @interpolate(flat) instance_slot: u32,
 };
 struct Custom_Fragment_Output {
 	@location(0) color: vec4<f32>,
@@ -552,7 +553,7 @@ fn custom_position(input: Vertex_Input, instance: GPU_Instance) -> vec4<f32> {
 	let vertex = custom_vertex(input, instance, false);
 	return instance.model * vec4<f32>(vertex.position, 1.0);
 }
-fn custom_vertex_output(input: Vertex_Input, instance: GPU_Instance) -> Custom_Vertex_Output {
+fn custom_vertex_output(input: Vertex_Input, instance: GPU_Instance, instance_slot: u32) -> Custom_Vertex_Output {
 	let vertex = custom_vertex(input, instance, false);
 	let world = instance.model * vec4<f32>(vertex.position, 1.0);
 	let previous_vertex = custom_vertex(input, instance, true);
@@ -566,10 +567,12 @@ fn custom_vertex_output(input: Vertex_Input, instance: GPU_Instance) -> Custom_V
 	output.uv = vertex.uv;
 	output.color = instance.color;
 	output.view_depth = -(render.view * world).z;
+	output.instance_slot = instance_slot;
 	return output;
 }
 @vertex fn vs_main(input: Vertex_Input, @builtin(instance_index) visible_index: u32) -> Custom_Vertex_Output {
-	return custom_vertex_output(input, instances[visible_instances[visible_index]]);
+	let instance_slot = visible_instances[visible_index];
+	return custom_vertex_output(input, instances[instance_slot], instance_slot);
 }
 fn octahedral_encode(direction: vec3<f32>) -> vec2<f32> {
 	let denominator = abs(direction.x) + abs(direction.y) + abs(direction.z);
@@ -606,6 +609,26 @@ fn octahedral_encode(direction: vec3<f32>) -> vec2<f32> {
 		previous_ndc * vec2<f32>(0.5, -0.5) + vec2<f32>(0.5);
 	output.motion = select(vec2<f32>(-1.0), previous_viewport_uv, motion_valid);
 	return output;
+}
+@fragment fn fs_selection(input: Custom_Vertex_Output) -> @location(0) u32 {
+	let screen_uv = (input.position.xy - scrapbot_custom.viewport.xy) / scrapbot_custom.viewport.zw;
+	let scene_uv = scrapbot_scene_uv(screen_uv);
+	let texture_color = textureSample(base_color_texture, base_color_sampler, input.uv) * input.color;
+	let fragment = Scrapbot_Fragment(
+		input.world_position,
+		normalize(input.world_normal),
+		input.uv,
+		screen_uv,
+		scene_uv,
+		normalize(render.camera_position.xyz - input.world_position),
+		texture_color,
+		input.view_depth,
+		input.position.z,
+		scrapbot_scene_depth(scene_uv),
+	);
+	let result = scrapbot_fragment(fragment);
+	if (result.color.a <= 0.01) { discard; }
+	return input.instance_slot + 1u;
 }
 @compute @workgroup_size(1)
 fn water_surface_query_cs() {
@@ -1155,6 +1178,7 @@ wgpu_release_custom_shader_cache_entry :: proc(entry: ^WGPU_Custom_Shader_Cache)
 		wgpu.BufferRelease(entry.spectral_intermediate_buffer)
 	}
 	if entry.blend_pipeline != nil { wgpu.RenderPipelineRelease(entry.blend_pipeline) }
+	if entry.selection_pipeline != nil { wgpu.RenderPipelineRelease(entry.selection_pipeline) }
 	if entry.water_surface_query_pipeline != nil {
 		wgpu.ComputePipelineRelease(entry.water_surface_query_pipeline)
 	}
@@ -1235,7 +1259,13 @@ wgpu_custom_shader_cache :: proc(
 		cull_mode,
 		true,
 	)
-	if entry.blend_pipeline == nil {
+	entry.selection_pipeline = wgpu_create_custom_selection_pipeline(
+		renderer,
+		entry.module,
+		&vertex_layout,
+		cull_mode,
+	)
+	if entry.blend_pipeline == nil || entry.selection_pipeline == nil {
 		wgpu_release_custom_shader_cache_entry(entry)
 		return nil, fmt.tprintf("failed to create pipelines for shader '%s'", shader.name)
 	}
@@ -1256,6 +1286,45 @@ wgpu_custom_shader_cache :: proc(
 	}
 	entry.valid = true
 	return entry, ""
+}
+
+wgpu_create_custom_selection_pipeline :: proc(
+	renderer: ^WGPU_Renderer,
+	module: wgpu.ShaderModule,
+	vertex_layout: ^wgpu.VertexBufferLayout,
+	cull_mode: wgpu.CullMode,
+) -> wgpu.RenderPipeline {
+	target := wgpu.ColorTargetState {
+		format = .R32Uint,
+		writeMask = wgpu.ColorWriteMaskFlags_All,
+	}
+	fragment := wgpu.FragmentState {
+		module = module,
+		entryPoint = "fs_selection",
+		targetCount = 1,
+		targets = &target,
+	}
+	return wgpu.DeviceCreateRenderPipeline(
+		renderer.device,
+		&wgpu.RenderPipelineDescriptor {
+			label = "Scrapbot Custom Material Selection Pipeline",
+			layout = renderer.custom_shader_pipeline_layout,
+			vertex = {
+				module = module,
+				entryPoint = "vs_main",
+				bufferCount = 1,
+				buffers = vertex_layout,
+			},
+			primitive = {topology = .TriangleList, frontFace = .CCW, cullMode = cull_mode},
+			depthStencil = &wgpu.DepthStencilState {
+				format = .Depth24Plus,
+				depthWriteEnabled = .True,
+				depthCompare = .LessEqual,
+			},
+			multisample = {count = 1, mask = 0xffff_ffff},
+			fragment = &fragment,
+		},
+	)
 }
 
 wgpu_create_custom_world_pipeline :: proc(

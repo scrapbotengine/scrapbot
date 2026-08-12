@@ -1,7 +1,7 @@
 # FDR-008: Editor shell
 
 **Status:** Active
-**Last reviewed:** 2026-08-11
+**Last reviewed:** 2026-08-12
 
 ## Overview
 
@@ -84,8 +84,8 @@ The editor shell turns a running Scrapbot project into its own editing workspace
 - Transport shortcuts do not consume project input while chrome is closed, the fly camera owns input, or a project-owned input has focus. `Cmd/Ctrl+E` remains available to open or close the shell.
 - Entity membership, names, resource-browser values, and the selected entity's running component values refresh from the live world every 200 ms. The inspector also refreshes immediately when selection, component membership revision, selected resource version, or authoring mode changes. Stopped-mode inspector values remain change-driven. A focused input is not overwritten by a snapshot, and hover, scrolling, picking, gizmo input, and text editing remain frame-rate responsive.
 - The Scene and Resource browsers and component inspector have independent pixel offsets and targets, frame-time smoothing without row or field snapping, clipping, and proportional scrollbars. Browser scrolling lays out only visible 32-pixel rows plus bounded overscan; filter/content/hierarchy revisions rebuild compact row order, while stable frames and scroll-only frames do not scan all rows. Selecting a different entity resets the inspector to its beginning.
-- Clicking rendered geometry in the live viewport selects the nearest intersected entity using the active camera and current viewport dimensions.
-- Viewport selection reveals the active entity in the scene browser. A plain click replaces the selection, Shift-click toggles one entity, plain empty-space clicks clear the set, and Shift-clicking empty space preserves it.
+- Clicking rendered geometry in the live viewport selects the nearest visible rendered entity using the active camera and current viewport dimensions.
+- Viewport selection reveals the active entity in the scene browser. A plain click replaces the selection, Shift-click toggles one entity, plain empty-space clicks clear the set, and Shift-clicking empty space preserves it. Dragging empty viewport space past the four-pixel threshold starts a clipped selection rectangle; release selects every rendered entity whose complete projected bounds fit inside it and whose identity is visible anywhere inside the rectangle. Generated Model primitives are combined under their root for containment and identity. Shift-drag toggles those entities against the existing set. The gesture resolves as either a click or a box, never both.
 - An active entity with a Transform displays a transform gizmo in the viewport. Pointer handles retain direct translation, rotation, and scale gestures. An ECS-built viewport toolbar chooses World or Local orientation and Origin or Center pivot placement, and appears only while a transform-bearing entity is selected.
 - `G`, `R`, or `S` immediately starts a modal free translation, view-axis rotation, or uniform scale gesture. X/Y/Z may constrain that active gesture after it begins; Shift plus an axis selects the complementary plane for translation and scale. Applying a qualifier re-evaluates the complete gesture from its captured start under the new constraint.
 - Every active world-tool drag retains the real pointer across Game boundaries and editor chrome, and the visible pointer remains confined to the window. Transform gestures additionally wrap across window edges while their anchors absorb each warp to stay continuous. Click or Enter commits, while Escape restores the captured Transform. A commit click is consumed through the editor interaction edge so it cannot also trigger viewport selection or editor chrome.
@@ -131,11 +131,11 @@ The editor shell turns a running Scrapbot project into its own editing workspace
 **Why:** A newly registered or newly extended component becomes inspectable without editor composition work, and the inspector cannot silently drift into a second component schema. Component-scoped snapshots piggyback on structural authoring history, undo/redo, and persistence without rewriting unrelated entity data.
 **Tradeoff:** Storage-kind adapters still locate canonical payloads, and component validation may specialize by semantic invariant. Semantic Color fields use the public `ui_color_picker`; reflected Vec3/Vec4 fields remain numeric unless their registry type is Color. Dynamic project/native schemas do not yet describe enum choices or entity-reference fields. Arrays, nested values, and unknown types remain visible only when a generic read-only representation exists.
 
-### 6. Pick exact rendered triangles
+### 6. Select rendered identity; query exact surfaces
 
-**Decision:** Use nearest CPU triangle-ray intersections for initial viewport picking, following ADR-017. Reject transformed instance bounds first. For streamed virtual geometry, reject hierarchy-group and leaf-cluster spheres before visiting the exact leaf triangles.
-**Why:** Exact geometry picking matches transformed meshes more closely than screen-space bounds and avoids a GPU readback pipeline at this stage.
-**Tradeoff:** The retained geometry hierarchy makes dense streamed meshes proportional to intersected regions instead of complete triangle count, but instance discovery remains linear and resident canonical meshes have only the instance broad phase. A scene spatial index, canonical-geometry acceleration structure, or GPU identity pass remains future work.
+**Decision:** On WGPU, resolve click and marquee selection through the on-demand asynchronous rendered-identity pass from ADR-057. A click examines a small pointer neighborhood; a marquee intersects all visible identities with strict complete projected-bounds containment. Continue using ADR-017's exact CPU triangle query for placement and other tools that require a contact position and normal. Keep the CPU path as the Null-backend selection fallback.
+**Why:** Selection should match actual rendered coverage, including alpha masking, custom displacement, depth ordering, and small visible fragments, without making every ordinary frame carry a permanent selection attachment or synchronous GPU stall.
+**Tradeoff:** GPU selection completes on a later frame and every render path that changes coverage must preserve a selection variant. A large marquee has bounded one-shot readback cost proportional to its pixel area. CPU spatial tools still need a scalable scene broad phase for very large scenes.
 
 ### 7. Keep manipulation handles screen-legible
 
@@ -298,7 +298,7 @@ For a selected point light, project three range rings and expose a radial range 
 
 ## Related
 
-- **ADRs:** ADR-003, ADR-005, ADR-014, ADR-016, ADR-017, ADR-018, ADR-019, ADR-021, ADR-023, ADR-024, ADR-025, ADR-026, ADR-027, ADR-028, ADR-031, ADR-033, ADR-040, ADR-044, ADR-056
+- **ADRs:** ADR-003, ADR-005, ADR-014, ADR-016, ADR-017, ADR-018, ADR-019, ADR-021, ADR-023, ADR-024, ADR-025, ADR-026, ADR-027, ADR-028, ADR-031, ADR-033, ADR-040, ADR-044, ADR-056, ADR-057
 - **FDRs:** FDR-001, FDR-003, FDR-007
 
 ## Open Questions

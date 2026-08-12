@@ -58,3 +58,4 @@
 | [ADR-054](ADR-054-select-geometry-submission-through-layered-policy.md) | Select geometry submission through layered policy | 2026-08-08 |
 | [ADR-055](ADR-055-compile-mesh-distance-fields-offline.md) | Compile mesh distance fields offline | 2026-08-08 |
 | [ADR-056](ADR-056-separate-engine-time-from-project-clocks.md) | Separate engine time from project clocks | 2026-08-10 |
+| [ADR-057](ADR-057-render-editor-selection-through-an-on-demand-identity-pass.md) | Render editor selection through an on-demand identity pass | 2026-08-12 |

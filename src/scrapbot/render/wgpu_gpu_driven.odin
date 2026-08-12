@@ -1117,6 +1117,46 @@ wgpu_create_gpu_world_pipeline :: proc(
 	)
 }
 
+wgpu_create_gpu_selection_pipeline :: proc(
+	renderer: ^WGPU_Renderer,
+	vertex_layout: ^wgpu.VertexBufferLayout,
+	cull_mode: wgpu.CullMode,
+	label: string,
+	vertex_entry: string = "vs_main",
+) -> wgpu.RenderPipeline {
+	target := wgpu.ColorTargetState {
+		format = .R32Uint,
+		writeMask = wgpu.ColorWriteMaskFlags_All,
+	}
+	fragment := wgpu.FragmentState {
+		module = renderer.gpu_driven_shader,
+		entryPoint = "fs_selection",
+		targetCount = 1,
+		targets = &target,
+	}
+	return wgpu.DeviceCreateRenderPipeline(
+		renderer.device,
+		&wgpu.RenderPipelineDescriptor {
+			label = label,
+			layout = renderer.gpu_driven_pipeline_layout,
+			vertex = {
+				module = renderer.gpu_driven_shader,
+				entryPoint = vertex_entry,
+				bufferCount = 1,
+				buffers = vertex_layout,
+			},
+			primitive = {topology = .TriangleList, frontFace = .CCW, cullMode = cull_mode},
+			depthStencil = &wgpu.DepthStencilState {
+				format = .Depth24Plus,
+				depthWriteEnabled = .True,
+				depthCompare = .LessEqual,
+			},
+			multisample = {count = 1, mask = 0xFFFF_FFFF},
+			fragment = &fragment,
+		},
+	)
+}
+
 wgpu_create_meshlet_debug_pipeline :: proc(renderer: ^WGPU_Renderer) -> string {
 	source := wgpu.ShaderSourceWGSL {
 		chain = {sType = .ShaderSourceWGSL},
@@ -1701,6 +1741,32 @@ wgpu_create_gpu_driven_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 		"Scrapbot GPU Compact Double-Sided Render Pipeline",
 		"compact_vs",
 	)
+	renderer.gpu_selection_pipeline = wgpu_create_gpu_selection_pipeline(
+		renderer,
+		&vertex_buffer_layout,
+		.Back,
+		"Scrapbot GPU Selection Pipeline",
+	)
+	renderer.gpu_selection_double_sided_pipeline = wgpu_create_gpu_selection_pipeline(
+		renderer,
+		&vertex_buffer_layout,
+		.None,
+		"Scrapbot GPU Double-Sided Selection Pipeline",
+	)
+	renderer.gpu_compact_selection_pipeline = wgpu_create_gpu_selection_pipeline(
+		renderer,
+		&compact_buffer_layout,
+		.Back,
+		"Scrapbot GPU Compact Selection Pipeline",
+		"compact_vs",
+	)
+	renderer.gpu_compact_selection_double_sided_pipeline = wgpu_create_gpu_selection_pipeline(
+		renderer,
+		&compact_buffer_layout,
+		.None,
+		"Scrapbot GPU Compact Double-Sided Selection Pipeline",
+		"compact_vs",
+	)
 	renderer.gpu_driven_depth_pipeline_layout = wgpu.DeviceCreatePipelineLayout(
 		renderer.device,
 		&wgpu.PipelineLayoutDescriptor {
@@ -1836,6 +1902,10 @@ wgpu_create_gpu_driven_pipelines :: proc(renderer: ^WGPU_Renderer) -> string {
 	   renderer.gpu_driven_double_sided_pipeline == nil ||
 	   renderer.gpu_compact_pipeline == nil ||
 	   renderer.gpu_compact_double_sided_pipeline == nil ||
+	   renderer.gpu_selection_pipeline == nil ||
+	   renderer.gpu_selection_double_sided_pipeline == nil ||
+	   renderer.gpu_compact_selection_pipeline == nil ||
+	   renderer.gpu_compact_selection_double_sided_pipeline == nil ||
 	   renderer.gpu_driven_depth_pipeline == nil ||
 	   renderer.gpu_driven_depth_double_sided_pipeline == nil ||
 	   renderer.gpu_driven_depth_mask_pipeline == nil ||

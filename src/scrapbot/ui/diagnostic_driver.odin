@@ -109,6 +109,8 @@ Diagnostic_Tree_Dump :: struct {
 	editor_visible: bool,
 	editor_component_menu_open: bool,
 	editor_inspector_snapshot_refresh_count: u64,
+	editor_selection_revision: u64,
+	editor_selected_uuids: []string,
 	driver_action_index: int,
 	driver_action_count: int,
 	driver_action: string,
@@ -903,13 +905,21 @@ diagnostic_driver_write_dump :: proc(
 		return "cannot dump an unavailable UI tree"
 	}
 	nodes := make([dynamic]Diagnostic_Node_Dump, 0, state.node_count)
+	selected_uuids := make([dynamic]string, 0, len(state.editor_selected_uuids))
 	owned_strings := make([dynamic]string, 0, state.node_count * 2)
 	defer {
 		for value in owned_strings {
 			delete(value)
 		}
 		delete(owned_strings)
+		delete(selected_uuids)
 		delete(nodes)
+	}
+	for id in state.editor_selected_uuids {
+		buffer: [36]u8
+		value := strings.clone(shared.entity_uuid_to_string(id, buffer[:]))
+		append(&owned_strings, value)
+		append(&selected_uuids, value)
 	}
 	for node in state.nodes[:state.node_count] {
 		entity_index := int(node.entity.index)
@@ -1001,6 +1011,8 @@ diagnostic_driver_write_dump :: proc(
 		editor_visible = state.editor_visible,
 		editor_component_menu_open = editor_component_menu_open,
 		editor_inspector_snapshot_refresh_count = state.editor_inspector_snapshot_refresh_count,
+		editor_selection_revision = state.editor_selection_revision,
+		editor_selected_uuids = selected_uuids[:],
 		nodes = nodes[:],
 	}
 	if driver != nil {

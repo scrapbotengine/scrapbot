@@ -264,6 +264,7 @@ wgpu_init_renderer :: proc(
 	if err = wgpu_create_gpu_driven_pipelines(&renderer); err != "" {
 		return renderer, err
 	}
+	renderer.selection.active_slot = -1
 	if err = wgpu_create_custom_shader_resources(&renderer); err != "" {
 		return renderer, err
 	}
@@ -290,6 +291,7 @@ wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
 		wgpu.DevicePoll(renderer.device, true)
 	}
 	wgpu_release_custom_shader_resources(renderer)
+	wgpu_selection_destroy(renderer)
 	wgpu_release_gpu_timing(renderer)
 	wgpu_release_environment_resources(renderer)
 	if renderer.configured {
@@ -451,6 +453,17 @@ wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
 	}
 	if renderer.gpu_compact_double_sided_pipeline != nil {
 		wgpu.RenderPipelineRelease(renderer.gpu_compact_double_sided_pipeline)
+	}
+	selection_pipelines := [?]wgpu.RenderPipeline {
+		renderer.gpu_selection_pipeline,
+		renderer.gpu_selection_double_sided_pipeline,
+		renderer.gpu_compact_selection_pipeline,
+		renderer.gpu_compact_selection_double_sided_pipeline,
+	}
+	for pipeline in selection_pipelines {
+		if pipeline != nil {
+			wgpu.RenderPipelineRelease(pipeline)
+		}
 	}
 	if renderer.gpu_driven_depth_pipeline != nil {
 		wgpu.RenderPipelineRelease(renderer.gpu_driven_depth_pipeline)

@@ -71,6 +71,44 @@ test_project_canvas_modes_resolve_logical_viewports_and_exact_inverse_pointer_ma
 }
 
 @(test)
+test_editor_box_selection_distinguishes_clicks_from_clipped_drags :: proc(t: ^testing.T) {
+	state := new(State)
+	defer free(state)
+	state.editor_box_select_armed = true
+	state.editor_box_select_start = {100, 80}
+	state.editor_box_select_current = state.editor_box_select_start
+	state.editor_box_select_clip = {40, 30, 120, 100}
+	state.editor_box_select_toggle_selection = true
+	editor_box_select_update(
+		state,
+		{position = {180, 150}, primary_down = true, available = true},
+		2,
+	)
+	testing.expect(t, state.editor_box_select_active)
+	editor_box_select_update(state, {position = {180, 150}, available = true}, 2)
+	testing.expect(t, state.editor_box_select_requested)
+	testing.expect(t, state.editor_box_select_request_toggle_selection)
+	testing.expect_value(t, state.editor_box_select_request_rect, Rect{200, 160, 120, 100})
+	testing.expect(t, !state.editor_pick_requested)
+
+	state^ = {}
+	state.editor_box_select_armed = true
+	state.editor_box_select_start = {100, 80}
+	state.editor_box_select_current = state.editor_box_select_start
+	state.editor_box_select_clip = {40, 30, 120, 100}
+	editor_box_select_update(
+		state,
+		{position = {102, 81}, primary_down = true, available = true},
+		2,
+	)
+	testing.expect(t, !state.editor_box_select_active)
+	editor_box_select_update(state, {position = {102, 81}, available = true}, 2)
+	testing.expect(t, state.editor_pick_requested)
+	testing.expect_value(t, state.editor_pick_position, shared.Vec2{204, 162})
+	testing.expect(t, !state.editor_box_select_requested)
+}
+
+@(test)
 test_canvas_safe_area_and_per_axis_alignment_share_generic_layout :: proc(t: ^testing.T) {
 	root_id := ui_test_id("Responsive Canvas")
 	centered_id := ui_test_id("Centered Control")
@@ -4337,10 +4375,30 @@ test_editor_shell_is_an_editor_origin_ecs_ui_tree :: proc(t: ^testing.T) {
 		) ==
 		"",
 	)
-	testing.expect(t, state.editor_pick_requested)
+	testing.expect(t, state.editor_box_select_armed)
+	testing.expect(t, !state.editor_pick_requested)
 	testing.expect(
 		t,
-		state.editor_pick_position == shared.Vec2{viewport.x + 100, viewport.y + 100},
+		state.editor_box_select_start == shared.Vec2{viewport.x + 100, viewport.y + 100},
+	)
+	testing.expect(
+		t,
+		reconcile(
+			state,
+			&world,
+			1280,
+			720,
+			{position = {viewport.x + 100, viewport.y + 100}, available = true},
+			2048,
+			1096,
+		) ==
+		"",
+	)
+	testing.expect(t, state.editor_pick_requested)
+	testing.expect_value(
+		t,
+		state.editor_pick_position,
+		shared.Vec2{viewport.x + 100, viewport.y + 100},
 	)
 
 	// Native-density windows keep the same logical chrome size while painting at 2x resolution.

@@ -1537,10 +1537,42 @@ run_frame_system_unmeasured :: proc(
 				ecs.destroy_render_list(&list)
 			}
 		}
-		if config.ui_state.editor_pick_requested {
-			config.ui_state.editor_pick_requested = false
+		if config.ui_state.editor_box_select_requested && config.backend != .WGPU {
+			config.ui_state.editor_box_select_requested = false
+			toggle_selection := config.ui_state.editor_box_select_request_toggle_selection
+			config.ui_state.editor_box_select_request_toggle_selection = false
+			list := ecs.build_resource_render_list(
+				world,
+				config.resource_registry,
+				config.ui_state.editor_visible,
+			)
+			selected := editor_box_select_entities(
+				world,
+				&list,
+				config.resource_registry,
+				config.ui_state.editor_box_select_request_rect,
+				viewport,
+			)
+			for icon in config.ui_state.editor_scene_icons[:config.ui_state.editor_scene_icon_count] {
+				if !ui.rect_contains(config.ui_state.editor_box_select_request_rect, icon.center) {
+					continue
+				}
+				found := false
+				for entity in selected {
+					if entity == icon.entity {
+						found = true
+						break
+					}
+				}
+				if !found {
+					append(&selected, icon.entity)
+				}
+			}
+			ui.editor_set_entity_selection(config.ui_state, world, selected[:], toggle_selection)
+			delete(selected)
+			ecs.destroy_render_list(&list)
+		} else if config.ui_state.editor_pick_requested {
 			toggle_selection := config.ui_state.editor_pick_toggle_selection
-			config.ui_state.editor_pick_toggle_selection = false
 			picked, found := editor_pick_scene_icon(
 				config.ui_state,
 				config.ui_state.editor_pick_position,
@@ -1551,7 +1583,11 @@ run_frame_system_unmeasured :: proc(
 					config.ui_state.editor_pick_position,
 				)
 			}
-			if !found && config.resource_registry != nil {
+			if found || config.backend != .WGPU {
+				config.ui_state.editor_pick_requested = false
+				config.ui_state.editor_pick_toggle_selection = false
+			}
+			if !found && config.backend != .WGPU && config.resource_registry != nil {
 				list := ecs.build_resource_render_list(
 					world,
 					config.resource_registry,

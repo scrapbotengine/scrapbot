@@ -339,6 +339,193 @@ editor_pick_entity :: proc(
 	return hit.entity, found
 }
 
+editor_box_select_entities :: proc(
+	world: ^shared.World,
+	render_list: ^shared.Render_List,
+	registry: ^resources.Registry,
+	selection: ui.Rect,
+	viewport: ui.Rect,
+	visibility_filter: bool = true,
+) -> [dynamic]shared.Entity {
+	Candidate :: struct {
+		entity: shared.Entity,
+		minimum, maximum: shared.Vec2,
+		complete: bool,
+	}
+	result: [dynamic]shared.Entity
+	if world == nil ||
+	   render_list == nil ||
+	   registry == nil ||
+	   selection.width <= 0 ||
+	   selection.height <= 0 {
+		return result
+	}
+	candidates: [dynamic]Candidate
+	defer delete(candidates)
+	for instance in render_list.instances {
+		geometry, found := resources.get_geometry(registry, instance.geometry.handle)
+		if !found {
+			continue
+		}
+		entity := instance.entity.id
+		if instance.entity.model_owner != (shared.Entity_UUID{}) {
+			if owner_index, owner_found := ecs.entity_index_by_uuid(
+				world,
+				instance.entity.model_owner,
+			); owner_found {
+				entity = world.entities[owner_index].id
+			}
+		}
+		candidate_index := -1
+		for candidate, index in candidates {
+			if candidate.entity == entity {
+				candidate_index = index
+				break
+			}
+		}
+		if candidate_index < 0 {
+			append(
+				&candidates,
+				Candidate {
+					entity = entity,
+					minimum = {3.4028235e38, 3.4028235e38},
+					maximum = {-3.4028235e38, -3.4028235e38},
+					complete = true,
+				},
+			)
+			candidate_index = len(candidates) - 1
+		}
+		candidate := &candidates[candidate_index]
+		for x in 0 ..< 2 {
+			for y in 0 ..< 2 {
+				for z in 0 ..< 2 {
+					point := editor_transform_point(
+						instance.transform,
+						{
+							geometry.bounds.min.x if x == 0 else geometry.bounds.max.x,
+							geometry.bounds.min.y if y == 0 else geometry.bounds.max.y,
+							geometry.bounds.min.z if z == 0 else geometry.bounds.max.z,
+						},
+					)
+					screen, ok := editor_project_world(
+						point,
+						viewport,
+						render_list.camera,
+						render_list.has_camera,
+					)
+					if !ok {
+						candidate.complete = false
+						continue
+					}
+					candidate.minimum.x = min(candidate.minimum.x, screen.x)
+					candidate.minimum.y = min(candidate.minimum.y, screen.y)
+					candidate.maximum.x = max(candidate.maximum.x, screen.x)
+					candidate.maximum.y = max(candidate.maximum.y, screen.y)
+				}
+			}
+		}
+	}
+	for candidate in candidates {
+		bounds := ui.Rect {
+			candidate.minimum.x,
+			candidate.minimum.y,
+			candidate.maximum.x - candidate.minimum.x,
+			candidate.maximum.y - candidate.minimum.y,
+		}
+		if !candidate.complete ||
+		   !rect_contains_rect(selection, bounds) ||
+		   (visibility_filter &&
+				   !editor_box_candidate_visible(
+						   world,
+						   render_list,
+						   registry,
+						   candidate.entity,
+						   bounds,
+						   viewport,
+					   )) {
+			continue
+		}
+		append(&result, candidate.entity)
+	}
+	return result
+}
+
+editor_selection_entity :: proc(
+	world: ^shared.World,
+	render_list: ^shared.Render_List,
+	entity: shared.Entity,
+) -> shared.Entity {
+	if render_list != nil {
+		for instance in render_list.instances {
+			if instance.entity.id != entity ||
+			   instance.entity.model_owner == (shared.Entity_UUID{}) {
+				continue
+			}
+			if world != nil {
+				if owner_index, found := ecs.entity_index_by_uuid(
+					world,
+					instance.entity.model_owner,
+				); found {
+					return world.entities[owner_index].id
+				}
+			}
+			break
+		}
+	}
+	if world == nil {
+		return entity
+	}
+	entity_index := int(entity.index)
+	if !ecs.entity_is_alive(world, entity_index) || world.entities[entity_index].id != entity {
+		return entity
+	}
+	owner := world.entities[entity_index].model_owner
+	if owner == (shared.Entity_UUID{}) {
+		return entity
+	}
+	if owner_index, found := ecs.entity_index_by_uuid(world, owner); found {
+		return world.entities[owner_index].id
+	}
+	return entity
+}
+
+editor_box_candidate_visible :: proc(
+	world: ^shared.World,
+	render_list: ^shared.Render_List,
+	registry: ^resources.Registry,
+	entity: shared.Entity,
+	bounds: ui.Rect,
+	viewport: ui.Rect,
+) -> bool {
+	// A bounded center-plus-quadrants pattern catches ordinary visible silhouettes without
+	// turning one marquee release into a readback or an unbounded pixel scan.
+	samples := [5]shared.Vec2{{0.5, 0.5}, {0.25, 0.25}, {0.75, 0.25}, {0.25, 0.75}, {0.75, 0.75}}
+	for sample in samples {
+		pointer := shared.Vec2 {
+			bounds.x + bounds.width * sample.x,
+			bounds.y + bounds.height * sample.y,
+		}
+		ray, ray_ok := editor_pick_ray(render_list, pointer, viewport)
+		if !ray_ok {
+			continue
+		}
+		hit, found := scene_raycast_nearest(render_list, registry, ray)
+		if found && editor_selection_entity(world, render_list, hit.entity) == entity {
+			return true
+		}
+	}
+	return false
+}
+
+rect_contains_rect :: proc(container, contents: ui.Rect) -> bool {
+	return(
+		contents.x >= container.x &&
+		contents.y >= container.y &&
+		contents.x + contents.width <= container.x + container.width &&
+		contents.y + contents.height <= container.y + container.height \
+	)
+}
+
 scene_raycast_nearest :: proc(
 	render_list: ^shared.Render_List,
 	registry: ^resources.Registry,

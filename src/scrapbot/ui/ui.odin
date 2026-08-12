@@ -579,6 +579,14 @@ State :: struct {
 	editor_pick_requested: bool,
 	editor_pick_position: shared.Vec2,
 	editor_pick_toggle_selection: bool,
+	editor_box_select_armed: bool,
+	editor_box_select_active: bool,
+	editor_box_select_start, editor_box_select_current: shared.Vec2,
+	editor_box_select_clip: Rect,
+	editor_box_select_toggle_selection: bool,
+	editor_box_select_requested: bool,
+	editor_box_select_request_rect: Rect,
+	editor_box_select_request_toggle_selection: bool,
 	editor_model_placement_requested: bool,
 	editor_model_placement_request: Editor_Model_Placement_Request,
 	editor_model_placement_preview_visible: bool,
@@ -1873,6 +1881,7 @@ reconcile :: proc(
 	panel_changed =
 		editor_ui_consume_events(state, world, world.ui_events.latest_pass_after_sequence) ||
 		panel_changed
+	editor_box_select_update(state, editor_pointer, editor_scale)
 	sync_ui_interaction_states(state, world)
 	if panel_changed {
 		if err := sync_ui_structure(state, world); err != "" {
@@ -1952,7 +1961,6 @@ reconcile :: proc(
 	}
 	validate_focused_editor_input(state, world)
 	state.editor_snapshot_was_visible = state.editor_visible
-	if state.editor_pick_requested { state.editor_pick_position.x *= editor_scale; state.editor_pick_position.y *= editor_scale }
 	collect_viewport_surfaces(
 		state,
 		world,
@@ -2350,6 +2358,113 @@ editor_clear_selection :: proc(state: ^State) {if state == nil { return }
 	state.editor_light_gizmo_active = false
 	state.editor_light_gizmo_captures_pointer = false
 	state.editor_light_gizmo_visible = false}
+
+editor_set_entity_selection :: proc(
+	state: ^State,
+	world: ^shared.World,
+	entities: []shared.Entity,
+	toggle: bool = false,
+) {
+	if state == nil || world == nil {
+		return
+	}
+	if !toggle {
+		clear(&state.editor_selected_uuids)
+	}
+	for entity in entities {
+		entity_index := int(entity.index)
+		if !ecs.entity_is_alive(world, entity_index) ||
+		   world.entities[entity_index].id != entity ||
+		   world.entities[entity_index].origin == .Editor {
+			continue
+		}
+		selected_entity := entity
+		if model_owner := world.entities[entity_index].model_owner;
+		   model_owner != (shared.Entity_UUID{}) {
+			if owner_index, found := ecs.entity_index_by_uuid(world, model_owner);
+			   found && world.entities[owner_index].origin != .Editor {
+				selected_entity = world.entities[owner_index].id
+			}
+		}
+		selected_index := int(selected_entity.index)
+		selected_uuid := world.entities[selected_index].uuid
+		selected_at := -1
+		for id, selection_index in state.editor_selected_uuids {
+			if id == selected_uuid {
+				selected_at = selection_index
+				break
+			}
+		}
+		if toggle && selected_at >= 0 {
+			ordered_remove(&state.editor_selected_uuids, selected_at)
+			continue
+		}
+		if selected_at < 0 {
+			append(&state.editor_selected_uuids, selected_uuid)
+		}
+	}
+	if len(state.editor_selected_uuids) > 0 {
+		active_uuid := state.editor_selected_uuids[len(state.editor_selected_uuids) - 1]
+		active_index, _ := ecs.entity_index_by_uuid(world, active_uuid)
+		state.editor_selected_entity = world.entities[active_index].id
+		state.editor_has_resource_selection = false
+	} else {
+		state.editor_selected_entity = {}
+	}
+	state.editor_gizmo_active_handle = .None
+	state.editor_gizmo_captures_pointer = false
+	state.editor_light_gizmo_active = false
+	state.editor_light_gizmo_captures_pointer = false
+	editor_selection_changed(state)
+}
+
+editor_box_select_update :: proc(state: ^State, pointer: Pointer_Input, scale: f32) {
+	if state == nil || !state.editor_box_select_armed {
+		return
+	}
+	if pointer.available {
+		state.editor_box_select_current = pointer.position
+	}
+	delta := shared.Vec2 {
+		state.editor_box_select_current.x - state.editor_box_select_start.x,
+		state.editor_box_select_current.y - state.editor_box_select_start.y,
+	}
+	if pointer.primary_down &&
+	   !state.editor_box_select_active &&
+	   delta.x * delta.x + delta.y * delta.y >= 16 {
+		state.editor_box_select_active = true
+	}
+	if pointer.primary_down {
+		return
+	}
+	if state.editor_box_select_active {
+		x0 := min(state.editor_box_select_start.x, state.editor_box_select_current.x)
+		y0 := min(state.editor_box_select_start.y, state.editor_box_select_current.y)
+		x1 := max(state.editor_box_select_start.x, state.editor_box_select_current.x)
+		y1 := max(state.editor_box_select_start.y, state.editor_box_select_current.y)
+		selection := rect_intersection(
+			Rect{x0, y0, x1 - x0, y1 - y0},
+			state.editor_box_select_clip,
+		)
+		state.editor_box_select_requested = selection.width > 0 && selection.height > 0
+		state.editor_box_select_request_rect = Rect {
+			selection.x * scale,
+			selection.y * scale,
+			selection.width * scale,
+			selection.height * scale,
+		}
+		state.editor_box_select_request_toggle_selection = state.editor_box_select_toggle_selection
+	} else {
+		state.editor_pick_requested = true
+		state.editor_pick_position = {
+			state.editor_box_select_current.x * scale,
+			state.editor_box_select_current.y * scale,
+		}
+		state.editor_pick_toggle_selection = state.editor_box_select_toggle_selection
+	}
+	state.editor_box_select_armed = false
+	state.editor_box_select_active = false
+}
 
 editor_remove_selection_uuid :: proc(state: ^State, world: ^shared.World, id: shared.Entity_UUID) {
 	if state == nil || id == (shared.Entity_UUID{}) {
@@ -8761,6 +8876,9 @@ rebuild_editor_world_overlay :: proc(state: ^State) -> string {
 	if err := append_editor_model_placement_preview(state); err != "" {
 		return err
 	}
+	if err := append_editor_box_selection(state); err != "" {
+		return err
+	}
 	if state.editor_overlay_rebuild_changed ||
 	   state.editor_overlay_compare_count != state.editor_overlay_paint_count {
 		state.editor_overlay_paint_output_revision += 1
@@ -8769,6 +8887,36 @@ rebuild_editor_world_overlay :: proc(state: ^State) -> string {
 		}
 	}
 	return ""
+}
+
+append_editor_box_selection :: proc(state: ^State) -> string {
+	if state == nil || !state.editor_box_select_active {
+		return ""
+	}
+	scale := max(state.editor_pixel_density, 1)
+	x0 := min(state.editor_box_select_start.x, state.editor_box_select_current.x) * scale
+	y0 := min(state.editor_box_select_start.y, state.editor_box_select_current.y) * scale
+	x1 := max(state.editor_box_select_start.x, state.editor_box_select_current.x) * scale
+	y1 := max(state.editor_box_select_start.y, state.editor_box_select_current.y) * scale
+	clip := Rect {
+		state.editor_box_select_clip.x * scale,
+		state.editor_box_select_clip.y * scale,
+		state.editor_box_select_clip.width * scale,
+		state.editor_box_select_clip.height * scale,
+	}
+	return append_paint(
+		state,
+		Paint_Command {
+			kind = .Panel,
+			rect = {x0, y0, x1 - x0, y1 - y0},
+			color = {0.15, 0.52, 0.68, 0.12},
+			border_color = {0.38, 0.78, 0.92, 0.9},
+			border_width = max(scale, 1),
+			corner_radius = 1 * scale,
+			clip = clip,
+			has_clip = true,
+		},
+	)
 }
 
 append_editor_model_placement_preview :: proc(state: ^State) -> string {

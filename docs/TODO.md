@@ -49,7 +49,7 @@ This file tracks current actionable engineering work. The broad product roadmap 
 - [ ] Extend project/native component schemas with enum choices so dynamic fields can use the reflected enum picker.
 - [ ] Add generic batch inspector edits across compatible components in the current multi-selection.
 - [ ] Extend Duplicate and Delete from the active entity to complete multi-selection batch transactions.
-- [ ] Replace the picking path's linear instance scan and canonical-mesh triangle fallback with a retained scene spatial index, canonical-geometry acceleration structure, or GPU identity pass. Streamed virtual geometry already reuses instance, hierarchy-group, and leaf-cluster bounds before exact triangle tests.
+- [ ] Add a retained scene spatial index or canonical-geometry acceleration structure for CPU contact queries used by placement and collision-aware editor tools; WGPU entity selection now uses an on-demand identity pass.
 - [ ] Add opt-in collision-aware editor fly-camera navigation on top of a scalable scene-query broad phase.
 
 ## Testing And Diagnostics

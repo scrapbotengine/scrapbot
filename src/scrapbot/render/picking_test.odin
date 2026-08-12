@@ -1,5 +1,6 @@
 package render
 
+import ecs "../ecs"
 import resources "../resources"
 import shared "../shared"
 import ui "../ui"
@@ -237,4 +238,134 @@ test_editor_pick_ray_tracks_live_viewport_aspect :: proc(t: ^testing.T) {
 	testing.expect(t, ray.direction.z < 0)
 	center, _ := editor_pick_ray(&list, {500, 300}, ui.Rect{0, 0, 1000, 600})
 	testing.expect(t, center.direction.x == 0)
+}
+
+@(test)
+test_editor_box_selection_uses_projected_instance_bounds_and_deduplicates_model_owners :: proc(
+	t: ^testing.T,
+) {
+	registry: resources.Registry
+	defer resources.destroy_registry(&registry)
+	desc, desc_err := resources.cube()
+	testing.expect(t, desc_err == "")
+	defer delete(desc.vertices)
+	defer delete(desc.indices)
+	handle, register_err := resources.register_geometry(&registry, "box-select-cube", desc)
+	testing.expect(t, register_err == "")
+	world: shared.World
+	defer ecs.destroy_world(&world)
+	left_uuid, _ := shared.entity_uuid_parse("a7000000-0000-4000-8000-000000000051")
+	right_uuid, _ := shared.entity_uuid_parse("a7000000-0000-4000-8000-000000000052")
+	left_index, left_created := ecs.create_world_entity(&world, "Left", left_uuid)
+	right_index, right_created := ecs.create_world_entity(&world, "Right", right_uuid)
+	testing.expect(t, left_created && right_created)
+	list := shared.Render_List {
+		has_camera = true,
+		camera = {transform = {position = {0, 0, 6}}, camera = {fov = 60, near = 0.1, far = 100}},
+	}
+	defer delete(list.instances)
+	append(
+		&list.instances,
+		shared.Render_Instance {
+			entity = {id = {index = 7, generation = 1}, model_owner = left_uuid},
+			transform = {position = {-2, 0, 0}, scale = {1, 1, 1}},
+			geometry = {handle = handle},
+		},
+		shared.Render_Instance {
+			entity = {id = {index = 8, generation = 1}, model_owner = left_uuid},
+			transform = {position = {-2, 1, 0}, scale = {1, 1, 1}},
+			geometry = {handle = handle},
+		},
+		shared.Render_Instance {
+			entity = {id = {index = 9, generation = 1}, model_owner = right_uuid},
+			transform = {position = {2, 0, 0}, scale = {1, 1, 1}},
+			geometry = {handle = handle},
+		},
+	)
+	viewport := ui.Rect{100, 50, 800, 600}
+	left_center, projected := editor_project_world({-2, 0.5, 0}, viewport, list.camera, true)
+	testing.expect(t, projected)
+	selected := editor_box_select_entities(
+		&world,
+		&list,
+		&registry,
+		ui.Rect{left_center.x - 100, left_center.y - 130, 200, 260},
+		viewport,
+	)
+	defer delete(selected)
+	testing.expect_value(t, len(selected), 1)
+	testing.expect_value(t, selected[0], world.entities[left_index].id)
+
+	// Touching only one generated primitive is insufficient: the complete
+	// Model-owner projection must fit inside the marquee.
+	partial := editor_box_select_entities(
+		&world,
+		&list,
+		&registry,
+		ui.Rect{left_center.x - 70, left_center.y + 10, 140, 80},
+		viewport,
+	)
+	defer delete(partial)
+	testing.expect_value(t, len(partial), 0)
+	_ = right_index
+}
+
+@(test)
+test_editor_box_selection_requires_full_rect_containment :: proc(t: ^testing.T) {
+	container := ui.Rect{100, 100, 200, 120}
+	testing.expect(t, rect_contains_rect(container, ui.Rect{120, 110, 40, 50}))
+	testing.expect(t, rect_contains_rect(container, container))
+	testing.expect(t, !rect_contains_rect(container, ui.Rect{80, 110, 40, 50}))
+	testing.expect(t, !rect_contains_rect(container, ui.Rect{280, 110, 40, 50}))
+	testing.expect(t, !rect_contains_rect(container, ui.Rect{120, 80, 40, 50}))
+	testing.expect(t, !rect_contains_rect(container, ui.Rect{120, 200, 40, 50}))
+}
+
+@(test)
+test_editor_box_selection_rejects_fully_occluded_entities :: proc(t: ^testing.T) {
+	registry: resources.Registry
+	defer resources.destroy_registry(&registry)
+	desc, desc_err := resources.cube()
+	testing.expect(t, desc_err == "")
+	defer delete(desc.vertices)
+	defer delete(desc.indices)
+	handle, register_err := resources.register_geometry(&registry, "occlusion-cube", desc)
+	testing.expect(t, register_err == "")
+	world: shared.World
+	defer ecs.destroy_world(&world)
+	front_index, front_created := ecs.create_world_entity(&world, "Front")
+	back_index, back_created := ecs.create_world_entity(&world, "Back")
+	testing.expect(t, front_created && back_created)
+	list := shared.Render_List {
+		has_camera = true,
+		camera = {transform = {position = {0, 0, 6}}, camera = {fov = 60, near = 0.1, far = 100}},
+	}
+	defer delete(list.instances)
+	append(
+		&list.instances,
+		shared.Render_Instance {
+			entity = {
+				id = world.entities[front_index].id,
+				uuid = world.entities[front_index].uuid,
+			},
+			transform = {position = {0, 0, 2}, scale = {2, 2, 2}},
+			geometry = {handle = handle},
+		},
+		shared.Render_Instance {
+			entity = {id = world.entities[back_index].id, uuid = world.entities[back_index].uuid},
+			transform = {position = {0, 0, 0}, scale = {1, 1, 1}},
+			geometry = {handle = handle},
+		},
+	)
+	viewport := ui.Rect{0, 0, 800, 600}
+	selected := editor_box_select_entities(
+		&world,
+		&list,
+		&registry,
+		ui.Rect{200, 100, 400, 400},
+		viewport,
+	)
+	defer delete(selected)
+	testing.expect_value(t, len(selected), 1)
+	testing.expect_value(t, selected[0], world.entities[front_index].id)
 }

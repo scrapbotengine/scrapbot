@@ -299,7 +299,7 @@ trends; they are not portable performance thresholds.
   - [x] Resource create, duplicate, rename, move, delete, usage lookup, and structural undo/redo
   - [x] Explicit stopped-mode scene persistence by stable entity UUID
   - [x] Recoverable project-wide Save transactions across scene and resource files
-  - [ ] Multi-selection editing
+  - [x] Multi-selection editing with Shift toggles, viewport marquee selection, shared-pivot transforms, combined framing, and multiple outlines
   - [x] Bounded field and structural editor transactions
 - Scene Tools
   - [x] Play/Pause/Step with an in-memory authoring baseline, non-destructive Stop, stopped-mode Undo/Redo, explicit Save, and scene-only Revert
