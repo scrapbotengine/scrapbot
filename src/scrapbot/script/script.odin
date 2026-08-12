@@ -47,6 +47,7 @@ Runtime :: struct {
 	registry: component.Registry,
 	resource_registry: ^resources.Registry,
 	project_root: string,
+	requested_scene: shared.Resource_UUID,
 	log_enabled: bool,
 	commands: ecs.Command_Buffer,
 	systems: []Script_System,
@@ -359,6 +360,15 @@ bind_runtime_world :: proc(runtime: ^Runtime, world: ^World) {
 	}
 	ecs.clear_commands(&runtime.commands)
 	runtime.world = world
+}
+
+consume_scene_change_request :: proc(runtime: ^Runtime) -> (shared.Resource_UUID, bool) {
+	if runtime == nil || runtime.requested_scene == (shared.Resource_UUID{}) {
+		return {}, false
+	}
+	requested := runtime.requested_scene
+	runtime.requested_scene = {}
+	return requested, true
 }
 
 step_runtime :: proc(runtime: ^Runtime, world: ^World, delta_seconds: f32) -> string {

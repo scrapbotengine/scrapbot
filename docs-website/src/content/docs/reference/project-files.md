@@ -11,7 +11,7 @@ Scrapbot's file formats intentionally cover a narrow subset right now. Valid TOM
 
 ```toml
 name = "Minimal Example"
-default_scene = "scenes/main.scene.toml"
+default_scene = "a1000000-0000-4000-8000-000000000001"
 
 [window]
 width = 1600
@@ -35,7 +35,7 @@ Fields:
 | Field | Required | Meaning |
 | --- | --- | --- |
 | `name` | Yes | Display name for the project. |
-| `default_scene` | Yes | Safe relative path to the scene loaded by `check` and `run`. |
+| `default_scene` | Yes | Non-zero UUID of the scene loaded by `check` and `run`. |
 | `[window]` | No | Initial logical window size. Omitted fields default to 1600×900. |
 | `window.width` | No | Positive logical width up to 16384. |
 | `window.height` | No | Positive logical height up to 16384. |
@@ -64,6 +64,21 @@ Visible windows preserve the requested aspect ratio but scale down when necessar
 Scrapbot automatically generates a 512×512 printable-ASCII MTSDF atlas and glyph metadata under `.scrapbot/cache/fonts/` when a declared source or the compiler settings change. Install `msdf-atlas-gen` 1.4.0 so `scrapbot check`, `build`, or `run` can satisfy a cache miss (`brew install msdf-atlas-gen` on macOS), or point `SCRAPBOT_MSDF_ATLAS_GEN` at the executable. `mise setup` validates that exact generator version. Packaged projects contain the generated artifacts and do not need the generator or platform font APIs at runtime. Font licensing remains the project's responsibility.
 
 Embedded Inter is always available as the default and runtime fallback. The current font slice supports printable ASCII only; unsupported characters render as `?`, and shaping, kerning, variable-font axes, and Unicode fallback chains are not implemented yet.
+
+## Scene assets
+
+Scrapbot recursively discovers files ending in `.scene.toml` under `scenes/`. Every authored scene starts with a unique non-zero UUID and an editable display name:
+
+```toml
+id = "a1000000-0000-4000-8000-000000000001"
+name = "Main"
+
+[[entities]]
+id = "d4000000-0000-4000-8000-000000000010"
+name = "Camera"
+```
+
+Scene UUIDs are project-wide reference identity; names and paths may change. `scrapbot.change_scene` requests a replace-style transition by UUID. Scrapbot finishes the current system/deferred-command boundary, validates and resource-resolves a candidate world, and only then replaces the active scene. A failed transition leaves the current world active. The project resource registry remains shared across transitions, while the old ECS world is released immediately after a successful replacement.
 
 ## Project resources
 

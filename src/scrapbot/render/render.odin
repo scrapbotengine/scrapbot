@@ -1179,10 +1179,14 @@ run_frame_system_unmeasured :: proc(
 	}
 	simulation_delta, run_simulation := ui.consume_simulation_delta(config.ui_state, delta_seconds)
 	if run_simulation {
+		world_instance_before_simulation := world.instance_uuid
 		if config.frame_system == nil {
 			ecs.advance_project_time(world, simulation_delta)
 		} else if err := config.frame_system(config.frame_system_data, world, simulation_delta);
 		   err != "" { return err }
+		if config.ui_state != nil && world.instance_uuid != world_instance_before_simulation {
+			ui.editor_world_restored(config.ui_state, world)
+		}
 	}
 	if config.ui_state != nil {
 		defer {

@@ -291,6 +291,9 @@ register_scrapbot_api :: proc(L: Lua_State) {
 	lua_pushcclosurek(L, scrapbot_despawn, "scrapbot.despawn", 0, nil)
 	lua_setfield(L, -2, "despawn")
 
+	lua_pushcclosurek(L, scrapbot_change_scene, "scrapbot.change_scene", 0, nil)
+	lua_setfield(L, -2, "change_scene")
+
 	lua_pushcclosurek(L, scrapbot_add_component, "scrapbot.add_component", 0, nil)
 	lua_setfield(L, -2, "add_component")
 

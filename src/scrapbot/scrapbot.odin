@@ -63,6 +63,8 @@ Runtime_Result :: struct {
 Frame_Runtime :: struct {
 	root: string,
 	scene_path: string,
+	scene_id: shared.Resource_UUID,
+	scenes: [dynamic]shared.Project_Scene,
 	playback_baseline: Playback_Baseline,
 	script_runtime: script.Runtime,
 	native_extensions: native.Extension_Set,
@@ -83,6 +85,7 @@ destroy_frame_runtime :: proc(runtime: ^Frame_Runtime) {
 	script.destroy_runtime(&runtime.script_runtime)
 	destroy_playback_baseline(&runtime.playback_baseline)
 	delete(runtime.scene_path)
+	project.destroy_project_scenes(&runtime.scenes)
 	runtime^ = {}
 }
 
@@ -450,8 +453,24 @@ check_project :: proc(root: string, progress: Asset_Import_Progress_Options = {}
 	}
 
 	if script_result.ran {
-		if err := project.validate_scene_components(&loaded.scene, &runtime.registry); err != "" {
-			return err
+		for &scene in loaded.scenes {
+			scene_path, path_err := project.project_scene_path(root, &scene)
+			if path_err != "" {
+				return path_err
+			}
+			candidate := project.load_scene_file_with_resources(scene_path, loaded.resources[:])
+			delete(scene_path)
+			if candidate.err != "" {
+				return candidate.err
+			}
+			validation_err := project.validate_scene_components(
+				&candidate.scene,
+				&runtime.registry,
+			)
+			project.destroy_scene_load_result(&candidate)
+			if validation_err != "" {
+				return validation_err
+			}
 		}
 		if err := project.write_luau_types(root, &runtime.registry); err != "" {
 			return err
@@ -459,8 +478,21 @@ check_project :: proc(root: string, progress: Asset_Import_Progress_Options = {}
 		return analyze_project_luau(root)
 	}
 
-	if err := project.validate_scene_components(&loaded.scene, &registry); err != "" {
-		return err
+	for &scene in loaded.scenes {
+		scene_path, path_err := project.project_scene_path(root, &scene)
+		if path_err != "" {
+			return path_err
+		}
+		candidate := project.load_scene_file_with_resources(scene_path, loaded.resources[:])
+		delete(scene_path)
+		if candidate.err != "" {
+			return candidate.err
+		}
+		validation_err := project.validate_scene_components(&candidate.scene, &registry)
+		project.destroy_scene_load_result(&candidate)
+		if validation_err != "" {
+			return validation_err
+		}
 	}
 	if err := project.write_luau_types(root, &registry); err != "" {
 		return err
@@ -815,12 +847,23 @@ run_project_internal_untracked :: proc(
 	frame_runtime := new(Frame_Runtime)
 	defer free(frame_runtime)
 	defer destroy_frame_runtime(frame_runtime)
-	scene_path, scene_path_err := filepath.join({root, loaded.config.default_scene})
-	if scene_path_err != nil {
-		result.err = "failed to allocate scene path"
+	default_scene, scene_found := project.project_scene_by_id(
+		loaded.scenes[:],
+		loaded.config.default_scene,
+	)
+	if !scene_found {
+		result.err = "default scene is unavailable"
+		return result
+	}
+	scene_path, scene_path_err := project.project_scene_path(root, default_scene)
+	if scene_path_err != "" {
+		result.err = scene_path_err
 		return result
 	}
 	frame_runtime.scene_path = scene_path
+	frame_runtime.scene_id = loaded.config.default_scene
+	frame_runtime.scenes = loaded.scenes
+	loaded.scenes = nil
 	frame_runtime.root = root
 	if err := init_render_resources(
 		&frame_runtime.resources,
@@ -997,6 +1040,49 @@ init_render_resources :: proc(
 			return err
 		}
 	}
+	return resolve_scene_world_resources(
+		world,
+		registry,
+		cube_handle,
+		plane_handle,
+		material_handle,
+	)
+}
+
+resolve_scene_world_resources :: proc(
+	world: ^shared.World,
+	registry: ^resources.Registry,
+	cube_handle: shared.Geometry_Handle = {},
+	plane_handle: shared.Geometry_Handle = {},
+	material_handle: shared.Material_Handle = {},
+) -> string {
+	if world == nil || registry == nil {
+		return "scene world or resource registry is unavailable"
+	}
+	resolved_cube_handle := cube_handle
+	resolved_plane_handle := plane_handle
+	resolved_material_handle := material_handle
+	if resolved_cube_handle == (shared.Geometry_Handle{}) {
+		found: bool
+		resolved_cube_handle, found = resources.geometry_by_name(registry, "cube")
+		if !found {
+			return "built-in cube geometry is unavailable"
+		}
+	}
+	if resolved_plane_handle == (shared.Geometry_Handle{}) {
+		found: bool
+		resolved_plane_handle, found = resources.geometry_by_name(registry, "plane")
+		if !found {
+			return "built-in plane geometry is unavailable"
+		}
+	}
+	if resolved_material_handle == (shared.Material_Handle{}) {
+		found: bool
+		resolved_material_handle, found = resources.material_by_name(registry, "default")
+		if !found {
+			return "built-in default material is unavailable"
+		}
+	}
 	if err := resources.reconcile_world_environment(registry, world); err != "" {
 		return err
 	}
@@ -1005,15 +1091,15 @@ init_render_resources :: proc(
 	}
 	for entity, index in world.entities {
 		if entity.mesh_index >= 0 && entity.geometry_resource == "" {
-			geometry_handle := cube_handle
+			geometry_handle := resolved_cube_handle
 			if entity.mesh_index < len(world.meshes) &&
 			   world.meshes[entity.mesh_index].primitive == "plane" {
-				geometry_handle = plane_handle
+				geometry_handle = resolved_plane_handle
 			}
 			ecs.add_geometry(world, index, geometry_handle)
 		}
 		if entity.mesh_index >= 0 && entity.material_resource == "" {
-			ecs.add_material(world, index, material_handle)
+			ecs.add_material(world, index, resolved_material_handle)
 		}
 		if entity.mesh_index >= 0 && entity.material_resource != "" {
 			if material_id, valid := shared.resource_uuid_parse(entity.material_resource); valid {
@@ -1248,6 +1334,7 @@ frame_runtime_revert :: proc(data: rawptr, world: ^shared.World) -> string {
 	next_world, world_err := load_validated_scene_world(
 		runtime.scene_path,
 		&runtime.script_runtime,
+		runtime.scene_id,
 	)
 	if world_err != "" {
 		return world_err
@@ -1421,14 +1508,20 @@ reimport_project_resources :: proc(
 load_validated_scene_world :: proc(
 	scene_path: string,
 	script_runtime: ^script.Runtime,
+	expected_scene_id: shared.Resource_UUID = {},
 ) -> (
 	shared.World,
 	string,
 ) {
-	loaded := project.load_scene_file(scene_path)
+	loaded := project.load_scene_file(scene_path, expected_scene_id != (shared.Resource_UUID{}))
 	defer project.destroy_scene_load_result(&loaded)
 	if loaded.err != "" {
 		return {}, loaded.err
+	}
+	if expected_scene_id != (shared.Resource_UUID{}) && loaded.scene.id != expected_scene_id {
+		expected_buffer: [36]u8
+		actual_buffer: [36]u8
+		return {}, fmt.tprintf("scene identity changed: expected %s, found %s", shared.resource_uuid_to_string(expected_scene_id, expected_buffer[:]), shared.resource_uuid_to_string(loaded.scene.id, actual_buffer[:]))
 	}
 	next_world := ecs.build_world(&loaded.scene)
 	if err := script.validate_runtime_world(script_runtime, &next_world); err != "" {
@@ -1462,7 +1555,7 @@ step_frame_runtime :: proc(
 		return ""
 	}
 	ecs.advance_project_time(world, delta_seconds)
-	return step_frame_runtime_parts(
+	if err := step_frame_runtime_parts(
 		&runtime.script_runtime,
 		&runtime.native_extensions,
 		&runtime.executor,
@@ -1470,7 +1563,58 @@ step_frame_runtime :: proc(
 		&runtime.system_profile,
 		world,
 		world.time,
-	)
+	); err != "" {
+		return err
+	}
+	return frame_runtime_commit_scene_request(runtime, world)
+}
+
+frame_runtime_commit_scene_request :: proc(
+	runtime: ^Frame_Runtime,
+	world: ^shared.World,
+) -> string {
+	requested, pending := script.consume_scene_change_request(&runtime.script_runtime)
+	if !pending || requested == runtime.scene_id {
+		return ""
+	}
+	scene, found := project.project_scene_by_id(runtime.scenes[:], requested)
+	if !found {
+		id_buffer: [36]u8
+		return fmt.tprintf(
+			"scene change references unknown scene %s",
+			shared.resource_uuid_to_string(requested, id_buffer[:]),
+		)
+	}
+	path, path_err := project.project_scene_path(runtime.root, scene)
+	if path_err != "" {
+		return path_err
+	}
+	next_world, load_err := load_validated_scene_world(path, &runtime.script_runtime, requested)
+	if load_err != "" {
+		delete(path)
+		return load_err
+	}
+	if err := resolve_scene_world_resources(&next_world, &runtime.resources); err != "" {
+		delete(path)
+		ecs.destroy_world(&next_world)
+		return err
+	}
+	next_baseline: Playback_Baseline
+	if err := capture_playback_baseline(&next_baseline, &next_world, &runtime.resources);
+	   err != "" {
+		delete(path)
+		ecs.destroy_world(&next_world)
+		return err
+	}
+	ecs.destroy_world(world)
+	world^ = next_world
+	script.bind_runtime_world(&runtime.script_runtime, world)
+	destroy_playback_baseline(&runtime.playback_baseline)
+	runtime.playback_baseline = next_baseline
+	delete(runtime.scene_path)
+	runtime.scene_path = path
+	runtime.scene_id = requested
+	return ""
 }
 
 system_profile_entry_matches :: proc(

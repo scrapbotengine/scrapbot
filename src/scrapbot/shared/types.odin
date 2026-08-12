@@ -50,11 +50,17 @@ Geometry_Mode :: enum u8 {
 
 Project_Config :: struct {
 	name: string,
-	default_scene: string,
+	default_scene: Resource_UUID,
 	window: Project_Window_Config,
 	render: Project_Render_Config,
 	native_extensions: [dynamic]Native_Extension_Target,
 	fonts: [dynamic]Project_Font,
+}
+
+Project_Scene :: struct {
+	id: Resource_UUID,
+	name: string,
+	source: string,
 }
 
 Project_Window_Config :: struct {
@@ -228,6 +234,8 @@ Project_Resource :: struct {
 }
 
 Scene :: struct {
+	id: Resource_UUID,
+	name: string,
 	entities: [dynamic]Scene_Entity,
 }
 

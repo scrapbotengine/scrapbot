@@ -1,3 +1,6 @@
+id = "b2000000-0000-4000-8000-000000000006"
+name = "glTF Showcase"
+
 [[entities]]
 id = "d5100000-0000-4000-8000-000000000006"
 name = "World Environment"

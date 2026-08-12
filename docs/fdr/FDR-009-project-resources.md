@@ -69,7 +69,7 @@ shoreline masks, and scalable quality tiers remain follow-up work.
 
 ## Related
 
-- **ADRs:** ADR-002, ADR-010, ADR-023, ADR-027, ADR-030, ADR-031, ADR-036, ADR-041, ADR-046
+- **ADRs:** ADR-002, ADR-010, ADR-023, ADR-027, ADR-030, ADR-031, ADR-036, ADR-041, ADR-046, ADR-058
 - **FDRs:** FDR-002, FDR-003, FDR-008, FDR-011
 
 ## Open Questions

@@ -93,6 +93,7 @@ export type Scrapbot = {
 	set_rotation: (entity: ScrapbotEntity, rotation: ScrapbotVec3) -> (),
 	spawn: (options: ScrapbotSpawnOptions?) -> string,
 	despawn: (entity: ScrapbotEntity) -> (),
+	change_scene: (scene: string) -> (),
 	add_component: (<T>(entity: ScrapbotEntity, component: ScrapbotComponent<T, any>, payload: T) -> ()) & ((entity: ScrapbotEntity, component: string, payload: any) -> ()),
 	remove_component: (entity: ScrapbotEntity, component: ScrapbotComponent<any, any> | string) -> (),
 }

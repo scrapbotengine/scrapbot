@@ -69,9 +69,14 @@ test_project_save_commits_scene_and_resource_as_one_reloadable_state :: proc(t: 
 	material.desc.metallic_factor = 0.75
 	material.desc.roughness_factor = 0.25
 
-	scene_path, scene_path_err := filepath.join({root, loaded.config.default_scene})
-	testing.expect(t, scene_path_err == nil)
-	if scene_path_err != nil {
+	default_scene, scene_found := project.project_scene_by_id(
+		loaded.scenes[:],
+		loaded.config.default_scene,
+	)
+	testing.expect(t, scene_found)
+	scene_path, scene_path_err := project.project_scene_path(root, default_scene)
+	testing.expect(t, scene_path_err == "")
+	if scene_path_err != "" {
 		return
 	}
 	defer delete(scene_path)

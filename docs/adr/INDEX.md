@@ -59,3 +59,4 @@
 | [ADR-055](ADR-055-compile-mesh-distance-fields-offline.md) | Compile mesh distance fields offline | 2026-08-08 |
 | [ADR-056](ADR-056-separate-engine-time-from-project-clocks.md) | Separate engine time from project clocks | 2026-08-10 |
 | [ADR-057](ADR-057-render-editor-selection-through-an-on-demand-identity-pass.md) | Render editor selection through an on-demand identity pass | 2026-08-12 |
+| [ADR-058](ADR-058-identify-scenes-by-uuid-and-replace-worlds-transactionally.md) | Identify scenes by UUID and replace worlds transactionally | 2026-08-12 |

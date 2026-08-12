@@ -1,16 +1,19 @@
 # Resources and Registries
 
-**Last verified:** 2026-08-11
+**Last verified:** 2026-08-12
 **Persistent declarations:** `shared.Project_Resource` and `project.load_project_resources`  
 **Runtime authority:** `resources.Registry`
 
 Scrapbot resources live outside ECS. Persistent project files use stable UUIDs; ECS components store resolved generational handles into runtime registries. Project resources, transient runtime resources, built-ins, and derived backend caches have different identities and lifetimes.
+
+Scene assets are also UUID-addressed project files, but they are not runtime resource-registry entries. `project.load_project_scenes` owns a compact catalog of UUID, name, and relative source path. The root runtime owns one active scene UUID/path and builds its entity payload into the ECS World. Replace transitions reuse the project registry; only the active world and one candidate world coexist, and successful activation destroys the old world immediately.
 
 ## Identity layers
 
 | Layer | Identity | Authority | Lifetime |
 | --- | --- | --- | --- |
 | Project declaration | `Resource_UUID` plus a relative `resources/**/*.resource.toml` source | Project files on disk; in-memory authoring is authoritative until Save/Revert | Survives runs and editor sessions |
+| Scene asset | `Resource_UUID` plus a relative `scenes/**/*.scene.toml` source | Scene catalog on disk; entity payload becomes one active ECS World | Catalog survives the run; only active and staged candidate entity payloads are resident |
 | Imported product | Parent resource UUID plus common product format and versioned importer schema | Asset source/dependencies and importer settings under `.scrapbot/imported/` | Regenerated before runtime bootstrap; packaged with host builds |
 | Runtime registry entry | `{index, generation}` handle plus per-entry `version` | `resources.Registry` | One engine runtime; slots may survive reload while generations invalidate dead handles |
 | ECS reference | Geometry or Material handle | Active ECS world | Entity/component lifetime; resolved again when a world is rebuilt |

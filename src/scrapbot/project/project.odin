@@ -27,6 +27,7 @@ Named_Vec4 :: shared.Named_Vec4
 Project_Load_Result :: struct {
 	config: Project_Config,
 	scene: Scene,
+	scenes: [dynamic]shared.Project_Scene,
 	resources: [dynamic]shared.Project_Resource,
 	err: string,
 }
@@ -41,7 +42,15 @@ Scene_Load_Result :: struct {
 	err: string,
 }
 
-project_toml_template :: proc(name: string) -> string {
+project_toml_template :: proc(
+	name: string,
+	default_scene_id: shared.Resource_UUID = {},
+) -> string {
+	resolved_scene_id := default_scene_id
+	if resolved_scene_id == (shared.Resource_UUID{}) {
+		resolved_scene_id = shared.resource_uuid_generate()
+	}
+	default_scene_buffer: [36]u8
 	return fmt.tprintf(
 		`name = "%s"
 default_scene = "%s"
@@ -51,17 +60,25 @@ width = %d
 height = %d
 `,
 		name,
-		DEFAULT_SCENE,
+		shared.resource_uuid_to_string(resolved_scene_id, default_scene_buffer[:]),
 		shared.DEFAULT_WINDOW_WIDTH,
 		shared.DEFAULT_WINDOW_HEIGHT,
 	)
 }
 
 default_scene_template :: proc() -> string {
-	return default_scene_template_with_material({})
+	return default_scene_template_with_material({}, {})
 }
 
-default_scene_template_with_material :: proc(material_id: shared.Resource_UUID) -> string {
+default_scene_template_with_material :: proc(
+	material_id: shared.Resource_UUID,
+	scene_id: shared.Resource_UUID = {},
+) -> string {
+	resolved_scene_id := scene_id
+	if resolved_scene_id == (shared.Resource_UUID{}) {
+		resolved_scene_id = shared.resource_uuid_generate()
+	}
+	scene_buffer: [36]u8
 	camera_buffer, cube_buffer: [36]u8
 	camera_id := shared.entity_uuid_to_string(shared.entity_uuid_generate(), camera_buffer[:])
 	cube_id := shared.entity_uuid_to_string(shared.entity_uuid_generate(), cube_buffer[:])
@@ -77,7 +94,10 @@ resource = "%s"
 		)
 	}
 	return fmt.tprintf(
-		`[[entities]]
+		`id = "%s"
+name = "Main"
+
+[[entities]]
 id = "%s"
 name = "Main Camera"
 
@@ -128,6 +148,7 @@ primitive = "cube"
 velocity = [0, 1.5707963, 0]
 
 `,
+		shared.resource_uuid_to_string(resolved_scene_id, scene_buffer[:]),
 		camera_id,
 		cube_id,
 		material_section,
@@ -266,7 +287,11 @@ init_project :: proc(root, name: string) -> string {
 		return "failed to allocate project path"
 	}
 	defer delete(project_path)
-	if err := os.write_entire_file(project_path, project_toml_template(project_name)); err != nil {
+	default_scene_id := shared.resource_uuid_generate()
+	if err := os.write_entire_file(
+		project_path,
+		project_toml_template(project_name, default_scene_id),
+	); err != nil {
 		return fmt.tprintf("failed to write %s: %v", project_path, err)
 	}
 
@@ -278,7 +303,7 @@ init_project :: proc(root, name: string) -> string {
 	default_material_id := shared.resource_uuid_generate()
 	if err := os.write_entire_file(
 		scene_path,
-		default_scene_template_with_material(default_material_id),
+		default_scene_template_with_material(default_material_id, default_scene_id),
 	); err != nil {
 		return fmt.tprintf("failed to write %s: %v", scene_path, err)
 	}
@@ -375,25 +400,68 @@ load_project :: proc(root: string) -> Project_Load_Result {
 		return result
 	}
 
-	scene_path, join_scene_err := filepath.join({root, result.config.default_scene})
-	if join_scene_err != nil {
-		result.err = "failed to allocate scene path"
+	result.scenes, result.err = load_project_scenes(root, result.resources[:])
+	if result.err != "" {
+		return result
+	}
+	for &scene in result.scenes {
+		scene_path, path_err := project_scene_path(root, &scene)
+		if path_err != "" {
+			result.err = path_err
+			return result
+		}
+		loaded_scene := load_scene_file_with_resources(scene_path, result.resources[:])
+		delete(scene_path)
+		if loaded_scene.err != "" {
+			result.err = loaded_scene.err
+			return result
+		}
+		if font_err := validate_scene_font_references(&loaded_scene.scene, &result.config);
+		   font_err != "" {
+			destroy_scene_load_result(&loaded_scene)
+			result.err = font_err
+			return result
+		}
+		if resource_err := validate_scene_resource_references(
+			&loaded_scene.scene,
+			result.resources[:],
+		); resource_err != "" {
+			destroy_scene_load_result(&loaded_scene)
+			result.err = resource_err
+			return result
+		}
+		if environment_err := validate_scene_environment_references(
+			&loaded_scene.scene,
+			result.resources[:],
+		); environment_err != "" {
+			destroy_scene_load_result(&loaded_scene)
+			result.err = environment_err
+			return result
+		}
+		destroy_scene_load_result(&loaded_scene)
+	}
+	default_scene, found := project_scene_by_id(result.scenes[:], result.config.default_scene)
+	if !found {
+		id_buffer: [36]u8
+		result.err = fmt.tprintf(
+			"default_scene references unknown scene %s",
+			shared.resource_uuid_to_string(result.config.default_scene, id_buffer[:]),
+		)
+		return result
+	}
+	scene_path, path_err := project_scene_path(root, default_scene)
+	if path_err != "" {
+		result.err = path_err
 		return result
 	}
 	defer delete(scene_path)
-	scene_bytes, scene_err := os.read_entire_file(scene_path, context.temp_allocator)
-	if scene_err != nil {
-		result.err = fmt.tprintf("failed to read %s: %v", scene_path, scene_err)
+	loaded_scene := load_scene_file_with_resources(scene_path, result.resources[:])
+	if loaded_scene.err != "" {
+		result.err = loaded_scene.err
 		return result
 	}
-
-	scene, scene_parse_result := parse_scene(string(scene_bytes), result.resources[:])
-	if scene_parse_result.err != .None {
-		result.err = fmt.tprintf("%s: %s", result.config.default_scene, scene_parse_result.message)
-		return result
-	}
-
-	result.scene = scene
+	result.scene = loaded_scene.scene
+	loaded_scene.scene = {}
 	if font_err := validate_scene_font_references(&result.scene, &result.config); font_err != "" {
 		result.err = font_err
 		return result
@@ -510,13 +578,8 @@ validate_project_environment_reference :: proc(
 	)
 }
 
-load_scene_file :: proc(path: string) -> Scene_Load_Result {
+load_scene_file :: proc(path: string, require_identity: bool = false) -> Scene_Load_Result {
 	result: Scene_Load_Result
-	scene_bytes, scene_err := os.read_entire_file(path, context.temp_allocator)
-	if scene_err != nil {
-		result.err = fmt.tprintf("failed to read %s: %v", path, scene_err)
-		return result
-	}
 	project_resources: [dynamic]shared.Project_Resource
 	project_root := project_root_for_scene_path(path)
 	if project_root != "" {
@@ -528,7 +591,21 @@ load_scene_file :: proc(path: string) -> Scene_Load_Result {
 		}
 		defer destroy_project_resources(&project_resources)
 	}
-	scene, parse_result := parse_scene(string(scene_bytes), project_resources[:])
+	return load_scene_file_with_resources(path, project_resources[:], require_identity)
+}
+
+load_scene_file_with_resources :: proc(
+	path: string,
+	project_resources: []shared.Project_Resource,
+	require_identity: bool = false,
+) -> Scene_Load_Result {
+	result: Scene_Load_Result
+	scene_bytes, scene_err := os.read_entire_file(path, context.temp_allocator)
+	if scene_err != nil {
+		result.err = fmt.tprintf("failed to read %s: %v", path, scene_err)
+		return result
+	}
+	scene, parse_result := parse_scene(string(scene_bytes), project_resources[:], require_identity)
 	if parse_result.err != .None {
 		destroy_scene(&scene)
 		result.err = fmt.tprintf("%s: %s", path, parse_result.message)
@@ -657,6 +734,7 @@ destroy_project_config_load_result :: proc(result: ^Project_Config_Load_Result) 
 
 destroy_project_load_result :: proc(result: ^Project_Load_Result) {
 	destroy_scene(&result.scene)
+	destroy_project_scenes(&result.scenes)
 	destroy_project_resources(&result.resources)
 	destroy_project_config(&result.config)
 	result^ = {}

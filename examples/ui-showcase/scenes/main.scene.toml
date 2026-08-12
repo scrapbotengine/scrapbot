@@ -1,3 +1,6 @@
+id = "b2000000-0000-4000-8000-000000000011"
+name = "UI Showcase"
+
 [[entities]]
 id = "30000000-0000-4000-8000-000000000030"
 name = "Responsive Canvas"

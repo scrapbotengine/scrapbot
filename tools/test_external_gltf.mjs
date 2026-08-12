@@ -70,7 +70,7 @@ function main() {
     writeFileSync(
       join(project, "project.toml"),
       `name = "External glTF Integration"
-default_scene = "scenes/main.scene.toml"
+default_scene = "d4000000-0000-4000-8000-000000000001"
 
 [render]
 environment = "d4000000-0000-4000-8000-000000000002"
@@ -106,7 +106,10 @@ source = "assets/DamagedHelmet.glb"
     );
     writeFileSync(
       join(project, "scenes/main.scene.toml"),
-      `[[entities]]
+      `id = "d4000000-0000-4000-8000-000000000001"
+name = "External glTF Integration"
+
+[[entities]]
 id = "d4100000-0000-4000-8000-000000000004"
 name = "Camera"
 

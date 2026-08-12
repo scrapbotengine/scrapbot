@@ -8,6 +8,27 @@ import shared "../shared"
 import "core:testing"
 
 @(test)
+test_luau_change_scene_queues_the_last_valid_uuid :: proc(t: ^testing.T) {
+	runtime: Runtime
+	defer destroy_runtime(&runtime)
+	result := run_source(
+		&runtime,
+		`scrapbot.change_scene("a7000000-0000-4000-8000-000000000001")
+scrapbot.change_scene("a7000000-0000-4000-8000-000000000002")`,
+		"=test",
+		nil,
+	)
+	testing.expectf(t, result.err == "", "script failed: %s", result.err)
+	requested, pending := consume_scene_change_request(&runtime)
+	testing.expect(t, pending)
+	expected, parsed := shared.resource_uuid_parse("a7000000-0000-4000-8000-000000000002")
+	testing.expect(t, parsed)
+	testing.expect_value(t, requested, expected)
+	_, pending = consume_scene_change_request(&runtime)
+	testing.expect(t, !pending)
+}
+
+@(test)
 test_luau_custom_component_writeback_supports_all_numeric_field_shapes :: proc(t: ^testing.T) {
 	scene, parse_result := project.parse_scene(
 		`[[entities]]

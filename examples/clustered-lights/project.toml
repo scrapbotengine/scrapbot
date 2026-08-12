@@ -1,5 +1,5 @@
 name = "Cluster Cathedral"
-default_scene = "scenes/main.scene.toml"
+default_scene = "b2000000-0000-4000-8000-000000000003"
 
 [window]
 width = 1600

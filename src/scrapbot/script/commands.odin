@@ -65,6 +65,24 @@ scrapbot_despawn :: proc "c" (L: Lua_State) -> c.int {
 	return 0
 }
 
+scrapbot_change_scene :: proc "c" (L: Lua_State) -> c.int {
+	context = base_runtime.default_context()
+	runtime := cast(^Runtime)lua_getthreaddata(L)
+	if runtime == nil {
+		return 0
+	}
+	raw_id, ok := luau_required_string(L, 1)
+	if !ok {
+		return luau_push_error(L, "scrapbot.change_scene expects a scene UUID string")
+	}
+	id, parsed := shared.resource_uuid_parse(raw_id)
+	if !parsed {
+		return luau_push_error(L, "scrapbot.change_scene expects a non-zero scene UUID")
+	}
+	runtime.requested_scene = id
+	return 0
+}
+
 scrapbot_add_component :: proc "c" (L: Lua_State) -> c.int {
 	context = base_runtime.default_context()
 	runtime := cast(^Runtime)lua_getthreaddata(L)

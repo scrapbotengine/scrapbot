@@ -177,7 +177,7 @@ Registered component definitions also receive runtime-local component IDs. Luau 
 
 ## Related
 
-- **ADRs:** ADR-001, ADR-002, ADR-006, ADR-007, ADR-008, ADR-010, ADR-012, ADR-029, ADR-056
+- **ADRs:** ADR-001, ADR-002, ADR-006, ADR-007, ADR-008, ADR-010, ADR-012, ADR-029, ADR-056, ADR-058
 - **FDRs:** FDR-001, FDR-002, FDR-003, FDR-005, FDR-006
 
 ## Open Questions

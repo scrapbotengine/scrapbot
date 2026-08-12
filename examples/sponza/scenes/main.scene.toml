@@ -1,3 +1,6 @@
+id = "b2000000-0000-4000-8000-000000000010"
+name = "Sponza"
+
 [[entities]]
 id = "5a100000-0000-4000-8000-000000000001"
 name = "World Environment"

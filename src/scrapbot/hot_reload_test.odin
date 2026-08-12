@@ -71,6 +71,15 @@ primitive = "cube"
 velocity = [0, -1, 0]
 `
 
+hot_reload_two_cube_scene :: proc(id: shared.Resource_UUID) -> string {
+	id_buffer: [36]u8
+	return fmt.tprintf(
+		"id = \"%s\"\nname = \"Main\"\n\n%s",
+		shared.resource_uuid_to_string(id, id_buffer[:]),
+		HOT_RELOAD_TWO_CUBE_SCENE,
+	)
+}
+
 @(test)
 test_scene_revert_reconciles_imported_model_instances :: proc(t: ^testing.T) {
 	root := "examples/assets"
@@ -200,7 +209,8 @@ test_hot_reload_replaces_scene_world :: proc(t: ^testing.T) {
 	scene_path := join_hot_reload_path(t, root, project.DEFAULT_SCENE)
 	defer delete(scene_path)
 	time.sleep(5 * time.Millisecond)
-	write_err := os.write_entire_file(scene_path, HOT_RELOAD_TWO_CUBE_SCENE)
+	replacement_scene := hot_reload_two_cube_scene(state.scene_id)
+	write_err := os.write_entire_file(scene_path, replacement_scene)
 	testing.expect(t, write_err == nil)
 
 	step_err := hot_reload_frame_system(state, &world, HOT_RELOAD_CHECK_INTERVAL_SECONDS)
@@ -458,9 +468,10 @@ emissive = [3, 0, 0]
 	)
 	scene_path := join_hot_reload_path(t, root, project.DEFAULT_SCENE)
 	defer delete(scene_path)
+	valid_scene := hot_reload_two_cube_scene(state.scene_id)
 	invalid_scene := fmt.tprintf(
 		"%s\n[entities.components.missing_component]\nvalue = 1\n",
-		HOT_RELOAD_TWO_CUBE_SCENE,
+		valid_scene,
 	)
 	testing.expect(t, os.write_entire_file(scene_path, invalid_scene) == nil)
 
@@ -566,7 +577,7 @@ write_hot_reload_native_extension_project :: proc(t: ^testing.T, root: string) {
 	write_project_err := os.write_entire_file(
 		project_path,
 		`name = "Hot Reload Test"
-default_scene = "scenes/main.scene.toml"
+default_scene = "b0000000-0000-4000-8000-000000000001"
 
 [[native_extensions]]
 name = "scrapbotnative"
@@ -579,7 +590,10 @@ source = "native/scrapbotnative"
 	defer delete(scene_path)
 	write_scene_err := os.write_entire_file(
 		scene_path,
-		`[[entities]]
+		`id = "b0000000-0000-4000-8000-000000000001"
+name = "Main"
+
+[[entities]]
 id = "a3000000-0000-4000-8000-000000000004"
 name = "Native Body"
 

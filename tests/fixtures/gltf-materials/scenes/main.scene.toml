@@ -1,3 +1,6 @@
+id = "b3000000-0000-4000-8000-000000000001"
+name = "glTF Materials"
+
 [[entities]]
 id = "a3100000-0000-4000-8000-000000000001"
 name = "Main Camera"

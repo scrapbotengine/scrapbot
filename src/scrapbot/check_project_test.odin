@@ -1,5 +1,7 @@
 package scrapbot
 
+import project "./project"
+import shared "./shared"
 import "core:dynlib"
 import "core:fmt"
 import "core:os"
@@ -64,15 +66,24 @@ test_check_project_accepts_script_registered_library_components :: proc(t: ^test
 
 	scene_path := join_check_project_path(t, root, DEFAULT_SCENE)
 	defer delete(scene_path)
+	loaded_config := project.load_project_config(root)
+	defer project.destroy_project_config_load_result(&loaded_config)
+	scene_id_buffer: [36]u8
 	write_scene_err := os.write_entire_file(
 		scene_path,
-		`[[entities]]
+		fmt.tprintf(
+			`id = "%s"
+name = "Main"
+
+[[entities]]
 id = "a1000000-0000-4000-8000-000000000001"
 name = "Body"
 
 [entities.components.scrappyphysics.rigidbody]
 velocity = [0, 4, 0]
 `,
+			shared.resource_uuid_to_string(loaded_config.config.default_scene, scene_id_buffer[:]),
+		),
 	)
 	testing.expect(t, write_scene_err == nil)
 
@@ -133,7 +144,7 @@ test_check_project_accepts_native_extension_registered_components :: proc(t: ^te
 	write_project_err := os.write_entire_file(
 		project_path,
 		`name = "Check Test"
-default_scene = "scenes/main.scene.toml"
+default_scene = "b0000000-0000-4000-8000-000000000001"
 
 [[native_extensions]]
 name = "scrapbotnative"
@@ -146,7 +157,10 @@ source = "native/scrapbotnative"
 	defer delete(scene_path)
 	write_scene_err := os.write_entire_file(
 		scene_path,
-		`[[entities]]
+		`id = "b0000000-0000-4000-8000-000000000001"
+name = "Main"
+
+[[entities]]
 id = "a1000000-0000-4000-8000-000000000002"
 name = "Native Body"
 

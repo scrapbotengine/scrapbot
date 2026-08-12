@@ -7,6 +7,59 @@ import "core:path/filepath"
 import "core:testing"
 
 @(test)
+test_project_scene_discovery_is_recursive_and_rejects_duplicate_ids :: proc(t: ^testing.T) {
+	root, root_err := os.make_directory_temp("", "scrapbot-scenes-*", context.temp_allocator)
+	testing.expect(t, root_err == nil)
+	if root_err != nil {
+		return
+	}
+	defer os.remove_all(root)
+	nested, nested_err := filepath.join({root, "scenes", "levels"})
+	testing.expect(t, nested_err == nil)
+	if nested_err != nil {
+		return
+	}
+	defer delete(nested)
+	testing.expect(t, os.make_directory_all(nested) == nil)
+	first_path, first_err := filepath.join({root, "scenes", "first.scene.toml"})
+	second_path, second_err := filepath.join({nested, "second.scene.toml"})
+	testing.expect(t, first_err == nil && second_err == nil)
+	if first_err != nil || second_err != nil {
+		delete(first_path)
+		delete(second_path)
+		return
+	}
+	defer delete(first_path)
+	defer delete(second_path)
+	first := `id = "b5000000-0000-4000-8000-000000000001"
+name = "First"
+[[entities]]
+id = "b5100000-0000-4000-8000-000000000001"
+name = "Entity"
+`
+	second := `id = "b5000000-0000-4000-8000-000000000002"
+name = "Second"
+[[entities]]
+id = "b5100000-0000-4000-8000-000000000002"
+name = "Entity"
+`
+	testing.expect(t, os.write_entire_file(first_path, first) == nil)
+	testing.expect(t, os.write_entire_file(second_path, second) == nil)
+	scenes, load_err := load_project_scenes(root, nil)
+	defer destroy_project_scenes(&scenes)
+	testing.expect_value(t, load_err, "")
+	testing.expect_value(t, len(scenes), 2)
+	if len(scenes) == 2 {
+		testing.expect_value(t, scenes[0].source, "first.scene.toml")
+		testing.expect_value(t, scenes[1].source, "levels/second.scene.toml")
+	}
+	testing.expect(t, os.write_entire_file(second_path, first) == nil)
+	duplicate_scenes, duplicate_err := load_project_scenes(root, nil)
+	destroy_project_scenes(&duplicate_scenes)
+	testing.expect(t, duplicate_err != "")
+}
+
+@(test)
 test_scene_transform_hierarchy_requires_existing_acyclic_transform_parents :: proc(t: ^testing.T) {
 	valid := `[[entities]]
 id = "91000000-0000-4000-8000-000000000001"
@@ -219,7 +272,7 @@ source = "assets/studio.hdr"
 
 	config, config_result := parse_project_config(
 		`name = "Environment Demo"
-default_scene = "scenes/main.scene.toml"
+default_scene = "b0000000-0000-4000-8000-000000000001"
 
 [render]
 geometry_mode = "auto"
@@ -299,7 +352,7 @@ source = "assets/studio.png"
 	testing.expect(t, resource_result.err == .Invalid_Path)
 	config, config_result := parse_project_config(
 		`name = "Invalid"
-default_scene = "scenes/main.scene.toml"
+default_scene = "b0000000-0000-4000-8000-000000000001"
 [render]
 environment_intensity = -1
 exposure = 0
@@ -310,7 +363,7 @@ exposure = 0
 
 	invalid_background, invalid_background_result := parse_project_config(
 		`name = "Invalid Background"
-default_scene = "scenes/main.scene.toml"
+default_scene = "b0000000-0000-4000-8000-000000000001"
 [render]
 background_visible = true
 background_blur = 1.5
@@ -321,7 +374,7 @@ background_blur = 1.5
 
 	invalid_budget, invalid_budget_result := parse_project_config(
 		`name = "Invalid Budget"
-default_scene = "scenes/main.scene.toml"
+default_scene = "b0000000-0000-4000-8000-000000000001"
 [render]
 virtual_geometry_budget_mb = 0
 `,
@@ -331,7 +384,7 @@ virtual_geometry_budget_mb = 0
 
 	tiny_budget, tiny_budget_result := parse_project_config(
 		`name = "Tiny Valid Budget"
-default_scene = "scenes/main.scene.toml"
+default_scene = "b0000000-0000-4000-8000-000000000001"
 [render]
 virtual_geometry_budget_mb = 0.015625
 `,
@@ -343,7 +396,7 @@ virtual_geometry_budget_mb = 0.015625
 
 	legacy_budget, legacy_budget_result := parse_project_config(
 		`name = "Legacy Budget"
-default_scene = "scenes/main.scene.toml"
+default_scene = "b0000000-0000-4000-8000-000000000001"
 [render]
 virtual_geometry_index_budget_mb = 32
 `,
@@ -354,7 +407,7 @@ virtual_geometry_index_budget_mb = 32
 
 	missing_background, missing_background_result := parse_project_config(
 		`name = "Missing Background"
-default_scene = "scenes/main.scene.toml"
+default_scene = "b0000000-0000-4000-8000-000000000001"
 [render]
 background_visible = true
 `,
@@ -687,21 +740,21 @@ test_scene_input_icons_require_known_icon_set_uuids :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_project_config_requires_safe_scene_path :: proc(t: ^testing.T) {
+test_project_config_requires_scene_uuid :: proc(t: ^testing.T) {
 	config, result := parse_project_config(
 		`name = "Demo"
 default_scene = "../outside.scene.toml"
 `,
 	)
-	testing.expect(t, result.err == .Invalid_Path)
-	testing.expect(t, config.default_scene == "../outside.scene.toml")
+	testing.expect(t, result.err == .Invalid_Field)
+	testing.expect(t, config.default_scene == (shared.Resource_UUID{}))
 }
 
 @(test)
 test_project_config_accepts_project_toml_shape :: proc(t: ^testing.T) {
 	config, result := parse_project_config(
 		`name = "Demo #1" # comments are allowed outside strings
-default_scene = "scenes/main.scene.toml"
+default_scene = "b0000000-0000-4000-8000-000000000001"
 
 [window]
 width = 1920
@@ -715,7 +768,8 @@ source = "native/scrappyphysics"
 	defer destroy_project_config(&config)
 	testing.expect(t, result.err == .None)
 	testing.expect(t, config.name == "Demo #1")
-	testing.expect(t, config.default_scene == "scenes/main.scene.toml")
+	expected_scene, _ := shared.resource_uuid_parse("b0000000-0000-4000-8000-000000000001")
+	testing.expect_value(t, config.default_scene, expected_scene)
 	testing.expect(t, config.window.width == 1920)
 	testing.expect(t, config.window.height == 1080)
 	testing.expect(t, len(config.native_extensions) == 1)
@@ -727,7 +781,7 @@ source = "native/scrappyphysics"
 test_project_config_defaults_and_validates_window_size :: proc(t: ^testing.T) {
 	defaults, defaults_result := parse_project_config(
 		`name = "Defaults"
-default_scene = "scenes/main.scene.toml"
+default_scene = "b0000000-0000-4000-8000-000000000001"
 `,
 	)
 	defer destroy_project_config(&defaults)
@@ -737,7 +791,7 @@ default_scene = "scenes/main.scene.toml"
 
 	invalid, invalid_result := parse_project_config(
 		`name = "Invalid"
-default_scene = "scenes/main.scene.toml"
+default_scene = "b0000000-0000-4000-8000-000000000001"
 [window]
 width = 0
 height = 900
@@ -751,7 +805,7 @@ height = 900
 test_project_config_accepts_project_fonts :: proc(t: ^testing.T) {
 	config, result := parse_project_config(
 		`name = "Font Demo"
-default_scene = "scenes/main.scene.toml"
+default_scene = "b0000000-0000-4000-8000-000000000001"
 
 [[fonts]]
 name = "display"
@@ -771,7 +825,7 @@ source = "assets/fonts/display.otf"
 test_project_config_rejects_unsafe_or_duplicate_fonts :: proc(t: ^testing.T) {
 	unsafe, unsafe_result := parse_project_config(
 		`name = "Font Demo"
-default_scene = "scenes/main.scene.toml"
+default_scene = "b0000000-0000-4000-8000-000000000001"
 [[fonts]]
 name = "display"
 source = "../display.ttf"
@@ -782,7 +836,7 @@ source = "../display.ttf"
 
 	duplicate, duplicate_result := parse_project_config(
 		`name = "Font Demo"
-default_scene = "scenes/main.scene.toml"
+default_scene = "b0000000-0000-4000-8000-000000000001"
 [[fonts]]
 name = "display"
 source = "assets/fonts/first.ttf"
@@ -828,7 +882,7 @@ test_project_config_rejects_unescaped_string_bodies :: proc(t: ^testing.T) {
 test_project_config_requires_safe_native_extension_source_path :: proc(t: ^testing.T) {
 	config, result := parse_project_config(
 		`name = "Demo"
-default_scene = "scenes/main.scene.toml"
+default_scene = "b0000000-0000-4000-8000-000000000001"
 
 [[native_extensions]]
 name = "faststuff"
@@ -840,7 +894,7 @@ source = "../faststuff"
 }
 
 @(test)
-test_default_scene_template_mints_fresh_entity_ids :: proc(t: ^testing.T) {
+test_default_scene_template_mints_fresh_scene_and_entity_ids :: proc(t: ^testing.T) {
 	first_source := default_scene_template()
 	second_source := default_scene_template()
 	first, first_result := parse_scene(first_source)
@@ -848,6 +902,7 @@ test_default_scene_template_mints_fresh_entity_ids :: proc(t: ^testing.T) {
 	second, second_result := parse_scene(second_source)
 	defer destroy_scene(&second)
 	testing.expect(t, first_result.err == .None && second_result.err == .None)
+	testing.expect(t, first.id != second.id)
 	testing.expect(t, len(first.entities) == 2 && len(second.entities) == 2)
 	if len(first.entities) == 2 && len(second.entities) == 2 {
 		testing.expect(t, first.entities[0].id != first.entities[1].id)
@@ -1557,7 +1612,11 @@ test_init_project_bootstraps_a_valid_clean_project :: proc(t: ^testing.T) {
 	defer delete(project_path)
 	project_bytes, project_read_err := os.read_entire_file(project_path, context.temp_allocator)
 	testing.expect(t, project_read_err == nil)
-	testing.expect(t, string(project_bytes) == project_toml_template("little-orbit"))
+	generated_config, generated_config_result := parse_project_config(string(project_bytes))
+	defer destroy_project_config(&generated_config)
+	testing.expect(t, generated_config_result.err == .None)
+	testing.expect(t, generated_config.name == "little-orbit")
+	testing.expect(t, generated_config.default_scene != (shared.Resource_UUID{}))
 
 	gitignore_path, gitignore_path_err := filepath.join({root, ".gitignore"})
 	testing.expect(t, gitignore_path_err == nil)
@@ -2560,7 +2619,7 @@ test_geometry_mode_configuration_rejects_unknown_and_explicit_inherit_modes :: p
 		config, result := parse_project_config(
 			fmt.tprintf(
 				`name = "Bad Geometry Mode"
-default_scene = "scenes/main.scene.toml"
+default_scene = "b0000000-0000-4000-8000-000000000001"
 [render]
 geometry_mode = "%s"
 `,

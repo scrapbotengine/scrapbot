@@ -155,7 +155,7 @@ write_native_system_test_project :: proc(t: ^testing.T, root: string) {
 	write_project_err := os.write_entire_file(
 		project_path,
 		`name = "Native System Test"
-default_scene = "scenes/main.scene.toml"
+default_scene = "b0000000-0000-4000-8000-000000000001"
 
 [[native_extensions]]
 name = "nativespin"
@@ -168,7 +168,10 @@ source = "native/nativespin"
 	defer delete(scene_path)
 	write_scene_err := os.write_entire_file(
 		scene_path,
-		`[[entities]]
+		`id = "b0000000-0000-4000-8000-000000000001"
+name = "Main"
+
+[[entities]]
 id = "a4000000-0000-4000-8000-000000000001"
 name = "Main Camera"
 

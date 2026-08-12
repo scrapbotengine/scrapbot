@@ -5,13 +5,15 @@
 ## Project load and world bootstrap
 
 ```text
-project.toml + scene/resource files + source assets
+project.toml + scenes/**/*.scene.toml + resource files + source assets
         │
         ├─ fingerprint/import ──> versioned Texture/Model/Environment/Icon products ─┐
         ├─ build/load native extensions ─┐
         └─ execute Luau registration ────┴─> component registry
                                                 │
-scene parse + schema validation + resource UUID resolution
+scene catalog validation + startup UUID selection
+                                                │
+active scene parse + schema validation + resource UUID resolution
                                                 │
                                            ECS world
                                                 │
@@ -21,6 +23,24 @@ scene parse + schema validation + resource UUID resolution
 ```
 
 Native components register before Luau executes, so scripts can retrieve native handles. Asset import completes before runtime resource registration. Scene validation uses the combined engine/native/Luau registry.
+
+## Replace-style scene transition
+
+```text
+Luau change_scene(UUID) → retain last request
+                              │ after systems + deferred ECS commands
+                              ▼
+                    resolve compact scene catalog
+                              │
+               parse + schema/resource validation
+                              │
+                 candidate World + playback baseline
+                         │ success         │ failure
+                         ▼                 └─> destroy candidate; retain active
+          destroy old World → install/rebind candidate
+```
+
+The project-wide resource registry and code runtimes remain shared. A transition does not clone imported resources or retain previously visited worlds. Its bounded overlap is one active and one candidate ECS World; asynchronous preparation and dependency-aware resource eviction are later lifecycle layers.
 
 Before bootstrap, Model import simplifies eligible primitive index streams, compacts each retained
 level, and builds its crack-aware hierarchy. It expands every mandatory terminal group into a

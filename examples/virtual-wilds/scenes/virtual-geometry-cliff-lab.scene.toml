@@ -1,3 +1,6 @@
+id = "b2000000-0000-4000-8000-000000000099"
+name = "Virtual Geometry Cliff Lab"
+
 [[entities]]
 id = "97100000-0000-4000-8000-000000000001"
 name = "Cliff Lab Camera"

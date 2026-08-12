@@ -31,16 +31,20 @@ Asset_Stamp :: struct {
 
 Hot_Reload_State :: struct {
 	root: string,
+	scene_id: shared.Resource_UUID,
+	scenes: [dynamic]shared.Project_Scene,
 	project_path: string,
 	scene_path: string,
 	script_path: string,
 	assets_path: string,
 	resources_path: string,
+	scenes_path: string,
 	project_stamp: File_Stamp,
 	scene_stamp: File_Stamp,
 	script_stamp: File_Stamp,
 	assets_stamp: Asset_Stamp,
 	resources_stamp: Asset_Stamp,
+	scenes_stamp: Asset_Stamp,
 	playback_baseline: Playback_Baseline,
 	runtime: script.Runtime,
 	native_extensions: native.Extension_Set,
@@ -80,13 +84,25 @@ init_hot_reload_state :: proc(
 	}
 	state.project_path = project_path
 
-	scene_path, scene_join_err := filepath.join({root, loaded.config.default_scene})
-	if scene_join_err != nil {
+	default_scene, scene_found := project.project_scene_by_id(
+		loaded.scenes[:],
+		loaded.config.default_scene,
+	)
+	if !scene_found {
 		delete(state.project_path)
 		state.project_path = ""
-		return "failed to allocate scene path"
+		return "default scene is unavailable"
+	}
+	scene_path, scene_path_err := project.project_scene_path(root, default_scene)
+	if scene_path_err != "" {
+		delete(state.project_path)
+		state.project_path = ""
+		return scene_path_err
 	}
 	state.scene_path = scene_path
+	state.scene_id = loaded.config.default_scene
+	state.scenes = loaded.scenes
+	loaded.scenes = nil
 
 	script_path, script_join_err := filepath.join({root, shared.DEFAULT_SCRIPT})
 	if script_join_err != nil {
@@ -105,6 +121,11 @@ init_hot_reload_state :: proc(
 		return "failed to allocate resources path"
 	}
 	state.resources_path = resources_path
+	scenes_path, scenes_join_err := filepath.join({root, "scenes"})
+	if scenes_join_err != nil {
+		return "failed to allocate scenes path"
+	}
+	state.scenes_path = scenes_path
 
 	if source_err := native.sync_project_extension_sources(
 		&state.native_sources,
@@ -125,6 +146,7 @@ init_hot_reload_state :: proc(
 	state.script_stamp = file_stamp(state.script_path)
 	state.assets_stamp = asset_stamp(state.assets_path)
 	state.resources_stamp = asset_stamp(state.resources_path)
+	state.scenes_stamp = asset_stamp(state.scenes_path)
 	state.seconds_until_next_check = HOT_RELOAD_CHECK_INTERVAL_SECONDS
 
 	if err := init_render_resources(
@@ -149,12 +171,14 @@ destroy_hot_reload_state :: proc(state: ^Hot_Reload_State) {
 	resources.destroy_registry(&state.resources)
 	native.destroy_source_set(&state.native_sources)
 	destroy_playback_baseline(&state.playback_baseline)
+	project.destroy_project_scenes(&state.scenes)
 	delete(state.last_good_script_source)
 	delete(state.project_path)
 	delete(state.scene_path)
 	delete(state.script_path)
 	delete(state.assets_path)
 	delete(state.resources_path)
+	delete(state.scenes_path)
 	state^ = {}
 }
 
@@ -166,7 +190,7 @@ hot_reload_frame_system :: proc(data: rawptr, world: ^shared.World, delta_second
 	ecs.advance_project_time(world, delta_seconds)
 
 	maybe_poll_hot_reload(state, world, delta_seconds)
-	return step_frame_runtime_parts(
+	if err := step_frame_runtime_parts(
 		&state.runtime,
 		&state.native_extensions,
 		&state.executor,
@@ -174,7 +198,55 @@ hot_reload_frame_system :: proc(data: rawptr, world: ^shared.World, delta_second
 		&state.system_profile,
 		world,
 		world.time,
-	)
+	); err != "" {
+		return err
+	}
+	return hot_reload_commit_scene_request(state, world)
+}
+
+hot_reload_commit_scene_request :: proc(state: ^Hot_Reload_State, world: ^shared.World) -> string {
+	requested, pending := script.consume_scene_change_request(&state.runtime)
+	if !pending || requested == state.scene_id {
+		return ""
+	}
+	scene, found := project.project_scene_by_id(state.scenes[:], requested)
+	if !found {
+		id_buffer: [36]u8
+		return fmt.tprintf(
+			"scene change references unknown scene %s",
+			shared.resource_uuid_to_string(requested, id_buffer[:]),
+		)
+	}
+	path, path_err := project.project_scene_path(state.root, scene)
+	if path_err != "" {
+		return path_err
+	}
+	next_world, load_err := load_validated_scene_world(path, &state.runtime, requested)
+	if load_err != "" {
+		delete(path)
+		return load_err
+	}
+	if err := resolve_scene_world_resources(&next_world, &state.resources); err != "" {
+		delete(path)
+		ecs.destroy_world(&next_world)
+		return err
+	}
+	next_baseline: Playback_Baseline
+	if err := capture_playback_baseline(&next_baseline, &next_world, &state.resources); err != "" {
+		delete(path)
+		ecs.destroy_world(&next_world)
+		return err
+	}
+	ecs.destroy_world(world)
+	world^ = next_world
+	script.bind_runtime_world(&state.runtime, world)
+	destroy_playback_baseline(&state.playback_baseline)
+	state.playback_baseline = next_baseline
+	delete(state.scene_path)
+	state.scene_path = path
+	state.scene_id = requested
+	state.scene_stamp = file_stamp(state.scene_path)
+	return ""
 }
 
 hot_reload_system_profile_begin :: proc(data: rawptr) {
@@ -287,7 +359,11 @@ hot_reload_scene_revert :: proc(data: rawptr, world: ^shared.World) -> string {
 		return clone_err
 	}
 	defer resources.destroy_registry(&next_resources)
-	next_world, world_err := load_validated_scene_world(state.scene_path, &state.runtime)
+	next_world, world_err := load_validated_scene_world(
+		state.scene_path,
+		&state.runtime,
+		state.scene_id,
+	)
 	if world_err != "" {
 		return world_err
 	}
@@ -346,11 +422,13 @@ poll_hot_reload :: proc(state: ^Hot_Reload_State, world: ^shared.World) {
 	next_script_stamp := file_stamp(state.script_path)
 	next_assets_stamp := asset_stamp(state.assets_path)
 	next_resources_stamp := asset_stamp(state.resources_path)
+	next_scenes_stamp := asset_stamp(state.scenes_path)
 	project_changed := !file_stamps_equal(state.project_stamp, next_project_stamp)
 	scene_changed := !file_stamps_equal(state.scene_stamp, next_scene_stamp)
 	script_changed := !file_stamps_equal(state.script_stamp, next_script_stamp)
 	assets_changed := !asset_stamps_equal(state.assets_stamp, next_assets_stamp)
 	resources_changed := !asset_stamps_equal(state.resources_stamp, next_resources_stamp)
+	scenes_changed := !asset_stamps_equal(state.scenes_stamp, next_scenes_stamp)
 	extensions_changed := native.project_extensions_changed(&state.native_extensions, state.root)
 	sources_changed := native.project_extension_sources_changed(&state.native_sources, state.root)
 	if !project_changed &&
@@ -358,6 +436,7 @@ poll_hot_reload :: proc(state: ^Hot_Reload_State, world: ^shared.World) {
 	   !script_changed &&
 	   !assets_changed &&
 	   !resources_changed &&
+	   !scenes_changed &&
 	   !extensions_changed &&
 	   !sources_changed {
 		return
@@ -367,6 +446,7 @@ poll_hot_reload :: proc(state: ^Hot_Reload_State, world: ^shared.World) {
 	   scene_changed ||
 	   assets_changed ||
 	   resources_changed ||
+	   scenes_changed ||
 	   extensions_changed ||
 	   sources_changed {
 		if err := reload_project_world_and_script(state, world); err != "" {
@@ -400,7 +480,33 @@ reload_project_world_and_script :: proc(state: ^Hot_Reload_State, world: ^shared
 		return err
 	}
 	if err := project.prepare_project_fonts(state.root, &loaded.config); err != "" { return err }
-	next_world := ecs.build_world(&loaded.scene)
+	target_scene_id := state.scene_id
+	target_scene, scene_found := project.project_scene_by_id(loaded.scenes[:], target_scene_id)
+	if !scene_found {
+		target_scene_id = loaded.config.default_scene
+		target_scene, scene_found = project.project_scene_by_id(loaded.scenes[:], target_scene_id)
+		if !scene_found {
+			return "default scene is unavailable"
+		}
+	}
+	next_scene_path, scene_path_err := project.project_scene_path(state.root, target_scene)
+	if scene_path_err != "" {
+		return scene_path_err
+	}
+	defer delete(next_scene_path)
+	loaded_scene := project.load_scene_file_with_resources(
+		next_scene_path,
+		loaded.resources[:],
+		true,
+	)
+	defer project.destroy_scene_load_result(&loaded_scene)
+	if loaded_scene.err != "" {
+		return loaded_scene.err
+	}
+	if loaded_scene.scene.id != target_scene_id {
+		return "active scene identity changed during project reload"
+	}
+	next_world := ecs.build_world(&loaded_scene.scene)
 	next_resources: resources.Registry
 	if clone_err := resources.clone_registry(&state.resources, &next_resources); clone_err != "" {
 		ecs.destroy_world(&next_world)
@@ -480,6 +586,13 @@ reload_project_world_and_script :: proc(state: ^Hot_Reload_State, world: ^shared
 	state.system_profile = {}
 	state.native_sources = next_sources
 	state.playback_baseline = next_baseline
+	project.destroy_project_scenes(&state.scenes)
+	state.scenes = loaded.scenes
+	loaded.scenes = nil
+	delete(state.scene_path)
+	state.scene_path = next_scene_path
+	next_scene_path = ""
+	state.scene_id = target_scene_id
 	script.rebind_runtime(&state.runtime)
 	state.last_good_script_source = script_load.source
 	state.has_last_good_script = script_load.has_source
@@ -489,6 +602,7 @@ reload_project_world_and_script :: proc(state: ^Hot_Reload_State, world: ^shared
 	state.script_stamp = file_stamp(state.script_path)
 	state.assets_stamp = asset_stamp(state.assets_path)
 	state.resources_stamp = asset_stamp(state.resources_path)
+	state.scenes_stamp = asset_stamp(state.scenes_path)
 	return ""
 }
 

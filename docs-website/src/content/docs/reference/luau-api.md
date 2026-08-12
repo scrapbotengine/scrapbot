@@ -12,8 +12,11 @@ The generated `.scrapbot/types/scrapbot.d.luau` file is the most precise API ref
 | `scrapbot.log(message)` | Print a Luau log line. |
 | `scrapbot.entity_count()` | Return alive entity count. |
 | `scrapbot.renderable_count()` | Return renderable count. |
+| `scrapbot.change_scene(scene_uuid)` | Queue a replace-style transition to an authored scene UUID. |
 | `scrapbot.ui.resolve(theme, recipes)` | Resolve a built-in UI theme and ordered recipe array into a mutable component map suitable for `scrapbot.spawn`. |
 | `scrapbot.ui.events(after_sequence?)` | Read an immutable UI event snapshot without consuming it. |
+
+`scrapbot.change_scene` takes a non-zero scene UUID string. The last request made before the frame's transition boundary wins. Scrapbot applies deferred ECS commands first, stages and validates the destination, and keeps the current scene if loading fails. The transition reuses project-wide runtime resources instead of cloning them into each scene world.
 
 ## Components
 

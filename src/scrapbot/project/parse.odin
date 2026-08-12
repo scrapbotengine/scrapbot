@@ -1118,11 +1118,15 @@ parse_project_config :: proc(source: string) -> (config: Project_Config, result:
 					return config, fail(.Invalid_Field, "project name must be a basic string")
 				}
 			case "default_scene":
-				config.default_scene, found = parse_basic_string(value)
-				if !found || !is_safe_relative_path(config.default_scene) {
+				raw_default_scene: string
+				raw_default_scene, found = parse_basic_string(value)
+				if found {
+					config.default_scene, found = shared.resource_uuid_parse(raw_default_scene)
+				}
+				if !found {
 					return config, fail(
-						.Invalid_Path,
-						"default_scene must be a safe relative path",
+						.Invalid_Field,
+						"default_scene must be a non-zero scene UUID",
 					)
 				}
 			case:
@@ -1133,7 +1137,7 @@ parse_project_config :: proc(source: string) -> (config: Project_Config, result:
 	if config.name == "" {
 		return config, fail(.Missing_Field, "project.toml is missing name")
 	}
-	if config.default_scene == "" {
+	if config.default_scene == (shared.Resource_UUID{}) {
 		return config, fail(.Missing_Field, "project.toml is missing default_scene")
 	}
 	for extension, index in config.native_extensions {
@@ -1186,6 +1190,7 @@ valid_font_source_path :: proc(path: string) -> bool {
 parse_scene :: proc(
 	source: string,
 	project_resources: []shared.Project_Resource = nil,
+	require_identity: bool = false,
 ) -> (
 	scene: Scene,
 	result: Parse_Result,
@@ -1206,6 +1211,37 @@ parse_scene :: proc(
 			current = &scene.entities[len(scene.entities) - 1]
 			current.scene_order = len(scene.entities) - 1
 			section = "entity"
+			continue
+		}
+
+		if current == nil {
+			key, value, found := split_assignment(line)
+			if !found {
+				return scene, fail(
+					.Invalid_Syntax,
+					fmt.tprintf("expected scene key/value assignment, got '%s'", line),
+				)
+			}
+			switch key {
+				case "id":
+					raw_id, string_ok := parse_basic_string(value)
+					if string_ok {
+						scene.id, found = shared.resource_uuid_parse(raw_id)
+					} else {
+						found = false
+					}
+				case "name":
+					scene.name, found = parse_basic_string(value)
+					found = found && scene.name != ""
+				case:
+					return scene, fail(
+						.Invalid_Field,
+						fmt.tprintf("unknown scene field '%s'", key),
+					)
+			}
+			if !found {
+				return scene, fail(.Invalid_Field, fmt.tprintf("invalid scene.%s", key))
+			}
 			continue
 		}
 
@@ -1362,10 +1398,6 @@ parse_scene :: proc(
 			current_component = &current.custom_components[len(current.custom_components) - 1]
 			section = "component"
 			continue
-		}
-
-		if current == nil {
-			return scene, fail(.Invalid_Syntax, "scene fields must appear under [[entities]]")
 		}
 
 		key, value, found := split_assignment(line)
@@ -2556,6 +2588,12 @@ parse_scene :: proc(
 		}
 	}
 
+	if require_identity && scene.id == (shared.Resource_UUID{}) {
+		return scene, fail(.Missing_Field, "scene is missing id")
+	}
+	if require_identity && scene.name == "" {
+		return scene, fail(.Missing_Field, "scene is missing name")
+	}
 	if len(scene.entities) == 0 {
 		return scene, fail(.Missing_Field, "scene must contain at least one entity")
 	}

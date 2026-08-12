@@ -22,7 +22,7 @@ Scrapbot is a small Odin CLI and runtime with an embedded Luau scripting layer, 
 ### CLI
 
 - `scrapbot init [path] [name]` safely creates a runnable text-first project without overwriting existing files. Authored data lives in `assets/`, `native/`, `resources/`, `scenes/`, and `scripts/`; generated types and caches live under ignored `.scrapbot/` state; distributable packages live under `build/`.
-- `scrapbot check [path] [--json]` builds declared native extensions, validates the manifest, default scene, and Luau component schemas, refreshes generated Luau LSP types, and runs Luau static analysis when `luau-analyze` is available.
+- `scrapbot check [path] [--json]` builds declared native extensions, validates the manifest, every discovered scene, resource references, and Luau component schemas, refreshes generated Luau LSP types, and runs Luau static analysis when `luau-analyze` is available.
 - `scrapbot build [path] [--target host] [--json]` creates a host-native runnable package under `build/<target>` with the game executable, project data, and native extension artifacts.
 - `scrapbot run [path] [options]` loads the scene into a native ECS world, executes `scripts/main.luau`, runs native and script systems, and renders through the selected backend. Ordinary development is simply `scrapbot run <path>` (windowed WGPU with hot reload). Options include `--backend null|wgpu`, `--window|--headless`, `--hot-reload|--no-hot-reload`, `--editor`, `--live-debug`, `--frames n`, `--framegrab out.png`, `--scheduler-trace`, `--runtime-stats`, `--ui-script`, `--ui-dump`, and `--cpu-culling` (deterministic CPU reference path for GPU culling).
 - `scrapbot help <command>` prints command-specific options parsed by Odin's `core:flags`.
@@ -35,6 +35,7 @@ During development, use `mise build` to compile the optimized CLI and `mise scra
 - Reflected components with stable project-wide entity UUIDs (distinct from editable names), generation-aware handles, and component lifecycle hooks.
 - Scheduled, access-declared native systems running in parallel, with deferred mutations and SIMD-accelerated chunked queries.
 - Luau scripting with typed queries, scheduled systems, deferred lifecycle commands, generated type declarations, analyzer checks, and hot reload. `mise luau-workspace-types` rebuilds the tracked type aggregate for editor completion.
+- UUID-addressed scene assets with validated frame-boundary replacement through Luau, bounded two-world staging, immediate old-world cleanup, and one shared project resource registry.
 - Native Odin extensions through a small C ABI, also hot-reloadable.
 - Derived state is change-driven: UI, render-instance, camera, and light membership update from structural dirty queues and compact active sets instead of per-frame world scans.
 
@@ -112,6 +113,7 @@ trends; they are not portable performance thresholds.
 - Projects
   - [x] Text-first projects
   - [x] TOML scene files
+  - [x] Recursive UUID-addressed scene assets and transactional replace-style transitions
   - [x] Standalone UUID-backed project resource files
   - [x] Project initialization
   - [ ] Project templates

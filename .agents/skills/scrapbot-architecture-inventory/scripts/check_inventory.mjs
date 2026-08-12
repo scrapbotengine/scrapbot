@@ -244,6 +244,7 @@ const requiredLifecycleBoundaries = [
   "Project load",
   "Scene entity creation",
   "Runtime spawn",
+  "Runtime scene replacement",
   "Component add/remove/value mutation",
   "Despawn",
   "Enter Play",

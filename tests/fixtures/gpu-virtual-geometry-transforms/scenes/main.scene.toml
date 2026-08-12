@@ -1,3 +1,6 @@
+id = "b3000000-0000-4000-8000-000000000006"
+name = "GPU Virtual Geometry Transforms"
+
 [[entities]]
 id = "95000000-0000-4000-8000-000000000001"
 name = "Transform Camera"

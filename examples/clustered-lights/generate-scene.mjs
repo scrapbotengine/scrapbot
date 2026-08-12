@@ -8,6 +8,9 @@ const SCULPTURE_MATERIAL = "c1a57000-1000-4000-8000-000000000003";
 
 const output = fileURLToPath(new URL("scenes/main.scene.toml", import.meta.url));
 const lines = [
+	'id = "b2000000-0000-4000-8000-000000000003"',
+	'name = "Clustered Lights"',
+	"",
 	'[[entities]]',
 	'id = "c1a57000-0000-4000-8000-000000000001"',
 	'name = "Main Camera"',

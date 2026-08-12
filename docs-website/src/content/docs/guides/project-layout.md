@@ -41,7 +41,7 @@ The manifest names the project, selects the default scene and initial window siz
 
 ```toml
 name = "Minimal Example"
-default_scene = "scenes/main.scene.toml"
+default_scene = "a1000000-0000-4000-8000-000000000001"
 
 [window]
 width = 1600
@@ -57,7 +57,7 @@ The window values are logical pixels. Scrapbot scales an oversized request down 
 
 ## Scene files
 
-Scene files describe entities, built-in components, and schema-backed custom component data.
+Scene files start with a unique project-wide UUID and display name, then describe entities, built-in components, and schema-backed custom component data. Scrapbot recursively discovers `.scene.toml` files under `scenes/`; the manifest selects one by UUID rather than path.
 
 ```toml
 [[entities]]

@@ -1,3 +1,6 @@
+id = "b2000000-0000-4000-8000-000000000014"
+name = "Virtual Wilds"
+
 [[entities]]
 id = "7b100000-0000-4000-8000-000000000001"
 name = "Wilds Camera"
