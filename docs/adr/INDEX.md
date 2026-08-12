@@ -61,3 +61,4 @@
 | [ADR-057](ADR-057-render-editor-selection-through-an-on-demand-identity-pass.md) | Render editor selection through an on-demand identity pass | 2026-08-12 |
 | [ADR-058](ADR-058-identify-scenes-by-uuid-and-replace-worlds-transactionally.md) | Identify scenes by UUID and replace worlds transactionally | 2026-08-12 |
 | [ADR-059](ADR-059-route-input-from-one-physical-frame.md) | Route input from one physical frame | 2026-08-12 |
+| [ADR-060](ADR-060-browse-files-through-rooted-metadata-models.md) | Browse files through rooted metadata models | 2026-08-12 |

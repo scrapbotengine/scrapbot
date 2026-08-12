@@ -7,6 +7,8 @@ import resources "../resources"
 import shared "../shared"
 import "core:fmt"
 import "core:math"
+import "core:os"
+import "core:path/filepath"
 import "core:testing"
 
 UI_Test_U8_Enum :: enum u8 {
@@ -17,6 +19,90 @@ UI_Test_U8_Enum :: enum u8 {
 UI_Test_I16_Enum :: enum i16 {
 	Negative = -7,
 	Positive = 32000,
+}
+
+@(test)
+test_consumed_editor_pointer_retains_button_baseline_without_hitting_chrome :: proc(
+	t: ^testing.T,
+) {
+	state := new(State)
+	defer free(state)
+	state.node_count = 1
+	state.nodes[0] = {
+		origin = .Editor,
+		entity = {index = 4, generation = 1},
+		rect = {0, 0, 200, 100},
+		paint_order = 1,
+		laid_out = true,
+	}
+	pointer := Pointer_Input {
+		position = {50, 50},
+		primary_down = true,
+		primary_pressed = true,
+		available = true,
+		edges_authoritative = true,
+	}
+	consumed := editor_consumed_pointer_input(pointer)
+	_, pressed, _, released, _, hit := update_interaction(state, consumed, true)
+	testing.expect(t, !pressed)
+	testing.expect(t, !released)
+	testing.expect(t, hit < 0)
+	testing.expect(t, state.editor_previous_primary_down)
+
+	consumed = editor_consumed_pointer_input({available = true, edges_authoritative = true})
+	_, pressed, _, released, _, hit = update_interaction(state, consumed, true)
+	testing.expect(t, !pressed)
+	testing.expect(t, !released)
+	testing.expect(t, hit < 0)
+	testing.expect(t, !state.editor_previous_primary_down)
+}
+
+@(test)
+test_editor_resource_browser_navigates_a_rooted_project_directory :: proc(t: ^testing.T) {
+	root, root_err := os.make_directory_temp(
+		"",
+		"scrapbot-ui-resource-browser-*",
+		context.temp_allocator,
+	)
+	testing.expect(t, root_err == nil)
+	if root_err != nil { return }
+	defer os.remove_all(root)
+	resource_root, resource_root_err := filepath.join({root, shared.PROJECT_RESOURCES_DIR})
+	testing.expect(t, resource_root_err == nil)
+	defer delete(resource_root)
+	library, library_err := filepath.join({resource_root, "library"})
+	testing.expect(t, library_err == nil)
+	defer delete(library)
+	testing.expect(t, os.mkdir(resource_root) == nil)
+	testing.expect(t, os.mkdir(library) == nil)
+
+	world := ecs.build_world(&shared.Scene{})
+	defer ecs.destroy_world(&world)
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	state.editor_visible = true
+	testing.expect(t, reconcile(state, &world, 1280, 720, project_root = root) == "")
+	testing.expect(t, state.editor_resource_browser_ready)
+	row, row_found := editor_ui_entity(&world, .Project_Resource_Directory_Row, 0)
+	testing.expect(t, row_found)
+	if !row_found { return }
+	editor_ui_handle_activation(state, &world, world.entities[row].id, {})
+	testing.expect_value(t, state.editor_resource_browser_error, "")
+	testing.expect_value(t, state.editor_resource_browser.directory, "library")
+	registry: resources.Registry
+	defer resources.destroy_registry(&registry)
+	state.resource_registry = &registry
+	state.editor_simulation_stopped = true
+	testing.expect(t, editor_authoring_create_resource(state))
+	handle, found := resources.material_by_uuid(&registry, state.editor_selected_resource)
+	testing.expect(t, found)
+	if found {
+		material, alive := resources.get_material(&registry, handle)
+		testing.expect(t, alive)
+		testing.expect_value(t, material.source, "library/material.resource.toml")
+	}
 }
 
 @(test)
@@ -403,7 +489,34 @@ test_resource_manager_lifecycle_is_reference_aware_undoable_and_reusable_ui :: p
 	testing.expect(t, resource_label_found)
 	if resource_label_found {
 		resource_label_layout := world.ui_layouts[world.entities[resource_label].ui_layout_index]
-		testing.expect_value(t, resource_label_layout.position.x, EDITOR_BROWSER_TEXT_INSET)
+		testing.expect_value(t, resource_label_layout.position.x, f32(52))
+	}
+	resource_kind, resource_kind_found := editor_ui_entity(&world, .Project_Resource_Row_Kind, 0)
+	testing.expect(t, resource_kind_found)
+	if resource_kind_found {
+		resource_kind_layout := world.ui_layouts[world.entities[resource_kind].ui_layout_index]
+		testing.expect_value(t, resource_kind_layout.position.x, f32(52))
+	}
+	resource_icon, resource_icon_found := editor_ui_entity(&world, .Project_Resource_Row_Icon, 0)
+	resource_preview, resource_preview_found := editor_ui_entity(
+		&world,
+		.Project_Resource_Row_Preview,
+		0,
+	)
+	testing.expect(t, resource_icon_found && resource_preview_found)
+	if resource_icon_found && resource_preview_found {
+		icon_entity := world.entities[resource_icon]
+		preview_entity := world.entities[resource_preview]
+		testing.expect(t, icon_entity.ui_icon_index >= 0)
+		testing.expect(t, preview_entity.ui_viewport_index >= 0)
+		testing.expect(t, !world.ui_layouts[icon_entity.ui_layout_index].hidden)
+		testing.expect(t, !world.ui_layouts[preview_entity.ui_layout_index].hidden)
+		testing.expect_value(
+			t,
+			world.ui_viewports[preview_entity.ui_viewport_index].resource,
+			world.editor_uis[preview_entity.editor_ui_index].resource_id,
+		)
+		testing.expect(t, !world.ui_viewports[preview_entity.ui_viewport_index].interactive)
 	}
 	browser, browser_found := editor_ui_entity(&world, .Project_Resources_Scroll)
 	testing.expect(t, browser_found)
@@ -421,12 +534,11 @@ test_resource_manager_lifecycle_is_reference_aware_undoable_and_reusable_ui :: p
 		testing.expect(t, browser_entity.ui_list_index >= 0)
 		testing.expect(t, browser_entity.ui_scroll_area_index >= 0)
 		testing.expect(t, browser_entity.ui_panel_index < 0)
-		testing.expect(t, panel_entity.ui_panel_index >= 0)
 		testing.expect(t, panel_entity.ui_vstack_index >= 0)
 		list := world.ui_lists[browser_entity.ui_list_index]
 		testing.expect_value(t, list.filter_input, world.entities[filter].uuid)
 		testing.expect(t, list.virtualized)
-		testing.expect_value(t, list.item_height, EDITOR_ENTITY_ROW_HEIGHT)
+		testing.expect_value(t, list.item_height, EDITOR_RESOURCE_ROW_HEIGHT)
 		testing.expect_value(t, list.overscan, 2)
 		browser_layout := world.ui_layouts[browser_entity.ui_layout_index]
 		testing.expect_value(t, browser_layout.parent, panel_entity.uuid)
@@ -445,6 +557,19 @@ test_resource_manager_lifecycle_is_reference_aware_undoable_and_reusable_ui :: p
 		testing.expect_value(t, filter_value.icon, "magnifying-glass")
 		testing.expect_value(t, filter_value.icon_size, f32(14))
 
+		left, left_found := ecs.entity_index_by_uuid(
+			&world,
+			shared.entity_uuid_from_engine_name(EDITOR_UI_LEFT_NAME),
+		)
+		resource_dock, resource_dock_found := ecs.entity_index_by_uuid(
+			&world,
+			shared.entity_uuid_from_engine_name(EDITOR_UI_RESOURCE_DOCK_ITEM_NAME),
+		)
+		if left_found && resource_dock_found {
+			dock := world.ui_dock_spaces[world.entities[left].ui_dock_space_index]
+			dock.active = world.entities[resource_dock].uuid
+			testing.expect(t, ecs.set_ui_dock_space(&world, left, dock))
+		}
 		testing.expect(t, ecs.set_ui_input_value(&world, filter, "renamed"))
 		testing.expect(t, reconcile(state, &world, 1280, 720, resource_registry = &registry) == "")
 		laid_out_resource_rows := 0
@@ -6874,6 +6999,16 @@ test_editor_browser_scrolls_selects_runtime_entities_and_clears_stale_selection 
 	runtime_row_entity := -1
 	for component in world.editor_uis { if component.role == .Browser_Row && component.target == world.entities[24].id { runtime_row_entity = component.entity_index; break } }
 	runtime_row_node := find_node_by_entity_index(state, runtime_row_entity)
+	if runtime_row_node >= 0 && left_sidebar >= 0 {
+		state.nodes[left_sidebar].scroll_target = min(
+			state.nodes[left_sidebar].scroll_target + EDITOR_ENTITY_ROW_HEIGHT,
+			state.nodes[left_sidebar].scroll_max,
+		)
+		for _ in 0 ..< 60 {
+			testing.expect(t, reconcile(state, &world, 1280, 720, {}, 1280, 300) == "")
+		}
+		runtime_row_node = find_node_by_entity_index(state, runtime_row_entity)
+	}
 	testing.expect(t, runtime_row_node >= 0 && state.nodes[runtime_row_node].has_clip)
 	row_rect := state.nodes[runtime_row_node].rect
 	row_visible := rect_intersection(row_rect, state.nodes[runtime_row_node].clip)
@@ -9759,15 +9894,42 @@ test_editor_gizmo_modes_render_rings_and_square_scale_handles :: proc(t: ^testin
 	ring_count := 0
 	for command in state.paint[:state.paint_count] { if command.kind == .Ring { ring_count += 1; testing.expect(t, command.ring_thickness == 1.35); testing.expect(t, command.ring_axis_x != shared.Vec2{} && command.ring_axis_y != shared.Vec2{}) } }
 	testing.expect(t, ring_count == 3)
+	state.paint_count = 0
+	state.editor_gizmo_active_handle = .Center
+	state.editor_gizmo_captures_pointer = true
+	state.editor_gizmo_drag_last_pointer = {164, 52}
+	testing.expect(t, append_editor_gizmo(state) == "")
+	testing.expect_value(t, state.paint[0].kind, Paint_Kind.Line)
+	testing.expect_value(t, state.paint[0].line_start, shared.Vec2{100, 100})
+	testing.expect_value(t, state.paint[0].line_end, shared.Vec2{164, 52})
+	testing.expect(t, state.paint[0].color.w > 0.5)
 
 	state.paint_count = 0; state.editor_gizmo_mode = .Scale
+	state.editor_gizmo_drag_visual_origin = {100, 100}
+	state.editor_gizmo_drag_visual_start_pointer = {130, 100}
+	state.editor_gizmo_drag_last_pointer = {160, 70}
+	state.editor_gizmo_drag_virtual_pointer = {160, 70}
 	testing.expect(t, append_editor_gizmo(state) == "")
+	testing.expect_value(t, state.paint[0].kind, Paint_Kind.Line)
+	testing.expect_value(t, state.paint[0].line_start, shared.Vec2{100, 100})
+	testing.expect_value(t, state.paint[0].line_end, shared.Vec2{160, 70})
+	testing.expect_value(t, state.paint[1].kind, Paint_Kind.Ring)
+	testing.expect_value(t, state.paint[1].ring_center, shared.Vec2{130, 100})
 	square_handle_found := false
 	for command in state.paint[:state.paint_count] { if command.kind == .Panel && command.rect.width == 12 && command.corner_radius == 1.5 { square_handle_found = true; break } }
 	testing.expect(t, square_handle_found)
 
+	state.paint_count = 0; state.editor_gizmo_mode = .Translate
+	state.editor_gizmo_origin = {145, 118}
+	state.editor_gizmo_active_handle = .X
+	testing.expect(t, append_editor_gizmo(state) == "")
+	testing.expect_value(t, state.paint[0].kind, Paint_Kind.Line)
+	testing.expect_value(t, state.paint[0].line_start, shared.Vec2{100, 100})
+	testing.expect_value(t, state.paint[0].line_end, shared.Vec2{145, 118})
+	testing.expect(t, state.paint[0].color.x > state.paint[0].color.y)
+
 	state.editor_snapshot_valid =
-		true; state.editor_gizmo_active_handle = .X; state.editor_gizmo_captures_pointer = true
+		true; state.editor_gizmo_mode = .Scale; state.editor_gizmo_active_handle = .X; state.editor_gizmo_captures_pointer = true
 	editor_set_gizmo_mode(state, .Translate)
 	testing.expect(t, state.editor_gizmo_mode == .Translate && !state.editor_snapshot_valid)
 	testing.expect(

@@ -2,10 +2,12 @@ package ui
 
 import component "../component"
 import ecs "../ecs"
+import file_browser "../file_browser"
 import resources "../resources"
 import shared "../shared"
 import "core:fmt"
 import "core:math"
+import "core:path/filepath"
 import "core:reflect"
 import "core:strconv"
 import "core:strings"
@@ -30,6 +32,10 @@ EDITOR_UI_RESOURCES_NAME :: "__scrapbot_editor_resources"
 EDITOR_UI_RESOURCES_FILTER_NAME :: "__scrapbot_editor_resources_filter"
 EDITOR_UI_RESOURCES_LIST_NAME :: "__scrapbot_editor_resources_list"
 EDITOR_UI_RESOURCE_TOOLS_NAME :: "__scrapbot_editor_resource_tools"
+EDITOR_UI_RESOURCE_DOCK_ITEM_NAME :: "__scrapbot_editor_resource_dock_item"
+EDITOR_UI_RESOURCE_CONTENT_NAME :: "__scrapbot_editor_resource_content"
+EDITOR_UI_RESOURCE_NAV_NAME :: "__scrapbot_editor_resource_nav"
+EDITOR_UI_RESOURCE_PATH_NAME :: "__scrapbot_editor_resource_path"
 EDITOR_UI_VIEWPORT_NAME :: "__scrapbot_editor_viewport"
 EDITOR_UI_VIEWPORT_DOCK_NAME :: "__scrapbot_editor_viewport_dock"
 EDITOR_UI_VIEWPORT_TAB_NAME :: "__scrapbot_editor_viewport_tab"
@@ -71,6 +77,7 @@ EDITOR_SECTION_TITLE_HEIGHT :: f32(28)
 EDITOR_BROWSER_FILTER_HEIGHT :: f32(32)
 EDITOR_BROWSER_TEXT_INSET :: f32(20)
 EDITOR_ACTION_RESOURCE_MODEL :: "editor.resource.model"
+EDITOR_ACTION_RESOURCE_DIRECTORY :: "editor.resource.directory"
 EDITOR_ACTION_DROP_VIEWPORT :: "editor.drop.viewport"
 EDITOR_ACTION_DROP_SCENE_ROOT :: "editor.drop.scene-root"
 EDITOR_ACTION_DROP_SCENE_PARENT :: "editor.drop.scene-parent"
@@ -122,6 +129,17 @@ editor_ui_entity :: proc(
 	return -1, false
 }
 
+editor_resource_browser_record_error :: proc(state: ^State, value: string) {
+	if state == nil {
+		return
+	}
+	delete(state.editor_resource_browser_error)
+	state.editor_resource_browser_error = ""
+	if value != "" {
+		state.editor_resource_browser_error, _ = strings.clone(value)
+	}
+}
+
 editor_ui_handle_activation :: proc(
 	state: ^State,
 	world: ^shared.World,
@@ -139,7 +157,7 @@ editor_ui_handle_activation :: proc(
 		event.current_target = entity.id
 		if entity.editor_ui_index >= 0 && entity.editor_ui_index < len(world.editor_uis) {
 			binding := world.editor_uis[entity.editor_ui_index]
-			switch binding.role {
+			#partial switch binding.role {
 				case .Browser_Row_Disclosure:
 					if binding.target != (shared.Entity{}) {
 						target_index := int(binding.target.index)
@@ -163,12 +181,47 @@ editor_ui_handle_activation :: proc(
 						state.editor_selection_toggle_modifier,
 					)
 					return
-				case .Project_Resource_Row, .Project_Resource_Row_Label:
+				case .Project_Resource_Row,
+				     .Project_Resource_Row_Kind,
+				     .Project_Resource_Row_Label:
 					if binding.resource_id != (shared.Resource_UUID{}) {
 						editor_clear_selection(state)
 						state.editor_selected_resource = binding.resource_id
 						state.editor_has_resource_selection = true
 						state.editor_snapshot_valid = false
+					}
+					return
+				case .Project_Resource_Directory_Row, .Project_Resource_Directory_Label:
+					if state.editor_resource_browser_ready {
+						entry_index := binding.slot
+						if entry_index >= 0 &&
+						   entry_index < len(state.editor_resource_browser.entries) {
+							entry := state.editor_resource_browser.entries[entry_index]
+							if entry.kind == .Directory {
+								err := file_browser.navigate(
+									&state.editor_resource_browser,
+									entry.path,
+								)
+								editor_resource_browser_record_error(state, err)
+								if err == "" {
+									refresh_editor_ecs_snapshot(state, world)
+								}
+							}
+						}
+					}
+					return
+				case .Project_Resource_Browser_Back:
+					if state.editor_resource_browser_ready {
+						err := file_browser.parent(&state.editor_resource_browser)
+						editor_resource_browser_record_error(state, err)
+						if err == "" { refresh_editor_ecs_snapshot(state, world) }
+					}
+					return
+				case .Project_Resource_Browser_Refresh:
+					if state.editor_resource_browser_ready {
+						err := file_browser.refresh(&state.editor_resource_browser)
+						editor_resource_browser_record_error(state, err)
+						if err == "" { refresh_editor_ecs_snapshot(state, world) }
 					}
 					return
 				case .Project_Resource_Create:
@@ -426,7 +479,8 @@ editor_ui_handle_activation :: proc(
 					}
 					return
 				case .Viewport:
-					if !state.editor_gizmo_captures_pointer {
+					if !state.editor_gizmo_captures_pointer &&
+					   !state.editor_pointer_activation_consumed {
 						state.editor_box_select_armed = true
 						state.editor_box_select_active = false
 						state.editor_box_select_start = position
@@ -1750,12 +1804,10 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 	resource_browser := editor_ui_create_box(
 		world,
 		EDITOR_UI_RESOURCES_NAME,
-		EDITOR_UI_LEFT_CONTENT_NAME,
+		EDITOR_UI_RESOURCE_CONTENT_NAME,
 		.None,
-		editor_ui_list_section_layout({EDITOR_LEFT_SIDEBAR_WIDTH, 240}),
+		{size = {660, 606}, fill_width = true, fill_height = true},
 	)
-	world.ui_layouts[world.entities[resource_browser].ui_layout_index].stack_order = 3
-	editor_ui_add_section_panel(world, resource_browser, "RESOURCES / 0", true)
 	editor_ui_add_vstack(
 		world,
 		resource_browser,
@@ -1766,6 +1818,55 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 			drop_indicator_thickness = 2,
 			drop_indicator_inset = 8,
 		},
+	)
+	resource_nav := editor_ui_create_box(
+		world,
+		EDITOR_UI_RESOURCE_NAV_NAME,
+		EDITOR_UI_RESOURCES_NAME,
+		.None,
+		{size = {2000, 36}, padding = {3, 6, 3, 6}, fill_width = true, fixed_in_fill = true},
+	)
+	editor_ui_add_hstack(world, resource_nav, {gap = 4, fill = true})
+	resource_back := editor_ui_create_transport_button(
+		world,
+		"__scrapbot_editor_resource_back",
+		EDITOR_UI_RESOURCE_NAV_NAME,
+		"<",
+		.Project_Resource_Browser_Back,
+	)
+	resource_back_layout := &world.ui_layouts[world.entities[resource_back].ui_layout_index]
+	resource_back_layout.size.x = 32
+	resource_back_layout.fill_width = false
+	resource_back_layout.fixed_in_fill = true
+	resource_refresh := editor_ui_create_transport_button(
+		world,
+		"__scrapbot_editor_resource_refresh",
+		EDITOR_UI_RESOURCE_NAV_NAME,
+		"R",
+		.Project_Resource_Browser_Refresh,
+	)
+	resource_refresh_layout := &world.ui_layouts[world.entities[resource_refresh].ui_layout_index]
+	resource_refresh_layout.size.x = 32
+	resource_refresh_layout.fill_width = false
+	resource_refresh_layout.fixed_in_fill = true
+	resource_path := editor_ui_create_box(
+		world,
+		EDITOR_UI_RESOURCE_PATH_NAME,
+		EDITOR_UI_RESOURCE_NAV_NAME,
+		.Project_Resource_Browser_Path,
+		{
+			size = {1, 30},
+			padding = {7, 10, 6, 10},
+			background = theme.palette.control,
+			fill_width = true,
+		},
+	)
+	editor_ui_add_text(
+		world,
+		resource_path,
+		"resources/",
+		theme.palette.text_secondary,
+		EDITOR_TEXT_SIZE,
 	)
 	resource_filter := editor_ui_create_browser_filter(
 		world,
@@ -1791,12 +1892,12 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		EDITOR_UI_RESOURCES_LIST_NAME,
 		EDITOR_UI_RESOURCES_NAME,
 		.Project_Resources_Scroll,
-		{size = {2000, 140}, fill_width = true},
+		{size = {2000, 460}, fill_width = true, fill_height = true},
 	)
 	resource_list_value := theme_list(theme)
 	resource_list_value.filter_input = world.entities[resource_filter].uuid
 	resource_list_value.virtualized = true
-	resource_list_value.item_height = EDITOR_ENTITY_ROW_HEIGHT
+	resource_list_value.item_height = EDITOR_RESOURCE_ROW_HEIGHT
 	resource_list_value.overscan = 2
 	editor_ui_add_list(world, resource_list, resource_list_value)
 	editor_ui_add_scroll(world, resource_list)
@@ -1804,26 +1905,29 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		world,
 		"__scrapbot_editor_resource_create",
 		EDITOR_UI_RESOURCE_TOOLS_NAME,
-		"+",
+		"",
 		.Project_Resource_Create,
+		"plus",
 	)
 	world.ui_layouts[world.entities[resource_create].ui_layout_index].size.x = 32
 	resource_duplicate := editor_ui_create_transport_button(
 		world,
 		"__scrapbot_editor_resource_duplicate",
 		EDITOR_UI_RESOURCE_TOOLS_NAME,
-		"DUP",
+		"",
 		.Project_Resource_Duplicate,
+		"copy",
 	)
-	world.ui_layouts[world.entities[resource_duplicate].ui_layout_index].size.x = 48
+	world.ui_layouts[world.entities[resource_duplicate].ui_layout_index].size.x = 32
 	resource_delete := editor_ui_create_transport_button(
 		world,
 		"__scrapbot_editor_resource_delete",
 		EDITOR_UI_RESOURCE_TOOLS_NAME,
-		"DEL",
+		"",
 		.Project_Resource_Delete,
+		"trash",
 	)
-	world.ui_layouts[world.entities[resource_delete].ui_layout_index].size.x = 42
+	world.ui_layouts[world.entities[resource_delete].ui_layout_index].size.x = 32
 	resource_reimport_all := editor_ui_create_transport_button(
 		world,
 		"__scrapbot_editor_resource_reimport_all",
@@ -1848,6 +1952,27 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		split_vertical = true,
 		content_sheet = false,
 	)
+	resource_dock_item := editor_ui_create_box(
+		world,
+		EDITOR_UI_RESOURCE_DOCK_ITEM_NAME,
+		EDITOR_UI_LEFT_NAME,
+		.None,
+		{
+			size = {EDITOR_LEFT_SIDEBAR_WIDTH, EDITOR_SIDEBAR_DOCK_ITEM_MIN_HEIGHT},
+			min_size = {1, 120},
+			fill_width = true,
+			fill_height = true,
+		},
+	)
+	editor_ui_add_dock_item(world, resource_dock_item, "RESOURCES")
+	resource_content := editor_ui_create_box(
+		world,
+		EDITOR_UI_RESOURCE_CONTENT_NAME,
+		EDITOR_UI_RESOURCE_DOCK_ITEM_NAME,
+		.None,
+		{size = {EDITOR_LEFT_SIDEBAR_WIDTH, 606}, fill_width = true, fill_height = true},
+	)
+	editor_ui_add_vstack(world, resource_content, {fill = true})
 	viewport_tab := editor_ui_create_box(
 		world,
 		EDITOR_UI_VIEWPORT_TAB_NAME,
@@ -2387,11 +2512,23 @@ editor_ui_ensure_row :: proc(world: ^shared.World, slot: int) -> (int, int, int)
 	return row, disclosure, label
 }
 
-editor_ui_ensure_resource_row :: proc(world: ^shared.World, slot: int) -> (int, int) {
+editor_ui_ensure_resource_row :: proc(
+	world: ^shared.World,
+	slot: int,
+) -> (
+	int,
+	int,
+	int,
+	int,
+	int,
+) {
 	row, row_found := editor_ui_entity(world, .Project_Resource_Row, slot)
+	icon, icon_found := editor_ui_entity(world, .Project_Resource_Row_Icon, slot)
+	preview, preview_found := editor_ui_entity(world, .Project_Resource_Row_Preview, slot)
+	kind, kind_found := editor_ui_entity(world, .Project_Resource_Row_Kind, slot)
 	label, label_found := editor_ui_entity(world, .Project_Resource_Row_Label, slot)
-	if row_found && label_found {
-		return row, label
+	if row_found && icon_found && preview_found && kind_found && label_found {
+		return row, icon, preview, kind, label
 	}
 	theme := reduced_dark_theme()
 	row_name := fmt.tprintf("__scrapbot_editor_resource_row_%d", slot)
@@ -2401,24 +2538,145 @@ editor_ui_ensure_resource_row :: proc(world: ^shared.World, slot: int) -> (int, 
 		row_name,
 		EDITOR_UI_RESOURCES_LIST_NAME,
 		.Project_Resource_Row,
-		{size = {2000, EDITOR_ENTITY_ROW_HEIGHT}},
+		{size = {2000, EDITOR_RESOURCE_ROW_HEIGHT}},
 		slot,
 	)
 	_ = ecs.set_ui_action(world, row, {action = EDITOR_ACTION_RESOURCE_MODEL, drag_threshold = 5})
+	icon = editor_ui_create_box(
+		world,
+		fmt.tprintf("__scrapbot_editor_resource_row_icon_%d", slot),
+		row_name,
+		.Project_Resource_Row_Icon,
+		{
+			position = {8, 9},
+			size = {36, 36},
+			padding = {6, 6, 6, 6},
+			background = theme.palette.control,
+			corner_radius = 4,
+		},
+		slot,
+	)
+	_ = ecs.set_ui_icon(
+		world,
+		icon,
+		{
+			icon_set = shared.builtin_icon_set_uuid(),
+			icon = "file",
+			color = theme.palette.text_secondary,
+		},
+	)
+	preview = editor_ui_create_box(
+		world,
+		fmt.tprintf("__scrapbot_editor_resource_row_preview_%d", slot),
+		row_name,
+		.Project_Resource_Row_Preview,
+		{position = {8, 9}, size = {36, 36}, corner_radius = 4},
+		slot,
+	)
+	kind = editor_ui_create_box(
+		world,
+		fmt.tprintf("__scrapbot_editor_resource_row_kind_%d", slot),
+		row_name,
+		.Project_Resource_Row_Kind,
+		{position = {52, 3}, size = {1840, 19}, padding = {3, 0, 2, 0}},
+		slot,
+	)
+	editor_ui_add_text(world, kind, "", theme.palette.text_muted, 10)
 	label = editor_ui_create_box(
 		world,
 		label_name,
 		row_name,
 		.Project_Resource_Row_Label,
-		{
-			position = {EDITOR_BROWSER_TEXT_INSET, 0},
-			size = {1900, EDITOR_ENTITY_ROW_HEIGHT},
-			padding = {8, 0, 6, 0},
-		},
+		{position = {52, 21}, size = {1840, 30}, padding = {5, 0, 5, 0}},
 		slot,
 	)
 	editor_ui_add_text(world, label, "", theme.palette.text, EDITOR_TEXT_SIZE)
-	return row, label
+	return row, icon, preview, kind, label
+}
+
+editor_ui_ensure_resource_directory_row :: proc(
+	world: ^shared.World,
+	slot: int,
+) -> (
+	int,
+	int,
+	int,
+) {
+	row, row_found := editor_ui_entity(world, .Project_Resource_Directory_Row, slot)
+	icon, icon_found := editor_ui_entity(world, .Project_Resource_Directory_Icon, slot)
+	label, label_found := editor_ui_entity(world, .Project_Resource_Directory_Label, slot)
+	if row_found && icon_found && label_found {
+		return row, icon, label
+	}
+	theme := reduced_dark_theme()
+	row_name := fmt.tprintf("__scrapbot_editor_resource_directory_row_%d", slot)
+	row = editor_ui_create_box(
+		world,
+		row_name,
+		EDITOR_UI_RESOURCES_LIST_NAME,
+		.Project_Resource_Directory_Row,
+		{size = {2000, EDITOR_RESOURCE_ROW_HEIGHT}},
+		slot,
+	)
+	editor_ui_add_button(world, row)
+	button := world.ui_buttons[world.entities[row].ui_button_index]
+	button.hover_background = theme.palette.hover
+	button.active_background = theme.palette.active
+	_ = ecs.set_ui_button(world, row, button)
+	_ = ecs.set_ui_action(world, row, {action = EDITOR_ACTION_RESOURCE_DIRECTORY})
+	icon = editor_ui_create_box(
+		world,
+		fmt.tprintf("__scrapbot_editor_resource_directory_icon_%d", slot),
+		row_name,
+		.Project_Resource_Directory_Icon,
+		{
+			position = {8, 9},
+			size = {36, 36},
+			padding = {6, 6, 6, 6},
+			background = theme.palette.control,
+			corner_radius = 4,
+		},
+		slot,
+	)
+	_ = ecs.set_ui_icon(
+		world,
+		icon,
+		{icon_set = shared.builtin_icon_set_uuid(), icon = "folder", color = theme.palette.accent},
+	)
+	label = editor_ui_create_box(
+		world,
+		fmt.tprintf("__scrapbot_editor_resource_directory_label_%d", slot),
+		row_name,
+		.Project_Resource_Directory_Label,
+		{position = {52, 0}, size = {1840, EDITOR_RESOURCE_ROW_HEIGHT}, padding = {17, 0, 15, 0}},
+		slot,
+	)
+	editor_ui_add_text(world, label, "", theme.palette.accent, EDITOR_TEXT_SIZE)
+	return row, icon, label
+}
+
+editor_resource_browser_icon :: proc(kind: string) -> string {
+	switch kind {
+		case "MATERIAL":
+			return "palette"
+		case "TEXTURE":
+			return "image"
+		case "ENVIRONMENT":
+			return "globe"
+		case "MODEL", "GEOMETRY":
+			return "cube"
+		case "SHADER":
+			return "code"
+		case "ICON SET":
+			return "shapes"
+		case "UI THEME":
+			return "paint-brush"
+	}
+	return "file"
+}
+
+editor_resource_browser_has_preview :: proc(kind: string) -> bool {
+	return kind == "MATERIAL" || kind == "TEXTURE" || kind == "MODEL"
 }
 
 editor_ui_set_resource_drag_source :: proc(world: ^shared.World, row: int, draggable: bool) {
@@ -2432,6 +2690,160 @@ editor_ui_set_resource_drag_source :: proc(world: ^shared.World, row: int, dragg
 	value := world.ui_actions[entity.ui_action_index]
 	value.drag_source = draggable
 	_ = ecs.set_ui_action(world, row, value)
+}
+
+Editor_Resource_Browser_Item :: struct {
+	id: shared.Resource_UUID,
+	name: string,
+	source: string,
+	kind: string,
+	draggable: bool,
+}
+
+editor_resource_browser_add_item :: proc(
+	items: ^[dynamic]Editor_Resource_Browser_Item,
+	id: shared.Resource_UUID,
+	name, source, kind: string,
+	draggable: bool = false,
+) {
+	if items == nil || id == (shared.Resource_UUID{}) || name == "" || source == "" {
+		return
+	}
+	append(
+		items,
+		Editor_Resource_Browser_Item {
+			id = id,
+			name = name,
+			source = source,
+			kind = kind,
+			draggable = draggable,
+		},
+	)
+}
+
+editor_resource_browser_items :: proc(
+	registry: ^resources.Registry,
+) -> [dynamic]Editor_Resource_Browser_Item {
+	items := make([dynamic]Editor_Resource_Browser_Item, 0, 32, context.temp_allocator)
+	if registry == nil {
+		return items
+	}
+	for material in registry.materials {
+		if material.alive && material.authored {
+			editor_resource_browser_add_item(
+				&items,
+				material.id,
+				material.name,
+				material.source,
+				"MATERIAL",
+			)
+		}
+	}
+	for texture in registry.textures {
+		if texture.alive && texture.authored {
+			editor_resource_browser_add_item(
+				&items,
+				texture.id,
+				texture.name,
+				texture.source,
+				"TEXTURE",
+			)
+		}
+	}
+	for environment in registry.environments {
+		if environment.alive && environment.authored {
+			editor_resource_browser_add_item(
+				&items,
+				environment.id,
+				environment.name,
+				environment.source,
+				"ENVIRONMENT",
+			)
+		}
+	}
+	for model in registry.models {
+		if model.alive && model.authored {
+			editor_resource_browser_add_item(
+				&items,
+				model.id,
+				model.name,
+				model.source,
+				"MODEL",
+				true,
+			)
+		}
+	}
+	for icon_set in registry.icon_sets {
+		if icon_set.alive && icon_set.authored {
+			editor_resource_browser_add_item(
+				&items,
+				icon_set.id,
+				icon_set.name,
+				icon_set.source,
+				"ICON SET",
+			)
+		}
+	}
+	for shader in registry.shaders {
+		if shader.alive && shader.source != "" {
+			editor_resource_browser_add_item(
+				&items,
+				shader.id,
+				shader.name,
+				shader.source,
+				"SHADER",
+			)
+		}
+	}
+	for geometry in registry.geometries {
+		if geometry.alive && geometry.authored {
+			editor_resource_browser_add_item(
+				&items,
+				geometry.id,
+				geometry.name,
+				geometry.source,
+				"GEOMETRY",
+			)
+		}
+	}
+	for theme in registry.ui_themes {
+		if theme.alive && theme.source != "" {
+			editor_resource_browser_add_item(
+				&items,
+				theme.id,
+				theme.name,
+				theme.source,
+				"UI THEME",
+			)
+		}
+	}
+	for index in 1 ..< len(items) {
+		value := items[index]
+		cursor := index
+		for cursor > 0 {
+			left := items[cursor - 1]
+			left_name := strings.to_lower(left.name, context.temp_allocator)
+			right_name := strings.to_lower(value.name, context.temp_allocator)
+			if left_name < right_name || left_name == right_name && left.source <= value.source {
+				break
+			}
+			items[cursor] = left
+			cursor -= 1
+		}
+		items[cursor] = value
+	}
+	return items
+}
+
+editor_resource_browser_source_visible :: proc(state: ^State, source: string) -> bool {
+	if state == nil || !state.editor_resource_browser_ready {
+		return true
+	}
+	source_directory := filepath.dir(source)
+	if state.editor_resource_browser.directory == "" {
+		return source_directory == "" || source_directory == "."
+	}
+	return source_directory == state.editor_resource_browser.directory
 }
 
 SYSTEM_PROFILE_CELL_HEIGHT :: f32(26)
@@ -6235,122 +6647,75 @@ refresh_editor_ecs_snapshot :: proc(state: ^State, world: ^shared.World) {
 	}
 	resource_count := 0
 	selected_resource_row: shared.Entity_UUID
-	if state.resource_registry != nil {
-		for material in state.resource_registry.materials {
-			if !material.alive || !material.authored {
+	directory_count := 0
+	for component in world.editor_uis {
+		if component.role == .Project_Resource_Directory_Row ||
+		   component.role == .Project_Resource_Directory_Icon ||
+		   component.role == .Project_Resource_Directory_Label {
+			editor_ui_set_hidden(world, component.entity_index, true)
+		}
+	}
+	if state.editor_resource_browser_ready {
+		for entry, entry_index in state.editor_resource_browser.entries {
+			if entry.kind != .Directory {
 				continue
 			}
-			row, label := editor_ui_ensure_resource_row(world, resource_count)
-			world.entities[row].alive = true
-			world.entities[label].alive = true
+			row, icon, label := editor_ui_ensure_resource_directory_row(world, entry_index)
 			editor_ui_set_hidden(world, row, false)
+			editor_ui_set_hidden(world, icon, false)
 			editor_ui_set_hidden(world, label, false)
-			world.editor_uis[world.entities[row].editor_ui_index].resource_id = material.id
-			world.editor_uis[world.entities[label].editor_ui_index].resource_id = material.id
-			editor_ui_set_resource_drag_source(world, row, false)
-			if state.editor_has_resource_selection &&
-			   state.editor_selected_resource == material.id {
-				selected_resource_row = world.entities[row].uuid
-			}
-			editor_ui_set_text(world, label, material.name)
-			resource_count += 1
+			editor_ui_set_text(world, label, entry.name)
+			directory_count += 1
 		}
-		for texture in state.resource_registry.textures {
-			if !texture.alive || !texture.authored {
-				continue
-			}
-			row, label := editor_ui_ensure_resource_row(world, resource_count)
-			world.entities[row].alive = true
-			world.entities[label].alive = true
-			editor_ui_set_hidden(world, row, false)
-			editor_ui_set_hidden(world, label, false)
-			world.editor_uis[world.entities[row].editor_ui_index].resource_id = texture.id
-			world.editor_uis[world.entities[label].editor_ui_index].resource_id = texture.id
-			editor_ui_set_resource_drag_source(world, row, false)
-			if state.editor_has_resource_selection &&
-			   state.editor_selected_resource == texture.id {
-				selected_resource_row = world.entities[row].uuid
-			}
-			editor_ui_set_text(world, label, texture.name)
-			resource_count += 1
+	}
+	items := editor_resource_browser_items(state.resource_registry)
+	for item in items {
+		if !editor_resource_browser_source_visible(state, item.source) {
+			continue
 		}
-		for environment in state.resource_registry.environments {
-			if !environment.alive || !environment.authored {
-				continue
-			}
-			row, label := editor_ui_ensure_resource_row(world, resource_count)
-			world.entities[row].alive = true
-			world.entities[label].alive = true
-			editor_ui_set_hidden(world, row, false)
-			editor_ui_set_hidden(world, label, false)
-			world.editor_uis[world.entities[row].editor_ui_index].resource_id = environment.id
-			world.editor_uis[world.entities[label].editor_ui_index].resource_id = environment.id
-			editor_ui_set_resource_drag_source(world, row, false)
-			if state.editor_has_resource_selection &&
-			   state.editor_selected_resource == environment.id {
-				selected_resource_row = world.entities[row].uuid
-			}
-			editor_ui_set_text(world, label, environment.name)
-			resource_count += 1
+		row, icon, preview, kind, label := editor_ui_ensure_resource_row(world, resource_count)
+		bindings := [5]int{row, icon, preview, kind, label}
+		for binding_entity in bindings {
+			editor_ui_set_hidden(world, binding_entity, false)
+			world.editor_uis[world.entities[binding_entity].editor_ui_index].resource_id = item.id
 		}
-		for model in state.resource_registry.models {
-			if !model.alive || !model.authored {
-				continue
-			}
-			row, label := editor_ui_ensure_resource_row(world, resource_count)
-			world.entities[row].alive = true
-			world.entities[label].alive = true
-			editor_ui_set_hidden(world, row, false)
-			editor_ui_set_hidden(world, label, false)
-			world.editor_uis[world.entities[row].editor_ui_index].resource_id = model.id
-			world.editor_uis[world.entities[label].editor_ui_index].resource_id = model.id
-			editor_ui_set_resource_drag_source(world, row, state.editor_simulation_stopped)
-			if state.editor_has_resource_selection && state.editor_selected_resource == model.id {
-				selected_resource_row = world.entities[row].uuid
-			}
-			editor_ui_set_text(world, label, model.name)
-			resource_count += 1
+		has_preview := editor_resource_browser_has_preview(item.kind)
+		// Keep the atlas icon behind the viewport as a deterministic fallback
+		// when more renderable rows are visible than the fixed preview pool can serve.
+		editor_ui_set_hidden(world, icon, false)
+		editor_ui_set_hidden(world, preview, !has_preview)
+		if has_preview {
+			value := shared.ui_viewport_default()
+			value.resource = item.id
+			value.interactive = false
+			value.distance = 3
+			_ = ecs.set_ui_viewport(world, preview, value)
+		} else if world.entities[preview].ui_viewport_index >= 0 {
+			_ = ecs.remove_ui_component(world, preview, "scrapbot.ui_viewport")
 		}
-		for icon_set in state.resource_registry.icon_sets {
-			if !icon_set.alive || !icon_set.authored {
-				continue
-			}
-			row, label := editor_ui_ensure_resource_row(world, resource_count)
-			world.entities[row].alive = true
-			world.entities[label].alive = true
-			editor_ui_set_hidden(world, row, false)
-			editor_ui_set_hidden(world, label, false)
-			world.editor_uis[world.entities[row].editor_ui_index].resource_id = icon_set.id
-			world.editor_uis[world.entities[label].editor_ui_index].resource_id = icon_set.id
-			editor_ui_set_resource_drag_source(world, row, false)
-			if state.editor_has_resource_selection &&
-			   state.editor_selected_resource == icon_set.id {
-				selected_resource_row = world.entities[row].uuid
-			}
-			editor_ui_set_text(world, label, icon_set.name)
-			resource_count += 1
+		if icon_index := world.entities[icon].ui_icon_index;
+		   icon_index >= 0 && icon_index < len(world.ui_icons) {
+			value := world.ui_icons[icon_index]
+			value.icon = editor_resource_browser_icon(item.kind)
+			_ = ecs.set_ui_icon(world, icon, value)
 		}
-		for theme in state.resource_registry.ui_themes {
-			if !theme.alive {
-				continue
-			}
-			row, label := editor_ui_ensure_resource_row(world, resource_count)
-			world.entities[row].alive = true
-			world.entities[label].alive = true
-			editor_ui_set_hidden(world, row, false)
-			editor_ui_set_hidden(world, label, false)
-			world.editor_uis[world.entities[row].editor_ui_index].resource_id = theme.id
-			world.editor_uis[world.entities[label].editor_ui_index].resource_id = theme.id
-			editor_ui_set_resource_drag_source(world, row, false)
-			if state.editor_has_resource_selection && state.editor_selected_resource == theme.id {
-				selected_resource_row = world.entities[row].uuid
-			}
-			editor_ui_set_text(world, label, theme.name)
-			resource_count += 1
+		editor_ui_set_resource_drag_source(
+			world,
+			row,
+			item.draggable && state.editor_simulation_stopped,
+		)
+		if state.editor_has_resource_selection && state.editor_selected_resource == item.id {
+			selected_resource_row = world.entities[row].uuid
 		}
+		editor_ui_set_text(world, kind, item.kind)
+		editor_ui_set_text(world, label, item.name)
+		resource_count += 1
 	}
 	for component in world.editor_uis {
 		if (component.role == .Project_Resource_Row ||
+			   component.role == .Project_Resource_Row_Icon ||
+			   component.role == .Project_Resource_Row_Preview ||
+			   component.role == .Project_Resource_Row_Kind ||
 			   component.role == .Project_Resource_Row_Label) &&
 		   component.slot >= resource_count {
 			if component.entity_index < 0 || component.entity_index >= len(world.entities) {
@@ -6364,16 +6729,24 @@ refresh_editor_ecs_snapshot :: proc(state: ^State, world: ^shared.World) {
 		}
 	}
 	if browser, found := editor_ui_entity(world, .Project_Resources_Scroll); found {
-		if panel, panel_found := ecs.entity_index_by_uuid(
-			world,
-			shared.entity_uuid_from_engine_name(EDITOR_UI_RESOURCES_NAME),
-		); panel_found {
-			editor_ui_set_panel_title(world, panel, fmt.tprintf("RESOURCES / %d", resource_count))
-		}
 		if world.entities[browser].ui_list_index >= 0 &&
 		   world.entities[browser].ui_list_index < len(world.ui_lists) {
 			world.ui_lists[world.entities[browser].ui_list_index].selected = selected_resource_row
 		}
+	}
+	if path_entity, found := editor_ui_entity(world, .Project_Resource_Browser_Path); found {
+		path := "resources/"
+		if state.editor_resource_browser_ready && state.editor_resource_browser.directory != "" {
+			path = fmt.tprintf("resources/%s/", state.editor_resource_browser.directory)
+		}
+		if state.editor_resource_browser_error != "" {
+			path = fmt.tprintf("%s  /  %s", path, state.editor_resource_browser_error)
+		}
+		item_count := resource_count + directory_count
+		if state.editor_resource_browser_error != "" {
+			item_count = 0
+		}
+		editor_ui_set_text(world, path_entity, fmt.tprintf("%s  /  %d ITEMS", path, item_count))
 	}
 	if status, found := editor_ui_entity(world, .Status); found {
 		mode := "PLAY MODE  /  PAUSED  /  CHANGES ARE TEMPORARY"

@@ -686,6 +686,30 @@ WGPU_UI_Vertex :: struct {
 	border_width: f32,
 	font_layer: f32,
 }
+
+WGPU_Thumbnail_Cache_Entry :: struct {
+	resource: shared.Resource_UUID,
+	resource_version: u32,
+	geometry_revision, texture_revision, material_revision: u64,
+	last_used_frame: u64,
+	valid: bool,
+}
+
+wgpu_thumbnail_cache_layer :: proc(
+	renderer: ^WGPU_Renderer,
+	resource: shared.Resource_UUID,
+	fallback: f32,
+) -> f32 {
+	if renderer == nil || resource == (shared.Resource_UUID{}) {
+		return fallback
+	}
+	for entry, layer in renderer.ui_thumbnail_cache {
+		if entry.valid && entry.resource == resource {
+			return f32(layer)
+		}
+	}
+	return fallback
+}
 #assert(size_of(WGPU_UI_Vertex) == 88)
 
 WGPU_Request_Adapter_State :: struct {
@@ -782,6 +806,7 @@ WGPU_Renderer :: struct {
 	adapter: wgpu.Adapter,
 	device: wgpu.Device,
 	queue: wgpu.Queue,
+	max_buffer_size: u64,
 	max_storage_buffer_binding_size: u64,
 	pipeline_layout: wgpu.PipelineLayout,
 	bind_group_layout: wgpu.BindGroupLayout,
@@ -853,6 +878,11 @@ WGPU_Renderer :: struct {
 	ui_viewport_target_resize_count: u64,
 	ui_viewport_redraw_count: u64,
 	ui_viewport_cache_hit_count: u64,
+	ui_thumbnail_texture: wgpu.Texture,
+	ui_thumbnail_view: wgpu.TextureView,
+	ui_thumbnail_cache: [ui.MAX_RESOURCE_THUMBNAILS]WGPU_Thumbnail_Cache_Entry,
+	ui_thumbnail_generation_count: u64,
+	ui_thumbnail_cache_hit_count: u64,
 	ui_font_versions: [shared.MAX_PROJECT_FONTS]u32,
 	ui_icon_set_versions: [shared.MAX_ICON_SETS]u32,
 	ui_project_vertices: [dynamic]WGPU_UI_Vertex,
@@ -1848,6 +1878,7 @@ wgpu_ui_stream_key :: proc(
 }
 
 wgpu_append_ui_vertices :: proc(
+	renderer: ^WGPU_Renderer,
 	vertices: ^[dynamic]WGPU_UI_Vertex,
 	commands: []ui.Paint_Command,
 	editor_paint_start: int,
@@ -1993,6 +2024,8 @@ wgpu_append_ui_vertices :: proc(
 			kind = 5
 		} else if command.kind == .Viewport {
 			kind = 6
+		} else if command.kind == .Thumbnail {
+			kind = 7
 		}
 		if command.kind == .Panel ||
 		   command.kind == .Line ||
@@ -2038,7 +2071,11 @@ wgpu_append_ui_vertices :: proc(
 				clip = clip,
 				border_color = border_color,
 				border_width = border_width,
-				font_layer = command.font_layer,
+				font_layer = wgpu_thumbnail_cache_layer(
+					renderer,
+					command.resource,
+					command.font_layer,
+				),
 			},
 			WGPU_UI_Vertex {
 				position = positions[1],
@@ -2049,7 +2086,11 @@ wgpu_append_ui_vertices :: proc(
 				clip = clip,
 				border_color = border_color,
 				border_width = border_width,
-				font_layer = command.font_layer,
+				font_layer = wgpu_thumbnail_cache_layer(
+					renderer,
+					command.resource,
+					command.font_layer,
+				),
 			},
 			WGPU_UI_Vertex {
 				position = positions[2],
@@ -2060,7 +2101,11 @@ wgpu_append_ui_vertices :: proc(
 				clip = clip,
 				border_color = border_color,
 				border_width = border_width,
-				font_layer = command.font_layer,
+				font_layer = wgpu_thumbnail_cache_layer(
+					renderer,
+					command.resource,
+					command.font_layer,
+				),
 			},
 			WGPU_UI_Vertex {
 				position = positions[0],
@@ -2071,7 +2116,11 @@ wgpu_append_ui_vertices :: proc(
 				clip = clip,
 				border_color = border_color,
 				border_width = border_width,
-				font_layer = command.font_layer,
+				font_layer = wgpu_thumbnail_cache_layer(
+					renderer,
+					command.resource,
+					command.font_layer,
+				),
 			},
 			WGPU_UI_Vertex {
 				position = positions[2],
@@ -2082,7 +2131,11 @@ wgpu_append_ui_vertices :: proc(
 				clip = clip,
 				border_color = border_color,
 				border_width = border_width,
-				font_layer = command.font_layer,
+				font_layer = wgpu_thumbnail_cache_layer(
+					renderer,
+					command.resource,
+					command.font_layer,
+				),
 			},
 			WGPU_UI_Vertex {
 				position = positions[3],
@@ -2093,7 +2146,11 @@ wgpu_append_ui_vertices :: proc(
 				clip = clip,
 				border_color = border_color,
 				border_width = border_width,
-				font_layer = command.font_layer,
+				font_layer = wgpu_thumbnail_cache_layer(
+					renderer,
+					command.resource,
+					command.font_layer,
+				),
 			},
 		)
 	}
@@ -2163,6 +2220,7 @@ wgpu_rebuild_ui_vertex_stream :: proc(
 		project_command_count = len(commands)
 	}
 	wgpu_append_ui_vertices(
+		renderer,
 		vertices,
 		commands,
 		project_command_count,

@@ -286,7 +286,7 @@ trends; they are not portable performance thresholds.
   - [x] Entity selection
   - [x] Runtime type-inspected component panels with generic Bool, String, Number, Vec2, Vec3, Vec4, and Color controls
   - [x] Material resource-reference picker and inline resource fields
-  - [x] ECS-built material resource browser with selection and inline inspection
+  - [x] Dockable rooted resource browser with nested folders, type-aware search, bounded thumbnails/icons, selection, and inline inspection
   - [x] Runtime-reflected enum editor using reusable public choice-popup composition
   - [x] Recursive nested-record and fixed-array inspectors using public disclosure composition
   - [ ] Resizable dynamic-array schemas with add, remove, and reorder controls

@@ -14,6 +14,45 @@ import "core:thread"
 import "vendor:wgpu"
 
 @(test)
+test_resource_thumbnail_cache_matches_identity_and_revisions :: proc(t: ^testing.T) {
+	resource: shared.Resource_UUID
+	resource[0] = 1
+	entry := WGPU_Thumbnail_Cache_Entry {
+		resource = resource,
+		resource_version = 3,
+		geometry_revision = 4,
+		texture_revision = 5,
+		material_revision = 6,
+		valid = true,
+	}
+	testing.expect(t, wgpu_thumbnail_cache_entry_matches(entry, resource, 3, 4, 5, 6))
+	testing.expect(t, !wgpu_thumbnail_cache_entry_matches(entry, resource, 4, 4, 5, 6))
+	other_resource: shared.Resource_UUID
+	other_resource[0] = 2
+	testing.expect(t, !wgpu_thumbnail_cache_entry_matches(entry, other_resource, 3, 4, 5, 6))
+}
+
+@(test)
+test_resource_thumbnail_cache_evicts_least_recently_used_slot :: proc(t: ^testing.T) {
+	renderer := new(WGPU_Renderer)
+	defer free(renderer)
+	for index in 0 ..< ui.MAX_RESOURCE_THUMBNAILS {
+		resource: shared.Resource_UUID
+		resource[0] = byte(index & 255)
+		resource[1] = byte(index / 256)
+		renderer.ui_thumbnail_cache[index] = {
+			resource = resource,
+			last_used_frame = u64(index + 10),
+			valid = true,
+		}
+	}
+	renderer.ui_thumbnail_cache[17].last_used_frame = 1
+	testing.expect_value(t, wgpu_thumbnail_cache_slot(renderer), 17)
+	renderer.ui_thumbnail_cache[23].valid = false
+	testing.expect_value(t, wgpu_thumbnail_cache_slot(renderer), 23)
+}
+
+@(test)
 test_active_world_tools_keep_pointer_input_over_editor_chrome :: proc(t: ^testing.T) {
 	state := new(ui.State)
 	defer free(state)
@@ -38,6 +77,12 @@ test_active_world_tools_keep_pointer_input_over_editor_chrome :: proc(t: ^testin
 
 	state.editor_gizmo_captures_pointer = true
 	testing.expect_value(t, editor_world_tool_pointer_input(state, pointer), pointer)
+	consumed := ui.editor_consumed_pointer_input(pointer)
+	testing.expect(t, consumed.available)
+	testing.expect(t, consumed.primary_down)
+	testing.expect(t, !consumed.primary_pressed)
+	testing.expect(t, !consumed.primary_released)
+	testing.expect(t, consumed.position.x < 0 && consumed.position.y < 0)
 
 	state.editor_gizmo_captures_pointer = false
 	state.editor_light_gizmo_captures_pointer = true
@@ -2398,7 +2443,16 @@ test_project_ui_vertices_preserve_pixel_aspect_inside_editor_viewport :: proc(t:
 		corner_radius = 12,
 		border_width = 2,
 	}
-	wgpu_append_ui_vertices(&vertices, []ui.Paint_Command{command}, 1, nil, viewport, 1280, 720)
+	wgpu_append_ui_vertices(
+		nil,
+		&vertices,
+		[]ui.Paint_Command{command},
+		1,
+		nil,
+		viewport,
+		1280,
+		720,
+	)
 	testing.expect_value(t, len(vertices), 6)
 	scale := min(viewport.width / 1280, viewport.height / 720)
 	canvas_y := viewport.y
@@ -2422,7 +2476,7 @@ test_wgpu_ui_vertices_preserve_per_corner_gradient_colors :: proc(t: ^testing.T)
 		gradient = true,
 		corner_colors = {{1, 0, 0, 1}, {0, 1, 0, 1}, {0, 0, 1, 1}, {1, 1, 1, 1}},
 	}
-	wgpu_append_ui_vertices(&vertices, []ui.Paint_Command{command}, 0, nil, {}, 100, 50)
+	wgpu_append_ui_vertices(nil, &vertices, []ui.Paint_Command{command}, 0, nil, {}, 100, 50)
 	testing.expect_value(t, len(vertices), 6)
 	testing.expect_value(t, vertices[0].color, [4]f32{1, 0, 0, 1})
 	testing.expect_value(t, vertices[1].color, [4]f32{0, 1, 0, 1})
@@ -3966,6 +4020,31 @@ test_wgpu_geometry_storage_bindings_respect_the_device_limit :: proc(t: ^testing
 		wgpu_geometry_storage_binding_bytes(&renderer, 256 * 1024 * 1024),
 		u64(128 * 1024 * 1024),
 	)
+}
+
+@(test)
+test_wgpu_geometry_arena_growth_never_exceeds_device_buffer_limit :: proc(t: ^testing.T) {
+	capacity, ok := wgpu_geometry_arena_growth_capacity(
+		128 * 1024 * 1024,
+		4 * 1024 * 1024,
+		300 * 1024 * 1024,
+		384 * 1024 * 1024,
+	)
+	testing.expect(t, ok)
+	testing.expect_value(t, capacity, u64(384 * 1024 * 1024))
+
+	capacity, ok = wgpu_geometry_arena_growth_capacity(
+		128 * 1024 * 1024,
+		4 * 1024 * 1024,
+		385 * 1024 * 1024,
+		384 * 1024 * 1024,
+	)
+	testing.expect(t, !ok)
+	testing.expect_value(t, capacity, u64(0))
+
+	capacity, ok = wgpu_geometry_arena_growth_capacity(0, 4, ~u64(0), ~u64(0))
+	testing.expect(t, ok)
+	testing.expect_value(t, capacity, ~u64(0))
 }
 
 @(test)

@@ -4,6 +4,7 @@
   "actions": [
     {"action": "click", "target": {"text": "STOP", "origin": "editor"}},
     {"action": "wait", "frames": 2},
+    {"action": "click", "target": {"name": "__scrapbot_editor_resource_dock_item", "origin": "editor", "part": "dock_tab"}},
     {"action": "drag", "target": {"text": "Triangle Model", "origin": "editor", "occurrence": 0}, "destination": {"name": "__scrapbot_editor_viewport", "origin": "editor"}, "destination_anchor": "center", "frames": 4, "hold": true},
     {"action": "capture", "target": {"name": "__scrapbot_editor_viewport", "origin": "editor"}, "padding": 8}
   ]

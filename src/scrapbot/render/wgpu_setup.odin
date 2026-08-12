@@ -5,6 +5,7 @@ import platform "../platform"
 import resources "../resources"
 import shared "../shared"
 import ui "../ui"
+import "base:runtime"
 import "core:fmt"
 import "core:time"
 import "vendor:wgpu"
@@ -57,6 +58,20 @@ wgpu_buffer_map_callback :: proc "c" (
 	state.completed = true
 	state.status = status
 	state.message_length = wgpu_copy_callback_message(state.message[:], message)
+}
+
+wgpu_uncaptured_error_callback :: proc "c" (
+	device: ^wgpu.Device,
+	type: wgpu.ErrorType,
+	message: wgpu.StringView,
+	userdata1: rawptr,
+	userdata2: rawptr,
+) {
+	// wgpu-native's default callback panics across the C ABI and aborts the
+	// process. Engine validation failures must remain diagnosable and let the
+	// originating API call return its ordinary nil/error result instead.
+	context = runtime.default_context()
+	fmt.eprintf("[scrapbot] WGPU %v error: %s\n", type, string(message))
 }
 
 wgpu_wait_for_adapter :: proc(
@@ -190,6 +205,7 @@ wgpu_init_renderer :: proc(
 	}
 	device_descriptor := wgpu.DeviceDescriptor {
 		label = "Scrapbot Device",
+		uncapturedErrorCallbackInfo = {callback = wgpu_uncaptured_error_callback},
 	}
 	if feature_count > 0 {
 		device_descriptor.requiredFeatureCount = uint(feature_count)
@@ -214,9 +230,12 @@ wgpu_init_renderer :: proc(
 	}
 	renderer.device = device_state.device
 	device_limits, limits_status := wgpu.DeviceGetLimits(renderer.device)
-	if limits_status != .Success || device_limits.maxStorageBufferBindingSize == 0 {
+	if limits_status != .Success ||
+	   device_limits.maxBufferSize == 0 ||
+	   device_limits.maxStorageBufferBindingSize == 0 {
 		return renderer, "failed to query wgpu device limits"
 	}
+	renderer.max_buffer_size = device_limits.maxBufferSize
 	renderer.max_storage_buffer_binding_size = device_limits.maxStorageBufferBindingSize
 	renderer.gpu_meshlet_supported = indirect_first_instance_supported
 	renderer.gpu_meshlet_native_multi_draw = multi_draw_indirect_count_supported
@@ -321,6 +340,8 @@ wgpu_destroy_renderer :: proc(renderer: ^WGPU_Renderer) {
 	if renderer.ui_font_sampler != nil { wgpu.SamplerRelease(renderer.ui_font_sampler) }
 	if renderer.ui_font_view != nil { wgpu.TextureViewRelease(renderer.ui_font_view) }
 	if renderer.ui_font_texture != nil { wgpu.TextureRelease(renderer.ui_font_texture) }
+	if renderer.ui_thumbnail_view != nil { wgpu.TextureViewRelease(renderer.ui_thumbnail_view) }
+	if renderer.ui_thumbnail_texture != nil { wgpu.TextureRelease(renderer.ui_thumbnail_texture) }
 	for layer in 0 ..< ui.MAX_EMBEDDED_VIEWPORTS {
 		if renderer.ui_viewport_bind_groups[layer] != nil {
 			wgpu.BindGroupRelease(renderer.ui_viewport_bind_groups[layer])
@@ -1105,7 +1126,7 @@ wgpu_create_ui_pipeline :: proc(renderer: ^WGPU_Renderer, state: ^ui.State) -> s
 		renderer.device,
 		&wgpu.ShaderModuleDescriptor{nextInChain = &chain, label = "Scrapbot UI Shader"},
 	); if renderer.ui_shader == nil { return "failed to create UI shader" }
-	layout_entries: [2 + ui.MAX_EMBEDDED_VIEWPORTS]wgpu.BindGroupLayoutEntry
+	layout_entries: [3 + ui.MAX_EMBEDDED_VIEWPORTS]wgpu.BindGroupLayoutEntry
 	layout_entries[0] = {
 		binding = 0,
 		visibility = {.Fragment},
@@ -1122,6 +1143,11 @@ wgpu_create_ui_pipeline :: proc(renderer: ^WGPU_Renderer, state: ^ui.State) -> s
 			visibility = {.Fragment},
 			texture = {sampleType = .Float, viewDimension = ._2D},
 		}
+	}
+	layout_entries[2 + ui.MAX_EMBEDDED_VIEWPORTS] = {
+		binding = 2 + ui.MAX_EMBEDDED_VIEWPORTS,
+		visibility = {.Fragment},
+		texture = {sampleType = .Float, viewDimension = ._2DArray},
 	}
 	renderer.ui_bind_group_layout = wgpu.DeviceCreateBindGroupLayout(
 		renderer.device,
@@ -1206,6 +1232,38 @@ wgpu_create_ui_pipeline :: proc(renderer: ^WGPU_Renderer, state: ^ui.State) -> s
 			return err
 		}
 	}
+	renderer.ui_thumbnail_texture = wgpu.DeviceCreateTexture(
+		renderer.device,
+		&wgpu.TextureDescriptor {
+			label = "Scrapbot Resource Thumbnail Cache",
+			usage = {.TextureBinding, .CopyDst},
+			dimension = ._2D,
+			size = {
+				width = WGPU_VIEWPORT_TARGET_MIN_SIZE,
+				height = WGPU_VIEWPORT_TARGET_MIN_SIZE,
+				depthOrArrayLayers = ui.MAX_RESOURCE_THUMBNAILS,
+			},
+			format = .RGBA8UnormSrgb,
+			mipLevelCount = 1,
+			sampleCount = 1,
+		},
+	)
+	if renderer.ui_thumbnail_texture == nil { return "failed to create resource thumbnail cache" }
+	renderer.ui_thumbnail_view = wgpu.TextureCreateView(
+		renderer.ui_thumbnail_texture,
+		&wgpu.TextureViewDescriptor {
+			format = .RGBA8UnormSrgb,
+			dimension = ._2DArray,
+			baseMipLevel = 0,
+			mipLevelCount = 1,
+			baseArrayLayer = 0,
+			arrayLayerCount = ui.MAX_RESOURCE_THUMBNAILS,
+			aspect = .All,
+			usage = {.TextureBinding},
+		},
+	)
+	if renderer.ui_thumbnail_view ==
+	   nil { return "failed to create resource thumbnail cache view" }
 	if err := wgpu_rebuild_ui_bind_group(renderer); err != "" {
 		return err
 	}
@@ -1277,7 +1335,7 @@ wgpu_create_viewport_color_target :: proc(
 		renderer.device,
 		&wgpu.TextureDescriptor {
 			label = "Scrapbot Embedded Viewport Target",
-			usage = {.RenderAttachment, .TextureBinding},
+			usage = {.RenderAttachment, .TextureBinding, .CopySrc},
 			dimension = ._2D,
 			size = {width = width, height = height, depthOrArrayLayers = 1},
 			format = .RGBA8UnormSrgb,
@@ -1304,7 +1362,7 @@ wgpu_rebuild_ui_bind_group :: proc(renderer: ^WGPU_Renderer) -> string {
 	if renderer == nil || renderer.ui_bind_group_layout == nil {
 		return "UI bind group layout is unavailable"
 	}
-	entries: [2 + ui.MAX_EMBEDDED_VIEWPORTS]wgpu.BindGroupEntry
+	entries: [3 + ui.MAX_EMBEDDED_VIEWPORTS]wgpu.BindGroupEntry
 	entries[0] = {
 		binding = 0,
 		textureView = renderer.ui_font_view,
@@ -1321,6 +1379,10 @@ wgpu_rebuild_ui_bind_group :: proc(renderer: ^WGPU_Renderer) -> string {
 			binding = u32(2 + layer),
 			textureView = renderer.ui_viewport_layer_views[layer],
 		}
+	}
+	entries[2 + ui.MAX_EMBEDDED_VIEWPORTS] = {
+		binding = 2 + ui.MAX_EMBEDDED_VIEWPORTS,
+		textureView = renderer.ui_thumbnail_view,
 	}
 	bind_group := wgpu.DeviceCreateBindGroup(
 		renderer.device,

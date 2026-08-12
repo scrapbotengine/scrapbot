@@ -236,10 +236,19 @@ wgpu_geometry_arena_ensure_capacity :: proc(
 	if arena.buffer != nil && required <= arena.capacity {
 		return ""
 	}
-	capacity := max(arena.capacity, arena.initial_size)
-	capacity = max(capacity, u64(4))
-	for capacity < required {
-		capacity *= 2
+	capacity, legal := wgpu_geometry_arena_growth_capacity(
+		arena.capacity,
+		arena.initial_size,
+		required,
+		renderer.max_buffer_size,
+	)
+	if !legal {
+		return fmt.tprintf(
+			"%s requires %d bytes, exceeding the device buffer limit of %d bytes",
+			arena.label,
+			required,
+			renderer.max_buffer_size,
+		)
 	}
 	buffer := wgpu.DeviceCreateBuffer(
 		renderer.device,
@@ -280,6 +289,28 @@ wgpu_geometry_arena_ensure_capacity :: proc(
 	arena.buffer = buffer
 	arena.capacity = capacity
 	return ""
+}
+
+wgpu_geometry_arena_growth_capacity :: proc "contextless" (
+	current, initial, required, limit: u64,
+) -> (
+	u64,
+	bool,
+) {
+	if required == 0 || limit == 0 || required > limit {
+		return 0, false
+	}
+	capacity := max(current, initial)
+	capacity = max(capacity, u64(4))
+	capacity = min(capacity, limit)
+	for capacity < required {
+		if capacity > limit / 2 {
+			capacity = limit
+		} else {
+			capacity *= 2
+		}
+	}
+	return capacity, capacity >= required && capacity <= limit
 }
 
 wgpu_geometry_arena_upload :: proc(

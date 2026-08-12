@@ -2,11 +2,13 @@ package ui
 
 import component "../component"
 import ecs "../ecs"
+import file_browser "../file_browser"
 import resources "../resources"
 import shared "../shared"
 import "core:fmt"
 import "core:hash"
 import "core:math"
+import "core:path/filepath"
 import "core:strconv"
 import "core:strings"
 
@@ -14,6 +16,7 @@ MAX_NODES :: 4096
 MAX_PAINT_COMMANDS :: 16384
 MAX_EDITOR_OVERLAY_PAINT_COMMANDS :: 4096
 MAX_EMBEDDED_VIEWPORTS :: 8
+MAX_RESOURCE_THUMBNAILS :: 256
 MAX_TEXT_LINES :: 256
 FONT_FIRST_CHAR :: shared.FONT_FIRST_CHAR
 FONT_CHAR_COUNT :: shared.FONT_CHAR_COUNT
@@ -30,6 +33,7 @@ EDITOR_SIDEBAR_MIN_WIDTH :: f32(180)
 EDITOR_VIEWPORT_MIN_WIDTH :: f32(320)
 EDITOR_VIEWPORT_INSET :: f32(4)
 EDITOR_ENTITY_ROW_HEIGHT :: f32(32)
+EDITOR_RESOURCE_ROW_HEIGHT :: f32(54)
 EDITOR_TEXT_SIZE :: f32(13)
 UI_INPUT_PREFIX_WIDTH :: f32(16)
 UI_INPUT_PREFIX_GAP :: f32(3)
@@ -145,6 +149,23 @@ consume_editor_pointer_activation :: proc(state: ^State, pointer: Pointer_Input)
 		// release clears this normally, so a consumed press cannot become a
 		// delayed activation on the following frame.
 		state.editor_previous_primary_down = true
+		state.editor_pointer_activation_consumed = true
+	}
+}
+
+editor_consumed_pointer_input :: proc(pointer: Pointer_Input) -> Pointer_Input {
+	if !pointer.available {
+		return pointer
+	}
+	// Keep the physical button state synchronized while moving the editor hit
+	// point outside every retained node. Clearing availability would reset the
+	// previous-button baseline and could turn the held confirmation press into a
+	// fresh activation on the following frame.
+	return {
+		position = {-1, -1},
+		primary_down = pointer.primary_down,
+		available = true,
+		edges_authoritative = pointer.edges_authoritative,
 	}
 }
 
@@ -164,6 +185,7 @@ Paint_Kind :: enum {
 	Disclosure,
 	Checkmark,
 	Viewport,
+	Thumbnail,
 }
 Paint_Command :: struct {
 	kind: Paint_Kind,
@@ -180,6 +202,7 @@ Paint_Command :: struct {
 	ring_thickness: f32,
 	disclosure_expanded: bool,
 	font_layer: f32,
+	resource: shared.Resource_UUID,
 	clip: Rect,
 	has_clip: bool,
 	gradient: bool,
@@ -297,6 +320,10 @@ Viewport_Surface :: struct {
 	has_clip: bool,
 	component: shared.UI_Viewport_Component,
 	editor: bool,
+}
+Thumbnail_Surface :: struct {
+	entity: shared.Entity,
+	component: shared.UI_Viewport_Component,
 }
 EDITOR_HISTORY_CAPACITY :: 128
 MAX_UI_EVENTS :: shared.MAX_UI_EVENTS
@@ -490,6 +517,8 @@ State :: struct {
 	ui_project_paint_revision: u64,
 	ui_editor_paint_revision: u64,
 	viewport_surfaces: [MAX_EMBEDDED_VIEWPORTS]Viewport_Surface,
+	thumbnail_surfaces: [MAX_RESOURCE_THUMBNAILS]Thumbnail_Surface,
+	thumbnail_surface_count: int,
 	viewport_surface_count: int,
 	viewport_node_indices: [MAX_NODES]int,
 	viewport_node_count: int,
@@ -579,6 +608,10 @@ State :: struct {
 	editor_has_selection: bool,
 	editor_selected_resource: shared.Resource_UUID,
 	editor_has_resource_selection: bool,
+	editor_resource_browser: file_browser.State,
+	editor_resource_browser_initialized: bool,
+	editor_resource_browser_ready: bool,
+	editor_resource_browser_error: string,
 	editor_snapshot_elapsed: f32,
 	editor_snapshot_valid: bool,
 	editor_snapshot_was_visible: bool,
@@ -608,6 +641,7 @@ State :: struct {
 	performance_diagnostics: ^shared.Performance_Diagnostics,
 	editor_performance_diagnostics_revision: u64,
 	editor_previous_primary_down: bool,
+	editor_pointer_activation_consumed: bool,
 	focused_input: shared.Entity,
 	has_focused_input: bool,
 	focused_input_editor: bool,
@@ -698,7 +732,11 @@ State :: struct {
 	editor_keyboard_escape_consumed: bool,
 	editor_gizmo_drag_pointer: shared.Vec2,
 	editor_gizmo_drag_last_pointer: shared.Vec2,
+	editor_gizmo_drag_virtual_pointer: shared.Vec2,
+	editor_gizmo_drag_visual_origin: shared.Vec2,
+	editor_gizmo_drag_visual_start_pointer: shared.Vec2,
 	editor_gizmo_drag_angle: f32,
+	editor_gizmo_drag_waits_for_rotation_radius: bool,
 	editor_gizmo_drag_position: shared.Vec3,
 	editor_gizmo_drag_rotation: shared.Vec3,
 	editor_gizmo_drag_scale: shared.Vec3,
@@ -1292,6 +1330,10 @@ destroy :: proc(state: ^State) {
 	delete(state.editor_gizmo_drag_selection)
 	delete(state.editor_collapsed_entities)
 	delete(state.editor_resource_reimport_message)
+	if state.editor_resource_browser_initialized && state.editor_resource_browser_ready {
+		file_browser.destroy(&state.editor_resource_browser)
+	}
+	delete(state.editor_resource_browser_error)
 	state^ = {}
 }
 
@@ -1580,6 +1622,7 @@ reconcile :: proc(
 	delta_seconds: f32 = 1.0 / 60.0,
 	keyboard: Keyboard_Input = {},
 	resource_registry: ^resources.Registry = nil,
+	project_root: string = "",
 ) -> string {
 	if state == nil || world == nil { return "UI state or world is unavailable" }
 	state.event_count = 0
@@ -1616,6 +1659,25 @@ reconcile :: proc(
 	surface_height := drawable_height; if surface_height <= 0 { surface_height = height }
 	if !state.font.ready { if err := init(state); err != "" { return err } }
 	state.resource_registry = resource_registry
+	if state.editor_visible && !state.editor_resource_browser_initialized && project_root != "" {
+		state.editor_resource_browser_initialized = true
+		resource_root, join_err := filepath.join({project_root, shared.PROJECT_RESOURCES_DIR})
+		if join_err == nil {
+			filter := file_browser.default_filter()
+			filter.extensions = []string{".resource.toml"}
+			browser_err := file_browser.init(&state.editor_resource_browser, resource_root, filter)
+			delete(resource_root)
+			if browser_err == "" {
+				state.editor_resource_browser_ready = true
+				state.editor_browser_snapshot_valid = false
+			} else {
+				delete(state.editor_resource_browser_error)
+				state.editor_resource_browser_error, _ = strings.clone(browser_err)
+			}
+		} else {
+			state.editor_resource_browser_error = "failed to resolve project resource directory"
+		}
+	}
 	editor_scale := max(state.editor_pixel_density, 1)
 	editor_width := surface_width / editor_scale
 	editor_height := surface_height / editor_scale
@@ -1663,6 +1725,9 @@ reconcile :: proc(
 	}
 	editor_pointer := pointer
 	if editor_pointer.available { editor_pointer.position.x /= editor_scale; editor_pointer.position.y /= editor_scale }
+	if editor_world_tool_captures_pointer(state) || state.editor_pointer_activation_consumed {
+		editor_pointer = editor_consumed_pointer_input(editor_pointer)
+	}
 	layout_project :=
 		!state.ui_layout_valid ||
 		state.ui_project_layout_revision != world.ui_project_layout_revision ||
@@ -2122,6 +2187,7 @@ reconcile :: proc(
 		}
 	}
 	publish_ui_events(state, world, published_event_count)
+	state.editor_pointer_activation_consumed = false
 	return ""
 }
 
@@ -2131,6 +2197,7 @@ collect_viewport_surfaces :: proc(
 	surface_width, surface_height, project_width, project_height, editor_scale: f32,
 ) {
 	state.viewport_surface_count = 0
+	state.thumbnail_surface_count = 0
 	for node_index in state.viewport_node_indices[:state.viewport_node_count] {
 		node := &state.nodes[node_index]
 		node.viewport_layer = -1
@@ -2142,6 +2209,75 @@ collect_viewport_surfaces :: proc(
 		project_width,
 		project_height,
 	)
+	// Live targets are reserved for interactive surfaces. Passive resource
+	// previews are immutable thumbnail requests served by the renderer cache.
+	for interactive_pass in 0 ..< 1 {
+		interactive := true
+		for node_index in state.viewport_node_indices[:state.viewport_node_count] {
+			node := &state.nodes[node_index]
+			if !node.laid_out ||
+			   node.viewport_index < 0 ||
+			   node.viewport_index >= len(world.ui_viewports) ||
+			   world.ui_viewports[node.viewport_index].interactive != interactive {
+				continue
+			}
+			if state.viewport_surface_count >= MAX_EMBEDDED_VIEWPORTS {
+				break
+			}
+			rect := node.rect
+			clip := node.clip
+			has_clip := node.has_clip
+			if node.origin == .Editor {
+				rect = {
+					rect.x * editor_scale,
+					rect.y * editor_scale,
+					rect.width * editor_scale,
+					rect.height * editor_scale,
+				}
+				clip = {
+					clip.x * editor_scale,
+					clip.y * editor_scale,
+					clip.width * editor_scale,
+					clip.height * editor_scale,
+				}
+			} else {
+				rect = {
+					project_transform.viewport.x + rect.x * project_transform.scale.x,
+					project_transform.viewport.y + rect.y * project_transform.scale.y,
+					rect.width * project_transform.scale.x,
+					rect.height * project_transform.scale.y,
+				}
+				clip = {
+					project_transform.viewport.x + clip.x * project_transform.scale.x,
+					project_transform.viewport.y + clip.y * project_transform.scale.y,
+					clip.width * project_transform.scale.x,
+					clip.height * project_transform.scale.y,
+				}
+				if has_clip {
+					clip = rect_intersection(clip, project_transform.clip)
+				} else {
+					clip = project_transform.clip
+					has_clip = true
+				}
+			}
+			if has_clip {
+				rect = rect_intersection(rect, clip)
+			}
+			if rect.width <= 0 || rect.height <= 0 {
+				continue
+			}
+			state.viewport_surfaces[state.viewport_surface_count] = {
+				entity = node.entity,
+				rect = rect,
+				clip = clip,
+				has_clip = has_clip,
+				component = world.ui_viewports[node.viewport_index],
+				editor = node.origin == .Editor,
+			}
+			node.viewport_layer = state.viewport_surface_count
+			state.viewport_surface_count += 1
+		}
+	}
 	for node_index in state.viewport_node_indices[:state.viewport_node_count] {
 		node := &state.nodes[node_index]
 		if !node.laid_out ||
@@ -2149,61 +2285,24 @@ collect_viewport_surfaces :: proc(
 		   node.viewport_index >= len(world.ui_viewports) {
 			continue
 		}
-		if state.viewport_surface_count >= MAX_EMBEDDED_VIEWPORTS {
-			break
-		}
-		rect := node.rect
-		clip := node.clip
-		has_clip := node.has_clip
-		if node.origin == .Editor {
-			rect = {
-				rect.x * editor_scale,
-				rect.y * editor_scale,
-				rect.width * editor_scale,
-				rect.height * editor_scale,
-			}
-			clip = {
-				clip.x * editor_scale,
-				clip.y * editor_scale,
-				clip.width * editor_scale,
-				clip.height * editor_scale,
-			}
-		} else {
-			rect = {
-				project_transform.viewport.x + rect.x * project_transform.scale.x,
-				project_transform.viewport.y + rect.y * project_transform.scale.y,
-				rect.width * project_transform.scale.x,
-				rect.height * project_transform.scale.y,
-			}
-			clip = {
-				project_transform.viewport.x + clip.x * project_transform.scale.x,
-				project_transform.viewport.y + clip.y * project_transform.scale.y,
-				clip.width * project_transform.scale.x,
-				clip.height * project_transform.scale.y,
-			}
-			if has_clip {
-				clip = rect_intersection(clip, project_transform.clip)
-			} else {
-				clip = project_transform.clip
-				has_clip = true
-			}
-		}
-		if has_clip {
-			rect = rect_intersection(rect, clip)
-		}
-		if rect.width <= 0 || rect.height <= 0 {
+		component := world.ui_viewports[node.viewport_index]
+		if component.interactive || component.resource == (shared.Resource_UUID{}) {
 			continue
 		}
-		state.viewport_surfaces[state.viewport_surface_count] = {
-			entity = node.entity,
-			rect = rect,
-			clip = clip,
-			has_clip = has_clip,
-			component = world.ui_viewports[node.viewport_index],
-			editor = node.origin == .Editor,
+		if node.has_clip {
+			visible := rect_intersection(node.rect, node.clip)
+			if visible.width <= 0 || visible.height <= 0 {
+				continue
+			}
 		}
-		node.viewport_layer = state.viewport_surface_count
-		state.viewport_surface_count += 1
+		if state.thumbnail_surface_count >= MAX_RESOURCE_THUMBNAILS {
+			break
+		}
+		state.thumbnail_surfaces[state.thumbnail_surface_count] = {
+			entity = node.entity,
+			component = component,
+		}
+		state.thumbnail_surface_count += 1
 	}
 }
 
@@ -8461,6 +8560,23 @@ paint_node :: proc(state: ^State, world: ^shared.World, node_index, depth: int) 
 		); err != "" {
 			return err
 		}
+	} else if node.viewport_index >= 0 && node.viewport_index < len(world.ui_viewports) {
+		viewport := world.ui_viewports[node.viewport_index]
+		if !viewport.interactive && viewport.resource != (shared.Resource_UUID{}) {
+			if err := append_paint(
+				state,
+				{
+					kind = .Thumbnail,
+					rect = node.rect,
+					color = {1, 1, 1, 1},
+					uv = {0, 0, 1, 1},
+					font_layer = -1,
+					resource = viewport.resource,
+				},
+			); err != "" {
+				return err
+			}
+		}
 	}
 	if node.panel_index >= 0 && node.panel_index < len(world.ui_panels) {
 		panel := world.ui_panels[node.panel_index]
@@ -9460,6 +9576,22 @@ append_editor_gizmo :: proc(state: ^State) -> string {
 	colors := [3]shared.Vec4{{0.95, 0.20, 0.24, 1}, {0.28, 0.88, 0.42, 1}, {0.24, 0.48, 1, 1}}
 	labels := [3]string{"X", "Y", "Z"}
 	if state.editor_gizmo_mode == .Rotate {
+		if state.editor_gizmo_captures_pointer && state.editor_gizmo_active_handle != .None {
+			guide_color := editor_gizmo_guide_color(state.editor_gizmo_active_handle, colors)
+			if err := append_paint(
+				state,
+				{
+					kind = .Line,
+					color = guide_color,
+					line_start = state.editor_gizmo_origin,
+					line_end = state.editor_gizmo_drag_last_pointer,
+					line_thickness = 1.25 * scale,
+					corner_radius = 0.625 * scale,
+				},
+			); err != "" {
+				return err
+			}
+		}
 		for ring, index in state.editor_gizmo_ring_points {
 			axis := Editor_Gizmo_Handle(
 				index + 1,
@@ -9519,6 +9651,44 @@ append_editor_gizmo :: proc(state: ^State) -> string {
 		{0.82, 0.84, 0.18, 0.28},
 		{0.82, 0.28, 0.68, 0.28},
 		{0.18, 0.76, 0.78, 0.28},
+	}
+	if state.editor_gizmo_captures_pointer && state.editor_gizmo_active_handle != .None {
+		guide_color := editor_gizmo_guide_color(state.editor_gizmo_active_handle, colors)
+		guide_start := state.editor_gizmo_drag_visual_origin
+		guide_end := state.editor_gizmo_origin
+		if state.editor_gizmo_mode == .Scale {
+			guide_end = state.editor_gizmo_drag_virtual_pointer
+		}
+		if err := append_paint(
+			state,
+			{
+				kind = .Line,
+				color = guide_color,
+				line_start = guide_start,
+				line_end = guide_end,
+				line_thickness = 1.25 * scale,
+				corner_radius = 0.625 * scale,
+			},
+		); err != "" {
+			return err
+		}
+		if state.editor_gizmo_mode == .Scale {
+			marker_color := guide_color
+			marker_color.w *= 0.72
+			if err := append_paint(
+				state,
+				{
+					kind = .Ring,
+					color = marker_color,
+					ring_center = state.editor_gizmo_drag_visual_start_pointer,
+					ring_axis_x = {3.5 * scale, 0},
+					ring_axis_y = {0, 3.5 * scale},
+					ring_thickness = 1.1 * scale,
+				},
+			); err != "" {
+				return err
+			}
+		}
 	}
 	for plane, index in state.editor_gizmo_plane_points {
 		handle :=
@@ -9637,6 +9807,30 @@ append_editor_gizmo :: proc(state: ^State) -> string {
 		},
 	); err != "" { return err }
 	return ""
+}
+
+editor_gizmo_guide_color :: proc(
+	handle: Editor_Gizmo_Handle,
+	axis_colors: [3]shared.Vec4,
+) -> shared.Vec4 {
+	color := shared.Vec4{0.92, 0.94, 0.98, 0.72}
+	switch handle {
+		case .X:
+			color = axis_colors[0]
+		case .Y:
+			color = axis_colors[1]
+		case .Z:
+			color = axis_colors[2]
+		case .XY:
+			color = {0.82, 0.84, 0.18, 0.72}
+		case .XZ:
+			color = {0.82, 0.28, 0.68, 0.72}
+		case .YZ:
+			color = {0.18, 0.76, 0.78, 0.72}
+		case .None, .Center:
+	}
+	color.w = 0.72
+	return color
 }
 
 editor_gizmo_handle_contains_axis :: proc(handle, axis: Editor_Gizmo_Handle) -> bool {

@@ -3,6 +3,7 @@ package ui
 import resources "../resources"
 import shared "../shared"
 import "core:math"
+import "core:path/filepath"
 import "core:strings"
 
 editor_resource_number :: proc(state: ^State, binding: shared.Editor_UI_Component) -> (f32, bool) {
@@ -315,10 +316,23 @@ editor_authoring_create_resource :: proc(state: ^State) -> bool {
 	if state == nil || state.resource_registry == nil || !state.editor_simulation_stopped {
 		return false
 	}
+	requested_source := "material.resource.toml"
+	owned_requested_source := ""
+	if state.editor_resource_browser_ready && state.editor_resource_browser.directory != "" {
+		joined, join_err := filepath.join(
+			{state.editor_resource_browser.directory, requested_source},
+		)
+		if join_err != nil {
+			return false
+		}
+		owned_requested_source = joined
+		requested_source = joined
+	}
+	defer delete(owned_requested_source)
 	name, source := resources.unique_project_material_identity(
 		state.resource_registry,
 		"Material",
-		"material.resource.toml",
+		requested_source,
 	)
 	defer delete(name)
 	defer delete(source)

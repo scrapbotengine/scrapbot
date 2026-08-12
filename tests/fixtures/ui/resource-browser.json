@@ -4,6 +4,7 @@
   "actions": [
     {"action": "click", "target": {"text": "STOP", "origin": "editor"}},
     {"action": "wait", "frames": 2},
+    {"action": "click", "target": {"name": "__scrapbot_editor_resource_dock_item", "origin": "editor", "part": "dock_tab"}},
     {"action": "type", "target": {"name": "__scrapbot_editor_resources_filter", "origin": "editor"}, "text": "icosphere"},
     {"action": "expect", "target": {"name": "__scrapbot_editor_resources_filter", "origin": "editor"}, "expect": "text", "text": "icosphere"},
     {"action": "click", "target": {"text": "Icosphere", "origin": "editor"}},

@@ -697,6 +697,7 @@ run_project_internal_untracked :: proc(
 ) -> Runtime_Result {
 	result: Runtime_Result
 	run_config := config
+	run_config.project_root = root
 	render_stats: render.Render_Stats
 	run_config.stats = &render_stats
 	performance_diagnostics: render.Performance_Diagnostics_Accumulator

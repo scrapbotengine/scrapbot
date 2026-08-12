@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "timeout_frames": 120,
+  "actions": [
+    {"action": "click", "target": {"name": "__scrapbot_editor_resource_dock_item", "origin": "editor", "part": "dock_tab"}},
+    {"action": "expect", "target": {"name": "__scrapbot_editor_resource_path", "origin": "editor"}, "expect": "text", "text": "resources/  /  4 ITEMS"},
+    {"action": "click", "target": {"name": "__scrapbot_editor_resource_directory_row_0", "origin": "editor"}},
+    {"action": "expect", "target": {"name": "__scrapbot_editor_resource_path", "origin": "editor"}, "expect": "text", "text": "resources/library/  /  1 ITEMS"},
+    {"action": "click", "target": {"text": "Nested Brass Material", "origin": "editor"}},
+    {"action": "expect", "target": {"name": "__scrapbot_editor_inspector_resource_name", "origin": "editor"}, "expect": "text", "text": "Nested Brass Material"},
+    {"action": "capture", "target": {"name": "__scrapbot_editor_resource_content", "origin": "editor"}, "padding": 8}
+  ]
+}

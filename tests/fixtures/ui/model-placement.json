@@ -4,6 +4,7 @@
   "actions": [
     {"action": "click", "target": {"text": "STOP", "origin": "editor"}},
     {"action": "wait", "frames": 2},
+    {"action": "click", "target": {"name": "__scrapbot_editor_resource_dock_item", "origin": "editor", "part": "dock_tab"}},
     {"action": "expect", "target": {"name": "__scrapbot_editor_placement_snap", "origin": "editor"}, "expect": "text", "text": "SNAP 0.5"},
     {"action": "click", "target": {"name": "__scrapbot_editor_placement_snap", "origin": "editor"}},
     {"action": "expect", "target": {"name": "__scrapbot_editor_placement_snap", "origin": "editor"}, "expect": "text", "text": "SNAP 1"},

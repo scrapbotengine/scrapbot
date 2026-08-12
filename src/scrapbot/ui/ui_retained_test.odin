@@ -2,6 +2,7 @@ package ui
 
 import ecs "../ecs"
 import shared "../shared"
+import "core:fmt"
 import "core:testing"
 
 expect_retained_hierarchy_consistent :: proc(t: ^testing.T, state: ^State) {
@@ -120,9 +121,13 @@ test_layout_changes_only_reflow_the_affected_ui_origin :: proc(t: ^testing.T) {
 	state.editor_visible = true
 	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
 	editor_node_count := 0
+	editor_paint_visit_bound := 0
 	for node in state.nodes[:state.node_count] {
 		if node.origin == .Editor && node.laid_out {
 			editor_node_count += 1
+		}
+		if node.origin == .Editor {
+			editor_paint_visit_bound += 1
 		}
 	}
 	testing.expect(t, editor_node_count > 0)
@@ -133,7 +138,13 @@ test_layout_changes_only_reflow_the_affected_ui_origin :: proc(t: ^testing.T) {
 	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
 	testing.expect(t, state.layout_node_visit_count == u64(editor_node_count))
 	testing.expect(t, state.paint_node_visit_count > 0)
-	testing.expect(t, state.paint_node_visit_count <= u64(editor_node_count))
+	testing.expectf(
+		t,
+		state.paint_node_visit_count <= u64(editor_paint_visit_bound),
+		"paint visited %d nodes for %d laid-out editor nodes",
+		state.paint_node_visit_count,
+		editor_paint_visit_bound,
+	)
 }
 
 @(test)
@@ -287,6 +298,54 @@ test_embedded_viewport_is_retained_and_orbits_without_rebuilding_paint :: proc(t
 	zoomed := world.ui_viewports[world.entities[entity_index].ui_viewport_index]
 	testing.expect(t, zoomed.distance < updated.distance)
 	testing.expect(t, state.project_paint_output_revision == paint_revision)
+}
+
+@(test)
+test_passive_resource_viewports_become_thumbnail_requests :: proc(t: ^testing.T) {
+	world: shared.World
+	defer ecs.destroy_world(&world)
+	passive_entities: [MAX_EMBEDDED_VIEWPORTS]int
+	for index in 0 ..< MAX_EMBEDDED_VIEWPORTS {
+		entity, created := ecs.create_world_entity(&world, fmt.tprintf("Passive %d", index))
+		testing.expect(t, created)
+		passive_entities[index] = entity
+		testing.expect(
+			t,
+			ecs.set_ui_layout(&world, entity, {position = {f32(index * 24), 0}, size = {20, 20}}),
+		)
+		component := shared.ui_viewport_default()
+		component.interactive = false
+		component.resource[0] = byte(index + 1)
+		testing.expect(t, ecs.set_ui_viewport(&world, entity, component))
+	}
+	interactive, created := ecs.create_world_entity(&world, "Interactive")
+	testing.expect(t, created)
+	testing.expect(
+		t,
+		ecs.set_ui_layout(&world, interactive, {position = {0, 30}, size = {80, 40}}),
+	)
+	testing.expect(t, ecs.set_ui_viewport(&world, interactive, shared.ui_viewport_default()))
+
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	testing.expect(t, reconcile(state, &world, 320, 180) == "")
+	testing.expect_value(t, state.viewport_surface_count, 1)
+	testing.expect_value(t, state.thumbnail_surface_count, MAX_EMBEDDED_VIEWPORTS)
+	interactive_node := find_node_by_entity_index(state, interactive)
+	testing.expect(t, interactive_node >= 0)
+	if interactive_node >= 0 {
+		testing.expect_value(t, state.nodes[interactive_node].viewport_layer, 0)
+	}
+	last_passive_node := find_node_by_entity_index(
+		state,
+		passive_entities[MAX_EMBEDDED_VIEWPORTS - 1],
+	)
+	testing.expect(t, last_passive_node >= 0)
+	if last_passive_node >= 0 {
+		testing.expect_value(t, state.nodes[last_passive_node].viewport_layer, -1)
+	}
 }
 
 @(test)

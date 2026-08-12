@@ -665,6 +665,7 @@ Run_Config :: struct {
 	framegrab_sequence_index_base: u32,
 	ui_script_path: string,
 	ui_dump_path: string,
+	project_root: string,
 	frame_system: Frame_System_Proc,
 	frame_system_data: rawptr,
 	system_profile_begin: System_Profile_Begin_Proc,
@@ -1370,6 +1371,7 @@ run_frame_system_unmeasured :: proc(
 			delta_seconds,
 			keyboard,
 			config.resource_registry,
+			config.project_root,
 		); err != "" { return err }
 		if id, all, requested := ui.consume_resource_reimport_request(config.ui_state); requested {
 			reimport_err := "editor reimport requires a runtime import callback"
