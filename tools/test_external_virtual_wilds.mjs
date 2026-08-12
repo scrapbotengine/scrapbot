@@ -374,6 +374,20 @@ function main() {
         ],
       },
       {
+        name: "water-distant",
+        arguments: [
+          "--warmup",
+          "0",
+          "--frames",
+          "170",
+          "--capture-range",
+          "152:159",
+          "--editor",
+          "--ui-script",
+          "tests/fixtures/ui/virtual-wilds-water-distant.json",
+        ],
+      },
+      {
         name: "water-foam-close",
         arguments: [
           "--warmup",

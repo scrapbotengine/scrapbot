@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "timeout_frames": 180,
+  "actions": [
+    {
+      "action": "set_editor_camera",
+      "position": {"x": 0, "y": 180, "z": 10},
+      "rotation": {"x": -1.46, "y": 0, "z": 0}
+    },
+    {"action": "wait", "frames": 150},
+    {
+      "action": "capture",
+      "target": {"name": "__scrapbot_editor_viewport", "origin": "editor"}
+    }
+  ]
+}

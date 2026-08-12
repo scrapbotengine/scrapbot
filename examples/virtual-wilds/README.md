@@ -56,7 +56,9 @@ The fragment hook composes guarded screen-space refraction, Beer–Lambert extin
 medium scattering, procedural-sky Fresnel reflection with sun glints, local screen-space
 reflections, and whitecaps formed as narrow ridges at positive Gerstner octave peaks. Their authored
 physical width is clamped to a bounded pixel footprint at extreme close range and widened only
-enough to antialias at distance. Two crest-aligned breakup fields and a low-amplitude phase warp turn
+enough to antialias at distance. Once a crest's world-space footprint is no longer resolvable, its
+foam contribution fades out instead of collapsing into high-contrast screen-space scratches. Two
+crest-aligned breakup fields and a low-amplitude phase warp turn
 each eligible medium-frequency ridge into curved, separated streaks. Higher-octave interference and
 aggregate compression vary brightness without expanding those streaks into detached foam blobs.
 Three anisotropic psrdnoise bands add sub-vertex ripple detail with derivative-based distance

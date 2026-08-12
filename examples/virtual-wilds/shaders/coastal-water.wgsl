@@ -541,7 +541,7 @@ fn coastal_foam_layers(
 			passive_history * 0.42,
 		0.0,
 		0.58,
-	);
+	) * (1.0 - smoothstep(0.16, 0.58, foam_footprint));
 	return Coastal_Foam_Layers(intersection, crest, wave_bank.tip);
 }
 
