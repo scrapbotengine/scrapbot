@@ -5787,6 +5787,210 @@ test_editor_entity_shortcuts_share_authoring_actions_and_select_duplicate :: pro
 }
 
 @(test)
+test_editor_batch_duplicate_and_delete_preserve_hierarchy_and_history :: proc(t: ^testing.T) {
+	parent_id := ui_test_id("Batch Parent")
+	child_id := ui_test_id("Batch Child")
+	other_id := ui_test_id("Batch Other")
+	scene := shared.Scene{}
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = parent_id,
+			name = "Parent",
+			has_transform = true,
+			transform = {scale = {1, 1, 1}},
+		},
+		shared.Scene_Entity {
+			id = child_id,
+			name = "Child",
+			has_transform = true,
+			transform = {parent = parent_id, scale = {1, 1, 1}},
+		},
+		shared.Scene_Entity {
+			id = other_id,
+			name = "Other",
+			has_transform = true,
+			transform = {position = {4, 0, 0}, scale = {1, 1, 1}},
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	state.editor_visible = true
+	state.editor_simulation_playing = false
+	state.editor_simulation_stopped = true
+
+	editor_set_entity_selection(
+		state,
+		&world,
+		[]shared.Entity{world.entities[0].id, world.entities[1].id, world.entities[2].id},
+	)
+	testing.expect(t, editor_duplicate_selected_entities(state, &world))
+	testing.expect_value(t, state.editor_history_count, 1)
+	testing.expect_value(t, editor_selection_count(state), 3)
+	duplicate_parent_id := state.editor_selected_uuids[0]
+	duplicate_child_id := state.editor_selected_uuids[1]
+	duplicate_other_id := state.editor_selected_uuids[2]
+	duplicate_parent_index, parent_found := ecs.entity_index_by_uuid(&world, duplicate_parent_id)
+	duplicate_child_index, child_found := ecs.entity_index_by_uuid(&world, duplicate_child_id)
+	_, other_found := ecs.entity_index_by_uuid(&world, duplicate_other_id)
+	testing.expect(t, parent_found && child_found && other_found)
+	if parent_found && child_found {
+		child_transform := world.transforms[world.entities[duplicate_child_index].transform_index]
+		testing.expect_value(t, child_transform.parent, duplicate_parent_id)
+		testing.expect(t, duplicate_parent_index != 0)
+	}
+
+	testing.expect(t, editor_history_apply(state, &world, false))
+	testing.expect_value(t, editor_selection_count(state), 3)
+	testing.expect_value(t, state.editor_selected_uuids[0], parent_id)
+	testing.expect_value(t, state.editor_selected_uuids[1], child_id)
+	testing.expect_value(t, state.editor_selected_uuids[2], other_id)
+	_, parent_found = ecs.entity_index_by_uuid(&world, duplicate_parent_id)
+	_, child_found = ecs.entity_index_by_uuid(&world, duplicate_child_id)
+	_, other_found = ecs.entity_index_by_uuid(&world, duplicate_other_id)
+	testing.expect(t, !parent_found && !child_found && !other_found)
+
+	testing.expect(t, editor_history_apply(state, &world, true))
+	testing.expect_value(t, editor_selection_count(state), 3)
+	duplicate_child_index, child_found = ecs.entity_index_by_uuid(&world, duplicate_child_id)
+	testing.expect(t, child_found)
+	if child_found {
+		child_transform := world.transforms[world.entities[duplicate_child_index].transform_index]
+		testing.expect_value(t, child_transform.parent, duplicate_parent_id)
+	}
+
+	testing.expect(t, editor_delete_selected_entities(state, &world))
+	testing.expect_value(t, state.editor_history_count, 2)
+	testing.expect_value(t, editor_selection_count(state), 0)
+	_, parent_found = ecs.entity_index_by_uuid(&world, duplicate_parent_id)
+	_, child_found = ecs.entity_index_by_uuid(&world, duplicate_child_id)
+	_, other_found = ecs.entity_index_by_uuid(&world, duplicate_other_id)
+	testing.expect(t, !parent_found && !child_found && !other_found)
+
+	testing.expect(t, editor_history_apply(state, &world, false))
+	testing.expect_value(t, editor_selection_count(state), 3)
+	duplicate_child_index, child_found = ecs.entity_index_by_uuid(&world, duplicate_child_id)
+	testing.expect(t, child_found)
+	if child_found {
+		child_transform := world.transforms[world.entities[duplicate_child_index].transform_index]
+		testing.expect_value(t, child_transform.parent, duplicate_parent_id)
+	}
+	testing.expect(t, editor_history_apply(state, &world, true))
+	testing.expect_value(t, editor_selection_count(state), 0)
+}
+
+@(test)
+test_editor_batch_duplicate_does_not_repeat_explicit_descendants :: proc(t: ^testing.T) {
+	parent_id := ui_test_id("No Repeat Parent")
+	child_id := ui_test_id("No Repeat Child")
+	scene := shared.Scene{}
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = parent_id,
+			name = "Parent",
+			has_transform = true,
+			transform = {scale = {1, 1, 1}},
+		},
+		shared.Scene_Entity {
+			id = child_id,
+			name = "Child",
+			has_transform = true,
+			transform = {parent = parent_id, scale = {1, 1, 1}},
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	state.editor_visible = true
+	state.editor_simulation_playing = false
+	state.editor_simulation_stopped = true
+	editor_set_entity_selection(
+		state,
+		&world,
+		[]shared.Entity{world.entities[0].id, world.entities[1].id},
+	)
+
+	testing.expect(t, editor_duplicate_selected_entities(state, &world))
+	testing.expect_value(t, editor_selection_count(state), 2)
+	live_non_editor := 0
+	for entity in world.entities {
+		if entity.alive && entity.origin != .Editor {
+			live_non_editor += 1
+		}
+	}
+	testing.expect_value(t, live_non_editor, 4)
+}
+
+@(test)
+test_editor_batch_duplicate_and_delete_are_disposable_during_playback :: proc(t: ^testing.T) {
+	parent_id := ui_test_id("Runtime Batch Parent")
+	child_id := ui_test_id("Runtime Batch Child")
+	scene := shared.Scene{}
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = parent_id,
+			name = "Parent",
+			has_transform = true,
+			transform = {scale = {1, 1, 1}},
+		},
+		shared.Scene_Entity {
+			id = child_id,
+			name = "Child",
+			has_transform = true,
+			transform = {parent = parent_id, scale = {1, 1, 1}},
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	state.editor_visible = true
+	state.editor_simulation_playing = true
+	state.editor_simulation_stopped = false
+	editor_set_entity_selection(state, &world, []shared.Entity{world.entities[0].id})
+
+	testing.expect(t, editor_duplicate_selected_entities(state, &world))
+	testing.expect_value(t, state.editor_history_count, 0)
+	testing.expect_value(t, editor_selection_count(state), 1)
+	duplicate_parent_id := state.editor_selected_uuids[0]
+	duplicate_parent_index, parent_found := ecs.entity_index_by_uuid(&world, duplicate_parent_id)
+	testing.expect(t, parent_found)
+	duplicate_child_id: shared.Entity_UUID
+	for entity in world.entities {
+		if !entity.alive || entity.transform_index < 0 {
+			continue
+		}
+		if world.transforms[entity.transform_index].parent == duplicate_parent_id {
+			duplicate_child_id = entity.uuid
+			break
+		}
+	}
+	testing.expect(t, duplicate_child_id != (shared.Entity_UUID{}))
+	if parent_found {
+		testing.expect(t, world.entities[duplicate_parent_index].origin == .Runtime)
+	}
+	testing.expect(t, editor_delete_selected_entities(state, &world))
+	_, parent_found = ecs.entity_index_by_uuid(&world, duplicate_parent_id)
+	_, child_found := ecs.entity_index_by_uuid(&world, duplicate_child_id)
+	testing.expect(t, !parent_found && !child_found)
+	testing.expect_value(t, state.editor_history_count, 0)
+}
+
+@(test)
 test_editor_structural_authoring_is_uuid_addressed_and_undoable :: proc(t: ^testing.T) {
 	scene := shared.Scene{}
 	defer delete(scene.entities)

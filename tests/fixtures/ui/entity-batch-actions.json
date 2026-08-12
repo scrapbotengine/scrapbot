@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "timeout_frames": 180,
+  "actions": [
+    {"action": "key", "key": "run_stop"},
+    {"action": "click", "target": {"text": "Left Cube", "origin": "editor"}},
+    {"action": "click", "target": {"text": "Right Cube", "origin": "editor"}, "shift": true},
+    {"action": "key", "key": "duplicate_entity"},
+    {"action": "expect", "target": {"text": "Left Cube Copy", "origin": "editor"}, "expect": "visible"},
+    {"action": "expect", "target": {"text": "Right Cube Copy", "origin": "editor"}, "expect": "visible"},
+    {"action": "key", "key": "undo"},
+    {"action": "key", "key": "redo"},
+    {"action": "key", "key": "delete_entity"},
+    {"action": "key", "key": "undo"},
+    {"action": "expect", "target": {"text": "Left Cube Copy", "origin": "editor"}, "expect": "visible"},
+    {"action": "expect", "target": {"text": "Right Cube Copy", "origin": "editor"}, "expect": "visible"},
+    {"action": "capture", "target": {"name": "__scrapbot_editor_scene", "origin": "editor"}, "padding": 8}
+  ]
+}

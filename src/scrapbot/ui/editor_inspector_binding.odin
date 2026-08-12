@@ -749,6 +749,7 @@ editor_history_push_transaction :: proc(state: ^State, transaction: Editor_Edit_
 	if transaction.change_count <= 0 &&
 	   transaction.resource_change_count <= 0 &&
 	   transaction.structural == nil &&
+	   transaction.structural_batch == nil &&
 	   transaction.component_structural == nil &&
 	   transaction.resource_structural == nil &&
 	   transaction.transform_batch == nil {
@@ -865,6 +866,59 @@ editor_history_apply :: proc(state: ^State, world: ^shared.World, redo: bool) ->
 					_ = editor_select_entity(state, world, world.entities[entity_index].id, 0)
 				}
 				if redo { state.editor_history_cursor = index + 1 } else { state.editor_history_cursor = index }
+				editor_recompute_scene_dirty(state)
+				return true
+			}
+			editor_history_remove(state, index)
+			continue
+		}
+		if transaction.structural_batch != nil {
+			batch := transaction.structural_batch
+			desired_selection := batch.before_selection[:]
+			desired_order := batch.before_order[:]
+			if redo {
+				desired_selection = batch.after_selection[:]
+				desired_order = batch.after_order[:]
+			}
+			desired_first := batch.items[0].before
+			if redo {
+				desired_first = batch.items[0].after
+			}
+			deleting := desired_first == nil
+			applied := len(batch.items) > 0
+			if deleting {
+				for item_index := len(batch.items) - 1; item_index >= 0; item_index -= 1 {
+					item := &batch.items[item_index]
+					if !ecs.delete_entity_by_uuid(world, item.target_uuid) {
+						applied = false
+						break
+					}
+				}
+			} else {
+				for &item in batch.items {
+					desired := item.before
+					if redo {
+						desired = item.after
+					}
+					if _, ok := ecs.apply_entity_snapshot(world, desired); !ok {
+						applied = false
+						break
+					}
+				}
+			}
+			if applied && len(desired_order) > 0 {
+				applied = apply_scene_order(world, desired_order)
+			}
+			if applied {
+				for item in batch.items {
+					editor_mark_scene_uuid_dirty(state, item.target_uuid)
+				}
+				editor_restore_selection_uuids(state, world, desired_selection)
+				if redo {
+					state.editor_history_cursor = index + 1
+				} else {
+					state.editor_history_cursor = index
+				}
 				editor_recompute_scene_dirty(state)
 				return true
 			}
@@ -1029,6 +1083,27 @@ editor_history_destroy_transaction :: proc(transaction: ^Editor_Edit_Transaction
 		delete(change.before_order)
 		delete(change.after_order)
 		free(change)
+	}
+	if transaction.structural_batch != nil {
+		batch := transaction.structural_batch
+		for &item in batch.items {
+			if item.before != nil {
+				ecs.destroy_entity_snapshot(item.before)
+				free(item.before)
+			}
+			if item.after != nil {
+				ecs.destroy_entity_snapshot(item.after)
+				free(item.after)
+			}
+			delete(item.before_order)
+			delete(item.after_order)
+		}
+		delete(batch.items)
+		delete(batch.before_order)
+		delete(batch.after_order)
+		delete(batch.before_selection)
+		delete(batch.after_selection)
+		free(batch)
 	}
 	if transaction.component_structural != nil {
 		change := transaction.component_structural

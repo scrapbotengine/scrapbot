@@ -294,7 +294,7 @@ trends; they are not portable performance thresholds.
   - [x] Live transform, camera, light, and custom Number/Vec2/Vec3/Vec4/Color inspector editing
   - [x] UUID-addressed authoring transactions with inspector and gizmo undo/redo
   - [x] Registry-driven, namespaced Add Component picker and panel-title removal actions with undo/redo
-  - [x] Entity create, duplicate, rename, delete, and runtime promotion
+  - [x] Entity create, rename, runtime promotion, and atomic hierarchy-preserving multi-selection Duplicate/Delete
   - [x] Surface-aware Model placement from previews or generic resource drags, with configurable world-grid snapping and structural Undo/Redo
   - [x] Resource create, duplicate, rename, move, delete, usage lookup, and structural undo/redo
   - [x] Explicit stopped-mode scene persistence by stable entity UUID

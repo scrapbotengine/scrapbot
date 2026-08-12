@@ -332,6 +332,13 @@ Editor_Structural_Change :: struct {
 	before_order: [dynamic]shared.Entity_UUID,
 	after_order: [dynamic]shared.Entity_UUID,
 }
+Editor_Structural_Batch_Change :: struct {
+	items: [dynamic]Editor_Structural_Change,
+	before_order: [dynamic]shared.Entity_UUID,
+	after_order: [dynamic]shared.Entity_UUID,
+	before_selection: [dynamic]shared.Entity_UUID,
+	after_selection: [dynamic]shared.Entity_UUID,
+}
 Editor_Component_Structural_Change :: struct {
 	target_uuid: shared.Entity_UUID,
 	before: ^ecs.Registered_Component_Snapshot,
@@ -357,6 +364,7 @@ Editor_Edit_Transaction :: struct {
 	resource_changes: [4]Editor_Resource_Change,
 	resource_change_count: int,
 	structural: ^Editor_Structural_Change,
+	structural_batch: ^Editor_Structural_Batch_Change,
 	component_structural: ^Editor_Component_Structural_Change,
 	resource_structural: ^Editor_Resource_Structural_Change,
 	transform_batch: ^Editor_Transform_Batch_Change,
@@ -2416,6 +2424,25 @@ editor_set_entity_selection :: proc(
 	state.editor_light_gizmo_active = false
 	state.editor_light_gizmo_captures_pointer = false
 	editor_selection_changed(state)
+}
+
+editor_restore_selection_uuids :: proc(
+	state: ^State,
+	world: ^shared.World,
+	ids: []shared.Entity_UUID,
+) {
+	if state == nil || world == nil {
+		return
+	}
+	entities: [dynamic]shared.Entity
+	defer delete(entities)
+	for id in ids {
+		if entity_index, found := ecs.entity_index_by_uuid(world, id);
+		   found && world.entities[entity_index].origin != .Editor {
+			append(&entities, world.entities[entity_index].id)
+		}
+	}
+	editor_set_entity_selection(state, world, entities[:])
 }
 
 editor_box_select_update :: proc(state: ^State, pointer: Pointer_Input, scale: f32) {

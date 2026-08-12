@@ -886,14 +886,9 @@ editor_ui_execute_entity_action :: proc(
 			_, created := editor_authoring_create_entity(state, world)
 			return created
 		case .Entity_Duplicate:
-			if selected, ok := editor_selected_world_index(state, world); ok {
-				_, duplicated := editor_duplicate_entity(state, world, selected)
-				return duplicated
-			}
+			return editor_duplicate_selected_entities(state, world)
 		case .Entity_Delete:
-			if selected, ok := editor_selected_world_index(state, world); ok {
-				return editor_delete_entity(state, world, selected)
-			}
+			return editor_delete_selected_entities(state, world)
 		case .Entity_Promote:
 			if selected, ok := editor_selected_world_index(state, world); ok {
 				return editor_authoring_promote_entity(state, world, selected)
