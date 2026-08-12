@@ -576,13 +576,32 @@ test_keyboard_transform_click_commit_consumes_viewport_activation :: proc(t: ^te
 		viewport,
 		camera,
 		true,
-		{actions = {.Transform_Translate}},
+		{actions = {.Transform_Rotate}},
 	)
 	testing.expect(t, state.editor_gizmo_keyboard_active)
+	testing.expect(t, state.editor_gizmo_drag_waits_for_rotation_radius)
+	pointer.position.x += 32
+	editor_transform_gizmo_system(state, &world, pointer, viewport, camera, true)
+	testing.expect(t, !state.editor_gizmo_drag_waits_for_rotation_radius)
+	pointer.position.y += 32
+	editor_transform_gizmo_system(state, &world, pointer, viewport, camera, true)
+	testing.expect(t, math.abs(world.transforms[0].rotation.z) > 0.1)
+	editor_transform_gizmo_system(
+		state,
+		&world,
+		pointer,
+		viewport,
+		camera,
+		true,
+		{actions = {.Transform_Axis_X}},
+	)
+	testing.expect(t, math.abs(world.transforms[0].rotation.x) > 0.1)
+	testing.expect(t, math.abs(world.transforms[0].rotation.z) < 0.001)
 	pointer.primary_down = true
 	editor_transform_gizmo_system(state, &world, pointer, viewport, camera, true)
 	testing.expect(t, !state.editor_gizmo_keyboard_active)
 	testing.expect(t, state.editor_previous_primary_down)
+	testing.expect(t, state.editor_pointer_activation_consumed)
 }
 
 @(test)
@@ -916,20 +935,35 @@ test_rotation_gizmo_projects_rings_and_rotates_one_axis :: proc(t: ^testing.T) {
 		camera,
 		true,
 	)
-	// Clockwise screen motion maps to negative Euler rotation because screen Y points down.
-	testing.expect(
-		t,
-		world.transforms[0].rotation.x < -1.4 && world.transforms[0].rotation.x > -1.7,
-	)
+	// The selected world X ring follows the clockwise pointer gesture.
+	testing.expect(t, world.transforms[0].rotation.x > 1.4 && world.transforms[0].rotation.x < 1.7)
 	testing.expect(t, world.transforms[0].rotation.y == 0 && world.transforms[0].rotation.z == 0)
 }
 
 @(test)
-test_screen_rotation_delta_corrects_inverted_screen_y :: proc(t: ^testing.T) {
+test_screen_rotation_delta_follows_pointer_direction :: proc(t: ^testing.T) {
 	clockwise := screen_rotation_delta({1, 0}, {0, 1})
 	counterclockwise := screen_rotation_delta({0, 1}, {1, 0})
-	testing.expect(t, clockwise < -1.5 && clockwise > -1.6)
-	testing.expect(t, counterclockwise > 1.5 && counterclockwise < 1.6)
+	testing.expect(t, clockwise > 1.5 && clockwise < 1.6)
+	testing.expect(t, counterclockwise < -1.5 && counterclockwise > -1.6)
+}
+
+@(test)
+test_radial_scale_factor_grows_away_from_pivot_on_every_side :: proc(t: ^testing.T) {
+	pivot := shared.Vec2{100, 100}
+	start := pivot
+	up := screen_radial_scale_factor(pivot, start, {100, 60}, 92)
+	down := screen_radial_scale_factor(pivot, start, {100, 140}, 92)
+	left := screen_radial_scale_factor(pivot, start, {60, 100}, 92)
+	right := screen_radial_scale_factor(pivot, start, {140, 100}, 92)
+	near := screen_radial_scale_factor(pivot, start, {100, 120}, 92)
+	far := screen_radial_scale_factor(pivot, start, {100, 180}, 92)
+	near_pivot_start := shared.Vec2{100, 106}
+	unchanged := screen_radial_scale_factor(pivot, near_pivot_start, near_pivot_start, 92)
+	testing.expect(t, math.abs(up - down) < 0.001)
+	testing.expect(t, math.abs(left - right) < 0.001)
+	testing.expect(t, far > near && near > 1)
+	testing.expect(t, math.abs(unchanged - 1) < 0.001)
 }
 
 @(test)

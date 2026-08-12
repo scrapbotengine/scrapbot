@@ -7,6 +7,7 @@ import "core:math"
 
 EDITOR_GIZMO_SCREEN_SIZE :: f32(92)
 EDITOR_GIZMO_HIT_RADIUS :: f32(10)
+EDITOR_GIZMO_ROTATION_DIAL_DEAD_ZONE :: f32(12)
 
 editor_gizmo_apply_pointer_wrap :: proc(state: ^ui.State, displacement: shared.Vec2) {
 	if state == nil || !state.editor_gizmo_captures_pointer { return }
@@ -369,13 +370,13 @@ editor_transform_gizmo_system :: proc(
 				state.editor_gizmo_captures_pointer = true
 				state.editor_gizmo_drag_pointer = pointer.position
 				state.editor_gizmo_drag_last_pointer = pointer.position
-				if gizmo.mode == .Rotate &&
-				   screen_length(screen_sub(pointer.position, state.editor_gizmo_origin)) < 1 {
-					state.editor_gizmo_drag_last_pointer = {
-						state.editor_gizmo_origin.x + EDITOR_GIZMO_SCREEN_SIZE,
-						state.editor_gizmo_origin.y,
-					}
-				}
+				state.editor_gizmo_drag_virtual_pointer = pointer.position
+				state.editor_gizmo_drag_visual_origin = state.editor_gizmo_origin
+				state.editor_gizmo_drag_visual_start_pointer = pointer.position
+				state.editor_gizmo_drag_waits_for_rotation_radius =
+					gizmo.mode == .Rotate &&
+					screen_length(screen_sub(pointer.position, state.editor_gizmo_origin)) <
+						EDITOR_GIZMO_ROTATION_DIAL_DEAD_ZONE
 				state.editor_gizmo_drag_angle = 0
 				state.editor_gizmo_drag_position = transform.position
 				state.editor_gizmo_drag_rotation = transform.rotation
@@ -443,6 +444,13 @@ editor_transform_gizmo_system :: proc(
 	} else {
 		state.editor_gizmo_captures_pointer =
 			true; state.editor_gizmo_hovered_handle = state.editor_gizmo_active_handle
+		pointer_delta := screen_sub(pointer.position, state.editor_gizmo_drag_last_pointer)
+		previous_virtual_pointer := state.editor_gizmo_drag_virtual_pointer
+		state.editor_gizmo_drag_virtual_pointer = screen_add(
+			state.editor_gizmo_drag_virtual_pointer,
+			pointer_delta,
+		)
+		state.editor_gizmo_drag_last_pointer = pointer.position
 		switch gizmo.mode {
 			case .Translate:
 				if position, solved := editor_gizmo_translation_position(
@@ -478,13 +486,27 @@ editor_transform_gizmo_system :: proc(
 					}
 				}
 			case .Rotate:
-				previous := screen_sub(
-					state.editor_gizmo_drag_last_pointer,
-					state.editor_gizmo_origin,
-				)
-				current := screen_sub(pointer.position, state.editor_gizmo_origin)
-				state.editor_gizmo_drag_angle += screen_rotation_delta(previous, current)
-				state.editor_gizmo_drag_last_pointer = pointer.position
+				if state.editor_gizmo_drag_waits_for_rotation_radius {
+					if screen_length(
+						   screen_sub(
+							   state.editor_gizmo_drag_virtual_pointer,
+							   state.editor_gizmo_drag_visual_origin,
+						   ),
+					   ) >=
+					   EDITOR_GIZMO_ROTATION_DIAL_DEAD_ZONE {
+						state.editor_gizmo_drag_waits_for_rotation_radius = false
+					}
+				} else {
+					previous := screen_sub(
+						previous_virtual_pointer,
+						state.editor_gizmo_drag_visual_origin,
+					)
+					current := screen_sub(
+						state.editor_gizmo_drag_virtual_pointer,
+						state.editor_gizmo_drag_visual_origin,
+					)
+					state.editor_gizmo_drag_angle += screen_rotation_delta(previous, current)
+				}
 				angle := state.editor_gizmo_drag_angle
 				rotation_snap_step := editor_gizmo_effective_snap_step(
 					state.editor_rotation_snap_step,
@@ -517,8 +539,45 @@ editor_transform_gizmo_system :: proc(
 			case .Scale:
 				delta := screen_sub(pointer.position, state.editor_gizmo_drag_pointer)
 				factors := [3]f32{1, 1, 1}
-				if first, second, ok := editor_gizmo_pair_axes(state.editor_gizmo_active_handle);
-				   ok {
+				if state.editor_gizmo_keyboard_active ||
+				   state.editor_gizmo_active_handle == .Center {
+					factor := screen_radial_scale_factor(
+						state.editor_gizmo_drag_visual_origin,
+						state.editor_gizmo_drag_visual_start_pointer,
+						state.editor_gizmo_drag_virtual_pointer,
+						state.editor_gizmo_drag_pixels,
+					)
+					scale_snap_step := editor_gizmo_effective_snap_step(
+						state.editor_scale_snap_step,
+						0.1,
+						keyboard.fine,
+					)
+					if scale_snap_step > 0 {
+						factor = editor_gizmo_snap_scale_factor(factor, scale_snap_step)
+					}
+					switch state.editor_gizmo_active_handle {
+						case .X:
+							factors[0] = factor
+						case .Y:
+							factors[1] = factor
+						case .Z:
+							factors[2] = factor
+						case .XY:
+							factors[0] = factor
+							factors[1] = factor
+						case .XZ:
+							factors[0] = factor
+							factors[2] = factor
+						case .YZ:
+							factors[1] = factor
+							factors[2] = factor
+						case .Center:
+							factors = {factor, factor, factor}
+						case .None:
+					}
+				} else if first, second, ok := editor_gizmo_pair_axes(
+					state.editor_gizmo_active_handle,
+				); ok {
 					first_amount, second_amount, solved := screen_solve_basis(
 						delta,
 						state.editor_gizmo_drag_screen_axes[first],
@@ -1169,17 +1228,30 @@ screen_point_segment_distance :: proc(point, a, b: shared.Vec2) -> f32 {ab := sc
 	closest := shared.Vec2{a.x + ab.x * t, a.y + ab.y * t}
 	return screen_length(screen_sub(point, closest))}
 screen_sub :: proc(a, b: shared.Vec2) -> shared.Vec2 { return {a.x - b.x, a.y - b.y} }
+screen_add :: proc(a, b: shared.Vec2) -> shared.Vec2 { return {a.x + b.x, a.y + b.y} }
 screen_length :: proc(value: shared.Vec2) -> f32 {return math.sqrt(
 		value.x * value.x + value.y * value.y,
 	)}
 screen_rotation_delta :: proc(previous, current: shared.Vec2) -> f32 {
-	// Screen Y increases downward, opposite the world/Euler rotation convention.
-	return(
-		-f32(
-			math.atan2(
-				previous.x * current.y - previous.y * current.x,
-				previous.x * current.x + previous.y * current.y,
-			),
-		) \
+	// Screen-space clockwise motion is positive because Y points down. The
+	// rotation axis already carries its world/view orientation, so negating this
+	// angle would invert the visible gesture a second time.
+	return f32(
+		math.atan2(
+			previous.x * current.y - previous.y * current.x,
+			previous.x * current.x + previous.y * current.y,
+		),
 	)
+}
+
+screen_radial_scale_factor :: proc(
+	pivot, start, current: shared.Vec2,
+	fallback_pixels: f32,
+) -> f32 {
+	start_radius := screen_length(screen_sub(start, pivot))
+	current_radius := screen_length(screen_sub(current, pivot))
+	if start_radius < EDITOR_GIZMO_ROTATION_DIAL_DEAD_ZONE {
+		return max(1 + (current_radius - start_radius) / max(fallback_pixels, 1), 0.01)
+	}
+	return max(current_radius / start_radius, 0.01)
 }
