@@ -10,8 +10,6 @@ import sdl "vendor:sdl3"
 runtime_window: ^sdl.Window
 runtime_window_ready: bool
 runtime_window_hidden: bool
-runtime_editor_gizmo_mode_requested: bool
-runtime_editor_gizmo_mode: shared.Editor_Gizmo_Mode
 runtime_wheel_y: f32
 runtime_wheel_x: f32
 runtime_pointer_delta: shared.Vec2
@@ -34,7 +32,7 @@ runtime_move_cursor: ^sdl.Cursor
 runtime_not_allowed_cursor: ^sdl.Cursor
 runtime_text_bytes: [512]u8
 runtime_text_length: int
-runtime_text_navigation: Runtime_Text_Input
+runtime_text_navigation: shared.Text_Input
 
 RUNTIME_WINDOW_USABLE_FRACTION :: f32(0.9)
 
@@ -52,33 +50,6 @@ Scene_Camera_Key_State :: struct {
 	left, right: bool,
 	up, down: bool,
 	fast: bool,
-}
-
-Runtime_Text_Input :: struct {
-	text: string,
-	left, right, up, down, home, end: bool,
-	backspace, delete_forward: bool,
-	tab, shift, fine, enter, escape, select_all, save, undo, redo: bool,
-	editor_toggle, run_stop, pause_step: bool,
-	toggle_left_sidebar, toggle_right_sidebar: bool,
-	duplicate_entity, delete_entity: bool,
-	focus_selected: bool,
-	transform_translate, transform_rotate, transform_scale: bool,
-	transform_axis_x, transform_axis_y, transform_axis_z: bool,
-}
-
-Editor_Shortcut_Action :: enum {
-	Toggle_Editor,
-	Toggle_Left_Sidebar,
-	Toggle_Right_Sidebar,
-	Run_Stop,
-	Pause_Step,
-	Save,
-	Undo,
-	Redo,
-	Duplicate_Entity,
-	Delete_Entity,
-	Focus_Selected,
 }
 
 Runtime_Pointer_Cursor :: enum {
@@ -292,7 +263,6 @@ close_runtime_window :: proc() {
 		runtime_window_ready = false
 	}
 	runtime_window_hidden = false
-	runtime_editor_gizmo_mode_requested = false
 	runtime_scene_camera_look_active = false
 	runtime_scene_camera_orbit_active = false
 	runtime_scene_camera_capture_warmup = 0
@@ -664,6 +634,11 @@ input_pointer_button_from_sdl :: proc "contextless" (
 	return .Primary, false
 }
 
+keyboard_state_has :: proc(keyboard: [^]bool, key_count: int, scancode: sdl.Scancode) -> bool {
+	index := int(scancode)
+	return keyboard != nil && index >= 0 && index < key_count && keyboard[index]
+}
+
 runtime_input_frame :: proc() -> shared.Input_Frame {
 	if runtime_window == nil || runtime_window_hidden {
 		return {}
@@ -716,117 +691,10 @@ runtime_input_frame :: proc() -> shared.Input_Frame {
 	return result
 }
 
-runtime_text_input :: proc() -> Runtime_Text_Input {
+runtime_text_input :: proc() -> shared.Text_Input {
 	result := runtime_text_navigation
 	result.text = string(runtime_text_bytes[:runtime_text_length])
 	return result
-}
-
-consume_editor_gizmo_mode :: proc() -> (shared.Editor_Gizmo_Mode, bool) {
-	mode, requested := runtime_editor_gizmo_mode, runtime_editor_gizmo_mode_requested
-	runtime_editor_gizmo_mode_requested = false
-	return mode, requested
-}
-
-editor_shortcut_action :: proc(
-	scancode: sdl.Scancode,
-	modifiers: sdl.Keymod,
-	repeat: bool,
-) -> (
-	Editor_Shortcut_Action,
-	bool,
-) {
-	shortcut :=
-		.LCTRL in modifiers || .RCTRL in modifiers || .LGUI in modifiers || .RGUI in modifiers
-	alt := .LALT in modifiers || .RALT in modifiers
-	shift := .LSHIFT in modifiers || .RSHIFT in modifiers
-	if repeat {
-		return .Toggle_Editor, false
-	}
-	if !shortcut && !alt {
-		#partial switch scancode {
-			case .BACKSPACE, .DELETE:
-				return .Delete_Entity, true
-			case .F:
-				return .Focus_Selected, true
-		}
-		return .Toggle_Editor, false
-	}
-	if !shortcut {
-		return .Toggle_Editor, false
-	}
-	#partial switch scancode {
-		case .E:
-			return .Toggle_Editor, true
-		case .B:
-			if alt {
-				return .Toggle_Right_Sidebar, true
-			}
-			return .Toggle_Left_Sidebar, true
-		case .R:
-			return .Run_Stop, true
-		case .T:
-			return .Pause_Step, true
-		case .S:
-			return .Save, true
-		case .Z:
-			if shift {
-				return .Redo, true
-			}
-			return .Undo, true
-		case .D:
-			return .Duplicate_Entity, true
-	}
-	return .Toggle_Editor, false
-}
-
-apply_editor_shortcut_action :: proc(input: ^Runtime_Text_Input, action: Editor_Shortcut_Action) {
-	if input == nil { return }
-	switch action {
-		case .Toggle_Editor:
-			input.editor_toggle = true
-		case .Toggle_Left_Sidebar:
-			input.toggle_left_sidebar = true
-		case .Toggle_Right_Sidebar:
-			input.toggle_right_sidebar = true
-		case .Run_Stop:
-			input.run_stop = true
-		case .Pause_Step:
-			input.pause_step = true
-		case .Save:
-			input.save = true
-		case .Undo:
-			input.undo = true
-		case .Redo:
-			input.redo = true
-		case .Duplicate_Entity:
-			input.duplicate_entity = true
-		case .Delete_Entity:
-			input.delete_entity = true
-		case .Focus_Selected:
-			input.focus_selected = true
-	}
-}
-
-editor_gizmo_mode_shortcut :: proc(
-	scancode: sdl.Scancode,
-	modifiers: sdl.Keymod,
-	repeat: bool,
-) -> (
-	shared.Editor_Gizmo_Mode,
-	bool,
-) {
-	shortcut :=
-		.LCTRL in modifiers || .RCTRL in modifiers || .LGUI in modifiers || .RGUI in modifiers
-	if repeat || shortcut { return .Translate, false }
-	#partial switch scancode {
-		case .W:
-			return .Translate, true
-		case .E:
-			return .Rotate, true
-		case:
-			return .Translate, false
-	}
 }
 
 scene_camera_input_from_state :: proc(
@@ -871,12 +739,8 @@ scene_camera_capture_delta :: proc(delta: shared.Vec2, warmup_samples: ^int) -> 
 	return delta
 }
 
-keyboard_state_has :: proc(keyboard: [^]bool, key_count: int, scancode: sdl.Scancode) -> bool {
-	index := int(scancode)
-	return keyboard != nil && index >= 0 && index < key_count && keyboard[index]
-}
-
 runtime_scene_camera_input :: proc(
+	input: shared.Input_Frame,
 	enabled: bool,
 	viewport_x, viewport_y, viewport_width, viewport_height: f32,
 	allow_navigation: bool = true,
@@ -892,36 +756,36 @@ runtime_scene_camera_input :: proc(
 		return {}
 	}
 
-	pointer := runtime_pointer_state_in_pixels()
+	pointer := input.pointer
 	inside_viewport :=
 		pointer.available &&
-		pointer.x >= viewport_x &&
-		pointer.y >= viewport_y &&
-		pointer.x < viewport_x + viewport_width &&
-		pointer.y < viewport_y + viewport_height
+		pointer.position.x >= viewport_x &&
+		pointer.position.y >= viewport_y &&
+		pointer.position.x < viewport_x + viewport_width &&
+		pointer.position.y < viewport_y + viewport_height
 	dolly := f32(0)
 	if allow_navigation && inside_viewport {
-		dolly = pointer.wheel_y
+		dolly = pointer.wheel.y
 	}
+	secondary_down, _, _ := shared.input_pointer_button_state(pointer, .Secondary)
+	middle_down, _, _ := shared.input_pointer_button_state(pointer, .Middle)
 	if !runtime_scene_camera_look_active && !runtime_scene_camera_orbit_active {
-		if !allow_navigation ||
-		   !inside_viewport ||
-		   (!pointer.secondary_down && !pointer.middle_down) {
+		if !allow_navigation || !inside_viewport || (!secondary_down && !middle_down) {
 			return {dolly = dolly}
 		}
 		if !sdl.SetWindowRelativeMouseMode(runtime_window, true) {
 			return {}
 		}
-		runtime_scene_camera_orbit_active = pointer.middle_down
+		runtime_scene_camera_orbit_active = middle_down
 		runtime_scene_camera_look_active = !runtime_scene_camera_orbit_active
 		runtime_scene_camera_capture_warmup = SCENE_CAMERA_CAPTURE_WARMUP_SAMPLES
 	}
 
 	delta_x, delta_y: f32
-	buttons := sdl.GetRelativeMouseState(&delta_x, &delta_y)
+	_ = sdl.GetRelativeMouseState(&delta_x, &delta_y)
 	required_button_down :=
-		(runtime_scene_camera_look_active && .RIGHT in buttons) ||
-		(runtime_scene_camera_orbit_active && .MIDDLE in buttons)
+		(runtime_scene_camera_look_active && secondary_down) ||
+		(runtime_scene_camera_orbit_active && middle_down)
 	if !required_button_down {
 		_ = sdl.SetWindowRelativeMouseMode(runtime_window, false)
 		runtime_scene_camera_look_active = false
@@ -930,24 +794,21 @@ runtime_scene_camera_input :: proc(
 		return {}
 	}
 
-	key_count: c.int
-	keyboard := sdl.GetKeyboardState(&key_count)
+	keyboard := input.keyboard
 	keys := Scene_Camera_Key_State {
-		forward = keyboard_state_has(keyboard, int(key_count), .W),
-		backward = keyboard_state_has(keyboard, int(key_count), .S),
-		left = keyboard_state_has(keyboard, int(key_count), .A),
-		right = keyboard_state_has(keyboard, int(key_count), .D),
-		up = keyboard_state_has(keyboard, int(key_count), .SPACE),
-		down = keyboard_state_has(
-			keyboard,
-			int(key_count),
-			.LCTRL,
-		) || keyboard_state_has(keyboard, int(key_count), .RCTRL),
-		fast = keyboard_state_has(
-			keyboard,
-			int(key_count),
-			.LSHIFT,
-		) || keyboard_state_has(keyboard, int(key_count), .RSHIFT),
+		forward = shared.input_button_has(keyboard.buttons.down, int(shared.Input_Key.W)),
+		backward = shared.input_button_has(keyboard.buttons.down, int(shared.Input_Key.S)),
+		left = shared.input_button_has(keyboard.buttons.down, int(shared.Input_Key.A)),
+		right = shared.input_button_has(keyboard.buttons.down, int(shared.Input_Key.D)),
+		up = shared.input_button_has(keyboard.buttons.down, int(shared.Input_Key.Space)),
+		down = shared.input_button_has(
+			keyboard.buttons.down,
+			int(shared.Input_Key.Left_Control),
+		) || shared.input_button_has(keyboard.buttons.down, int(shared.Input_Key.Right_Control)),
+		fast = shared.input_button_has(
+			keyboard.buttons.down,
+			int(shared.Input_Key.Left_Shift),
+		) || shared.input_button_has(keyboard.buttons.down, int(shared.Input_Key.Right_Shift)),
 	}
 	look_delta := scene_camera_capture_delta(
 		{delta_x, delta_y},
@@ -971,20 +832,11 @@ runtime_window_pixel_size :: proc() -> (width, height: int, ok: bool) {
 	return int(w), int(h), true
 }
 
-runtime_text_key :: proc(
-	input: ^Runtime_Text_Input,
-	scancode: sdl.Scancode,
-	modifiers: sdl.Keymod,
-	repeat: bool = false,
-) {
+runtime_text_key :: proc(input: ^shared.Text_Input, scancode: sdl.Scancode, repeat: bool = false) {
 	if input == nil { return }
-	shortcut :=
-		.LCTRL in modifiers || .RCTRL in modifiers || .LGUI in modifiers || .RGUI in modifiers
-	input.shift = .LSHIFT in modifiers || .RSHIFT in modifiers
-	input.fine =
-		.LCTRL in modifiers || .RCTRL in modifiers || .LGUI in modifiers || .RGUI in modifiers
-	if action, requested := editor_shortcut_action(scancode, modifiers, repeat); requested {
-		apply_editor_shortcut_action(input, action)
+	if repeat &&
+	   (scancode == .TAB || scancode == .RETURN || scancode == .KP_ENTER || scancode == .ESCAPE) {
+		return
 	}
 	#partial switch scancode {
 		case .LEFT:
@@ -1008,21 +860,7 @@ runtime_text_key :: proc(
 		case .RETURN, .KP_ENTER:
 			input.enter = true
 		case .ESCAPE:
-			if !shortcut { input.escape = true }
-		case .A:
-			if shortcut { input.select_all = true }
-		case .G:
-			if !shortcut && !repeat { input.transform_translate = true }
-		case .R:
-			if !shortcut && !repeat { input.transform_rotate = true }
-		case .S:
-			if !shortcut && !repeat { input.transform_scale = true }
-		case .X:
-			if !shortcut && !repeat { input.transform_axis_x = true }
-		case .Y:
-			if !shortcut && !repeat { input.transform_axis_y = true }
-		case .Z:
-			if !shortcut && !repeat { input.transform_axis_z = true }
+			input.escape = true
 	}
 }
 
@@ -1041,10 +879,6 @@ pump_runtime_window_events :: proc() -> bool {
 	runtime_pointer_released = {}
 	runtime_text_length = 0
 	runtime_text_navigation = {}
-	modifiers := sdl.GetModState()
-	runtime_text_navigation.shift = .LSHIFT in modifiers || .RSHIFT in modifiers
-	runtime_text_navigation.fine =
-		.LCTRL in modifiers || .RCTRL in modifiers || .LGUI in modifiers || .RGUI in modifiers
 	event: sdl.Event
 	for sdl.PollEvent(&event) {
 		if event.type == .QUIT || event.type == .WINDOW_CLOSE_REQUESTED {
@@ -1056,12 +890,6 @@ pump_runtime_window_events :: proc() -> bool {
 					shared.input_button_set(&runtime_key_pressed, int(key))
 				}
 			}
-			if mode, requested := editor_gizmo_mode_shortcut(
-				event.key.scancode,
-				event.key.mod,
-				event.key.repeat,
-			);
-			requested { runtime_editor_gizmo_mode = mode; runtime_editor_gizmo_mode_requested = true }
 		}
 		if event.type == .KEY_UP {
 			if key, ok := input_key_from_scancode(event.key.scancode); ok {
@@ -1069,12 +897,7 @@ pump_runtime_window_events :: proc() -> bool {
 			}
 		}
 		if event.type == .KEY_DOWN {
-			runtime_text_key(
-				&runtime_text_navigation,
-				event.key.scancode,
-				event.key.mod,
-				event.key.repeat,
-			)
+			runtime_text_key(&runtime_text_navigation, event.key.scancode, event.key.repeat)
 		}
 		if event.type == .TEXT_INPUT && event.text.text != nil {
 			text, err := strings.clone_from_cstring(event.text.text)

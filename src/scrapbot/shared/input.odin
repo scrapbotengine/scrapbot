@@ -110,6 +110,15 @@ Input_Frame :: struct {
 	pointer: Pointer_Input_Component,
 }
 
+// Text composition and repeated text-navigation edges remain outside the ECS
+// gameplay snapshot. They are sampled beside Input_Frame and routed only to UI.
+Text_Input :: struct {
+	text: string,
+	left, right, up, down, home, end: bool,
+	backspace, delete_forward: bool,
+	tab, enter, escape: bool,
+}
+
 input_button_set :: proc "contextless" (buttons: ^[2]u64, index: int) {
 	if buttons == nil || index < 0 || index >= 128 {
 		return

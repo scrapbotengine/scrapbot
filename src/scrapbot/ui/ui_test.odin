@@ -3198,6 +3198,13 @@ test_panel_hosts_reusable_icon_button_actions :: proc(t: ^testing.T) {
 		reconcile(state, &world, 240, 100, pointer, resource_registry = &registry) == "",
 	)
 	testing.expect(t, !world.ui_panels[0].collapsed)
+	testing.expect(t, !world.ui_states[world.entities[1].ui_state_index].activated)
+	testing.expect(t, len(ui_events(state)) == 0)
+	pointer.primary_down = false
+	testing.expect(
+		t,
+		reconcile(state, &world, 240, 100, pointer, resource_registry = &registry) == "",
+	)
 	testing.expect(t, world.ui_states[world.entities[1].ui_state_index].activated)
 	events := ui_events(state)
 	testing.expect(t, len(events) == 1)
@@ -4050,8 +4057,8 @@ test_pointer_states_belong_to_elements_and_buttons_consume_them :: proc(t: ^test
 		"",
 	)
 	testing.expect(t, state.nodes[button].hovered && state.nodes[button].active)
-	testing.expect(t, button_state.hovered && button_state.active && button_state.activated)
-	testing.expect(t, button_state.activation_revision == 1)
+	testing.expect(t, button_state.hovered && button_state.active && !button_state.activated)
+	testing.expect(t, button_state.activation_revision == 0)
 	testing.expect(t, state.paint[0].color == shared.Vec4{0.05, 0.1, 0.15, 1})
 
 	testing.expect(
@@ -4073,6 +4080,72 @@ test_pointer_states_belong_to_elements_and_buttons_consume_them :: proc(t: ^test
 		reconcile(state, &world, 1280, 720, {position = {500, 500}, available = true}) == "",
 	)
 	testing.expect(t, !state.nodes[button].hovered && !state.nodes[button].active)
+	testing.expect(t, button_state.cancelled)
+	testing.expect(t, button_state.cancel_revision == 1)
+	testing.expect(t, button_state.activation_revision == 0)
+
+	testing.expect(
+		t,
+		reconcile(
+			state,
+			&world,
+			1280,
+			720,
+			{position = {30, 30}, primary_down = true, available = true},
+		) ==
+		"",
+	)
+	testing.expect(
+		t,
+		reconcile(state, &world, 1280, 720, {position = {30, 30}, available = true}) == "",
+	)
+	testing.expect(t, button_state.activated)
+	testing.expect(t, button_state.activation_revision == 1)
+}
+
+@(test)
+test_world_replacement_does_not_rearm_a_held_pointer_on_a_button :: proc(t: ^testing.T) {
+	button_id := ui_test_id("Replacement Button")
+	button_entity := shared.Scene_Entity {
+		id = button_id,
+		name = "Replacement Button",
+		has_ui_layout = true,
+		ui_layout = {position = {20, 20}, size = {100, 40}},
+		has_ui_button = true,
+		ui_button = {text = "SWITCH"},
+	}
+	first_scene := shared.Scene{}
+	defer delete(first_scene.entities)
+	append(&first_scene.entities, button_entity)
+	second_scene := shared.Scene{}
+	defer delete(second_scene.entities)
+	append(&second_scene.entities, button_entity)
+	first_world := ecs.build_world(&first_scene)
+	defer ecs.destroy_world(&first_world)
+	second_world := ecs.build_world(&second_scene)
+	defer ecs.destroy_world(&second_world)
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	pointer := Pointer_Input {
+		position = {40, 40},
+		primary_down = true,
+		available = true,
+	}
+	testing.expect(t, reconcile(state, &first_world, 1280, 720, pointer) == "")
+	first_state := first_world.ui_states[first_world.entities[0].ui_state_index]
+	testing.expect(t, first_state.active && !first_state.activated)
+	testing.expect(t, reconcile(state, &second_world, 1280, 720, pointer) == "")
+	second_state := second_world.ui_states[second_world.entities[0].ui_state_index]
+	testing.expect(t, !second_state.active && !second_state.activated)
+	pointer.primary_down = false
+	testing.expect(t, reconcile(state, &second_world, 1280, 720, pointer) == "")
+	second_state = second_world.ui_states[second_world.entities[0].ui_state_index]
+	testing.expect(t, !second_state.activated && !second_state.cancelled)
+	testing.expect(t, second_state.activation_revision == 0)
+	testing.expect(t, second_state.cancel_revision == 0)
+	testing.expect(t, len(ui_events(state)) == 0)
 }
 
 @(test)
@@ -4550,12 +4623,13 @@ test_editor_gizmo_toolbar_controls_space_and_pivot :: proc(t: ^testing.T) {
 			) ==
 			"",
 		)
-		testing.expect(t, state.editor_gizmo_pivot == .Center)
+		testing.expect(t, state.editor_gizmo_pivot == .Origin)
 		testing.expect(t, state.editor_has_selection)
 		testing.expect(
 			t,
 			reconcile(state, &world, 1280, 720, {position = button_point, available = true}) == "",
 		)
+		testing.expect(t, state.editor_gizmo_pivot == .Center)
 		testing.expect(t, state.editor_has_selection)
 		editor_set_gizmo_pivot(state, .Origin)
 	}
@@ -5052,7 +5126,7 @@ test_editor_transport_buttons_preserve_unsaved_authoring_across_playback :: proc
 	state.editor_snapshot_valid = false
 	testing.expect(
 		t,
-		reconcile(state, &world, 1280, 720, {}, 0, 0, 1.0 / 60.0, {save = true}) == "",
+		reconcile(state, &world, 1280, 720, {}, 0, 0, 1.0 / 60.0, {actions = {.Save}}) == "",
 	)
 	testing.expect(t, consume_scene_save_request(state))
 	complete_scene_save(state, true)
@@ -5077,41 +5151,41 @@ test_editor_command_shortcuts_toggle_shell_and_drive_transport :: proc(t: ^testi
 
 	testing.expect(
 		t,
-		reconcile(state, &world, 1280, 720, {}, 0, 0, 1.0 / 60.0, {run_stop = true}) == "",
+		reconcile(state, &world, 1280, 720, {}, 0, 0, 1.0 / 60.0, {actions = {.Run_Stop}}) == "",
 	)
 	testing.expect(t, state.editor_simulation_stopped)
 	testing.expect(t, consume_playback_stop_request(state))
 	testing.expect(
 		t,
-		reconcile(state, &world, 1280, 720, {}, 0, 0, 1.0 / 60.0, {run_stop = true}) == "",
+		reconcile(state, &world, 1280, 720, {}, 0, 0, 1.0 / 60.0, {actions = {.Run_Stop}}) == "",
 	)
 	testing.expect(t, state.editor_simulation_playing)
 	testing.expect(t, consume_playback_begin_request(state))
 
 	testing.expect(
 		t,
-		reconcile(state, &world, 1280, 720, {}, 0, 0, 1.0 / 60.0, {pause_step = true}) == "",
+		reconcile(state, &world, 1280, 720, {}, 0, 0, 1.0 / 60.0, {actions = {.Pause_Step}}) == "",
 	)
 	testing.expect(t, !state.editor_simulation_playing && !state.editor_simulation_stopped)
 	_, run := consume_simulation_delta(state, 0.25)
 	testing.expect(t, !run)
 	testing.expect(
 		t,
-		reconcile(state, &world, 1280, 720, {}, 0, 0, 1.0 / 60.0, {pause_step = true}) == "",
+		reconcile(state, &world, 1280, 720, {}, 0, 0, 1.0 / 60.0, {actions = {.Pause_Step}}) == "",
 	)
 	delta: f32
 	delta, run = consume_simulation_delta(state, 0.25)
 	testing.expect(t, run && delta == f32(1.0 / 60.0))
 	testing.expect(
 		t,
-		reconcile(state, &world, 1280, 720, {}, 0, 0, 1.0 / 60.0, {run_stop = true}) == "",
+		reconcile(state, &world, 1280, 720, {}, 0, 0, 1.0 / 60.0, {actions = {.Run_Stop}}) == "",
 	)
 	testing.expect(t, state.editor_simulation_playing)
 	testing.expect(t, !state.editor_simulation_stopped)
 	testing.expect(t, !consume_playback_begin_request(state))
 	testing.expect(
 		t,
-		reconcile(state, &world, 1280, 720, {}, 0, 0, 1.0 / 60.0, {pause_step = true}) == "",
+		reconcile(state, &world, 1280, 720, {}, 0, 0, 1.0 / 60.0, {actions = {.Pause_Step}}) == "",
 	)
 	testing.expect(t, !state.editor_simulation_playing && !state.editor_simulation_stopped)
 
@@ -5119,27 +5193,29 @@ test_editor_command_shortcuts_toggle_shell_and_drive_transport :: proc(t: ^testi
 	state.focused_input_editor = false
 	testing.expect(
 		t,
-		reconcile(state, &world, 1280, 720, {}, 0, 0, 1.0 / 60.0, {run_stop = true}) == "",
+		reconcile(state, &world, 1280, 720, {}, 0, 0, 1.0 / 60.0, {actions = {.Run_Stop}}) == "",
 	)
 	testing.expect(t, !state.editor_simulation_playing && !state.editor_simulation_stopped)
 	state.has_focused_input = false
 	state.editor_scene_camera_captures_input = true
 	testing.expect(
 		t,
-		reconcile(state, &world, 1280, 720, {}, 0, 0, 1.0 / 60.0, {run_stop = true}) == "",
+		reconcile(state, &world, 1280, 720, {}, 0, 0, 1.0 / 60.0, {actions = {.Run_Stop}}) == "",
 	)
 	testing.expect(t, !state.editor_simulation_playing && !state.editor_simulation_stopped)
 	state.editor_scene_camera_captures_input = false
 
 	testing.expect(
 		t,
-		reconcile(state, &world, 1280, 720, {}, 0, 0, 1.0 / 60.0, {editor_toggle = true}) == "",
+		reconcile(state, &world, 1280, 720, {}, 0, 0, 1.0 / 60.0, {actions = {.Toggle_Editor}}) ==
+		"",
 	)
 	testing.expect(t, !state.editor_visible)
 	testing.expect(t, state.editor_simulation_playing)
 	testing.expect(
 		t,
-		reconcile(state, &world, 1280, 720, {}, 0, 0, 1.0 / 60.0, {editor_toggle = true}) == "",
+		reconcile(state, &world, 1280, 720, {}, 0, 0, 1.0 / 60.0, {actions = {.Toggle_Editor}}) ==
+		"",
 	)
 	testing.expect(t, state.editor_visible)
 	testing.expect(t, !state.editor_simulation_playing && !state.editor_simulation_stopped)
@@ -5185,14 +5261,16 @@ test_editor_toggle_pauses_on_open_and_resumes_on_close :: proc(t: ^testing.T) {
 	testing.expect(t, state.editor_simulation_playing)
 	testing.expect(
 		t,
-		reconcile(state, &world, 1280, 720, {}, 0, 0, 1.0 / 60.0, {editor_toggle = true}) == "",
+		reconcile(state, &world, 1280, 720, {}, 0, 0, 1.0 / 60.0, {actions = {.Toggle_Editor}}) ==
+		"",
 	)
 	testing.expect(t, state.editor_visible)
 	testing.expect(t, !state.editor_simulation_playing)
 	testing.expect(t, !state.editor_simulation_stopped)
 	testing.expect(
 		t,
-		reconcile(state, &world, 1280, 720, {}, 0, 0, 1.0 / 60.0, {editor_toggle = true}) == "",
+		reconcile(state, &world, 1280, 720, {}, 0, 0, 1.0 / 60.0, {actions = {.Toggle_Editor}}) ==
+		"",
 	)
 	testing.expect(t, !state.editor_visible)
 	testing.expect(t, state.editor_simulation_playing)
@@ -5252,7 +5330,17 @@ test_editor_sidebar_shortcuts_toggle_public_workspace_panes :: proc(t: ^testing.
 
 	testing.expect(
 		t,
-		reconcile(state, &world, 1280, 720, {}, 0, 0, 1.0 / 60.0, {toggle_left_sidebar = true}) ==
+		reconcile(
+			state,
+			&world,
+			1280,
+			720,
+			{},
+			0,
+			0,
+			1.0 / 60.0,
+			{actions = {.Toggle_Left_Sidebar}},
+		) ==
 		"",
 	)
 	testing.expect(t, !state.editor_left_sidebar_visible)
@@ -5261,7 +5349,17 @@ test_editor_sidebar_shortcuts_toggle_public_workspace_panes :: proc(t: ^testing.
 
 	testing.expect(
 		t,
-		reconcile(state, &world, 1280, 720, {}, 0, 0, 1.0 / 60.0, {toggle_right_sidebar = true}) ==
+		reconcile(
+			state,
+			&world,
+			1280,
+			720,
+			{},
+			0,
+			0,
+			1.0 / 60.0,
+			{actions = {.Toggle_Right_Sidebar}},
+		) ==
 		"",
 	)
 	testing.expect(t, !state.editor_right_sidebar_visible)
@@ -5281,7 +5379,7 @@ test_editor_sidebar_shortcuts_toggle_public_workspace_panes :: proc(t: ^testing.
 			0,
 			0,
 			1.0 / 60.0,
-			{toggle_left_sidebar = true, toggle_right_sidebar = true},
+			{actions = {.Toggle_Left_Sidebar, .Toggle_Right_Sidebar}},
 		) ==
 		"",
 	)
@@ -5712,15 +5810,15 @@ test_editor_entity_shortcuts_share_authoring_actions_and_select_duplicate :: pro
 	state.editor_visible = true
 	state.editor_simulation_stopped = true
 	testing.expect(t, editor_select_entity(state, &world, world.entities[0].id, 0))
-	editor_ui_handle_shortcuts(state, &world, {focus_selected = true})
+	editor_ui_handle_shortcuts(state, &world, {actions = {.Focus_Selected}})
 	testing.expect(t, consume_editor_focus_selected_request(state))
 	testing.expect(t, !consume_editor_focus_selected_request(state))
 	state.has_focused_input = true
-	editor_ui_handle_shortcuts(state, &world, {focus_selected = true})
+	editor_ui_handle_shortcuts(state, &world, {actions = {.Focus_Selected}})
 	testing.expect(t, !consume_editor_focus_selected_request(state))
 	state.has_focused_input = false
 
-	editor_ui_handle_shortcuts(state, &world, {duplicate_entity = true})
+	editor_ui_handle_shortcuts(state, &world, {actions = {.Duplicate_Entity}})
 	testing.expect(t, state.editor_has_selection)
 	duplicate := state.editor_selected_entity
 	testing.expect(t, duplicate != world.entities[0].id)
@@ -5734,10 +5832,10 @@ test_editor_entity_shortcuts_share_authoring_actions_and_select_duplicate :: pro
 	)
 
 	state.has_focused_input = true
-	editor_ui_handle_shortcuts(state, &world, {delete_entity = true})
+	editor_ui_handle_shortcuts(state, &world, {actions = {.Delete_Entity}})
 	testing.expect(t, world.entities[duplicate_index].alive)
 	state.has_focused_input = false
-	editor_ui_handle_shortcuts(state, &world, {delete_entity = true})
+	editor_ui_handle_shortcuts(state, &world, {actions = {.Delete_Entity}})
 	testing.expect(t, !world.entities[duplicate_index].alive)
 	testing.expect(t, !state.editor_has_selection)
 
@@ -5745,7 +5843,7 @@ test_editor_entity_shortcuts_share_authoring_actions_and_select_duplicate :: pro
 	testing.expect(t, editor_select_entity(state, &world, world.entities[0].id, 0))
 	state.editor_simulation_playing = true
 	state.editor_simulation_stopped = false
-	editor_ui_handle_shortcuts(state, &world, {duplicate_entity = true})
+	editor_ui_handle_shortcuts(state, &world, {actions = {.Duplicate_Entity}})
 	testing.expect(t, state.editor_has_selection)
 	runtime_duplicate := state.editor_selected_entity
 	runtime_duplicate_index := int(runtime_duplicate.index)
@@ -5758,7 +5856,7 @@ test_editor_entity_shortcuts_share_authoring_actions_and_select_duplicate :: pro
 		state.editor_history_count == stopped_history_count,
 	)
 	state.editor_simulation_playing = false
-	editor_ui_handle_shortcuts(state, &world, {delete_entity = true})
+	editor_ui_handle_shortcuts(state, &world, {actions = {.Delete_Entity}})
 	testing.expect(t, !world.entities[runtime_duplicate_index].alive)
 	testing.expect(t, !state.editor_has_selection)
 	testing.expect(t, state.editor_history_count == stopped_history_count)
@@ -8010,12 +8108,12 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 			}
 			testing.expect(
 				t,
-				reconcile(state, &world, 1280, 720, {}, 1280, 300, 0, {undo = true}) == "",
+				reconcile(state, &world, 1280, 720, {}, 1280, 300, 0, {actions = {.Undo}}) == "",
 			)
 			testing.expect(t, math.abs(world.transforms[0].position.x - stepped) < 0.001)
 			testing.expect(
 				t,
-				reconcile(state, &world, 1280, 720, {}, 1280, 300, 0, {redo = true}) == "",
+				reconcile(state, &world, 1280, 720, {}, 1280, 300, 0, {actions = {.Redo}}) == "",
 			)
 			testing.expect(t, math.abs(world.transforms[0].position.x - scrubbed) < 0.001)
 		}
@@ -8048,7 +8146,7 @@ test_component_inspector_formats_live_fields_and_scrolls_independently :: proc(t
 		state.editor_visible = false
 		testing.expect(
 			t,
-			reconcile(state, &world, 1280, 720, {}, 1280, 300, 0, {undo = true}) == "",
+			reconcile(state, &world, 1280, 720, {}, 1280, 300, 0, {actions = {.Undo}}) == "",
 		)
 		testing.expect(t, world.transforms[0].position.x == before_hidden_undo)
 		state.editor_visible = true

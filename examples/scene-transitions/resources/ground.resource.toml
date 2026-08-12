@@ -1,0 +1,9 @@
+id = "b5100000-0000-4000-8000-000000000003"
+type = "scrapbot.material"
+name = "Transition Ground"
+
+[material]
+base_color = [0.035, 0.04, 0.055, 1]
+emissive = [0, 0, 0]
+metallic = 0
+roughness = 0.9

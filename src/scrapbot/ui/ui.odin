@@ -43,7 +43,9 @@ Rect :: struct {
 Pointer_Input :: struct {
 	position: shared.Vec2,
 	wheel_y: f32,
-	primary_down, available: bool,
+	primary_down, primary_pressed, primary_released: bool,
+	edges_authoritative: bool,
+	available: bool,
 }
 Pointer_Cursor :: enum {
 	Default,
@@ -58,13 +60,56 @@ Keyboard_Input :: struct {
 	text: string,
 	left, right, up, down, home, end: bool,
 	backspace, delete_forward: bool,
-	tab, shift, fine, enter, escape, select_all, save, undo, redo: bool,
-	editor_toggle, run_stop, pause_step: bool,
-	toggle_left_sidebar, toggle_right_sidebar: bool,
-	duplicate_entity, delete_entity: bool,
-	focus_selected: bool,
-	transform_translate, transform_rotate, transform_scale: bool,
-	transform_axis_x, transform_axis_y, transform_axis_z: bool,
+	tab, shift, fine, enter, escape, select_all: bool,
+	actions: Editor_Actions,
+}
+
+Editor_Action :: enum {
+	Toggle_Editor,
+	Toggle_Left_Sidebar,
+	Toggle_Right_Sidebar,
+	Run_Stop,
+	Pause_Step,
+	Save,
+	Undo,
+	Redo,
+	Duplicate_Entity,
+	Delete_Entity,
+	Focus_Selected,
+	Gizmo_Translate,
+	Gizmo_Rotate,
+	Transform_Translate,
+	Transform_Rotate,
+	Transform_Scale,
+	Transform_Axis_X,
+	Transform_Axis_Y,
+	Transform_Axis_Z,
+}
+
+Editor_Actions :: bit_set[Editor_Action]
+
+editor_action_requested :: proc(input: Keyboard_Input, action: Editor_Action) -> bool {
+	return action in input.actions
+}
+
+pointer_press_started :: proc(pointer: Pointer_Input, previous_down: bool) -> bool {
+	if !pointer.available {
+		return false
+	}
+	if pointer.edges_authoritative {
+		return pointer.primary_pressed
+	}
+	return pointer.primary_down && !previous_down
+}
+
+pointer_press_released :: proc(pointer: Pointer_Input, previous_down: bool) -> bool {
+	if !pointer.available {
+		return false
+	}
+	if pointer.edges_authoritative {
+		return pointer.primary_released
+	}
+	return !pointer.primary_down && previous_down
 }
 
 Interaction_Event_Kind :: enum {
@@ -1282,13 +1327,12 @@ sync_ui_structure :: proc(state: ^State, world: ^shared.World) -> string {
 	if world_changed {
 		state.node_count = 0
 		state.ui_world_uuid = world.instance_uuid
+		state.ui_layout_valid = false
 		clear_input_focus(state)
 		state.active_entity = {}
 		state.has_active_entity = false
-		state.previous_primary_down = false
 		state.editor_ui_active_entity = {}
 		state.editor_ui_has_active_entity = false
-		state.editor_previous_primary_down = false
 		state.active_split_handle = -1
 		state.split_previous_primary_down = false
 		state.editor_split_previous_primary_down = false
@@ -1724,24 +1768,23 @@ reconcile :: proc(
 		delta_seconds,
 		true,
 	) { if err := layout_all(state, world, project_layout, editor_layout); err != "" { return err } }
-	project_press_started :=
-		project_pointer.available && project_pointer.primary_down && !state.previous_primary_down
-	project_press_released :=
-		project_pointer.available && !project_pointer.primary_down && state.previous_primary_down
-	editor_press_started :=
-		editor_pointer.available &&
-		editor_pointer.primary_down &&
-		!state.editor_previous_primary_down
-	editor_press_released :=
-		editor_pointer.available &&
-		!editor_pointer.primary_down &&
-		state.editor_previous_primary_down
-	project_pressed, project_pressed_ok, project_hit := update_interaction(
-		state,
-		project_pointer,
-		false,
+	project_press_started := pointer_press_started(project_pointer, state.previous_primary_down)
+	project_press_released := pointer_press_released(project_pointer, state.previous_primary_down)
+	editor_press_started := pointer_press_started(
+		editor_pointer,
+		state.editor_previous_primary_down,
 	)
-	pressed, pressed_ok, editor_hit := update_interaction(state, editor_pointer, true)
+	editor_press_released := pointer_press_released(
+		editor_pointer,
+		state.editor_previous_primary_down,
+	)
+	project_pressed, project_pressed_ok, project_released, project_released_ok, project_released_inside, project_hit :=
+		update_interaction(state, project_pointer, false)
+	pressed, pressed_ok, released, released_ok, released_inside, editor_hit := update_interaction(
+		state,
+		editor_pointer,
+		true,
+	)
 	panel_changed := false
 	project_stack_drag_armed := false
 	editor_stack_drag_armed := false
@@ -1831,7 +1874,7 @@ reconcile :: proc(
 		)
 	}
 	sync_ui_interaction_states(state, world)
-	if pressed_ok {
+	if pressed_ok && !entity_is_ui_button(world, pressed) {
 		_ = mark_ui_event(state, world, .Activated, pressed, editor_pointer.position)
 		panel_changed = handle_popup_press(state, world, pressed) || panel_changed
 		list_changed := handle_list_press(state, world, pressed)
@@ -1852,7 +1895,7 @@ reconcile :: proc(
 			panel_changed = panel_title_changed || panel_changed
 		}
 	}
-	if project_pressed_ok {
+	if project_pressed_ok && !entity_is_ui_button(world, project_pressed) {
 		_ = mark_ui_event(state, world, .Activated, project_pressed, project_pointer.position)
 		panel_changed = handle_popup_press(state, world, project_pressed) || panel_changed
 		list_changed := handle_list_press(state, world, project_pressed)
@@ -1872,6 +1915,31 @@ reconcile :: proc(
 			panel_changed = panel_title_changed || panel_changed
 		}
 	}
+	if released_ok && entity_is_ui_button(world, released) {
+		if released_inside {
+			_ = mark_ui_event(state, world, .Activated, released, editor_pointer.position)
+			panel_changed = handle_popup_press(state, world, released) || panel_changed
+			list_changed := handle_list_press(state, world, released)
+			if list_changed {
+				panel_changed = close_selection_popup(state, world, released) || panel_changed
+			}
+		} else {
+			_ = mark_ui_event(state, world, .Cancelled, released, editor_pointer.position)
+		}
+	}
+	if project_released_ok && entity_is_ui_button(world, project_released) {
+		if project_released_inside {
+			_ = mark_ui_event(state, world, .Activated, project_released, project_pointer.position)
+			panel_changed = handle_popup_press(state, world, project_released) || panel_changed
+			list_changed := handle_list_press(state, world, project_released)
+			if list_changed {
+				panel_changed =
+					close_selection_popup(state, world, project_released) || panel_changed
+			}
+		} else {
+			_ = mark_ui_event(state, world, .Cancelled, project_released, project_pointer.position)
+		}
+	}
 	if editor_press_started && !pressed_ok {
 		panel_changed = close_popups_on_escape(state, world, true, false) || panel_changed
 	}
@@ -1881,7 +1949,7 @@ reconcile :: proc(
 	if keyboard.escape {
 		panel_changed = close_popups_on_escape(state, world) || panel_changed
 	}
-	if keyboard.editor_toggle {
+	if editor_action_requested(keyboard, .Toggle_Editor) {
 		panel_changed = close_popups_on_escape(state, world, true, false) || panel_changed
 	}
 	publish_ui_events(state, world)
@@ -1889,6 +1957,7 @@ reconcile :: proc(
 	panel_changed =
 		editor_ui_consume_events(state, world, world.ui_events.latest_pass_after_sequence) ||
 		panel_changed
+	editor_ui_update_transport(state, world)
 	editor_box_select_update(state, editor_pointer, editor_scale)
 	sync_ui_interaction_states(state, world)
 	if panel_changed {
@@ -1912,11 +1981,11 @@ reconcile :: proc(
 	editor_save_shortcut :=
 		state.editor_visible &&
 		(!state.has_focused_input || state.focused_input_editor) &&
-		keyboard.save
+		editor_action_requested(keyboard, .Save)
 	editor_history_shortcut :=
 		state.editor_visible &&
 		(!state.has_focused_input || state.focused_input_editor) &&
-		(keyboard.undo || keyboard.redo)
+		(editor_action_requested(keyboard, .Undo) || editor_action_requested(keyboard, .Redo))
 	input_event_entity_index := -1
 	if state.has_focused_input {
 		input_event_entity_index = int(state.focused_input.index)
@@ -2350,6 +2419,9 @@ project_pointer_input :: proc(
 		},
 		wheel_y = pointer.wheel_y,
 		primary_down = pointer.primary_down,
+		primary_pressed = pointer.primary_pressed,
+		primary_released = pointer.primary_released,
+		edges_authoritative = pointer.edges_authoritative,
 		available = true,
 	}
 }
@@ -4918,7 +4990,7 @@ update_dock_interaction :: proc(
 	if hit >= 0 {
 		state.dock_tabs[hit].hovered = true
 	}
-	just_pressed := pointer.primary_down && !previous_down
+	just_pressed := pointer_press_started(pointer, previous_down)
 	if just_pressed && hit >= 0 {
 		tab := state.dock_tabs[hit]
 		space := &state.nodes[tab.space_node]
@@ -5221,7 +5293,7 @@ update_split_interaction :: proc(state: ^State, pointer: Pointer_Input, editor: 
 	if hit >= 0 { state.split_handles[hit].hovered = true }
 	previous_down := state.split_previous_primary_down
 	if editor { previous_down = state.editor_split_previous_primary_down }
-	just_pressed := pointer.primary_down && !previous_down
+	just_pressed := pointer_press_started(pointer, previous_down)
 	if just_pressed && hit >= 0 {
 		state.active_split_handle = hit
 		state.active_split_editor = editor
@@ -5417,7 +5489,7 @@ update_viewport_interaction :: proc(
 			paint_changed = false,
 		)
 	}
-	if pointer.available && pointer.primary_down && !previous_down && hit >= 0 {
+	if pointer_press_started(pointer, previous_down) && hit >= 0 {
 		node := state.nodes[hit]
 		state.viewport_drag_entity = node.entity
 		state.viewport_drag_editor = editor
@@ -7960,6 +8032,9 @@ update_interaction :: proc(
 ) -> (
 	shared.Entity,
 	bool,
+	shared.Entity,
+	bool,
+	bool,
 	int,
 ) {
 	for &node in state.nodes[:state.node_count] { if (node.origin == .Editor) == editor { node.hovered = false; node.active = false } }
@@ -7969,7 +8044,7 @@ update_interaction :: proc(
 	if editor { previous_down = state.editor_previous_primary_down; has_active = state.editor_ui_has_active_entity; active_entity = state.editor_ui_active_entity }
 	if !pointer.available {
 		if editor { state.editor_ui_has_active_entity = false; state.editor_previous_primary_down = false } else { state.has_active_entity = false; state.previous_primary_down = false }
-		return {}, false, -1
+		return {}, false, {}, false, false, -1
 	}
 	hit := -1
 	highest_order := -1
@@ -7981,7 +8056,8 @@ update_interaction :: proc(
 	}
 	if hit >= 0 { mark_interaction_chain(state, hit, false) }
 	pressed, pressed_ok := shared.Entity{}, false
-	if pointer.primary_down && !previous_down {
+	released, released_ok, released_inside := shared.Entity{}, false, false
+	if pointer_press_started(pointer, previous_down) {
 		has_active = hit >= 0
 		if hit >=
 		   0 { active_entity = state.nodes[hit].entity; pressed = active_entity; pressed_ok = true }
@@ -7990,9 +8066,37 @@ update_interaction :: proc(
 		if active_index := find_node(state, active_entity);
 		   active_index >=
 		   0 { mark_interaction_chain(state, active_index, true) } else { has_active = false }
-	} else if !pointer.primary_down { has_active = false }
+	} else if pointer_press_released(pointer, previous_down) {
+		if has_active {
+			released = active_entity
+			released_ok = true
+			if active_index := find_node(state, active_entity); active_index >= 0 {
+				released_inside = node_pointer_contains(
+					state.nodes[active_index],
+					pointer.position,
+				)
+			}
+		}
+		has_active = false
+	} else if !pointer.primary_down {
+		has_active = false
+	}
 	if editor { state.editor_ui_has_active_entity = has_active; state.editor_ui_active_entity = active_entity; state.editor_previous_primary_down = pointer.primary_down } else { state.has_active_entity = has_active; state.active_entity = active_entity; state.previous_primary_down = pointer.primary_down }
-	return pressed, pressed_ok, hit
+	return pressed, pressed_ok, released, released_ok, released_inside, hit
+}
+
+entity_is_ui_button :: proc(world: ^shared.World, entity: shared.Entity) -> bool {
+	if world == nil {
+		return false
+	}
+	entity_index := int(entity.index)
+	return(
+		entity_index >= 0 &&
+		entity_index < len(world.entities) &&
+		world.entities[entity_index].alive &&
+		world.entities[entity_index].id == entity &&
+		world.entities[entity_index].ui_button_index >= 0 \
+	)
 }
 
 node_pointer_contains :: proc(node: Node, point: shared.Vec2) -> bool {return(

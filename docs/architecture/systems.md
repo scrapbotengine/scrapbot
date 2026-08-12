@@ -51,11 +51,11 @@ These are the engine-owned rows published to the editor's Systems panel. They ar
 ### `scrapbot.ui`
 
 - **Phase/order:** After gizmo/editor overlays and before scene picking/render preparation.
-- **Inputs:** Public `scrapbot.ui_*` ECS components, structural dirty queues, project/editor revisions, pointer/keyboard input, editor bindings.
-- **Outputs:** Retained hierarchy/layout/interaction state, renderer-owned `ui_state`, semantic system-cursor intent for windowed runs, paint streams and independent output revisions.
+- **Inputs:** Public `scrapbot.ui_*` ECS components, structural dirty queues, project/editor revisions, the canonical physical input snapshot plus focused text input, editor bindings.
+- **Outputs:** Derived semantic editor actions, retained hierarchy/layout/interaction state, button press capture plus release activation/cancellation edges, renderer-owned `ui_state`, semantic system-cursor intent for windowed runs, paint streams and independent output revisions.
 - **Stable-frame behavior:** Unchanged domains reuse hierarchy, layout, paint commands, and GPU-facing streams; work follows structural, layout, paint, or interaction dirtiness.
 - **Boundary:** Main-thread CPU retained UI system shared by project UI and editor composition.
-- **Source/tests:** `ui/ui.odin`, `ui/editor_ecs.odin`, `ecs/ui_components.odin`; `ui/ui_retained_test.odin`, `ui/ui_test.odin`.
+- **Source/tests:** `ui/input.odin`, `ui/ui.odin`, `ui/editor_ecs.odin`, `ecs/ui_components.odin`; `ui/input_test.odin`, `ui/ui_retained_test.odin`, `ui/ui_test.odin`.
 
 ### `scrapbot.pick`
 

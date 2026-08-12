@@ -38,7 +38,7 @@ This file tracks current actionable engineering work. The broad product roadmap 
 - [ ] Prepare scene transitions asynchronously with explicit preload/progress/cancellation while preserving transactional activation. See [ADR-058](adr/ADR-058-identify-scenes-by-uuid-and-replace-worlds-transactionally.md).
 - [ ] Add dependency-indexed resource residency across scene transitions with reference counts, budgets, and delayed eviction instead of eagerly retaining every declared project resource. See [FDR-013](fdr/FDR-013-scene-assets-and-transitions.md).
 - [ ] Design additive scene instances, explicit unload, persistent layers, and scoped cross-scene references. See [FDR-013](fdr/FDR-013-scene-assets-and-transitions.md).
-- [ ] Layer persistent action maps, rebinding, focus/consumption, and controller devices over the ECS input singleton snapshots.
+- [ ] Add persistent project action maps, rebinding, controller snapshots, and per-player routing over the canonical physical-frame/action layer. See [ADR-059](adr/ADR-059-route-input-from-one-physical-frame.md).
 - [ ] Replace the narrow TOML reader or formally specify its supported project-file subset.
 - [ ] Replace polling hot reload with platform file watching when runtime services exist.
 - [ ] Add target-native Luau, SDL3, and WGPU toolchains for cross-platform exports.

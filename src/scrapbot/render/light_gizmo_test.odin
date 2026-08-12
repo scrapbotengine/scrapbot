@@ -122,12 +122,26 @@ test_point_light_range_drag_escape_restores_without_history :: proc(t: ^testing.
 	camera := light_gizmo_test_camera()
 	editor_light_gizmo_system(state, &world, {}, viewport, camera, true)
 	handle := state.editor_light_gizmo_handle
-	editor_light_gizmo_system(state, &world, {handle, 0, true, true}, viewport, camera, true)
-	editor_light_gizmo_system(state, &world, {{700, 300}, 0, true, true}, viewport, camera, true)
 	editor_light_gizmo_system(
 		state,
 		&world,
-		{{700, 300}, 0, true, true},
+		{position = handle, primary_down = true, available = true},
+		viewport,
+		camera,
+		true,
+	)
+	editor_light_gizmo_system(
+		state,
+		&world,
+		{position = {700, 300}, primary_down = true, available = true},
+		viewport,
+		camera,
+		true,
+	)
+	editor_light_gizmo_system(
+		state,
+		&world,
+		{position = {700, 300}, primary_down = true, available = true},
 		viewport,
 		camera,
 		true,
@@ -174,10 +188,24 @@ test_directional_light_gizmo_edits_normalized_direction_and_cancels_when_hidden 
 	)
 	testing.expect_value(t, state.editor_light_gizmo_segment_count, 1)
 	handle := state.editor_light_gizmo_handle
-	editor_light_gizmo_system(state, &world, {handle, 0, true, true}, viewport, camera, true)
+	editor_light_gizmo_system(
+		state,
+		&world,
+		{position = handle, primary_down = true, available = true},
+		viewport,
+		camera,
+		true,
+	)
 	target, projected := editor_project_world({0, 1, 0}, viewport, camera, true)
 	testing.expect(t, projected)
-	editor_light_gizmo_system(state, &world, {target, 0, true, true}, viewport, camera, true)
+	editor_light_gizmo_system(
+		state,
+		&world,
+		{position = target, primary_down = true, available = true},
+		viewport,
+		camera,
+		true,
+	)
 	light := world.directional_lights[world.entities[0].directional_light_index]
 	testing.expect(t, math.abs(vec3_dot(light.direction, light.direction) - 1) < 0.001)
 	testing.expect(t, light.direction != shared.Vec3{1, 0, 0})

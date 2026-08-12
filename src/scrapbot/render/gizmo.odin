@@ -276,15 +276,15 @@ editor_transform_gizmo_system :: proc(
 	}
 	keyboard_mode_requested := false
 	if !state.editor_gizmo_keyboard_active {
-		if keyboard.transform_translate {
+		if ui.editor_action_requested(keyboard, .Transform_Translate) {
 			state.editor_transform_chord_mode = .Translate
 			keyboard_mode_requested = true
 			ui.editor_set_gizmo_mode(state, .Translate)
-		} else if keyboard.transform_rotate {
+		} else if ui.editor_action_requested(keyboard, .Transform_Rotate) {
 			state.editor_transform_chord_mode = .Rotate
 			keyboard_mode_requested = true
 			ui.editor_set_gizmo_mode(state, .Rotate)
-		} else if keyboard.transform_scale {
+		} else if ui.editor_action_requested(keyboard, .Transform_Scale) {
 			state.editor_transform_chord_mode = .Scale
 			keyboard_mode_requested = true
 			ui.editor_set_gizmo_mode(state, .Scale)
@@ -642,11 +642,11 @@ editor_gizmo_keyboard_handle :: proc(
 	bool,
 ) {
 	axis := -1
-	if keyboard.transform_axis_x {
+	if ui.editor_action_requested(keyboard, .Transform_Axis_X) {
 		axis = 0
-	} else if keyboard.transform_axis_y {
+	} else if ui.editor_action_requested(keyboard, .Transform_Axis_Y) {
 		axis = 1
-	} else if keyboard.transform_axis_z {
+	} else if ui.editor_action_requested(keyboard, .Transform_Axis_Z) {
 		axis = 2
 	}
 	if axis < 0 {

@@ -1,0 +1,6 @@
+name = "Scene Transitions"
+default_scene = "b5000000-0000-4000-8000-000000000001"
+
+[window]
+width = 1280
+height = 720

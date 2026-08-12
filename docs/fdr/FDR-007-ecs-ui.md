@@ -87,7 +87,7 @@ ECS UI lets projects describe screen-space interfaces with ordinary entities and
 
 ### 5. Keep pointer state generic and derived
 
-**Decision:** Hit-test all retained element boxes and publish hover, active, focus, activation, and change state through the renderer-owned, read-only `ui_state` ECS component. Emit matching engine-internal generic activation/change events after control mechanics run so editor orchestration can assign meaning without entering the mechanics path.
+**Decision:** Hit-test all retained element boxes and publish hover, active, focus, activation, and change state through the renderer-owned, read-only `ui_state` ECS component. A pointer-down edge captures and visually activates a button; releasing over that same button publishes one activation, while releasing outside publishes cancellation. World replacement clears the captured entity but preserves the physical held-button baseline until release, so replacement cannot manufacture a new press. Emit matching engine-internal generic activation/change events after control mechanics run so editor orchestration can assign meaning without entering the mechanics path.
 **Why:** Pointer interaction is a property of an element's screen area, not of a button. Projects and the editor can consume the same stable revision counters without renderer code assigning meaning to a click. See ADR-014 and ADR-025.
 **Tradeoff:** Transient booleans describe the most recent UI pass and are observed by project systems on the following frame. Revision counters must be retained by consumers that need to detect every edge.
 
@@ -174,10 +174,9 @@ Tree mode is an opt-in extension of the same list rather than a second widget. D
 
 ## Related
 
-- **ADRs:** ADR-003, ADR-013, ADR-014, ADR-020, ADR-023, ADR-024, ADR-025, ADR-030, ADR-036, ADR-037, ADR-040, ADR-041, ADR-043, ADR-044, ADR-045
+- **ADRs:** ADR-003, ADR-013, ADR-014, ADR-020, ADR-023, ADR-024, ADR-025, ADR-030, ADR-036, ADR-037, ADR-040, ADR-041, ADR-043, ADR-044, ADR-045, ADR-059
 - **FDRs:** FDR-002, FDR-003, FDR-005, FDR-008
 
 ## Open Questions
 
-- Should release-inside activation become a separate state edge from primary press?
 - When should text gain shaping, Unicode fallback chains, and glyph-atlas streaming?

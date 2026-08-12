@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "timeout_frames": 120,
+  "actions": [
+    {"action": "expect", "target": {"text": "SCENE A  /  VIOLET ATRIUM", "origin": "scene"}, "expect": "visible"},
+    {"action": "click", "target": {"text": "GO TO AMBER GALLERY", "origin": "scene"}},
+    {"action": "wait", "frames": 3},
+    {"action": "expect", "target": {"text": "SCENE B  /  AMBER GALLERY", "origin": "scene"}, "expect": "visible"},
+    {"action": "click", "target": {"text": "RETURN TO VIOLET ATRIUM", "origin": "scene"}},
+    {"action": "wait", "frames": 3},
+    {"action": "expect", "target": {"text": "SCENE A  /  VIOLET ATRIUM", "origin": "scene"}, "expect": "visible"},
+    {"action": "capture", "target": {"name": "Violet Transition Card", "origin": "scene"}, "padding": 12}
+  ]
+}

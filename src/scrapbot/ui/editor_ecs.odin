@@ -919,7 +919,7 @@ editor_ui_handle_shortcuts :: proc(state: ^State, world: ^shared.World, keyboard
 	if state == nil {
 		return
 	}
-	if keyboard.editor_toggle {
+	if editor_action_requested(keyboard, .Toggle_Editor) {
 		editor_toggle(state)
 	}
 	if !state.editor_visible ||
@@ -927,15 +927,15 @@ editor_ui_handle_shortcuts :: proc(state: ^State, world: ^shared.World, keyboard
 	   (state.has_focused_input && !state.focused_input_editor) {
 		return
 	}
-	if keyboard.toggle_left_sidebar {
+	if editor_action_requested(keyboard, .Toggle_Left_Sidebar) {
 		state.editor_left_sidebar_visible = !state.editor_left_sidebar_visible
 		state.editor_sidebar_visual_valid = false
 	}
-	if keyboard.toggle_right_sidebar {
+	if editor_action_requested(keyboard, .Toggle_Right_Sidebar) {
 		state.editor_right_sidebar_visible = !state.editor_right_sidebar_visible
 		state.editor_sidebar_visual_valid = false
 	}
-	if keyboard.run_stop {
+	if editor_action_requested(keyboard, .Run_Stop) {
 		if state.editor_simulation_playing {
 			editor_stop(state)
 		} else {
@@ -943,7 +943,7 @@ editor_ui_handle_shortcuts :: proc(state: ^State, world: ^shared.World, keyboard
 		}
 		return
 	}
-	if keyboard.pause_step {
+	if editor_action_requested(keyboard, .Pause_Step) {
 		if state.editor_simulation_playing {
 			editor_pause(state)
 		} else {
@@ -953,7 +953,7 @@ editor_ui_handle_shortcuts :: proc(state: ^State, world: ^shared.World, keyboard
 	if state.has_focused_input {
 		return
 	}
-	if keyboard.focus_selected &&
+	if editor_action_requested(keyboard, .Focus_Selected) &&
 	   state.editor_has_selection &&
 	   !state.editor_gizmo_keyboard_active &&
 	   !editor_ui_has_open_popup(state, world) {
@@ -969,11 +969,11 @@ editor_ui_handle_shortcuts :: proc(state: ^State, world: ^shared.World, keyboard
 		}
 		return
 	}
-	if keyboard.duplicate_entity {
+	if editor_action_requested(keyboard, .Duplicate_Entity) {
 		_ = editor_ui_execute_entity_action(state, world, .Entity_Duplicate)
 		return
 	}
-	if keyboard.delete_entity {
+	if editor_action_requested(keyboard, .Delete_Entity) {
 		_ = editor_ui_execute_entity_action(state, world, .Entity_Delete)
 	}
 }
@@ -6987,7 +6987,7 @@ editor_ui_handle_history_shortcut :: proc(
 	   !state.editor_visible ||
 	   !state.editor_simulation_stopped ||
 	   (state.has_focused_input && !state.focused_input_editor) ||
-	   (!keyboard.undo && !keyboard.redo) {
+	   (!editor_action_requested(keyboard, .Undo) && !editor_action_requested(keyboard, .Redo)) {
 		return false
 	}
 	if state.has_focused_input {
@@ -7006,7 +7006,7 @@ editor_ui_handle_history_shortcut :: proc(
 			clear_input_focus(state)
 		}
 	}
-	if keyboard.redo {
+	if editor_action_requested(keyboard, .Redo) {
 		_ = editor_redo(state, world)
 	} else {
 		_ = editor_undo(state, world)
@@ -7023,7 +7023,7 @@ editor_ui_handle_save_shortcut :: proc(
 	   world == nil ||
 	   !state.editor_visible ||
 	   (state.has_focused_input && !state.focused_input_editor) ||
-	   !keyboard.save {
+	   !editor_action_requested(keyboard, .Save) {
 		return false
 	}
 	if state.has_focused_input {

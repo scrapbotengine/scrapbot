@@ -1201,18 +1201,15 @@ run_frame_system_unmeasured :: proc(
 		config.ui_state.editor_pixel_density = platform.runtime_window_pixel_density()
 		viewport := ui.editor_viewport(config.ui_state, drawable_width, drawable_height)
 		platform_pointer := platform.runtime_pointer_state_in_pixels()
-		camera_pointer := ui.Pointer_Input {
-			position = {platform_pointer.x, platform_pointer.y},
-			wheel_y = platform_pointer.wheel_y,
-			primary_down = platform_pointer.primary_down,
-			available = platform_pointer.available,
-		}
+		pointer := ui.pointer_input_from_snapshot(input_frame.pointer)
+		camera_pointer := pointer
 		allow_camera_navigation :=
 			!ui.editor_pointer_consumed_by_chrome(config.ui_state, camera_pointer) &&
 			!config.ui_state.editor_gizmo_keyboard_active &&
 			!ui.editor_world_tool_captures_pointer(config.ui_state) &&
 			!ui.editor_ui_has_open_popup(config.ui_state, world)
 		camera_input := platform.runtime_scene_camera_input(
+			input_frame,
 			config.ui_state.editor_visible,
 			viewport.x,
 			viewport.y,
@@ -1225,11 +1222,6 @@ run_frame_system_unmeasured :: proc(
 		}
 		config.ui_state.editor_scene_camera_captures_input =
 			camera_input.look_active || camera_input.orbit_active
-		if mode, requested := platform.consume_editor_gizmo_mode();
-		   requested &&
-		   config.ui_state.editor_visible &&
-		   !camera_input.look_active &&
-		   !ui.has_text_focus(config.ui_state) { ui.editor_set_gizmo_mode(config.ui_state, mode) }
 		camera_system_start := time.tick_now()
 		ecs.editor_scene_camera_system(
 			world,
@@ -1264,50 +1256,22 @@ run_frame_system_unmeasured :: proc(
 		if config.ui_driver == nil && config.ui_state.editor_gizmo_captures_pointer {
 			gizmo_pointer_wrap = platform.runtime_editor_transform_pointer_wrap(platform_pointer)
 		}
-		pointer := ui.Pointer_Input {
-			position = {platform_pointer.x, platform_pointer.y},
-			wheel_y = platform_pointer.wheel_y,
-			primary_down = platform_pointer.primary_down,
-			available = platform_pointer.available,
-		}
 		if config.ui_state.editor_scene_camera_captures_input { pointer = {} }
 		if camera_input.dolly != 0 {
 			pointer.wheel_y = 0
 		}
-		platform_keyboard := platform.runtime_text_input()
-		keyboard := ui.Keyboard_Input {
-			text = platform_keyboard.text,
-			left = platform_keyboard.left,
-			right = platform_keyboard.right,
-			up = platform_keyboard.up,
-			down = platform_keyboard.down,
-			home = platform_keyboard.home,
-			end = platform_keyboard.end,
-			backspace = platform_keyboard.backspace,
-			delete_forward = platform_keyboard.delete_forward,
-			tab = platform_keyboard.tab,
-			shift = platform_keyboard.shift,
-			fine = platform_keyboard.fine,
-			enter = platform_keyboard.enter,
-			escape = platform_keyboard.escape,
-			select_all = platform_keyboard.select_all,
-			save = platform_keyboard.save,
-			undo = platform_keyboard.undo,
-			redo = platform_keyboard.redo,
-			editor_toggle = platform_keyboard.editor_toggle,
-			run_stop = platform_keyboard.run_stop,
-			pause_step = platform_keyboard.pause_step,
-			toggle_left_sidebar = platform_keyboard.toggle_left_sidebar,
-			toggle_right_sidebar = platform_keyboard.toggle_right_sidebar,
-			duplicate_entity = platform_keyboard.duplicate_entity,
-			delete_entity = platform_keyboard.delete_entity,
-			focus_selected = platform_keyboard.focus_selected,
-			transform_translate = platform_keyboard.transform_translate,
-			transform_rotate = platform_keyboard.transform_rotate,
-			transform_scale = platform_keyboard.transform_scale,
-			transform_axis_x = platform_keyboard.transform_axis_x,
-			transform_axis_y = platform_keyboard.transform_axis_y,
-			transform_axis_z = platform_keyboard.transform_axis_z,
+		keyboard := ui.keyboard_input_from_snapshot(
+			input_frame.keyboard,
+			platform.runtime_text_input(),
+		)
+		if config.ui_state.editor_visible &&
+		   !camera_input.look_active &&
+		   !ui.has_text_focus(config.ui_state) {
+			if ui.editor_action_requested(keyboard, .Gizmo_Translate) {
+				ui.editor_set_gizmo_mode(config.ui_state, .Translate)
+			} else if ui.editor_action_requested(keyboard, .Gizmo_Rotate) {
+				ui.editor_set_gizmo_mode(config.ui_state, .Rotate)
+			}
 		}
 		if config.ui_driver != nil {
 			driver_pointer, driver_keyboard, driver_err := ui.diagnostic_driver_input(
@@ -1341,9 +1305,9 @@ run_frame_system_unmeasured :: proc(
 			gizmo_keyboard = {}
 		}
 		keyboard_transform_requested :=
-			gizmo_keyboard.transform_translate ||
-			gizmo_keyboard.transform_rotate ||
-			gizmo_keyboard.transform_scale
+			ui.editor_action_requested(gizmo_keyboard, .Transform_Translate) ||
+			ui.editor_action_requested(gizmo_keyboard, .Transform_Rotate) ||
+			ui.editor_action_requested(gizmo_keyboard, .Transform_Scale)
 		gizmo_pointer := editor_world_tool_pointer_input(
 			config.ui_state,
 			pointer,

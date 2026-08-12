@@ -1,0 +1,9 @@
+id = "b5100000-0000-4000-8000-000000000001"
+type = "scrapbot.material"
+name = "Violet"
+
+[material]
+base_color = [0.24, 0.08, 0.62, 1]
+emissive = [0.06, 0.01, 0.18]
+metallic = 0.15
+roughness = 0.28

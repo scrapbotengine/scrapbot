@@ -1,7 +1,7 @@
 # FDR-010: Runtime input
 
 **Status:** Active
-**Last reviewed:** 2026-07-21
+**Last reviewed:** 2026-08-12
 
 ## Overview
 
@@ -16,6 +16,8 @@ Scrapbot exposes backend-neutral keyboard and pointer state to Luau and native O
 - Visible SDL windows provide input. Null and hidden headless runs publish unavailable zero snapshots.
 - Luau uses `scrapbot.input`; native extensions use `input_key_state` and `input_pointer` helpers on the system context.
 - Tests can inject a complete frame snapshot without opening a window.
+- UI pointer edges and editor camera controls derive from that same snapshot. SDL retains only text composition, repeated text navigation, and OS cursor/capture services beside it.
+- Engine-owned semantic editor actions resolve shortcut precedence above the platform boundary. Retained UI captures the topmost pressed control and publishes activation only on release over that same control.
 
 ## Design decisions
 
@@ -31,13 +33,17 @@ Systems may execute in scheduled batches and Luau/native code must see identical
 
 SDL scancodes map to Scrapbot key names at the platform boundary. Project code and the native ABI do not depend on SDL numeric values.
 
+### Resolve actions and interaction ownership above devices
+
+The physical frame is evidence, not policy. Engine adapters interpret editor shortcuts, while focus, modal tools, retained pointer capture, and propagation determine which consumer owns an interaction. Command-modified actions are resolved before unmodified transform chords.
+
 ## Related
 
-- **ADRs:** ADR-005, ADR-008, ADR-009, ADR-035
+- **ADRs:** ADR-005, ADR-008, ADR-009, ADR-035, ADR-059
 - **FDRs:** FDR-004, FDR-005, FDR-006, FDR-007
 
 ## Open questions
 
 - How should projects define and persist named input actions and bindings?
-- Which focus/consumption policy should arbitrate project UI, gameplay, and editor tools?
+- How should persisted project action contexts arbitrate project UI and gameplay after editor/UI routing has completed?
 - How should controller connection, axes, dead zones, and multiple players extend the snapshot?

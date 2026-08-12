@@ -1,0 +1,148 @@
+id = "b5000000-0000-4000-8000-000000000002"
+name = "Amber Gallery"
+
+[[entities]]
+id = "b5300000-0000-4000-8000-000000000001"
+name = "Amber Camera"
+[entities.components.scrapbot.clock]
+speed = 1
+[entities.transform]
+position = [0, 4.4, 11.5]
+rotation = [-0.31, 0, 0]
+scale = [1, 1, 1]
+[entities.camera]
+fov = 55
+near = 0.1
+far = 100
+
+[[entities]]
+id = "b5300000-0000-4000-8000-000000000002"
+name = "Amber Ambient"
+[entities.ambient_light]
+color = [0.55, 0.3, 0.16]
+intensity = 0.5
+
+[[entities]]
+id = "b5300000-0000-4000-8000-000000000003"
+name = "Amber Sun"
+[entities.directional_light]
+direction = [0.45, -0.9, -0.25]
+color = [1, 0.72, 0.42]
+intensity = 2.5
+
+[[entities]]
+id = "b5300000-0000-4000-8000-000000000010"
+name = "Amber Ground"
+[entities.transform]
+position = [0, -1.25, 0]
+rotation = [0, 0, 0]
+scale = [9, 0.25, 6]
+[entities.geometry]
+resource = "cube"
+[entities.material]
+resource = "b5100000-0000-4000-8000-000000000003"
+
+[[entities]]
+id = "b5300000-0000-4000-8000-000000000011"
+name = "Amber Left Tower"
+[entities.transform]
+position = [-3, 0.3, 0]
+rotation = [0, 0.25, -0.08]
+scale = [1.1, 2.4, 1.1]
+[entities.geometry]
+resource = "cube"
+[entities.material]
+resource = "b5100000-0000-4000-8000-000000000002"
+[entities.shadow_caster]
+
+[[entities]]
+id = "b5300000-0000-4000-8000-000000000012"
+name = "Amber Center"
+[entities.transform]
+position = [0, -0.2, -0.7]
+rotation = [0.6, 0.2, 0.75]
+scale = [1.15, 1.15, 1.15]
+[entities.geometry]
+resource = "cube"
+[entities.material]
+resource = "b5100000-0000-4000-8000-000000000002"
+[entities.shadow_caster]
+
+[[entities]]
+id = "b5300000-0000-4000-8000-000000000013"
+name = "Amber Right Tower"
+[entities.transform]
+position = [3, 0.3, 0]
+rotation = [0, -0.25, 0.08]
+scale = [1.1, 2.4, 1.1]
+[entities.geometry]
+resource = "cube"
+[entities.material]
+resource = "b5100000-0000-4000-8000-000000000002"
+[entities.shadow_caster]
+
+[[entities]]
+id = "b5300000-0000-4000-8000-000000000020"
+name = "Amber Canvas"
+[entities.ui_layout]
+size = [1280, 720]
+fill_width = true
+fill_height = true
+[entities.ui_canvas]
+reference_size = [1280, 720]
+scale_mode = "fit"
+horizontal_alignment = "center"
+vertical_alignment = "center"
+
+[[entities]]
+id = "b5300000-0000-4000-8000-000000000021"
+name = "Amber Transition Card"
+[entities.ui_layout]
+parent = "b5300000-0000-4000-8000-000000000020"
+size = [390, 170]
+padding = [22, 24, 22, 24]
+background = [0.04, 0.027, 0.018, 0.94]
+border_color = [1, 0.46, 0.12, 1]
+border_width = 2
+corner_radius = 14
+horizontal_alignment = "start"
+vertical_alignment = "start"
+margin = [28, 28, 0, 0]
+[entities.ui_vstack]
+gap = 12
+
+[[entities]]
+id = "b5300000-0000-4000-8000-000000000022"
+name = "Amber Scene Title"
+[entities.ui_layout]
+parent = "b5300000-0000-4000-8000-000000000021"
+size = [342, 38]
+[entities.ui_text]
+text = "SCENE B  /  AMBER GALLERY"
+color = [1, 0.65, 0.32, 1]
+size = 23
+
+[[entities]]
+id = "b5300000-0000-4000-8000-000000000023"
+name = "Amber Scene Hint"
+[entities.ui_layout]
+parent = "b5300000-0000-4000-8000-000000000021"
+size = [342, 25]
+[entities.ui_text]
+text = "PRESS 1 OR USE THE BUTTON"
+color = [0.78, 0.72, 0.66, 1]
+size = 14
+
+[[entities]]
+id = "b5300000-0000-4000-8000-000000000024"
+name = "Show Violet Scene"
+ui_theme = "reduced_dark"
+ui_recipes = ["standard_button"]
+[entities.ui_layout]
+parent = "b5300000-0000-4000-8000-000000000021"
+size = [342, 48]
+[entities.ui_button]
+text = "RETURN TO VIOLET ATRIUM"
+size = 15
+[entities.ui_action]
+action = "scene.show_violet"

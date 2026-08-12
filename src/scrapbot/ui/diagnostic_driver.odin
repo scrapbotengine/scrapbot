@@ -806,27 +806,27 @@ diagnostic_keyboard_set :: proc(keyboard: ^Keyboard_Input, key: string) {
 		case "select_all":
 			keyboard.select_all = true
 		case "save":
-			keyboard.save = true
+			keyboard.actions += {.Save}
 		case "undo":
-			keyboard.undo = true
+			keyboard.actions += {.Undo}
 		case "redo":
-			keyboard.redo = true
+			keyboard.actions += {.Redo}
 		case "editor_toggle":
-			keyboard.editor_toggle = true
+			keyboard.actions += {.Toggle_Editor}
 		case "run_stop":
-			keyboard.run_stop = true
+			keyboard.actions += {.Run_Stop}
 		case "pause_step":
-			keyboard.pause_step = true
+			keyboard.actions += {.Pause_Step}
 		case "toggle_left_sidebar":
-			keyboard.toggle_left_sidebar = true
+			keyboard.actions += {.Toggle_Left_Sidebar}
 		case "toggle_right_sidebar":
-			keyboard.toggle_right_sidebar = true
+			keyboard.actions += {.Toggle_Right_Sidebar}
 		case "duplicate_entity":
-			keyboard.duplicate_entity = true
+			keyboard.actions += {.Duplicate_Entity}
 		case "delete_entity":
-			keyboard.delete_entity = true
+			keyboard.actions += {.Delete_Entity}
 		case "focus_selected":
-			keyboard.focus_selected = true
+			keyboard.actions += {.Focus_Selected}
 	}
 }
 

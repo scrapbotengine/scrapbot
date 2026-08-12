@@ -41,11 +41,17 @@ test_transform_gizmos_absorb_pointer_wrap_into_drag_anchors :: proc(t: ^testing.
 
 @(test)
 test_transform_chord_constraints_map_axes_and_excluded_planes :: proc(t: ^testing.T) {
-	handle, ok := editor_gizmo_keyboard_handle(.Translate, {transform_axis_x = true})
+	handle, ok := editor_gizmo_keyboard_handle(.Translate, {actions = {.Transform_Axis_X}})
 	testing.expect(t, ok && handle == .X)
-	handle, ok = editor_gizmo_keyboard_handle(.Scale, {transform_axis_x = true, shift = true})
+	handle, ok = editor_gizmo_keyboard_handle(
+		.Scale,
+		{shift = true, actions = {.Transform_Axis_X}},
+	)
 	testing.expect(t, ok && handle == .YZ)
-	handle, ok = editor_gizmo_keyboard_handle(.Rotate, {transform_axis_z = true, shift = true})
+	handle, ok = editor_gizmo_keyboard_handle(
+		.Rotate,
+		{shift = true, actions = {.Transform_Axis_Z}},
+	)
 	testing.expect(t, ok && handle == .Z)
 	_, ok = editor_gizmo_keyboard_handle(.Translate, {})
 	testing.expect(t, !ok)
@@ -194,7 +200,7 @@ test_center_pivot_free_translation_preserves_origin_offset :: proc(t: ^testing.T
 		viewport,
 		camera,
 		true,
-		{transform_translate = true},
+		{actions = {.Transform_Translate}},
 	)
 	target, projected := editor_project_world({4, 1, -10}, viewport, camera, true)
 	testing.expect(t, projected)
@@ -341,7 +347,7 @@ test_transform_chord_g_starts_free_translation_then_x_constrains_it :: proc(t: ^
 		viewport,
 		camera,
 		true,
-		{transform_translate = true},
+		{actions = {.Transform_Translate}},
 	)
 	testing.expect(t, state.editor_gizmo_keyboard_active)
 	testing.expect(t, state.editor_gizmo_active_handle == .Center)
@@ -364,7 +370,7 @@ test_transform_chord_g_starts_free_translation_then_x_constrains_it :: proc(t: ^
 		viewport,
 		camera,
 		true,
-		{transform_axis_x = true},
+		{actions = {.Transform_Axis_X}},
 	)
 	testing.expect(t, state.editor_gizmo_keyboard_active)
 	testing.expect(t, state.editor_gizmo_active_handle == .X)
@@ -433,7 +439,7 @@ test_transform_chord_r_starts_view_rotation_then_x_constrains_it :: proc(t: ^tes
 		viewport,
 		camera,
 		true,
-		{transform_rotate = true},
+		{actions = {.Transform_Rotate}},
 	)
 	testing.expect(t, state.editor_gizmo_keyboard_active)
 	testing.expect(t, state.editor_gizmo_active_handle == .Center)
@@ -454,7 +460,7 @@ test_transform_chord_r_starts_view_rotation_then_x_constrains_it :: proc(t: ^tes
 		viewport,
 		camera,
 		true,
-		{transform_axis_x = true},
+		{actions = {.Transform_Axis_X}},
 	)
 	testing.expect(t, state.editor_gizmo_active_handle == .X)
 	testing.expect(t, math.abs(world.transforms[0].rotation.x) > 0.1)
@@ -499,7 +505,7 @@ test_transform_chord_s_starts_uniform_scale_then_x_constrains_it :: proc(t: ^tes
 		viewport,
 		camera,
 		true,
-		{transform_scale = true},
+		{actions = {.Transform_Scale}},
 	)
 	testing.expect(t, state.editor_gizmo_keyboard_active)
 	testing.expect(t, state.editor_gizmo_active_handle == .Center)
@@ -522,7 +528,7 @@ test_transform_chord_s_starts_uniform_scale_then_x_constrains_it :: proc(t: ^tes
 		viewport,
 		camera,
 		true,
-		{transform_axis_x = true},
+		{actions = {.Transform_Axis_X}},
 	)
 	testing.expect(t, state.editor_gizmo_active_handle == .X)
 	testing.expect(t, world.transforms[0].scale.x > 1)
@@ -570,7 +576,7 @@ test_keyboard_transform_click_commit_consumes_viewport_activation :: proc(t: ^te
 		viewport,
 		camera,
 		true,
-		{transform_translate = true},
+		{actions = {.Transform_Translate}},
 	)
 	testing.expect(t, state.editor_gizmo_keyboard_active)
 	pointer.primary_down = true

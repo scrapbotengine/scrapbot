@@ -757,6 +757,8 @@ The embedded catalog has UUID `a11c0000-0000-4000-8000-000000000001` and symbols
 
 Same-domain pointer presses outside a popup and Escape close it through shared UI mechanics. Combine a popup root with ordinary stack, list, and scroll-area components rather than creating a private menu widget.
 
+A pointer press captures the button and exposes its active visual state. Releasing over the same button advances `ui_state.activation_revision` once; releasing outside advances `cancel_revision` instead. Scene replacement clears the captured entity without treating an already-held pointer as a new press in the replacement scene.
+
 ### `scrapbot.ui_input`
 
 | Fields | Defaults and rules |

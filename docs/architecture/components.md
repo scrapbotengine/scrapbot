@@ -416,7 +416,7 @@ These entries deliberately omit exhaustive field/default documentation. Follow t
 
 ### `scrapbot.ui_button`
 
-- **Contract:** Text and/or reusable SDF-icon activation control consuming generic pointer/focus state, with an optional public popup-root target UUID.
+- **Contract:** Text and/or reusable SDF-icon activation control consuming generic pointer/focus state, with press capture, release-inside activation, release-outside cancellation, and an optional public popup-root target UUID.
 - **Storage/lifecycle:** Dedicated typed UI storage; authored.
 - **Producers:** Public project UI surfaces and editor composition, including reflected-container disclosures.
 - **Consumers:** Measurement, hit testing, hover/active painting, activation bindings, inspector disclosures, panel title actions, and generic popup toggling.

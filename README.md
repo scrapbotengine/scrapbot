@@ -76,6 +76,7 @@ During development, use `mise build` to compile the optimized CLI and `mise scra
 Example projects live in [`examples/`](examples/):
 
 - `minimal` — Luau- and Odin-defined components and systems (`mise scrapbot run examples/minimal`).
+- `scene-transitions` — two UUID-addressed worlds switched transactionally through project UI actions or the `1`/`2` keys.
 - `ecs-showcase` — object fountain with spawned renderables, animated point lights, emissive bloom, and a procedural 30-second day/night cycle.
 - `ecs-stress` — roughly 3,000 glowing renderables sustained through retained query plans, chunked storage, and SIMD integration.
 - `clustered-lights` — 320 animated HDR point lights through GPU-computed view-frustum clusters in a bloom-soaked tunnel.

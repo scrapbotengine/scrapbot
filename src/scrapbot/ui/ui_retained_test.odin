@@ -450,6 +450,7 @@ test_world_replacement_resets_retained_interaction_and_scroll_state :: proc(t: ^
 	state.editor_ui_has_active_entity = true
 	state.editor_previous_primary_down = true
 	testing.expect(t, sync_ui_structure(state, &second_world) == "")
+	testing.expect(t, !state.ui_layout_valid)
 	second_node := find_node_by_entity_index(state, 0)
 	testing.expect(t, second_node >= 0)
 	if second_node >= 0 {
@@ -458,9 +459,9 @@ test_world_replacement_resets_retained_interaction_and_scroll_state :: proc(t: ^
 	}
 	testing.expect(t, !state.has_focused_input)
 	testing.expect(t, !state.has_active_entity)
-	testing.expect(t, !state.previous_primary_down)
+	testing.expect(t, state.previous_primary_down)
 	testing.expect(t, !state.editor_ui_has_active_entity)
-	testing.expect(t, !state.editor_previous_primary_down)
+	testing.expect(t, state.editor_previous_primary_down)
 }
 
 @(test)
