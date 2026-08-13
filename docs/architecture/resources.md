@@ -6,14 +6,14 @@
 
 Scrapbot resources live outside ECS. Persistent project files use stable UUIDs; ECS components store resolved generational handles into runtime registries. Project resources, transient runtime resources, built-ins, and derived backend caches have different identities and lifetimes.
 
-Scene assets are also UUID-addressed project files, but they are not runtime resource-registry entries. `project.load_project_scenes` owns a compact catalog of UUID, name, and relative source path. The root runtime owns one active scene UUID/path and builds its entity payload into the ECS World. Replace transitions reuse the project registry; only the active world and one candidate world coexist, and successful activation destroys the old world immediately.
+Scene assets are also UUID-addressed project files, but they are not runtime resource-registry entries. `project.load_project_scenes` owns a compact catalog of UUID, name, relative source path, and dependency-first resource closure. The root runtime owns one active scene UUID/path and builds its entity payload into the ECS World. Replace transitions reuse the project registry; only the active world and one candidate world coexist, and successful activation destroys the old world immediately.
 
 ## Identity layers
 
 | Layer | Identity | Authority | Lifetime |
 | --- | --- | --- | --- |
 | Project declaration | `Resource_UUID` plus a relative `resources/**/*.resource.toml` source | Project files on disk; in-memory authoring is authoritative until Save/Revert | Survives runs and editor sessions |
-| Scene asset | `Resource_UUID` plus a relative `scenes/**/*.scene.toml` source | Scene catalog on disk; entity payload becomes one active ECS World | Catalog survives the run; only active and staged candidate entity payloads are resident |
+| Scene asset | `Resource_UUID` plus a relative `scenes/**/*.scene.toml` source | Scene catalog on disk; entity payload becomes one active ECS World | Catalog and resource closures survive the run; only active and staged candidate entity payloads are resident |
 | Imported product | Parent resource UUID plus common product format and versioned importer schema | Asset source/dependencies and importer settings under `.scrapbot/imported/` | Regenerated before runtime bootstrap; packaged with host builds |
 | Runtime registry entry | `{index, generation}` handle plus per-entry `version` | `resources.Registry` | One engine runtime; slots may survive reload while generations invalidate dead handles |
 | ECS reference | Geometry or Material handle | Active ECS world | Entity/component lifetime; resolved again when a world is rebuilt |
@@ -36,6 +36,16 @@ Scene assets are also UUID-addressed project files, but they are not runtime res
 <!-- inventory:project-resource-kinds:end -->
 
 The recursive project loader rejects duplicate UUIDs. Scene validation resolves Material, Model, authored Geometry, World Environment, and UI icon-set UUID references; materials validate Texture and Shader UUIDs. Resource file paths are relative to `resources/`; Shader sources are safe paths under `shaders/`, while Texture, Model, Environment, and Icon Set import sources are safe paths under `assets/`.
+
+## Scene residency
+
+- `project.scene_resource_closure` extracts direct scene references and recursively orders Material dependencies before the Material. Duplicate references collapse to one UUID.
+- `Resource_Residency` owns cloned project declarations, always-resident project-config environments, active/staging closures, delayed evictions, and its frame counter. Scene metadata owns closures; the registry owns admitted payloads.
+- Startup admits only the active closure. Transition staging admits destination-only resources before candidate World resolution. Activation changes closure ownership atomically; failure leaves active ownership unchanged.
+- Old-only resources receive a three-frame grace period. A new active or staging reference cancels eviction. Stable frames inspect only the bounded pending-eviction list; they do not rescan declarations or registry capacity.
+- Retirement releases family payloads, cascades a Model retirement through its generated Geometry/Material entries, increments generations, and preserves authored UUID slots for later reuse. Project fonts, built-ins, and transient script-created resources are outside scene residency.
+- Project-wide render/background Environment UUIDs remain resident independently of scene references. Current admission is synchronous and has no explicit byte budget; those are tracked extensions to this owner, not competing lifecycle paths.
+- Source/tests: `project/resources.odin`, `project/scenes.odin`, `resource_residency.odin`, `resources/residency.odin`; `project/resource_closure_test.odin`, `resource_residency_test.odin`, `scene_transition_test.odin`.
 
 ## Runtime registry families
 

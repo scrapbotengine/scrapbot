@@ -84,7 +84,7 @@ The engine also registers two internal derived components. Render reconciliation
 
 `scrapbot.keyboard_input` and `scrapbot.pointer_input` are registry-known, derived component resources stored once per World. Systems use them in `reads` declarations, but they are not attached to entities and therefore cannot be queried, authored in TOML, added, removed, persisted, or mutated.
 
-The keyboard snapshot provides availability/focus plus held, pressed-this-frame, and released-this-frame state through the Luau and native input helpers. Supported names are lowercase letters and digits; arrows; Space, Enter, Escape, Tab, Backspace, Delete, Home, End, Page Up/Down; left/right Shift, Control, Alt, Meta; and F1–F12. The pointer snapshot provides availability, editor capture, pixel position/delta, wheel delta, and held/pressed/released primary, secondary, middle, back, and forward buttons. See [Luau API: Runtime input](/reference/luau-api/#runtime-input).
+The keyboard snapshot provides availability/focus plus held, pressed-this-frame, and released-this-frame state through the Luau and native input helpers. Supported names are lowercase letters and digits; arrows; Space, Enter, Escape, Tab, Backspace, Delete, Home, End, Page Up/Down, Period (`.`); left/right Shift, Control, Alt, Meta; and F1–F12. The pointer snapshot provides availability, editor capture, pixel position/delta, wheel delta, and held/pressed/released primary, secondary, middle, back, and forward buttons. See [Luau API: Runtime input](/reference/luau-api/#runtime-input).
 
 | Singleton | Public snapshot fields |
 | --- | --- |

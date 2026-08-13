@@ -65,10 +65,7 @@ register_project_environments :: proc(
 	if retire_missing {
 		for &environment in registry.environments {
 			if environment.authored && environment.alive && !seen[environment.id] {
-				environment.alive = false
-				environment.generation += 1
-				environment.version += 1
-				bump_environment_revision(registry)
+				_ = retire_project_resource(registry, environment.id)
 			}
 		}
 	}

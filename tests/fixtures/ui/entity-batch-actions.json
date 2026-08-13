@@ -2,7 +2,7 @@
   "schema_version": 1,
   "timeout_frames": 180,
   "actions": [
-    {"action": "key", "key": "run_stop"},
+    {"action": "key", "key": "stop"},
     {"action": "click", "target": {"text": "Left Cube", "origin": "editor"}},
     {"action": "click", "target": {"text": "Right Cube", "origin": "editor"}, "shift": true},
     {"action": "key", "key": "duplicate_entity"},

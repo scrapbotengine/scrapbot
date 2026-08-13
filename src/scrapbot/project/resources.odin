@@ -326,3 +326,112 @@ validate_scene_resource_references :: proc(
 	}
 	return ""
 }
+
+// scene_resource_closure returns dependencies before their consumers. The
+// resulting stable order is suitable for incremental admission by the runtime.
+scene_resource_closure :: proc(
+	scene: ^Scene,
+	resources: []shared.Project_Resource,
+) -> [dynamic]shared.Resource_UUID {
+	result := make([dynamic]shared.Resource_UUID)
+	if scene == nil {
+		return result
+	}
+	seen := make(map[shared.Resource_UUID]bool)
+	declaration_by_id := make(map[shared.Resource_UUID]int)
+	defer delete(seen)
+	defer delete(declaration_by_id)
+	for resource, index in resources {
+		declaration_by_id[resource.id] = index
+	}
+
+	append_dependency :: proc(
+		id: shared.Resource_UUID,
+		resources: []shared.Project_Resource,
+		declaration_by_id: map[shared.Resource_UUID]int,
+		seen: ^map[shared.Resource_UUID]bool,
+		result: ^[dynamic]shared.Resource_UUID,
+	) {
+		if id == (shared.Resource_UUID{}) || seen^[id] {
+			return
+		}
+		index, found := declaration_by_id[id]
+		if !found {
+			return
+		}
+		seen^[id] = true
+		declaration := resources[index]
+		if declaration.kind == .Material {
+			append_dependency(
+				declaration.material.texture,
+				resources,
+				declaration_by_id,
+				seen,
+				result,
+			)
+			append_dependency(
+				declaration.material.shader,
+				resources,
+				declaration_by_id,
+				seen,
+				result,
+			)
+		}
+		append(result, id)
+	}
+
+	for entity in scene.entities {
+		if entity.has_world_environment {
+			if id, ok := shared.resource_uuid_parse(entity.world_environment.lighting); ok {
+				append_dependency(id, resources, declaration_by_id, &seen, &result)
+			}
+			if id, ok := shared.resource_uuid_parse(entity.world_environment.background); ok {
+				append_dependency(id, resources, declaration_by_id, &seen, &result)
+			}
+		}
+		append_dependency(entity.ui_theme_resource, resources, declaration_by_id, &seen, &result)
+		if entity.has_ui_icon {
+			append_dependency(
+				entity.ui_icon.icon_set,
+				resources,
+				declaration_by_id,
+				&seen,
+				&result,
+			)
+		}
+		if entity.has_ui_button && entity.ui_button.icon != "" {
+			append_dependency(
+				entity.ui_button.icon_set,
+				resources,
+				declaration_by_id,
+				&seen,
+				&result,
+			)
+		}
+		if entity.has_ui_input && entity.ui_input.icon != "" {
+			append_dependency(
+				entity.ui_input.icon_set,
+				resources,
+				declaration_by_id,
+				&seen,
+				&result,
+			)
+		}
+		if entity.has_model {
+			if id, ok := shared.resource_uuid_parse(entity.model.resource); ok {
+				append_dependency(id, resources, declaration_by_id, &seen, &result)
+			}
+		}
+		if entity.has_geometry {
+			if id, ok := shared.resource_uuid_parse(entity.geometry.resource); ok {
+				append_dependency(id, resources, declaration_by_id, &seen, &result)
+			}
+		}
+		if entity.has_material {
+			if id, ok := shared.resource_uuid_parse(entity.material_resource); ok {
+				append_dependency(id, resources, declaration_by_id, &seen, &result)
+			}
+		}
+	}
+	return result
+}

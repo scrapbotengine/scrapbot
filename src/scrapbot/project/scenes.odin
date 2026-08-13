@@ -90,13 +90,23 @@ load_project_scene_directory :: proc(
 				name, name_err := strings.clone(parsed.name)
 				source, source_err := strings.clone(relative_path)
 				id := parsed.id
+				resource_closure := scene_resource_closure(&parsed, project_resources)
 				destroy_scene(&parsed)
 				if name_err != nil || source_err != nil {
 					delete(name)
 					delete(source)
+					delete(resource_closure)
 					return "failed to allocate project scene metadata"
 				}
-				append(scenes, shared.Project_Scene{id = id, name = name, source = source})
+				append(
+					scenes,
+					shared.Project_Scene {
+						id = id,
+						name = name,
+						source = source,
+						resource_closure = resource_closure,
+					},
+				)
 			case:
 		}
 	}
@@ -136,6 +146,7 @@ destroy_project_scenes :: proc(scenes: ^[dynamic]shared.Project_Scene) {
 	for &scene in scenes^ {
 		delete(scene.name)
 		delete(scene.source)
+		delete(scene.resource_closure)
 	}
 	delete(scenes^)
 	scenes^ = nil

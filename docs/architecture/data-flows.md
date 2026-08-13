@@ -1,6 +1,6 @@
 # Major Data Flows
 
-**Last verified:** 2026-08-12
+**Last verified:** 2026-08-13
 
 ## Project load and world bootstrap
 
@@ -40,7 +40,9 @@ Luau change_scene(UUID) → retain last request
           destroy old World → install/rebind candidate
 ```
 
-The project-wide resource registry and code runtimes remain shared. A transition does not clone imported resources or retain previously visited worlds. Its bounded overlap is one active and one candidate ECS World; asynchronous preparation and dependency-aware resource eviction are later lifecycle layers.
+The scene catalog supplies a dependency-indexed destination closure. The residency owner first admits its missing resources while the active closure remains referenced, then the candidate resolves generational handles. On success, the staging closure becomes active and old-only UUIDs enter a three-frame eviction grace period; shared UUIDs retain their entries. On failure, staging-only resources enter cleanup and the active World/closure remain unchanged.
+
+The project-wide registry and code runtimes remain shared. Retirement releases owned CPU payloads and invalidates handles without compacting authored UUID slots. A transition does not clone imported resources or retain previously visited Worlds. Its bounded overlap is one active and one candidate ECS World plus the union of their resource closures. Admission is synchronous; time-budgeted/background preparation is later work.
 
 Before bootstrap, Model import simplifies eligible primitive index streams, compacts each retained
 level, and builds its crack-aware hierarchy. It expands every mandatory terminal group into a
@@ -292,6 +294,10 @@ attenuated along the camera path. This adds no retained caustic texture or indep
 
 Stable renderable membership and instance records are not re-extracted or uploaded without a mutation signal. Transform-only changes upload compact position/rotation/scale/local-bounds records, then expand only those slots into GPU matrices and world bounds.
 
+Structural membership changes patch the affected retained batch. Meshlet batches rebuild their
+GPU layout for every instance-count change because compact camera/shadow and per-cluster visible
+slices use exact instance cardinality; classic aligned spare capacity cannot satisfy that contract.
+
 If legal despawn/reuse churn leaves an authoritative retained slot inactive, the Transform path reconciles only that slot's static state. Bidirectional integrity checks enforce current entity generations and slot ownership.
 
 Material revisions trigger one dependent-instance pass. WGPU replaces only that Material handle/version's factor uniform, bind group, and owned image textures. Stable materials and static instance fields remain resident.
@@ -539,7 +545,7 @@ Initial world-tool hits respect Game-versus-chrome ownership. Once a transform o
 
 The gizmo's Origin pivot is the selected resolved Transform position. Its Center pivot is cached from combined transformed Geometry bounds for the selected entity, descendants, and generated Model children, with a Transform fallback. Selection, relevant render dirtiness, hierarchy/topology, and Geometry revisions invalidate that cache; stable frames do not traverse instances. Each gesture freezes its chosen pivot. Translation projects the retained start and current pointer through the active editor camera: free motion intersects a camera-facing plane through the captured pivot, pair motion intersects the frozen world/local constraint plane, and axis motion solves the closest point between the cursor ray and frozen world/local axis. Pair scaling projects the two solved screen-axis amounts onto one shared multiplier, preserving the included axes' proportions. The shared snap policy then quantizes translation along those frozen bases, accumulated rotation angle, or scale factors around identity; Cmd/Ctrl temporarily inverts enabled state. Center rotation and scale move the entity origin around the frozen center and enter position plus rotation or scale into one history transaction. This shares the renderer's camera-ray construction without invoking rendered-scene picking or surface snapping.
 
-The grab ends with commit, cancellation, selection loss, or editor closure. Modal ownership bypasses editor-chrome masking, and a commit click is consumed before UI reconciliation. The gizmo also consumes Escape cancellation before general editor shortcuts, so it cancels one transform without deselecting its entity. Opening the shell pauses active playback; closing resumes it. Sidebar commands update retained left/right visibility state and hide only the corresponding public dock-space layout, allowing the ordinary fill HStack to reallocate the center workspace. Transport changes also update the retained play-mode badge, viewport frame, and status copy without a stable-frame rebuild.
+The grab ends with commit, cancellation, selection loss, or editor closure. Modal ownership bypasses editor-chrome masking, and a commit click is consumed before UI reconciliation. The gizmo also consumes Escape cancellation before general editor shortcuts, so it cancels one transform without deselecting its entity. Opening the shell pauses active playback; closing resumes it. Sidebar commands update retained left/right visibility state and hide only the corresponding public dock-space layout, allowing the ordinary fill HStack to reallocate the center workspace. Distinct Play, Pause, Stop, and Step actions share the same state procedures as their toolbar buttons; unavailable commands are no-ops. Transport changes also update the retained play-mode badge, viewport frame, and status copy without a stable-frame rebuild.
 
 ## Authoring persistence
 

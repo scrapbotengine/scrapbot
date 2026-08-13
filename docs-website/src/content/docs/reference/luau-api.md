@@ -16,7 +16,9 @@ The generated `.scrapbot/types/scrapbot.d.luau` file is the most precise API ref
 | `scrapbot.ui.resolve(theme, recipes)` | Resolve a built-in UI theme and ordered recipe array into a mutable component map suitable for `scrapbot.spawn`. |
 | `scrapbot.ui.events(after_sequence?)` | Read an immutable UI event snapshot without consuming it. |
 
-`scrapbot.change_scene` takes a non-zero scene UUID string. The last request made before the frame's transition boundary wins. Scrapbot applies deferred ECS commands first, stages and validates the destination, and keeps the current scene if loading fails. The transition reuses project-wide runtime resources instead of cloning them into each scene world.
+`scrapbot.change_scene` takes a non-zero scene UUID string. The last request made before the frame's transition boundary wins. Scrapbot applies deferred ECS commands first, admits the destination scene's transitive resource closure, stages and validates the destination, and keeps the current scene if loading fails.
+
+Shared resources retain their registry entries across activation. Resources used only by the previous scene are released after a short grace period, and a rapid return cancels that pending eviction. Project-config lighting/background environments remain resident. Missing-resource admission is currently synchronous; explicit preload progress and cancellation are not yet public APIs.
 
 ## Components
 

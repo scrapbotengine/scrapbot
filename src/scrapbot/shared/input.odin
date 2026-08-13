@@ -72,6 +72,7 @@ Input_Key :: enum {
 	F10,
 	F11,
 	F12,
+	Period,
 	Count,
 }
 
@@ -259,6 +260,8 @@ input_key_from_name :: proc "contextless" (name: string) -> (Input_Key, bool) {
 			return .Page_Up, true
 		case "page_down":
 			return .Page_Down, true
+		case ".", "period":
+			return .Period, true
 		case "left_shift":
 			return .Left_Shift, true
 		case "right_shift":

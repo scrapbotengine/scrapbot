@@ -47,7 +47,7 @@ Example script:
 - `drag`: press the target center, then either move by `delta_x` and `delta_y` or move to a semantic `destination` target before releasing. `destination_anchor` may be `left`, `top`, `center` (the default), `bottom`, or `right`; use an edge anchor to exercise insertion or dock-split drops and center to exercise into/reparent drops. Set optional positive `frames` to interpolate the movement across that many input frames. Set `hold: true` to keep the primary button down for a following capture of in-progress drag feedback. Prefer `destination` for list/tree drops and other target-oriented gestures; offsets remain useful for sliders, splitters, and performance diagnostics.
 - `scroll`: target a node and supply `wheel_y`.
 - `type`: target an input and supply `text`.
-- `key`: supply `key`: `left`, `right`, `up`, `down`, `home`, `end`, `backspace`, `delete`, `tab`, `enter`, `escape`, `select_all`, `save`, `undo`, `redo`, `editor_toggle`, `run_stop`, `pause_step`, `toggle_left_sidebar`, `toggle_right_sidebar`, `duplicate_entity`, `delete_entity`, or `focus_selected`.
+- `key`: supply `key`: `left`, `right`, `up`, `down`, `home`, `end`, `backspace`, `delete`, `tab`, `enter`, `escape`, `select_all`, `save`, `undo`, `redo`, `editor_toggle`, `play`, `pause`, `stop`, `step`, `toggle_left_sidebar`, `toggle_right_sidebar`, `duplicate_entity`, `delete_entity`, or `focus_selected`.
 - `wait`: supply a positive `frames` count.
 - `expect`: target a node and supply an expectation. A `text` expectation compares the action's `text` field.
 - `capture`: target a node and optionally supply pixel `padding`. This defines the framegrab crop unless `--framegrab-region` is explicit.

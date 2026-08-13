@@ -4086,6 +4086,7 @@ wgpu_adjust_batch_membership :: proc(
 			continue
 		}
 		batch := &cache.batches[index]
+		previous_instance_count := batch.instance_count
 		previous_meshlet_submission := wgpu_meshlet_batch_submission(
 			batch.meshlet_draw_count,
 			batch.instance_count,
@@ -4103,6 +4104,12 @@ wgpu_adjust_batch_membership :: proc(
 		}
 		layout_changed =
 			layout_changed ||
+			(previous_instance_count != batch.instance_count &&
+					(previous_meshlet_submission ||
+							wgpu_meshlet_batch_submission(
+								batch.meshlet_draw_count,
+								batch.instance_count,
+							))) ||
 			previous_meshlet_submission !=
 				wgpu_meshlet_batch_submission(batch.meshlet_draw_count, batch.instance_count)
 	}

@@ -863,7 +863,7 @@ register_geometry_with_hierarchy :: proc(
 	}
 	retain_canonical := prepared_page_source.kind != .File
 	query_proxy := prepare_geometry_query_proxy(desc, retain_canonical, registry.allocator)
-	if index, found := geometry_index_by_name(registry, name); found {
+	if index, found := geometry_index_by_name_any(registry, name); found {
 		geometry := &registry.geometries[index]
 		if geometry.authored {
 			destroy_meshlet_data(&meshlet_data, registry.allocator)
@@ -911,6 +911,7 @@ register_geometry_with_hierarchy :: proc(
 		geometry.lod_screen_radii = {}
 		geometry.lod_simplification_errors = {}
 		geometry.lod_count = 0
+		geometry.alive = true
 		geometry.version += 1
 		if had_lods {
 			registry.geometry_topology_revision += 1
@@ -1015,7 +1016,7 @@ register_geometry_catalog :: proc(
 		positions = clone_slice(desc.query_positions, registry.allocator),
 	}
 	bounds := calculate_position_bounds(desc.query_positions)
-	if index, found := geometry_index_by_name(registry, name); found {
+	if index, found := geometry_index_by_name_any(registry, name); found {
 		registered := &registry.geometries[index]
 		if registered.authored {
 			destroy_meshlet_data(&meshlet_data, registry.allocator)
@@ -1060,6 +1061,7 @@ register_geometry_catalog :: proc(
 		registered.lod_screen_radii = {}
 		registered.lod_simplification_errors = {}
 		registered.lod_count = 0
+		registered.alive = true
 		registered.version += 1
 		if had_lods {
 			registry.geometry_topology_revision += 1
@@ -1458,6 +1460,7 @@ register_project_lod_geometry :: proc(
 register_project_lod_geometries :: proc(
 	registry: ^Registry,
 	declarations: []shared.Project_Resource,
+	retire_missing: bool = true,
 ) -> string {
 	seen := make(map[shared.Resource_UUID]bool)
 	defer delete(seen)
@@ -1470,12 +1473,12 @@ register_project_lod_geometries :: proc(
 		}
 		seen[declaration.id] = true
 	}
+	if !retire_missing {
+		return ""
+	}
 	for &geometry in registry.geometries {
 		if geometry.authored && !seen[geometry.id] {
-			geometry.alive = false
-			geometry.generation += 1
-			geometry.version += 1
-			registry.geometry_topology_revision += 1
+			_ = retire_project_resource(registry, geometry.id)
 		}
 	}
 	return ""
@@ -1496,14 +1499,16 @@ register_material :: proc(
 	if err := validate_material_desc(normalized_desc); err != "" {
 		return {}, err
 	}
-	if index, found := material_index_by_name(registry, name); found {
+	if index, found := material_index_by_name_any(registry, name); found {
 		material := &registry.materials[index]
 		if material.authored {
 			return {}, fmt.tprintf("material name '%s' belongs to a project resource and cannot be replaced at runtime", name)
 		}
 		destroy_material_desc(&material.desc, registry.allocator)
 		material.desc = clone_material_desc(normalized_desc, registry.allocator)
-		_ = touch_material(registry, {u32(index), material.generation})
+		material.alive = true
+		material.version += 1
+		bump_material_revision(registry)
 		return {u32(index), material.generation}, ""
 	}
 	cloned_name, clone_err := strings.clone(name, registry.allocator)
@@ -1777,6 +1782,7 @@ register_project_materials :: proc(
 	registry: ^Registry,
 	root: string,
 	declarations: []shared.Project_Resource,
+	retire_missing: bool = true,
 ) -> string {
 	seen := make(map[shared.Resource_UUID]bool)
 	defer delete(seen)
@@ -1872,15 +1878,15 @@ register_project_materials :: proc(
 			return fmt.tprintf("resources/%s: %s", declaration.source, register_err)
 		}
 	}
+	if !retire_missing {
+		return ""
+	}
 	for &material in registry.materials {
 		if !material.alive || !material.authored {
 			continue
 		}
 		if !seen[material.id] {
-			material.alive = false
-			material.generation += 1
-			material.version += 1
-			bump_material_revision(registry)
+			_ = retire_project_resource(registry, material.id)
 		}
 	}
 	return ""
@@ -2274,6 +2280,15 @@ geometry_index_by_name :: proc(registry: ^Registry, name: string) -> (int, bool)
 	return -1, false
 }
 
+geometry_index_by_name_any :: proc(registry: ^Registry, name: string) -> (int, bool) {
+	for geometry, index in registry.geometries {
+		if geometry.name == name {
+			return index, true
+		}
+	}
+	return -1, false
+}
+
 geometry_index_by_uuid :: proc(registry: ^Registry, id: shared.Resource_UUID) -> (int, bool) {
 	if registry == nil || id == (shared.Resource_UUID{}) {
 		return -1, false
@@ -2300,6 +2315,15 @@ geometry_index_by_uuid_any :: proc(registry: ^Registry, id: shared.Resource_UUID
 
 material_index_by_name :: proc(registry: ^Registry, name: string) -> (int, bool) {
 	for material, index in registry.materials { if material.alive && material.name == name { return index, true } }
+	return -1, false
+}
+
+material_index_by_name_any :: proc(registry: ^Registry, name: string) -> (int, bool) {
+	for material, index in registry.materials {
+		if material.name == name {
+			return index, true
+		}
+	}
 	return -1, false
 }
 

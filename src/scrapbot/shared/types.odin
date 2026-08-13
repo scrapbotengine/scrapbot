@@ -61,6 +61,7 @@ Project_Scene :: struct {
 	id: Resource_UUID,
 	name: string,
 	source: string,
+	resource_closure: [dynamic]Resource_UUID,
 }
 
 Project_Window_Config :: struct {

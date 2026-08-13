@@ -989,20 +989,25 @@ editor_ui_handle_shortcuts :: proc(state: ^State, world: ^shared.World, keyboard
 		state.editor_right_sidebar_visible = !state.editor_right_sidebar_visible
 		state.editor_sidebar_visual_valid = false
 	}
-	if editor_action_requested(keyboard, .Run_Stop) {
+	if editor_action_requested(keyboard, .Transport_Play) {
+		editor_play(state)
+		return
+	}
+	if editor_action_requested(keyboard, .Transport_Pause) {
 		if state.editor_simulation_playing {
-			editor_stop(state)
-		} else {
+			editor_pause(state)
+		} else if !state.editor_simulation_stopped {
 			editor_play(state)
 		}
 		return
 	}
-	if editor_action_requested(keyboard, .Pause_Step) {
-		if state.editor_simulation_playing {
-			editor_pause(state)
-		} else {
-			editor_step(state)
-		}
+	if editor_action_requested(keyboard, .Transport_Stop) {
+		editor_stop(state)
+		return
+	}
+	if editor_action_requested(keyboard, .Transport_Step) {
+		editor_step(state)
+		return
 	}
 	if state.has_focused_input {
 		return
@@ -3115,7 +3120,10 @@ editor_ui_update_transport :: proc(state: ^State, world: ^shared.World) {
 				available = !state.editor_simulation_stopped
 			case .Transport_Pause:
 				available = !state.editor_simulation_stopped
-			case .Transport_Play, .Transport_Step:
+			case .Transport_Play:
+				available = !state.editor_simulation_playing
+			case .Transport_Step:
+				available = !state.editor_simulation_playing && !state.editor_simulation_stopped
 			case:
 		}
 		if !available {

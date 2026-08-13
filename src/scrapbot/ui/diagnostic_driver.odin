@@ -269,8 +269,10 @@ diagnostic_key_is_valid :: proc(key: string) -> bool {
 		     "undo",
 		     "redo",
 		     "editor_toggle",
-		     "run_stop",
-		     "pause_step",
+		     "play",
+		     "pause",
+		     "stop",
+		     "step",
 		     "toggle_left_sidebar",
 		     "toggle_right_sidebar",
 		     "duplicate_entity",
@@ -813,10 +815,14 @@ diagnostic_keyboard_set :: proc(keyboard: ^Keyboard_Input, key: string) {
 			keyboard.actions += {.Redo}
 		case "editor_toggle":
 			keyboard.actions += {.Toggle_Editor}
-		case "run_stop":
-			keyboard.actions += {.Run_Stop}
-		case "pause_step":
-			keyboard.actions += {.Pause_Step}
+		case "play":
+			keyboard.actions += {.Transport_Play}
+		case "pause":
+			keyboard.actions += {.Transport_Pause}
+		case "stop":
+			keyboard.actions += {.Transport_Stop}
+		case "step":
+			keyboard.actions += {.Transport_Step}
 		case "toggle_left_sidebar":
 			keyboard.actions += {.Toggle_Left_Sidebar}
 		case "toggle_right_sidebar":

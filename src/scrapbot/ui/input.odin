@@ -53,6 +53,18 @@ keyboard_input_from_snapshot :: proc(
 	alt := input_any_down(physical, .Left_Alt, .Right_Alt)
 	result.fine = shortcut
 	result.select_all = shortcut && input_key_pressed(physical, .A)
+	if input_key_pressed(physical, .F5) {
+		result.actions += {.Transport_Play}
+	}
+	if input_key_pressed(physical, .F6) {
+		result.actions += {.Transport_Pause}
+	}
+	if input_key_pressed(physical, .F7) {
+		result.actions += {.Transport_Step}
+	}
+	if input_key_pressed(physical, .F8) {
+		result.actions += {.Transport_Stop}
+	}
 	if shortcut {
 		if input_key_pressed(physical, .E) {
 			result.actions += {.Toggle_Editor}
@@ -65,10 +77,17 @@ keyboard_input_from_snapshot :: proc(
 			}
 		}
 		if input_key_pressed(physical, .R) {
-			result.actions += {.Run_Stop}
+			result.actions += {.Transport_Play}
 		}
 		if input_key_pressed(physical, .T) {
-			result.actions += {.Pause_Step}
+			if result.shift {
+				result.actions += {.Transport_Step}
+			} else {
+				result.actions += {.Transport_Pause}
+			}
+		}
+		if input_key_pressed(physical, .Period) {
+			result.actions += {.Transport_Stop}
 		}
 		if input_key_pressed(physical, .S) {
 			result.actions += {.Save}

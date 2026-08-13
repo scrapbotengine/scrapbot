@@ -145,6 +145,25 @@ test_project_model_products_register_generated_meshes_and_materials :: proc(t: ^
 	testing.expect(t, !model_still_alive)
 	testing.expect(t, !geometry_still_alive)
 	testing.expect(t, !material_still_alive)
+	testing.expect_value(t, len(registry.models[handle.index].meshes), 0)
+	testing.expect_value(
+		t,
+		len(registry.geometries[geometry_handle.index].query_proxy.positions),
+		0,
+	)
+	testing.expect_value(t, len(registry.materials[material_handle.index].desc.texture_pixels), 0)
+
+	register_err = register_project_models(
+		&registry,
+		[]shared.Project_Resource{declaration},
+		imports.products[:],
+	)
+	testing.expectf(t, register_err == "", "model readmission failed: %s", register_err)
+	reloaded_handle, reloaded_found := model_handle_by_uuid(&registry, id)
+	testing.expect(t, reloaded_found)
+	testing.expect_value(t, len(registry.models), 1)
+	testing.expect_value(t, reloaded_handle.index, handle.index)
+	testing.expect(t, reloaded_handle.generation != handle.generation)
 }
 
 @(test)

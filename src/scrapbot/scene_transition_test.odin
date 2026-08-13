@@ -91,6 +91,9 @@ test_scene_transition_replaces_bounded_world_and_rejects_invalid_candidate :: pr
 	runtime.scene_path, _ = strings.clone(first_path)
 	runtime.scene_id, _ = shared.resource_uuid_parse(SCENE_TRANSITION_FIRST_ID)
 	runtime.scenes, _ = project.load_project_scenes(root, nil)
+	first_scene, _ := project.project_scene_by_id(runtime.scenes[:], runtime.scene_id)
+	loaded_project := project.Project_Load_Result{}
+	init_resource_residency(&runtime.resource_residency, &loaded_project, first_scene)
 	component.init_registry(&runtime.script_runtime.registry)
 	runtime.script_runtime.world = &world
 	if init_err := init_render_resources(&runtime.resources, &world); init_err != "" {

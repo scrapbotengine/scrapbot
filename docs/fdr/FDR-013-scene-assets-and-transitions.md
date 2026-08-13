@@ -17,6 +17,9 @@ Scrapbot projects may contain multiple independently named scene assets and swit
 - The destination is parsed, schema-validated, and resource-resolved before it replaces the current world.
 - An invalid UUID or destination leaves the current scene active and reports an error.
 - Hot reload preserves the active scene when it still exists, falling back to the configured startup scene only when necessary.
+- Project discovery records each scene's transitive resource closure. Startup registers only the active closure plus project-config environments.
+- A transition keeps the active and destination closures resident until activation succeeds. Shared resources are reused; old-only payloads are released after a three-frame grace period.
+- Returning to a scene during the grace period cancels its pending evictions. Re-admission later reuses authored UUID slots with a new handle generation.
 
 ## Design Decisions
 
@@ -34,23 +37,29 @@ Scrapbot projects may contain multiple independently named scene assets and swit
 
 ### 3. Share project resources across scene worlds
 
-**Decision:** Reuse the project-wide resource registry across transitions and destroy the old ECS world after a successful replacement.
-**Why:** Materials, models, textures, and imported products are project assets rather than scene-owned copies. Reusing them prevents scene switching from multiplying heavy resource memory. See ADR-030 and ADR-058.
-**Tradeoff:** The current registry keeps declared project resources available for the runtime; dependency-aware loading and eviction remain future work.
+**Decision:** Reuse one project-wide registry while assigning active and staging references to dependency-indexed scene closures.
+**Why:** Shared Materials, Models, Textures, and imported products should survive a transition without cloning, while unrelated scene payloads should not consume RAM. See ADR-030, ADR-058, and ADR-061.
+**Tradeoff:** Transition peak memory contains the union of both closures, and a short grace period retains old-only payloads after activation.
 
 ### 4. Stage before replacing
 
 **Decision:** Build and validate a complete candidate while the current scene remains usable, then swap ownership atomically.
 **Why:** A bad destination must not leave the runtime in a partially replaced state.
-**Tradeoff:** Candidate construction is synchronous and temporarily holds two ECS worlds.
+**Tradeoff:** Candidate construction and missing-resource admission are synchronous and temporarily hold two ECS worlds.
+
+### 5. Evict payloads, not only identities
+
+**Decision:** Retirement releases owned CPU payloads and invalidates generational handles while preserving authored UUID slots.
+**Why:** A dead lookup bit does not reduce memory, and reusing an old generation could make stale ECS or renderer handles valid again.
+**Tradeoff:** Re-entering a fully evicted scene must read its products again and resolve fresh handles.
 
 ## Related
 
-- **ADRs:** ADR-010, ADR-023, ADR-024, ADR-026, ADR-030, ADR-058
+- **ADRs:** ADR-010, ADR-023, ADR-024, ADR-026, ADR-030, ADR-058, ADR-061
 - **FDRs:** FDR-002, FDR-004, FDR-008, FDR-009
 
 ## Open Questions
 
-- What explicit preload/progress API should prepare a candidate outside the frame boundary?
+- What explicit time-budgeted/background preload, progress, and cancellation API should prepare a candidate outside the frame boundary?
 - How should additive scene instances, persistent layers, and cross-scene references compose?
-- Which resource dependencies should remain resident across a transition, and which may be evicted?
+- How should byte budgets and memory pressure shorten grace or reject admission while preserving the active scene?

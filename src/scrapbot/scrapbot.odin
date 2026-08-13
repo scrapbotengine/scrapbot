@@ -71,6 +71,7 @@ Frame_Runtime :: struct {
 	executor: schedule.Executor,
 	frame_systems: Frame_System_Cache,
 	resources: resources.Registry,
+	resource_residency: Resource_Residency,
 	system_profile: System_Profile_Accumulator,
 }
 
@@ -79,6 +80,7 @@ destroy_frame_runtime :: proc(runtime: ^Frame_Runtime) {
 		return
 	}
 	resources.destroy_registry(&runtime.resources)
+	destroy_resource_residency(&runtime.resource_residency)
 	destroy_frame_system_cache(&runtime.frame_systems)
 	schedule.destroy_executor(&runtime.executor)
 	native.destroy_extension_set(&runtime.native_extensions)
@@ -866,12 +868,13 @@ run_project_internal_untracked :: proc(
 	frame_runtime.scenes = loaded.scenes
 	loaded.scenes = nil
 	frame_runtime.root = root
-	if err := init_render_resources(
+	init_resource_residency(&frame_runtime.resource_residency, &loaded, default_scene)
+	if err := init_resident_render_resources(
+		&frame_runtime.resource_residency,
 		&frame_runtime.resources,
 		&world,
 		root,
 		&loaded.config,
-		loaded.resources[:],
 	); err != "" { result.err = err; return result }
 	if err := capture_playback_baseline(
 		&frame_runtime.playback_baseline,
@@ -1326,6 +1329,10 @@ frame_runtime_revert :: proc(data: rawptr, world: ^shared.World) -> string {
 	if loaded.err != "" {
 		return loaded.err
 	}
+	active_scene, found := project.project_scene_by_id(loaded.scenes[:], runtime.scene_id)
+	if !found {
+		return "active scene is unavailable"
+	}
 	next_resources: resources.Registry
 	if clone_err := resources.clone_registry(&runtime.resources, &next_resources);
 	   clone_err != "" {
@@ -1340,12 +1347,15 @@ frame_runtime_revert :: proc(data: rawptr, world: ^shared.World) -> string {
 	if world_err != "" {
 		return world_err
 	}
-	if err := init_render_resources(
+	next_residency: Resource_Residency
+	init_resource_residency(&next_residency, &loaded, active_scene)
+	defer destroy_resource_residency(&next_residency)
+	if err := init_resident_render_resources(
+		&next_residency,
 		&next_resources,
 		&next_world,
 		runtime.root,
 		&loaded.config,
-		loaded.resources[:],
 	); err != "" {
 		ecs.destroy_world(&next_world)
 		return err
@@ -1353,6 +1363,9 @@ frame_runtime_revert :: proc(data: rawptr, world: ^shared.World) -> string {
 	resources.destroy_registry(&runtime.resources)
 	runtime.resources = next_resources
 	next_resources = {}
+	destroy_resource_residency(&runtime.resource_residency)
+	runtime.resource_residency = next_residency
+	next_residency = {}
 	ecs.destroy_world(world)
 	world^ = next_world
 	script.bind_runtime_world(&runtime.script_runtime, world)
@@ -1391,6 +1404,7 @@ frame_runtime_reimport_resources :: proc(
 	if err := reimport_project_resources(runtime.root, &runtime.resources, id, all); err != "" {
 		return err
 	}
+	resource_residency_schedule_unreferenced(&runtime.resource_residency, &runtime.resources)
 	return reconcile_model_instances(world, &runtime.resources)
 }
 
@@ -1555,6 +1569,7 @@ step_frame_runtime :: proc(
 	if runtime == nil {
 		return ""
 	}
+	resource_residency_advance(&runtime.resource_residency, &runtime.resources)
 	ecs.advance_project_time(world, delta_seconds)
 	if err := step_frame_runtime_parts(
 		&runtime.script_runtime,
@@ -1590,14 +1605,25 @@ frame_runtime_commit_scene_request :: proc(
 	if path_err != "" {
 		return path_err
 	}
+	if residency_err := resource_residency_stage(
+		&runtime.resource_residency,
+		&runtime.resources,
+		runtime.root,
+		scene,
+	); residency_err != "" {
+		delete(path)
+		return residency_err
+	}
 	next_world, load_err := load_validated_scene_world(path, &runtime.script_runtime, requested)
 	if load_err != "" {
 		delete(path)
+		resource_residency_cancel_staging(&runtime.resource_residency, &runtime.resources)
 		return load_err
 	}
 	if err := resolve_scene_world_resources(&next_world, &runtime.resources); err != "" {
 		delete(path)
 		ecs.destroy_world(&next_world)
+		resource_residency_cancel_staging(&runtime.resource_residency, &runtime.resources)
 		return err
 	}
 	next_baseline: Playback_Baseline
@@ -1605,6 +1631,7 @@ frame_runtime_commit_scene_request :: proc(
 	   err != "" {
 		delete(path)
 		ecs.destroy_world(&next_world)
+		resource_residency_cancel_staging(&runtime.resource_residency, &runtime.resources)
 		return err
 	}
 	ecs.destroy_world(world)
@@ -1615,6 +1642,7 @@ frame_runtime_commit_scene_request :: proc(
 	delete(runtime.scene_path)
 	runtime.scene_path = path
 	runtime.scene_id = requested
+	resource_residency_activate_staging(&runtime.resource_residency)
 	return ""
 }
 

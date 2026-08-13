@@ -27,8 +27,27 @@ test_editor_actions_resolve_from_one_physical_keyboard_snapshot :: proc(t: ^test
 	testing.expect(t, !editor_action_requested(shortcut, .Gizmo_Rotate))
 
 	run := keyboard_input_from_snapshot(test_keyboard_snapshot({.Left_Control}, {.R}))
-	testing.expect(t, editor_action_requested(run, .Run_Stop))
+	testing.expect(t, editor_action_requested(run, .Transport_Play))
 	testing.expect(t, !editor_action_requested(run, .Transform_Rotate))
+
+	pause := keyboard_input_from_snapshot(test_keyboard_snapshot({.Left_Control}, {.T}))
+	testing.expect(t, editor_action_requested(pause, .Transport_Pause))
+	testing.expect(t, !editor_action_requested(pause, .Transport_Step))
+
+	step := keyboard_input_from_snapshot(
+		test_keyboard_snapshot({.Left_Control, .Left_Shift}, {.T}),
+	)
+	testing.expect(t, editor_action_requested(step, .Transport_Step))
+	testing.expect(t, !editor_action_requested(step, .Transport_Pause))
+
+	stop := keyboard_input_from_snapshot(test_keyboard_snapshot({.Left_Meta}, {.Period}))
+	testing.expect(t, editor_action_requested(stop, .Transport_Stop))
+
+	aliases := keyboard_input_from_snapshot(test_keyboard_snapshot({}, {.F5, .F6, .F7, .F8}))
+	testing.expect(t, editor_action_requested(aliases, .Transport_Play))
+	testing.expect(t, editor_action_requested(aliases, .Transport_Pause))
+	testing.expect(t, editor_action_requested(aliases, .Transport_Step))
+	testing.expect(t, editor_action_requested(aliases, .Transport_Stop))
 
 	right_sidebar := keyboard_input_from_snapshot(
 		test_keyboard_snapshot({.Left_Control, .Left_Alt}, {.B}),
@@ -41,7 +60,7 @@ test_editor_actions_resolve_from_one_physical_keyboard_snapshot :: proc(t: ^test
 test_unmodified_editor_chords_and_axes_resolve_after_modifiers :: proc(t: ^testing.T) {
 	rotate := keyboard_input_from_snapshot(test_keyboard_snapshot({}, {.R}))
 	testing.expect(t, editor_action_requested(rotate, .Transform_Rotate))
-	testing.expect(t, !editor_action_requested(rotate, .Run_Stop))
+	testing.expect(t, !editor_action_requested(rotate, .Transport_Play))
 
 	complementary_axis := keyboard_input_from_snapshot(test_keyboard_snapshot({.Left_Shift}, {.X}))
 	testing.expect(t, complementary_axis.shift)

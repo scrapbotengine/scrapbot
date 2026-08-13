@@ -72,8 +72,10 @@ Editor_Action :: enum {
 	Toggle_Editor,
 	Toggle_Left_Sidebar,
 	Toggle_Right_Sidebar,
-	Run_Stop,
-	Pause_Step,
+	Transport_Play,
+	Transport_Pause,
+	Transport_Stop,
+	Transport_Step,
 	Save,
 	Undo,
 	Redo,
@@ -919,6 +921,9 @@ select_font :: proc(state: ^State, name: string) {
 
 editor_play :: proc(state: ^State) {
 	if state == nil { return }
+	if state.editor_simulation_playing && !state.editor_simulation_stopped {
+		return
+	}
 	if state.editor_simulation_stopped {
 		state.editor_playback_begin_requested = true
 	}
@@ -1035,9 +1040,8 @@ editor_mark_scene_uuid_dirty :: proc(state: ^State, id: shared.Entity_UUID) {
 }
 
 editor_step :: proc(state: ^State) {
-	if state == nil { return }
-	if state.editor_simulation_stopped {
-		state.editor_playback_begin_requested = true
+	if state == nil || state.editor_simulation_playing || state.editor_simulation_stopped {
+		return
 	}
 	state.editor_simulation_playing = false
 	state.editor_simulation_stopped = false

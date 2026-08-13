@@ -5,6 +5,7 @@ import project "./project"
 import resources "./resources"
 import script "./script"
 import shared "./shared"
+import ui "./ui"
 import "core:testing"
 
 @(test)
@@ -105,4 +106,102 @@ test_model_resource_expands_into_stable_derived_ecs_renderables :: proc(t: ^test
 		_, child_still_present := ecs.entity_index_by_uuid(&world, stable_id)
 		testing.expect(t, !child_still_present)
 	}
+}
+
+@(test)
+test_editor_duplicate_of_model_root_expands_and_renders :: proc(t: ^testing.T) {
+	loaded := project.load_project("examples/assets")
+	defer project.destroy_project_load_result(&loaded)
+	testing.expectf(t, loaded.err == "", "asset example load failed: %s", loaded.err)
+	if loaded.err != "" {
+		return
+	}
+	world := ecs.build_world(&loaded.scene)
+	defer ecs.destroy_world(&world)
+	registry: resources.Registry
+	defer resources.destroy_registry(&registry)
+	testing.expect(
+		t,
+		init_render_resources(
+			&registry,
+			&world,
+			"examples/assets",
+			&loaded.config,
+			loaded.resources[:],
+		) ==
+		"",
+	)
+	state := new(ui.State)
+	defer free(state)
+	testing.expect(t, ui.init(state) == "")
+	defer ui.destroy(state)
+	state.editor_visible = true
+	state.editor_simulation_stopped = true
+	render_list := ecs.build_resource_render_list(&world, &registry, true)
+	defer ecs.destroy_render_list(&render_list)
+
+	root_id, _ := shared.entity_uuid_parse("a7100000-0000-4000-8000-000000000003")
+	root_index, root_found := ecs.entity_index_by_uuid(&world, root_id)
+	testing.expect(t, root_found)
+	if !root_found {
+		return
+	}
+	ui.editor_set_entity_selection(state, &world, []shared.Entity{world.entities[root_index].id})
+	testing.expect(t, ui.editor_duplicate_selected_entities(state, &world))
+	testing.expect_value(t, ui.editor_selection_count(state), 1)
+	duplicate_id := state.editor_selected_uuids[0]
+	testing.expect(t, duplicate_id != root_id)
+	testing.expect(t, reconcile_model_instances(&world, &registry) == "")
+	ecs.populate_resource_render_list(&world, &registry, &render_list, true)
+
+	derived_count := 0
+	active_render_count := 0
+	for entity in world.entities {
+		if !entity.alive || entity.model_owner != duplicate_id {
+			continue
+		}
+		derived_count += 1
+		if entity.render_active_index >= 0 {
+			active_render_count += 1
+		}
+	}
+	testing.expectf(t, derived_count > 0, "duplicated model root did not expand")
+	testing.expectf(
+		t,
+		active_render_count > 0,
+		"duplicated model root did not enter the render set",
+	)
+	render_list_count := 0
+	for instance in render_list.instances {
+		if instance.entity.model_owner == duplicate_id {
+			render_list_count += 1
+		}
+	}
+	testing.expectf(
+		t,
+		render_list_count > 0,
+		"duplicated model root did not enter the render list",
+	)
+	duplicate_index, duplicate_found := ecs.entity_index_by_uuid(&world, duplicate_id)
+	testing.expect(t, duplicate_found)
+	if !duplicate_found {
+		return
+	}
+	duplicate_transform := &world.transforms[world.entities[duplicate_index].transform_index]
+	duplicate_transform.position.x += 7
+	ecs.mark_render_transform_dirty(&world, duplicate_index)
+	ecs.populate_resource_render_list(&world, &registry, &render_list, true)
+	moved_render_count := 0
+	for instance in render_list.instances {
+		if instance.entity.model_owner != duplicate_id {
+			continue
+		}
+		moved_render_count += 1
+		testing.expectf(
+			t,
+			instance.transform.position.x >= duplicate_transform.position.x,
+			"duplicated model primitive did not inherit the moved root transform",
+		)
+	}
+	testing.expectf(t, moved_render_count > 0, "moved duplicate disappeared from the render list")
 }

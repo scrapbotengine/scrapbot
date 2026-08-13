@@ -67,10 +67,7 @@ register_project_textures :: proc(
 	}
 	for &texture in registry.textures {
 		if texture.authored && texture.alive && !seen[texture.id] {
-			texture.alive = false
-			texture.generation += 1
-			texture.version += 1
-			bump_texture_revision(registry)
+			_ = retire_project_resource(registry, texture.id)
 		}
 	}
 	return ""

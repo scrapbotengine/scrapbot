@@ -65,10 +65,7 @@ register_project_icon_sets :: proc(
 	if retire_missing {
 		for &icon_set in registry.icon_sets {
 			if icon_set.authored && icon_set.alive && !seen[icon_set.id] {
-				icon_set.alive = false
-				icon_set.generation += 1
-				icon_set.version += 1
-				bump_icon_set_revision(registry)
+				_ = retire_project_resource(registry, icon_set.id)
 			}
 		}
 	}

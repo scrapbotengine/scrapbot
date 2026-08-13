@@ -5263,7 +5263,7 @@ test_editor_transport_buttons_preserve_unsaved_authoring_across_playback :: proc
 }
 
 @(test)
-test_editor_command_shortcuts_toggle_shell_and_drive_transport :: proc(t: ^testing.T) {
+test_editor_command_shortcuts_are_explicit_transport_actions :: proc(t: ^testing.T) {
 	scene := shared.Scene{}
 	defer delete(scene.entities)
 	world := ecs.build_world(&scene)
@@ -5276,41 +5276,71 @@ test_editor_command_shortcuts_toggle_shell_and_drive_transport :: proc(t: ^testi
 
 	testing.expect(
 		t,
-		reconcile(state, &world, 1280, 720, {}, 0, 0, 1.0 / 60.0, {actions = {.Run_Stop}}) == "",
+		reconcile(state, &world, 1280, 720, {}, 0, 0, 1.0 / 60.0, {actions = {.Transport_Stop}}) ==
+		"",
 	)
 	testing.expect(t, state.editor_simulation_stopped)
 	testing.expect(t, consume_playback_stop_request(state))
 	testing.expect(
 		t,
-		reconcile(state, &world, 1280, 720, {}, 0, 0, 1.0 / 60.0, {actions = {.Run_Stop}}) == "",
+		reconcile(state, &world, 1280, 720, {}, 0, 0, 1.0 / 60.0, {actions = {.Transport_Play}}) ==
+		"",
 	)
 	testing.expect(t, state.editor_simulation_playing)
 	testing.expect(t, consume_playback_begin_request(state))
+	// Play while already running is an explicit no-op, never an implicit Stop.
+	_ = reconcile(state, &world, 1280, 720, {}, 0, 0, 1.0 / 60.0, {actions = {.Transport_Play}})
+	testing.expect(t, state.editor_simulation_playing)
+	testing.expect(t, !consume_playback_stop_request(state))
 
 	testing.expect(
 		t,
-		reconcile(state, &world, 1280, 720, {}, 0, 0, 1.0 / 60.0, {actions = {.Pause_Step}}) == "",
+		reconcile(
+			state,
+			&world,
+			1280,
+			720,
+			{},
+			0,
+			0,
+			1.0 / 60.0,
+			{actions = {.Transport_Pause}},
+		) ==
+		"",
 	)
 	testing.expect(t, !state.editor_simulation_playing && !state.editor_simulation_stopped)
 	_, run := consume_simulation_delta(state, 0.25)
 	testing.expect(t, !run)
 	testing.expect(
 		t,
-		reconcile(state, &world, 1280, 720, {}, 0, 0, 1.0 / 60.0, {actions = {.Pause_Step}}) == "",
+		reconcile(state, &world, 1280, 720, {}, 0, 0, 1.0 / 60.0, {actions = {.Transport_Step}}) ==
+		"",
 	)
 	delta: f32
 	delta, run = consume_simulation_delta(state, 0.25)
 	testing.expect(t, run && delta == f32(1.0 / 60.0))
 	testing.expect(
 		t,
-		reconcile(state, &world, 1280, 720, {}, 0, 0, 1.0 / 60.0, {actions = {.Run_Stop}}) == "",
+		reconcile(state, &world, 1280, 720, {}, 0, 0, 1.0 / 60.0, {actions = {.Transport_Play}}) ==
+		"",
 	)
 	testing.expect(t, state.editor_simulation_playing)
 	testing.expect(t, !state.editor_simulation_stopped)
 	testing.expect(t, !consume_playback_begin_request(state))
 	testing.expect(
 		t,
-		reconcile(state, &world, 1280, 720, {}, 0, 0, 1.0 / 60.0, {actions = {.Pause_Step}}) == "",
+		reconcile(
+			state,
+			&world,
+			1280,
+			720,
+			{},
+			0,
+			0,
+			1.0 / 60.0,
+			{actions = {.Transport_Pause}},
+		) ==
+		"",
 	)
 	testing.expect(t, !state.editor_simulation_playing && !state.editor_simulation_stopped)
 
@@ -5318,14 +5348,16 @@ test_editor_command_shortcuts_toggle_shell_and_drive_transport :: proc(t: ^testi
 	state.focused_input_editor = false
 	testing.expect(
 		t,
-		reconcile(state, &world, 1280, 720, {}, 0, 0, 1.0 / 60.0, {actions = {.Run_Stop}}) == "",
+		reconcile(state, &world, 1280, 720, {}, 0, 0, 1.0 / 60.0, {actions = {.Transport_Stop}}) ==
+		"",
 	)
 	testing.expect(t, !state.editor_simulation_playing && !state.editor_simulation_stopped)
 	state.has_focused_input = false
 	state.editor_scene_camera_captures_input = true
 	testing.expect(
 		t,
-		reconcile(state, &world, 1280, 720, {}, 0, 0, 1.0 / 60.0, {actions = {.Run_Stop}}) == "",
+		reconcile(state, &world, 1280, 720, {}, 0, 0, 1.0 / 60.0, {actions = {.Transport_Stop}}) ==
+		"",
 	)
 	testing.expect(t, !state.editor_simulation_playing && !state.editor_simulation_stopped)
 	state.editor_scene_camera_captures_input = false

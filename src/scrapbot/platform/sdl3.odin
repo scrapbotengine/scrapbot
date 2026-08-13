@@ -568,6 +568,8 @@ input_key_from_scancode :: proc "contextless" (
 			return .Page_Up, true
 		case .PAGEDOWN:
 			return .Page_Down, true
+		case .PERIOD, .KP_PERIOD:
+			return .Period, true
 		case .LSHIFT:
 			return .Left_Shift, true
 		case .RSHIFT:

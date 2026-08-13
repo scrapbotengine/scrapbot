@@ -88,11 +88,7 @@ register_project_models :: proc(
 	}
 	for &model in registry.models {
 		if model.authored && model.alive && !seen[model.id] {
-			retire_model_products(registry, &model)
-			model.alive = false
-			model.generation += 1
-			model.version += 1
-			bump_model_revision(registry)
+			_ = retire_project_resource(registry, model.id)
 		}
 	}
 	return ""
@@ -504,6 +500,7 @@ retire_generated_geometry :: proc(registry: ^Registry, handle: Geometry_Handle) 
 	if !alive || geometry.authored {
 		return
 	}
+	release_geometry_payload(geometry, registry.allocator)
 	geometry.alive = false
 	geometry.generation += 1
 	geometry.version += 1
@@ -515,6 +512,8 @@ retire_generated_material :: proc(registry: ^Registry, handle: Material_Handle) 
 	if !alive || material.authored {
 		return
 	}
+	destroy_material_desc(&material.desc, registry.allocator)
+	material.desc = {}
 	material.alive = false
 	material.generation += 1
 	material.version += 1

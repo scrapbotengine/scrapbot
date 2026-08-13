@@ -35,8 +35,8 @@ This file tracks current actionable engineering work. The broad product roadmap 
 
 ## Project Runtime And Scripting
 
-- [ ] Prepare scene transitions asynchronously with explicit preload/progress/cancellation while preserving transactional activation. See [ADR-058](adr/ADR-058-identify-scenes-by-uuid-and-replace-worlds-transactionally.md).
-- [ ] Add dependency-indexed resource residency across scene transitions with reference counts, budgets, and delayed eviction instead of eagerly retaining every declared project resource. See [FDR-013](fdr/FDR-013-scene-assets-and-transitions.md).
+- [ ] Add time-budgeted/background scene preparation with project-visible preload/progress/cancellation while preserving ADR-061's active/staging ownership and transactional activation. See [ADR-058](adr/ADR-058-identify-scenes-by-uuid-and-replace-worlds-transactionally.md).
+- [ ] Add configurable CPU/GPU scene-residency byte budgets, pressure-driven early eviction, and structured residency telemetry on top of dependency-indexed closures and delayed payload eviction. See [ADR-061](adr/ADR-061-index-scene-resource-dependencies-and-evict-unused-payloads.md).
 - [ ] Design additive scene instances, explicit unload, persistent layers, and scoped cross-scene references. See [FDR-013](fdr/FDR-013-scene-assets-and-transitions.md).
 - [ ] Add persistent project action maps, rebinding, controller snapshots, and per-player routing over the canonical physical-frame/action layer. See [ADR-059](adr/ADR-059-route-input-from-one-physical-frame.md).
 - [ ] Replace the narrow TOML reader or formally specify its supported project-file subset.

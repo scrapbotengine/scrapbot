@@ -51,6 +51,7 @@ Hot_Reload_State :: struct {
 	executor: schedule.Executor,
 	frame_systems: Frame_System_Cache,
 	resources: resources.Registry,
+	resource_residency: Resource_Residency,
 	system_profile: System_Profile_Accumulator,
 	native_sources: native.Source_Set,
 	last_good_script_source: string,
@@ -149,12 +150,13 @@ init_hot_reload_state :: proc(
 	state.scenes_stamp = asset_stamp(state.scenes_path)
 	state.seconds_until_next_check = HOT_RELOAD_CHECK_INTERVAL_SECONDS
 
-	if err := init_render_resources(
+	init_resource_residency(&state.resource_residency, loaded, default_scene)
+	if err := init_resident_render_resources(
+		&state.resource_residency,
 		&state.resources,
 		world,
 		root,
 		&loaded.config,
-		loaded.resources[:],
 	); err != "" { return err }
 	if err := capture_playback_baseline(&state.playback_baseline, world, &state.resources);
 	   err != "" {
@@ -169,6 +171,7 @@ destroy_hot_reload_state :: proc(state: ^Hot_Reload_State) {
 	destroy_frame_system_cache(&state.frame_systems)
 	schedule.destroy_executor(&state.executor)
 	resources.destroy_registry(&state.resources)
+	destroy_resource_residency(&state.resource_residency)
 	native.destroy_source_set(&state.native_sources)
 	destroy_playback_baseline(&state.playback_baseline)
 	project.destroy_project_scenes(&state.scenes)
@@ -187,6 +190,7 @@ hot_reload_frame_system :: proc(data: rawptr, world: ^shared.World, delta_second
 	if state == nil {
 		return ""
 	}
+	resource_residency_advance(&state.resource_residency, &state.resources)
 	ecs.advance_project_time(world, delta_seconds)
 
 	maybe_poll_hot_reload(state, world, delta_seconds)
@@ -221,20 +225,32 @@ hot_reload_commit_scene_request :: proc(state: ^Hot_Reload_State, world: ^shared
 	if path_err != "" {
 		return path_err
 	}
+	if residency_err := resource_residency_stage(
+		&state.resource_residency,
+		&state.resources,
+		state.root,
+		scene,
+	); residency_err != "" {
+		delete(path)
+		return residency_err
+	}
 	next_world, load_err := load_validated_scene_world(path, &state.runtime, requested)
 	if load_err != "" {
 		delete(path)
+		resource_residency_cancel_staging(&state.resource_residency, &state.resources)
 		return load_err
 	}
 	if err := resolve_scene_world_resources(&next_world, &state.resources); err != "" {
 		delete(path)
 		ecs.destroy_world(&next_world)
+		resource_residency_cancel_staging(&state.resource_residency, &state.resources)
 		return err
 	}
 	next_baseline: Playback_Baseline
 	if err := capture_playback_baseline(&next_baseline, &next_world, &state.resources); err != "" {
 		delete(path)
 		ecs.destroy_world(&next_world)
+		resource_residency_cancel_staging(&state.resource_residency, &state.resources)
 		return err
 	}
 	ecs.destroy_world(world)
@@ -245,6 +261,7 @@ hot_reload_commit_scene_request :: proc(state: ^Hot_Reload_State, world: ^shared
 	delete(state.scene_path)
 	state.scene_path = path
 	state.scene_id = requested
+	resource_residency_activate_staging(&state.resource_residency)
 	state.scene_stamp = file_stamp(state.scene_path)
 	return ""
 }
@@ -314,6 +331,7 @@ hot_reload_reimport_resources :: proc(
 	if err := reimport_project_resources(state.root, &state.resources, id, all); err != "" {
 		return err
 	}
+	resource_residency_schedule_unreferenced(&state.resource_residency, &state.resources)
 	state.assets_stamp = asset_stamp(state.assets_path)
 	state.resources_stamp = asset_stamp(state.resources_path)
 	return reconcile_model_instances(world, &state.resources)
@@ -354,6 +372,10 @@ hot_reload_scene_revert :: proc(data: rawptr, world: ^shared.World) -> string {
 	if loaded.err != "" {
 		return loaded.err
 	}
+	active_scene, found := project.project_scene_by_id(loaded.scenes[:], state.scene_id)
+	if !found {
+		return "active scene is unavailable"
+	}
 	next_resources: resources.Registry
 	if clone_err := resources.clone_registry(&state.resources, &next_resources); clone_err != "" {
 		return clone_err
@@ -367,12 +389,15 @@ hot_reload_scene_revert :: proc(data: rawptr, world: ^shared.World) -> string {
 	if world_err != "" {
 		return world_err
 	}
-	if err := init_render_resources(
+	next_residency: Resource_Residency
+	init_resource_residency(&next_residency, &loaded, active_scene)
+	defer destroy_resource_residency(&next_residency)
+	if err := init_resident_render_resources(
+		&next_residency,
 		&next_resources,
 		&next_world,
 		state.root,
 		&loaded.config,
-		loaded.resources[:],
 	); err != "" {
 		ecs.destroy_world(&next_world)
 		return err
@@ -380,6 +405,9 @@ hot_reload_scene_revert :: proc(data: rawptr, world: ^shared.World) -> string {
 	resources.destroy_registry(&state.resources)
 	state.resources = next_resources
 	next_resources = {}
+	destroy_resource_residency(&state.resource_residency)
+	state.resource_residency = next_residency
+	next_residency = {}
 	ecs.destroy_world(world)
 	world^ = next_world
 	script.bind_runtime_world(&state.runtime, world)
@@ -508,19 +536,18 @@ reload_project_world_and_script :: proc(state: ^Hot_Reload_State, world: ^shared
 	}
 	next_world := ecs.build_world(&loaded_scene.scene)
 	next_resources: resources.Registry
-	if clone_err := resources.clone_registry(&state.resources, &next_resources); clone_err != "" {
-		ecs.destroy_world(&next_world)
-		return clone_err
-	}
-	if resource_err := init_render_resources(
+	next_residency: Resource_Residency
+	init_resource_residency(&next_residency, &loaded, target_scene)
+	if resource_err := init_resident_render_resources(
+		&next_residency,
 		&next_resources,
 		&next_world,
 		state.root,
 		&loaded.config,
-		loaded.resources[:],
 	); resource_err != "" {
 		ecs.destroy_world(&next_world)
 		resources.destroy_registry(&next_resources)
+		destroy_resource_residency(&next_residency)
 		return resource_err
 	}
 	script_load := load_script_from_path(
@@ -534,6 +561,7 @@ reload_project_world_and_script :: proc(state: ^Hot_Reload_State, world: ^shared
 		reload_err := script_load.err
 		ecs.destroy_world(&next_world)
 		resources.destroy_registry(&next_resources)
+		destroy_resource_residency(&next_residency)
 		destroy_script_load(&script_load)
 		if restore_err := restore_last_good_script_runtime(state, world); restore_err != "" {
 			return fmt.tprintf(
@@ -553,6 +581,7 @@ reload_project_world_and_script :: proc(state: ^Hot_Reload_State, world: ^shared
 	); source_err != "" {
 		ecs.destroy_world(&next_world)
 		resources.destroy_registry(&next_resources)
+		destroy_resource_residency(&next_residency)
 		destroy_script_load(&script_load)
 		return source_err
 	}
@@ -561,6 +590,7 @@ reload_project_world_and_script :: proc(state: ^Hot_Reload_State, world: ^shared
 	   baseline_err != "" {
 		ecs.destroy_world(&next_world)
 		resources.destroy_registry(&next_resources)
+		destroy_resource_residency(&next_residency)
 		destroy_script_load(&script_load)
 		native.destroy_source_set(&next_sources)
 		return baseline_err
@@ -571,6 +601,9 @@ reload_project_world_and_script :: proc(state: ^Hot_Reload_State, world: ^shared
 	resources.destroy_registry(&state.resources)
 	state.resources = next_resources
 	next_resources = {}
+	destroy_resource_residency(&state.resource_residency)
+	state.resource_residency = next_residency
+	next_residency = {}
 
 	invalidate_frame_system_plan(&state.frame_systems)
 	script.destroy_runtime(&state.runtime)

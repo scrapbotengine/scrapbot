@@ -37,6 +37,7 @@ register_project_shaders :: proc(
 	registry: ^Registry,
 	root: string,
 	declarations: []shared.Project_Resource,
+	retire_missing: bool = true,
 ) -> string {
 	if registry == nil {
 		return "shader registry is not available"
@@ -72,15 +73,15 @@ register_project_shaders :: proc(
 			return fmt.tprintf("resources/%s: %s", declaration.source, register_err)
 		}
 	}
+	if !retire_missing {
+		return ""
+	}
 	for &shader in registry.shaders {
 		if !shader.alive {
 			continue
 		}
 		if !seen[shader.id] {
-			shader.alive = false
-			shader.generation += 1
-			shader.version += 1
-			registry.shader_revision += 1
+			_ = retire_project_resource(registry, shader.id)
 		}
 	}
 	return ""

@@ -6,6 +6,7 @@ import "core:strings"
 register_project_ui_themes :: proc(
 	registry: ^Registry,
 	declarations: []shared.Project_Resource,
+	retire_missing: bool = true,
 ) -> string {
 	if registry == nil {
 		return "UI theme registry is not available"
@@ -82,12 +83,12 @@ register_project_ui_themes :: proc(
 		entry.version += 1
 		registry.ui_theme_revision += 1
 	}
+	if !retire_missing {
+		return ""
+	}
 	for &entry in registry.ui_themes {
 		if entry.alive && !seen[entry.id] {
-			entry.alive = false
-			entry.generation += 1
-			entry.version += 1
-			registry.ui_theme_revision += 1
+			_ = retire_project_resource(registry, entry.id)
 		}
 	}
 	return ""

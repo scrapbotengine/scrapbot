@@ -131,6 +131,60 @@ test_playback_baseline_restores_authored_entities_and_discards_runtime_state :: 
 }
 
 @(test)
+test_playback_stop_preserves_the_working_editor_camera :: proc(t: ^testing.T) {
+	scene: shared.Scene
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = shared.entity_uuid_from_engine_name("playback-camera-scene-entity"),
+			name = "Scene Entity",
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	runtime: script.Runtime
+	runtime.world = &world
+	baseline: Playback_Baseline
+	defer destroy_playback_baseline(&baseline)
+	testing.expect(t, capture_playback_baseline(&baseline, &world) == "")
+
+	position := shared.Vec3{17, 8, -11}
+	rotation := shared.Vec3{-0.35, 1.2, 0}
+	testing.expect(t, ecs.set_editor_scene_camera_pose(&world, position, rotation))
+	before_index, before_component, before_found := ecs.editor_scene_camera_entity(&world)
+	testing.expect(t, before_found)
+	if !before_found {
+		return
+	}
+	before_entity := world.entities[before_index]
+	before_component.orbit_target = {-4, 3, 9}
+	before_component.orbit_distance = 27
+	world.cameras[before_entity.camera_index].fov = 63
+	before_transform := world.transforms[before_entity.transform_index]
+	before_camera := world.cameras[before_entity.camera_index]
+	before_orbit_target := before_component.orbit_target
+	before_orbit_distance := before_component.orbit_distance
+
+	_, spawned := ecs.create_world_entity(&world, "Disposable Runtime", {}, .Runtime)
+	testing.expect(t, spawned)
+	testing.expect(t, restore_playback_baseline(&baseline, &runtime, &world) == "")
+
+	after_index, after_component, after_found := ecs.editor_scene_camera_entity(&world)
+	testing.expect(t, after_found)
+	if !after_found {
+		return
+	}
+	after_entity := world.entities[after_index]
+	testing.expect_value(t, world.transforms[after_entity.transform_index], before_transform)
+	testing.expect_value(t, world.cameras[after_entity.camera_index], before_camera)
+	testing.expect_value(t, after_component.orbit_target, before_orbit_target)
+	testing.expect_value(t, after_component.orbit_distance, before_orbit_distance)
+	testing.expect(t, after_entity.origin == .Editor)
+	testing.expect(t, len(world.entities) == 2)
+}
+
+@(test)
 test_playback_baseline_restores_runtime_material_edits :: proc(t: ^testing.T) {
 	world: shared.World
 	defer ecs.destroy_world(&world)

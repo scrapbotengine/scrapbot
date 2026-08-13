@@ -41,10 +41,10 @@ The top bar contains the Scrapbot title and project simulation controls. The bot
 
 | Control | Behavior |
 | --- | --- |
-| Play | Run project systems with normal frame deltas. |
+| Play | Start from stopped authoring or resume paused playback. It is disabled while already running. |
 | Pause | Toggle between running and paused playback. While paused, rendering, editor UI, scene-camera navigation, picking, and gizmos remain responsive. |
-| Stop | Restore the in-memory authoring state captured when playback began, discard playback mutations and runtime spawns, retain loaded Luau and Odin systems, and remain stopped. |
-| Step | While pausing normal playback, run one fixed 1/60-second project update. |
+| Stop | Restore the in-memory authoring state captured when playback began, discard playback mutations and runtime spawns, retain loaded Luau and Odin systems, preserve the editor camera, and remain stopped. |
+| Step | While paused, run one fixed 1/60-second project update and remain paused. It is disabled while running or stopped. |
 | Undo / Redo | While stopped, traverse complete authoring transactions. The controls dim when no matching history step is available. |
 | Save | While stopped, write dirty scene authoring and inline project-resource changes to their source files. |
 | Revert | While stopped and dirty, discard unsaved authoring and reload project resources and scene entities from disk without reloading Luau, Odin, or systems. Revert clears authoring history. |
@@ -56,17 +56,19 @@ The transport also has command shortcuts while the editor is open:
 | `Cmd/Ctrl+E` | Toggle editor visibility. Opening pauses active playback; closing starts or resumes playback. |
 | `Cmd/Ctrl+B` | Hide or show the left Browse sidebar. |
 | `Cmd/Ctrl+Alt+B` | Hide or show the right Inspect sidebar. |
-| `Cmd/Ctrl+R` | Play when stopped, resume when paused, and stop when running. |
-| `Cmd/Ctrl+T` | Pause when running; advance one fixed step when paused or stopped. |
+| `Cmd/Ctrl+R` / `F5` | Play when stopped or resume when paused. |
+| `Cmd/Ctrl+T` / `F6` | Pause when running or resume when paused. |
+| `Cmd/Ctrl+Shift+T` / `F7` | Advance one fixed step while paused. |
+| `Cmd/Ctrl+.` / `F8` | Stop playback and restore the in-memory authoring baseline. |
 | `Cmd/Ctrl+D` | Duplicate the complete selection, preserving selected subtrees, and select the explicit copies. The batch is authored while stopped and disposable during playback. |
 | `Delete` / `Backspace` | Delete the complete selection and its Transform descendants as one authored operation while stopped or a disposable operation during playback. |
 | `Escape` | Clear the entity selection. A focused field or open popup consumes Escape first. |
 
 Opening the shell pauses active playback without changing the current runtime world. Leaving it always enters running playback, so a paused project resumes and a stopped authoring world captures its in-memory playback baseline before project systems advance. Use the explicit Play, Pause, Stop, and Step controls or their shortcuts while editing.
 
-Transport shortcuts are ignored while the scene camera captures the pointer or a project-owned input has focus. Command-modified E and R do not change the transform-gizmo mode.
+Transport shortcuts are ignored while the scene camera captures the pointer or a project-owned input has focus. Each shortcut names one transport command; Play never doubles as Stop, and Pause never doubles as Step. Command-modified E and R do not change the transform-gizmo mode.
 
-Pause preserves the current runtime world so Play can resume it. Play and Step capture the current stopped authoring state in memory before simulation advances.
+Pause preserves the current runtime world so Play can resume it. Play captures the current stopped authoring state in memory before simulation advances. Step is available only after playback has been paused.
 
 Stop returns to that captured state without reloading code or the scene file:
 

@@ -2218,6 +2218,35 @@ test_wgpu_cpu_lod_selection_uses_screen_radius_thresholds :: proc(t: ^testing.T)
 }
 
 @(test)
+test_wgpu_meshlet_batch_membership_change_rebuilds_exact_instance_slices :: proc(t: ^testing.T) {
+	cache := WGPU_Draw_Batch_Cache {
+		valid = true,
+		batch_count = 1,
+		instance_count = 3,
+	}
+	defer delete(cache.batches)
+	append(
+		&cache.batches,
+		WGPU_Draw_Batch {
+			instance_count = 3,
+			meshlet_draw_count = 8,
+			meshlet_submission = true,
+			visible_capacity = wgpu_align_visible_capacity(3),
+		},
+	)
+	indices: [shared.MAX_GEOMETRY_LODS]u32
+	testing.expect(t, wgpu_adjust_batch_membership(&cache, indices, 0, 1))
+	testing.expect_value(t, cache.batches[0].instance_count, u32(4))
+	testing.expect_value(t, cache.instance_count, 4)
+
+	cache.batches[0].meshlet_draw_count = 0
+	cache.batches[0].meshlet_submission = false
+	testing.expect(t, !wgpu_adjust_batch_membership(&cache, indices, 0, 1))
+	testing.expect_value(t, cache.batches[0].instance_count, u32(5))
+	testing.expect_value(t, cache.instance_count, 5)
+}
+
+@(test)
 test_wgpu_hiz_reuse_requires_stable_camera_and_instance_data :: proc(t: ^testing.T) {
 	view_projection := mat4_identity()
 	testing.expect(t, wgpu_hiz_reuse_allowed(true, true, false, view_projection, view_projection))

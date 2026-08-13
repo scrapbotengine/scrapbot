@@ -2,9 +2,9 @@
   "schema_version": 1,
   "timeout_frames": 120,
   "actions": [
-    {"action": "key", "key": "pause_step"},
+    {"action": "key", "key": "pause"},
     {"action": "expect", "target": {"name": "__scrapbot_editor_status_text", "origin": "editor"}, "expect": "text", "text": "PLAY MODE  /  PAUSED  /  CHANGES ARE TEMPORARY"},
-    {"action": "key", "key": "run_stop"},
+    {"action": "key", "key": "play"},
     {"action": "expect", "target": {"name": "__scrapbot_editor_status_text", "origin": "editor"}, "expect": "text", "text": "PLAY MODE  /  RUNNING  /  CHANGES ARE TEMPORARY"},
     {"action": "click", "target": {"text": "PAUSE", "origin": "editor"}},
     {"action": "expect", "target": {"name": "__scrapbot_editor_status_text", "origin": "editor"}, "expect": "text", "text": "PLAY MODE  /  PAUSED  /  CHANGES ARE TEMPORARY"},

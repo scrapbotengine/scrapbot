@@ -29,6 +29,63 @@ Playback_Baseline_Material :: struct {
 	roughness_factor: f32,
 }
 
+Playback_Editor_Camera_State :: struct {
+	present: bool,
+	transform: shared.Transform_Component,
+	camera: shared.Camera_Component,
+	component: shared.Editor_Scene_Camera_Component,
+}
+
+capture_playback_editor_camera_state :: proc(
+	world: ^shared.World,
+) -> Playback_Editor_Camera_State {
+	if world == nil {
+		return {}
+	}
+	entity_index, component, found := ecs.editor_scene_camera_entity(world)
+	if !found || component == nil || entity_index < 0 || entity_index >= len(world.entities) {
+		return {}
+	}
+	entity := world.entities[entity_index]
+	if entity.transform_index < 0 ||
+	   entity.transform_index >= len(world.transforms) ||
+	   entity.camera_index < 0 ||
+	   entity.camera_index >= len(world.cameras) {
+		return {}
+	}
+	return {
+		present = true,
+		transform = world.transforms[entity.transform_index],
+		camera = world.cameras[entity.camera_index],
+		component = component^,
+	}
+}
+
+restore_playback_editor_camera_state :: proc(
+	world: ^shared.World,
+	state: Playback_Editor_Camera_State,
+) -> bool {
+	if world == nil || !state.present {
+		return false
+	}
+	entity_index, component, found := ecs.reconcile_editor_scene_camera(world, true)
+	if !found || component == nil || entity_index < 0 || entity_index >= len(world.entities) {
+		return false
+	}
+	entity := &world.entities[entity_index]
+	if entity.transform_index < 0 ||
+	   entity.transform_index >= len(world.transforms) ||
+	   entity.camera_index < 0 ||
+	   entity.camera_index >= len(world.cameras) {
+		return false
+	}
+	world.transforms[entity.transform_index] = state.transform
+	world.cameras[entity.camera_index] = state.camera
+	component^ = state.component
+	component.entity_index = entity_index
+	return true
+}
+
 capture_playback_baseline :: proc(
 	baseline: ^Playback_Baseline,
 	world: ^shared.World,
@@ -93,6 +150,7 @@ restore_playback_baseline :: proc(
 	if baseline == nil || !baseline.valid || runtime == nil || world == nil {
 		return "cannot restore an unavailable authoring baseline"
 	}
+	editor_camera := capture_playback_editor_camera_state(world)
 	scene: shared.Scene
 	defer delete(scene.entities)
 	for entry in baseline.entities {
@@ -124,6 +182,7 @@ restore_playback_baseline :: proc(
 	}
 	ecs.destroy_world(world)
 	world^ = next_world
+	_ = restore_playback_editor_camera_state(world, editor_camera)
 	script.bind_runtime_world(runtime, world)
 	if registry != nil {
 		for baseline_material in baseline.materials {
