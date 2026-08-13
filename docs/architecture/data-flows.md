@@ -56,8 +56,12 @@ semantic Geometry subresources one primitive at a time, and promptly releases ea
 Geometry page bytes remain file-backed in the coarse or detail chunk.
 
 At bootstrap or reload, Model roots reconcile imported nodes and primitives into derived
-Transform/Geometry/Material entities. Later duplication, Undo/Redo, or resource replacement
-increments a model-instance revision; reconciliation waits for that structural signal.
+Transform/Geometry/Material entities. Later duplication or Undo/Redo increments a model-instance
+revision; reconciliation waits for that structural signal, validates deterministic derived UUIDs,
+and expands only incomplete roots. Unchanged roots retain their entity generations and therefore
+their renderer slots, virtual-geometry frontiers, and GPU state. A Model-registry revision is the
+explicit global invalidation boundary: resource replacement can change generated topology, so it
+rebuilds all Model-derived children against the new registry contents.
 
 Resource descriptions remain outside ECS. Components store resolved runtime handles. Geometry
 registration derives bounded meshlets from source geometry or exact compiled hierarchy leaves. It
@@ -563,7 +567,7 @@ prepare scene/resource create-write-delete operations
 recoverable project transaction → atomic source replacement
 ```
 
-Play/Step capture an in-memory authoring baseline. Running/paused mutations are disposable. Stop restores the in-memory baseline without reloading code; Revert stages disk resources and a validated replacement world, then commits both together without reloading Luau or native code. A failed Revert preserves the complete live resource/world pair.
+Play captures an in-memory authoring baseline. Running/paused simulation remains disposable. Eligible completed editor field and transform gestures replace component snapshots in a UUID-addressed play-edit journal. Actual Luau/native value changes set one monotonic component bit on the affected entity; declared access by itself does not claim every entity with that component. The first claim advances the entity's component revision so the Inspector changes from keepable to temporary. Before Stop replaces the world, it removes journal entries whose entity/component pair was claimed later. Stop then restores the baseline, applies the remaining snapshots as one authoring history transaction, and leaves the result dirty for explicit Save. Revert stages disk resources and a validated replacement world, then commits both together without reloading Luau or native code. A failed Revert preserves the complete live resource/world pair.
 
 ## Live debug diagnostics
 

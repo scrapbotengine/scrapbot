@@ -1,5 +1,6 @@
 package ui
 
+import component "../component"
 import ecs "../ecs"
 import shared "../shared"
 import "core:os"
@@ -224,6 +225,72 @@ test_diagnostic_driver_rejects_an_unknown_schema :: proc(t: ^testing.T) {
 	err := diagnostic_driver_load(&driver, script_path)
 	testing.expect(t, strings.contains(err, "schema_version"))
 	diagnostic_driver_destroy(&driver)
+}
+
+@(test)
+test_diagnostic_driver_targets_reflected_component_fields_and_asserts_editor_state :: proc(
+	t: ^testing.T,
+) {
+	scene: shared.Scene
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = ui_test_id("Diagnostic Reflected Entity"),
+			name = "Diagnostic Reflected Entity",
+			has_transform = true,
+			transform = {position = {1, 2, 3}, scale = {1, 1, 1}},
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	registry: component.Registry
+	component.init_registry(&registry)
+	state.component_registry = &registry
+	state.editor_visible = true
+	state.editor_simulation_playing = false
+	state.editor_simulation_stopped = true
+	testing.expect(t, editor_select_entity(state, &world, world.entities[0].id, 720))
+	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
+
+	target := Diagnostic_Target {
+		component = "scrapbot.transform",
+		origin = "editor",
+	}
+	node_index, found := diagnostic_find_target(state, &world, target)
+	testing.expect(t, found)
+	if found {
+		node := state.nodes[node_index]
+		testing.expect(t, node.panel_index >= 0)
+		binding := world.editor_uis[world.entities[int(node.entity.index)].editor_ui_index]
+		definition, definition_found := editor_reflected_definition(state, binding)
+		testing.expect(t, definition_found)
+	}
+	transform, transform_found := component.find_definition(&registry, "scrapbot.transform")
+	testing.expect(t, transform_found)
+	if transform_found {
+		binding := shared.Editor_UI_Component {
+			target = world.entities[0].id,
+			inspector_field = .Transform_Position,
+			inspector_axis = .Y,
+			reflected_component_id = transform.id,
+		}
+		testing.expect_value(
+			t,
+			diagnostic_binding_field_name(&world, binding, &transform),
+			"position",
+		)
+		testing.expect_value(t, diagnostic_axis_name(binding.inspector_axis), "y")
+	}
+	testing.expect(t, diagnostic_expect_editor(state, "simulation", "stopped") == "")
+	testing.expect(t, diagnostic_expect_editor(state, "dirty", "false") == "")
+	testing.expect(t, diagnostic_expect_editor(state, "history_count", "0") == "")
+	testing.expect(t, diagnostic_expect_editor(state, "staged_play_changes", "0") == "")
+	testing.expect(t, diagnostic_expect_editor(state, "selected_count", "1") == "")
 }
 
 @(test)

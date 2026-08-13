@@ -5,9 +5,9 @@ Use this workflow for hover, click, focus, typing, scrolling, clipping, popup, a
 ## Tight debugging loop
 
 1. Create a small versioned script under `tests/fixtures/ui/` when it is a durable regression, or under `/tmp` for one-off exploration. Use `target.part = "panel_action"` to click or tightly capture the first direct child button placed in a panel's trailing title band instead of guessing an offset inside the panel title.
-2. Select targets by stable UUID or name when available. Use visible text for user-facing controls. Add `origin` (`scene`, `runtime`, or `editor`) and zero-based `occurrence` to disambiguate.
+2. Select targets by stable UUID or name when available. Use visible text for user-facing controls. For editor inspector values, prefer the registered `component`, `field`, and optional lowercase `axis` binding over pooled entity names. Add `origin` (`scene`, `runtime`, or `editor`) and zero-based `occurrence` to disambiguate.
 3. Reproduce the minimum interaction sequence. The driver automatically scrolls clipped targets into view.
-4. Assert the state that proves the behavior: `visible`, `hovered`, `active`, `focused`, `text`, or `inside_parent`.
+4. Assert the state that proves the behavior. Target assertions cover `visible`, `hovered`, `active`, `focused`, `text`, or `inside_parent`. `expect_editor` covers transport, dirty state, history, staged play edits, and selected count without parsing presentation text.
 5. End with `capture` around the smallest target that answers the visual question.
 6. Run bounded headless WGPU with both `--ui-dump` and `--framegrab`.
 7. Inspect the JSON first, then load the cropped PNG at original detail. Keep the full frame only when composition is the question.
@@ -50,10 +50,11 @@ Example script:
 - `key`: supply `key`: `left`, `right`, `up`, `down`, `home`, `end`, `backspace`, `delete`, `tab`, `enter`, `escape`, `select_all`, `save`, `undo`, `redo`, `editor_toggle`, `play`, `pause`, `stop`, `step`, `toggle_left_sidebar`, `toggle_right_sidebar`, `duplicate_entity`, `delete_entity`, or `focus_selected`.
 - `wait`: supply a positive `frames` count.
 - `expect`: target a node and supply an expectation. A `text` expectation compares the action's `text` field.
+- `expect_editor`: supply `expect` as `simulation`, `dirty`, `history_cursor`, `history_count`, `staged_play_changes`, or `selected_count`, and put the expected value in `text`. Simulation values are `running`, `paused`, and `stopped`; booleans are `true` and `false`.
 - `capture`: target a node and optionally supply pixel `padding`. This defines the framegrab crop unless `--framegrab-region` is explicit.
 - `set_editor_camera`: supply `position` and `rotation` objects with `x`, `y`, and `z` fields. This requires `--editor`, changes only the transient fly-camera ECS entity, and leaves the project's camera and simulation independent.
 
-Every non-key target may combine `uuid`, `name`, `text`, `origin`, and `occurrence`. Prefer the least brittle selector that expresses the behavior.
+Every target-driven action may combine `uuid`, `name`, `text`, `origin`, and `occurrence`. Editor inspector controls additionally accept a registered `component` name, `field`, and optional `axis`, for example `{"component":"scrappyphysics.rigidbody","field":"velocity","axis":"x","origin":"editor"}`. Prefer the least brittle selector that expresses the behavior.
 
 ## Reading failures
 
@@ -64,6 +65,8 @@ Start with:
 - `driver_action_index`, `driver_action`, and `driver_target` to locate the stalled step.
 - `editor_component_menu_open` to distinguish popup state from stale popup layout.
 - `editor_inspector_snapshot_refresh_count` to confirm that a stable selection is not rebuilding its inspector during unrelated browser refreshes.
+- `editor_simulation`, `editor_scene_dirty`, `editor_history_cursor`, `editor_history_count`, and `editor_staged_play_changes` to inspect the editor transaction boundary directly.
+- `editor_component`, `editor_field`, `editor_axis`, and `editor_read_only` on nodes to inspect reflected inspector bindings.
 - `screen_rect`, `visible_screen_rect`, and `clip` to diagnose padding, scroll, and overdraw.
 - `parent_uuid` and component-kind flags to verify retained hierarchy and control type.
 - `hovered`, `active`, and `focused` to separate interaction failure from paint failure.

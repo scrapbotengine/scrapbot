@@ -81,6 +81,12 @@ test_native_extension_system_steps_world :: proc(t: ^testing.T) {
 	)
 	testing.expect(t, extensions.system_count == 2)
 	testing.expect(t, extensions.systems[0].declaration.access_count == 6)
+	transform_definition, transform_found := component.find_definition(
+		&registry,
+		"scrapbot.transform",
+	)
+	testing.expect(t, transform_found)
+	testing.expect(t, transform_definition.system_write_access_count > 0)
 	marker_definition, marker_found := component.find_definition(&registry, "nativespin.marker")
 	testing.expect(t, marker_found)
 	testing.expect(t, marker_definition.advanced)

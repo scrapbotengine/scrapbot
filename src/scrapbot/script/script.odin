@@ -76,6 +76,7 @@ Transform_Writeback :: struct {
 	ref: c.int,
 	entity_index: int,
 	transform_index: int,
+	component_id: Component_ID,
 	original: Transform_Component,
 	can_write: bool,
 }
@@ -442,6 +443,7 @@ run_script_system :: proc(
 							ref = lua_ref(L, -1),
 							entity_index = entity_index,
 							transform_index = transform_index,
+							component_id = term.component_id,
 							original = runtime.world.transforms[transform_index],
 							can_write = system_allows_component_access(
 								system.declaration,
@@ -667,6 +669,11 @@ apply_transform_writebacks :: proc "c" (
 			if prepared.changed[index] {
 				world.transforms[writeback.transform_index] = prepared.transforms[index]
 				ecs.mark_render_transform_dirty(world, writeback.entity_index)
+				ecs.mark_project_system_component_written(
+					world,
+					writeback.entity_index,
+					writeback.component_id,
+				)
 			}
 		}
 	}
@@ -746,6 +753,11 @@ apply_custom_component_writebacks :: proc(
 			continue
 		}
 		apply_custom_component_command(world_component, &prepared.components[index])
+		ecs.mark_project_system_component_written(
+			world,
+			writeback.entity_index,
+			writeback.component_id,
+		)
 	}
 }
 
@@ -825,7 +837,13 @@ apply_world_environment_writebacks :: proc(
 				world_environment = prepared.environments[index],
 			},
 		}
-		_ = ecs.apply_registered_component_snapshot(world, writeback.entity_index, &snapshot)
+		if ecs.apply_registered_component_snapshot(world, writeback.entity_index, &snapshot) {
+			ecs.mark_project_system_component_written(
+				world,
+				writeback.entity_index,
+				writeback.component_id,
+			)
+		}
 	}
 }
 
@@ -881,7 +899,13 @@ apply_camera_writebacks :: proc(
 			present = true,
 			value = {has_camera = true, camera = prepared.cameras[index]},
 		}
-		_ = ecs.apply_registered_component_snapshot(world, writeback.entity_index, &snapshot)
+		if ecs.apply_registered_component_snapshot(world, writeback.entity_index, &snapshot) {
+			ecs.mark_project_system_component_written(
+				world,
+				writeback.entity_index,
+				writeback.component_id,
+			)
+		}
 	}
 }
 

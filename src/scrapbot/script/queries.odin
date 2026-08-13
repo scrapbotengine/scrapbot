@@ -283,9 +283,16 @@ scrapbot_set_rotation :: proc "c" (L: Lua_State) -> c.int {
 	}
 
 	transform := runtime.world.transforms[transform_index]
+	if transform.rotation == rotation {
+		return 0
+	}
 	transform.rotation = rotation
 	runtime.world.transforms[transform_index] = transform
 	ecs.mark_render_transform_dirty(runtime.world, int(entity.index))
+	if definition, found := component.find_definition(&runtime.registry, "scrapbot.transform");
+	   found {
+		ecs.mark_project_system_component_written(runtime.world, int(entity.index), definition.id)
+	}
 	return 0
 }
 

@@ -256,6 +256,10 @@ editor_transform_gizmo_system :: proc(
 	if entity.transform_index < 0 ||
 	   entity.transform_index >= len(world.transforms) { editor_hide_gizmo(state); return }
 	transform := &world.transforms[entity.transform_index]
+	if !ui.editor_transform_play_editable(state, world) {
+		editor_hide_gizmo(state)
+		return
+	}
 	if keyboard.escape {
 		escape_event := ui.Interaction_Event {
 			kind = .Keyboard,

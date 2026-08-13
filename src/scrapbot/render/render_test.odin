@@ -1,5 +1,6 @@
 package render
 
+import component "../component"
 import ecs "../ecs"
 import geometry "../geometry"
 import resources "../resources"
@@ -1803,6 +1804,80 @@ test_editor_stop_restores_authoring_world_once_at_the_frame_boundary :: proc(t: 
 	ui.editor_stop(state)
 	testing.expect(t, run_frame_system_unmeasured(&config, &world, 0.1) == "")
 	testing.expect(t, restore_count == 1)
+}
+
+Test_Playback_Transform_Restore :: struct {
+	count: int,
+	target: shared.Entity_UUID,
+	transform: shared.Transform_Component,
+}
+
+test_restore_playback_transform :: proc(data: rawptr, world: ^World) -> string {
+	restore := cast(^Test_Playback_Transform_Restore)data
+	restore.count += 1
+	entity_index, found := ecs.entity_index_by_uuid(world, restore.target)
+	if !found || world.entities[entity_index].transform_index < 0 {
+		return "test playback transform target is unavailable"
+	}
+	world.transforms[world.entities[entity_index].transform_index] = restore.transform
+	return ""
+}
+
+@(test)
+test_editor_stop_reapplies_staged_play_edits_after_runtime_restore :: proc(t: ^testing.T) {
+	scene: shared.Scene
+	defer delete(scene.entities)
+	target := shared.entity_uuid_from_engine_name("frame-stop-kept-transform")
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = target,
+			name = "Frame Stop Kept Transform",
+			has_transform = true,
+			transform = {scale = {1, 1, 1}},
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	registry: component.Registry
+	component.init_registry(&registry)
+	state := new(ui.State)
+	defer free(state)
+	testing.expect(t, ui.init(state) == "")
+	defer ui.destroy(state)
+	state.component_registry = &registry
+	state.editor_simulation_stopped = true
+	ui.editor_play(state)
+	_ = ui.consume_playback_begin_request(state)
+	transform_index := world.entities[0].transform_index
+	world.transforms[transform_index].position.x = 7
+	ui.editor_history_push_transform(
+		state,
+		&world,
+		0,
+		.Transform_Position,
+		{},
+		world.transforms[transform_index].position,
+	)
+	restore := Test_Playback_Transform_Restore {
+		target = target,
+		transform = {scale = {1, 1, 1}},
+	}
+	config := Run_Config {
+		runtime_playback_stop = test_restore_playback_transform,
+		runtime_playback_stop_data = &restore,
+		ui_state = state,
+	}
+
+	ui.editor_stop(state)
+	testing.expect(t, run_frame_system_unmeasured(&config, &world, 0.1) == "")
+	testing.expect_value(t, restore.count, 1)
+	transform_index = world.entities[0].transform_index
+	testing.expect_value(t, world.transforms[transform_index].position.x, f32(7))
+	testing.expect_value(t, state.editor_history_count, 1)
+	testing.expect(t, state.editor_scene_dirty)
+	testing.expect(t, ui.editor_undo(state, &world))
+	testing.expect_value(t, world.transforms[transform_index].position.x, f32(0))
 }
 
 @(test)
@@ -5205,6 +5280,21 @@ test_world_distance_field_clipmap_centers_snap_independently_per_cascade :: proc
 	testing.expect_value(t, centers[0], Vec3{3, -1, 17})
 	testing.expect_value(t, centers[1], Vec3{0, -4, 16})
 	testing.expect_value(t, centers[2], Vec3{0, -16, 16})
+}
+
+@(test)
+test_instance_changes_reject_surface_and_fog_temporal_history :: proc(t: ^testing.T) {
+	renderer := WGPU_Renderer {
+		temporal_history_valid = true,
+		volumetric_fog_history_valid = true,
+	}
+	wgpu_reject_temporal_history_for_instance_changes(&renderer, false)
+	testing.expect(t, renderer.temporal_history_valid)
+	testing.expect(t, renderer.volumetric_fog_history_valid)
+
+	wgpu_reject_temporal_history_for_instance_changes(&renderer, true)
+	testing.expect(t, !renderer.temporal_history_valid)
+	testing.expect(t, !renderer.volumetric_fog_history_valid)
 }
 
 @(test)

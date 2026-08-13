@@ -42,6 +42,10 @@ test_editor_actions_resolve_from_one_physical_keyboard_snapshot :: proc(t: ^test
 
 	stop := keyboard_input_from_snapshot(test_keyboard_snapshot({.Left_Meta}, {.Period}))
 	testing.expect(t, editor_action_requested(stop, .Transport_Stop))
+	shift_stop := keyboard_input_from_snapshot(
+		test_keyboard_snapshot({.Left_Meta, .Left_Shift}, {.Period}),
+	)
+	testing.expect(t, editor_action_requested(shift_stop, .Transport_Stop))
 
 	aliases := keyboard_input_from_snapshot(test_keyboard_snapshot({}, {.F5, .F6, .F7, .F8}))
 	testing.expect(t, editor_action_requested(aliases, .Transport_Play))

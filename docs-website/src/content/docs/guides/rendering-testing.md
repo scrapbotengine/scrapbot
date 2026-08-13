@@ -465,7 +465,7 @@ Region coordinates are `x,y,width,height` from the top-left of the complete fram
 
 ## Semantic UI diagnostics
 
-Use `--ui-script` to reproduce interactions against public project UI or transient editor UI by UUID, entity name, or visible text. The driver resolves the target from the retained tree, reveals it through clipped ancestor scroll areas, and feeds ordinary pointer and keyboard state back through the normal reconciler. `--ui-dump` writes the final tree even when the run fails, including hierarchy, text, control kinds, clipping, raw and visible screen rectangles, scroll offset/extent, paint order, hover/active/focus state, embedded-viewport orbit/distance state, and the pending script action. Structured WGPU results additionally expose `ui_viewport_active_targets`, `ui_viewport_target_pixels`, `ui_viewport_target_resizes`, `ui_viewport_redraws`, and `ui_viewport_cache_hits` for target-pool and cache diagnostics.
+Use `--ui-script` to reproduce interactions against public project UI or transient editor UI by UUID, entity name, visible text, or reflected editor component field. The driver resolves the target from the retained tree, reveals it through clipped ancestor scroll areas, and feeds ordinary pointer and keyboard state back through the normal reconciler. `--ui-dump` writes the final tree even when the run fails, including hierarchy, text, control kinds, clipping, raw and visible screen rectangles, scroll offset/extent, paint order, hover/active/focus state, embedded-viewport orbit/distance state, reflected component/field/axis bindings, editor transport/dirty/history/staged-change state, and the pending script action. Structured WGPU results additionally expose `ui_viewport_active_targets`, `ui_viewport_target_pixels`, `ui_viewport_target_resizes`, `ui_viewport_redraws`, and `ui_viewport_cache_hits` for target-pool and cache diagnostics.
 
 ## Engine failure reports
 
@@ -494,6 +494,8 @@ bin/scrapbot run examples/ecs-showcase \
 
 `tests/fixtures/ui/authoring-history.json` covers the authoring-history boundary: it edits a scene Transform, verifies dirty state across Undo and Redo, uses Revert to reload scene entities without restarting project code, asserts the disk-authored value, and captures the transport controls.
 
+`tests/fixtures/ui/play-mode-persistence.json` covers persistent play edits end to end. It targets a reflected component field without relying on a pooled input name, edits it while Running, verifies that the change is staged but not yet dirty, stops playback, proves the value survived baseline restoration as exactly one authoring-history transaction, and verifies Undo and Redo.
+
 `tests/fixtures/ui/gizmo-center-pivot.json` selects a renderable entity, activates the transient Center manipulation pivot through the public ECS toolbar, and captures its selected visual state.
 
 `tests/fixtures/ui/infinite-grid.json` fixes the editor camera, lets the procedural ground grid settle through the world/post chain, and captures the complete Game viewport so depth intersection, axis color, line scale, and distance fade remain visually reviewable.
@@ -515,7 +517,7 @@ Scripts use schema version 1 and execute actions sequentially:
 
 Available actions are:
 
-- `click`, `hover`, `scroll`, `type`, `drag`, `key`, `wait`, `expect`, `capture`, and `set_editor_camera`;
+- `click`, `hover`, `scroll`, `type`, `drag`, `key`, `wait`, `expect`, `expect_editor`, `capture`, and `set_editor_camera`;
 - `scroll` takes `wheel_y`;
 - `type` takes `text`;
 - `wait` takes a frame count.
@@ -528,9 +530,11 @@ Use `destination_anchor` with `left`, `top`, `center` (the default), `bottom`, o
 
 A positive drag `frames` value interpolates motion across multiple input frames. Omit it or use zero for a one-frame move.
 
-Key actions cover navigation and editing plus Tab, Enter, Escape, Select All, Save, Undo, Redo, Editor Toggle, Run/Stop, and Pause/Step. Expectations cover `visible`, `hovered`, `active`, `focused`, `text`, and `inside_parent`.
+Key actions cover navigation and editing plus Tab, Enter, Escape, Select All, Save, Undo, Redo, Editor Toggle, Run/Stop, and Pause/Step. Target expectations cover `visible`, `hovered`, `active`, `focused`, `text`, and `inside_parent`.
 
-Targets may combine `uuid`, `name`, `text`, and `origin`. Use a zero-based `occurrence` for duplicate matches. Set `part` to `panel_action` to target the first direct child button in a panel title, or target a dock-item entity with `part: "dock_tab"` to click, drag, or capture its derived tab chrome.
+`expect_editor` asserts engine-owned editor state without depending on presentation text. Its `expect` may be `simulation` (`running`, `paused`, or `stopped`), `dirty`, `history_cursor`, `history_count`, `staged_play_changes`, or `selected_count`; put the expected value in `text`.
+
+Targets may combine `uuid`, `name`, `text`, and `origin`. Editor inspector controls may instead use the registered `component` name plus `field` and optional lowercase `axis`, such as `{"component":"scrapbot.transform","field":"position","axis":"x","origin":"editor"}`. This remains stable when pooled editor entity names or row order change. Use a zero-based `occurrence` for duplicate matches. Set `part` to `panel_action` to target the first direct child button in a panel title, or target a dock-item entity with `part: "dock_tab"` to click, drag, or capture its derived tab chrome.
 
 A capture target supplies the framegrab region unless `--framegrab-region` is explicit. Without `--frames`, a scripted run gets a 240-frame safety bound and exits when all actions finish.
 

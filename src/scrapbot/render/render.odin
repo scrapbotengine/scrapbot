@@ -1145,11 +1145,15 @@ run_frame_system_unmeasured :: proc(
 		if config.runtime_playback_stop == nil {
 			return "editor stop requires an authoring restore callback"
 		}
+		ui.editor_discard_system_written_play_changes(config.ui_state, world)
 		if err := config.runtime_playback_stop(config.runtime_playback_stop_data, world);
 		   err != "" {
 			return err
 		}
 		ui.editor_world_restored(config.ui_state, world)
+		if !ui.editor_apply_play_changes(config.ui_state, world) {
+			return "editor failed to restore staged play changes"
+		}
 	}
 	if ui.consume_scene_save_request(config.ui_state) {
 		save_err := "editor save requires a runtime save callback"
@@ -1186,6 +1190,7 @@ run_frame_system_unmeasured :: proc(
 		} else if err := config.frame_system(config.frame_system_data, world, simulation_delta);
 		   err != "" { return err }
 		if config.ui_state != nil && world.instance_uuid != world_instance_before_simulation {
+			ui.editor_clear_play_changes(config.ui_state)
 			ui.editor_world_restored(config.ui_state, world)
 		}
 	}
@@ -1193,8 +1198,7 @@ run_frame_system_unmeasured :: proc(
 		defer {
 			platform.set_runtime_editor_tool_pointer_active(
 				config.ui_driver == nil &&
-				config.ui_state.editor_visible &&
-				ui.editor_world_tool_captures_pointer(config.ui_state),
+				ui.continuous_pointer_interaction_active(config.ui_state),
 			)
 		}
 		config.last_drawable_width = drawable_width
@@ -1263,9 +1267,11 @@ run_frame_system_unmeasured :: proc(
 			}
 		}
 		record_system_profile_phase(config, .Editor_Camera, camera_system_start)
-		gizmo_pointer_wrap: shared.Vec2
-		if config.ui_driver == nil && config.ui_state.editor_gizmo_captures_pointer {
-			gizmo_pointer_wrap = platform.runtime_editor_transform_pointer_wrap(platform_pointer)
+		continuous_pointer_wrap: shared.Vec2
+		if config.ui_driver == nil && ui.continuous_pointer_interaction_active(config.ui_state) {
+			continuous_pointer_wrap = platform.runtime_editor_transform_pointer_wrap(
+				platform_pointer,
+			)
 		}
 		if config.ui_state.editor_scene_camera_captures_input { pointer = {} }
 		if camera_input.dolly != 0 {
@@ -1363,7 +1369,7 @@ run_frame_system_unmeasured :: proc(
 				has_camera,
 				gizmo_keyboard,
 			)
-			editor_gizmo_apply_pointer_wrap(config.ui_state, gizmo_pointer_wrap)
+			editor_gizmo_apply_pointer_wrap(config.ui_state, continuous_pointer_wrap)
 		}
 		if err := ui.rebuild_editor_world_overlay(config.ui_state); err != "" {
 			return err
@@ -1383,6 +1389,7 @@ run_frame_system_unmeasured :: proc(
 			config.resource_registry,
 			config.project_root,
 		); err != "" { return err }
+		ui.apply_input_scrub_pointer_wrap(config.ui_state, continuous_pointer_wrap)
 		if id, all, requested := ui.consume_resource_reimport_request(config.ui_state); requested {
 			reimport_err := "editor reimport requires a runtime import callback"
 			if config.runtime_reimport != nil {

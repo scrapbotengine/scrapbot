@@ -7,6 +7,8 @@ MAX_COMPONENTS :: 128
 MAX_COMPONENT_FIELDS :: 40
 MAX_COMPONENT_NAME_TOKENS :: 16
 
+#assert(MAX_COMPONENTS <= shared.PROJECT_SYSTEM_WRITE_PROVENANCE_WORDS * 64)
+
 Custom_Component :: shared.Custom_Component
 Component_ID :: shared.Component_ID
 
@@ -96,10 +98,24 @@ Definition :: struct {
 	advanced: bool,
 	storage_kind: Storage_Kind,
 	lifecycle: Lifecycle,
+	system_write_access_count: int,
 	fields: [MAX_COMPONENT_FIELDS]Field_Definition,
 	field_count: int,
 	name_tokens: [MAX_COMPONENT_NAME_TOKENS]string,
 	name_token_count: int,
+}
+
+register_system_write_access :: proc "contextless" (registry: ^Registry, name: string) -> bool {
+	if registry == nil {
+		return false
+	}
+	index, found := find_definition_index(registry, name)
+	if !found {
+		return false
+	}
+	registry.definitions[index].system_write_access_count += 1
+	registry.revision += 1
+	return true
 }
 
 Registry :: struct {

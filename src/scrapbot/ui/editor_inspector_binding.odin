@@ -672,6 +672,10 @@ editor_history_push_transform :: proc(
 	if state == nil || world == nil || entity_index < 0 || entity_index >= len(world.entities) {
 		return
 	}
+	if !state.editor_simulation_stopped && state.component_registry != nil {
+		editor_stage_play_definition(state, world, entity_index, "scrapbot.transform")
+		return
+	}
 	target := &world.entities[entity_index]
 	if !target.alive { return }
 	transaction: Editor_Edit_Transaction
@@ -705,6 +709,10 @@ editor_history_push_transform_pair :: proc(
 	second_before, second_after: shared.Vec3,
 ) {
 	if state == nil || world == nil || entity_index < 0 || entity_index >= len(world.entities) {
+		return
+	}
+	if !state.editor_simulation_stopped && state.component_registry != nil {
+		editor_stage_play_definition(state, world, entity_index, "scrapbot.transform")
 		return
 	}
 	target := &world.entities[entity_index]
@@ -751,6 +759,7 @@ editor_history_push_transaction :: proc(state: ^State, transaction: Editor_Edit_
 	   transaction.structural == nil &&
 	   transaction.structural_batch == nil &&
 	   transaction.component_structural == nil &&
+	   transaction.component_batch == nil &&
 	   transaction.resource_structural == nil &&
 	   transaction.transform_batch == nil {
 		editor_recompute_scene_dirty(state)
@@ -967,6 +976,62 @@ editor_history_apply :: proc(state: ^State, world: ^shared.World, redo: bool) ->
 			editor_history_remove(state, index)
 			continue
 		}
+		if transaction.component_batch != nil {
+			batch := transaction.component_batch
+			valid := len(batch.items) > 0
+			for &item in batch.items {
+				entity_index, found := ecs.entity_index_by_uuid(world, item.target_uuid)
+				definition := editor_component_definition_by_id(state, item.before, item.after)
+				if !found || definition == nil {
+					valid = false
+					break
+				}
+				expected := item.after
+				if redo {
+					expected = item.before
+				}
+				current, captured := ecs.capture_registered_component_snapshot(
+					world,
+					entity_index,
+					definition,
+				)
+				matches :=
+					captured &&
+					editor_registered_component_snapshots_equal(&current, expected, definition)
+				if captured {
+					ecs.destroy_registered_component_snapshot(&current)
+				}
+				if !matches {
+					valid = false
+					break
+				}
+			}
+			if valid {
+				for &item in batch.items {
+					entity_index, _ := ecs.entity_index_by_uuid(world, item.target_uuid)
+					desired := item.before
+					if redo {
+						desired = item.after
+					}
+					if !ecs.apply_registered_component_snapshot(world, entity_index, desired) {
+						valid = false
+						break
+					}
+					editor_mark_scene_uuid_dirty(state, item.target_uuid)
+				}
+			}
+			if valid {
+				if redo {
+					state.editor_history_cursor = index + 1
+				} else {
+					state.editor_history_cursor = index
+				}
+				editor_recompute_scene_dirty(state)
+				return true
+			}
+			editor_history_remove(state, index)
+			continue
+		}
 		if transaction.resource_change_count > 0 {
 			applied := true
 			for change in transaction.resource_changes[:transaction.resource_change_count] {
@@ -1117,6 +1182,14 @@ editor_history_destroy_transaction :: proc(transaction: ^Editor_Edit_Transaction
 		}
 		free(change)
 	}
+	if transaction.component_batch != nil {
+		for &item in transaction.component_batch.items {
+			destroy_component_snapshot_pointer(item.before)
+			destroy_component_snapshot_pointer(item.after)
+		}
+		delete(transaction.component_batch.items)
+		free(transaction.component_batch)
+	}
 	if transaction.resource_structural != nil {
 		change := transaction.resource_structural
 		if change.before != nil {
@@ -1142,6 +1215,15 @@ editor_history_push_transform_batch :: proc(
 	snapshots: []Editor_Gizmo_Transform_Snapshot,
 ) {
 	if state == nil || world == nil || len(snapshots) == 0 {
+		return
+	}
+	if !state.editor_simulation_stopped && state.component_registry != nil {
+		for snapshot in snapshots {
+			if entity_index, found := ecs.entity_index_by_uuid(world, snapshot.target_uuid);
+			   found {
+				editor_stage_play_definition(state, world, entity_index, "scrapbot.transform")
+			}
+		}
 		return
 	}
 	change := new(Editor_Transform_Batch_Change)

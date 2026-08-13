@@ -4469,6 +4469,21 @@ wgpu_upload_transform_updates :: proc(renderer: ^WGPU_Renderer) {
 	renderer.gpu_instance_transform_upload_bytes += u64(byte_count)
 }
 
+wgpu_reject_temporal_history_for_instance_changes :: proc(
+	renderer: ^WGPU_Renderer,
+	instance_data_changed: bool,
+) {
+	if renderer == nil || !instance_data_changed {
+		return
+	}
+	// Surface reprojection currently accounts for camera motion only. Reusing
+	// history after an instance moves or changes would project the old surface
+	// onto its new position; fog history would retain the matching stale depth
+	// and shadowing. Reject both until the renderer emits object motion vectors.
+	renderer.temporal_history_valid = false
+	renderer.volumetric_fog_history_valid = false
+}
+
 wgpu_cpu_cull_counts :: proc(
 	instances: []WGPU_GPU_Instance,
 	planes: [6][4]f32,
@@ -5100,6 +5115,7 @@ wgpu_prepare_gpu_draw_batches :: proc(
 	)
 	instance_data_changed :=
 		len(renderer.gpu_dirty_indices) > 0 || len(renderer.gpu_transform_updates) > 1
+	wgpu_reject_temporal_history_for_instance_changes(renderer, instance_data_changed)
 	wgpu_upload_dirty_instance_ranges(renderer, renderer.gpu_dirty_indices[:])
 	wgpu_upload_transform_updates(renderer)
 	renderer.gpu_slot_count = slot_count

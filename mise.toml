@@ -389,6 +389,9 @@ bin/scrapbot run examples/ecs-showcase --backend null --editor --headless --no-h
 bin/scrapbot run examples/ecs-showcase --backend null --editor --headless --no-hot-reload --frames 180 --ui-script tests/fixtures/ui/nested-inspector.json --json
 bin/scrapbot run examples/minimal --backend null --editor --headless --no-hot-reload --frames 120 --ui-script tests/fixtures/ui/entity-actions.json --json
 bin/scrapbot run examples/minimal --backend null --editor --headless --no-hot-reload --frames 180 --ui-script tests/fixtures/ui/entity-batch-actions.json --json
+bin/scrapbot run examples/minimal --backend null --editor --headless --no-hot-reload --frames 180 --ui-script tests/fixtures/ui/play-mode-persistence.json --json
+bin/scrapbot run examples/minimal --backend null --editor --headless --no-hot-reload --frames 120 --ui-script tests/fixtures/ui/play-mode-persistence-visual.json --json
+bin/scrapbot run examples/minimal --backend null --editor --headless --no-hot-reload --frames 120 --ui-script tests/fixtures/ui/playback-transport-state.json --json
 bin/scrapbot run examples/assets --backend null --editor --headless --no-hot-reload --frames 180 --ui-script tests/fixtures/ui/model-placement.json --json
 bin/scrapbot run examples/ecs-showcase --backend null --editor --headless --no-hot-reload --frames 120 --ui-script tests/fixtures/ui/editor-panel-edge-split.json --json
 bin/scrapbot run examples/ecs-showcase --backend null --editor --headless --no-hot-reload --frames 120 --ui-script tests/fixtures/ui/performance-diagnostics.json --json

@@ -22,6 +22,30 @@ UI_Test_I16_Enum :: enum i16 {
 }
 
 @(test)
+test_continuous_pointer_interactions_include_numeric_scrubs_and_absorb_wraps :: proc(
+	t: ^testing.T,
+) {
+	state := new(State)
+	defer free(state)
+	testing.expect(t, !continuous_pointer_interaction_active(state))
+
+	state.input_scrub_armed = true
+	state.input_scrub_start_x = 124
+	testing.expect(t, continuous_pointer_interaction_active(state))
+	apply_input_scrub_pointer_wrap(state, {780, 0})
+	testing.expect_value(t, state.input_scrub_start_x, f32(904))
+
+	state.input_scrub_armed = false
+	state.input_scrubbing = true
+	apply_input_scrub_pointer_wrap(state, {-760, 0})
+	testing.expect_value(t, state.input_scrub_start_x, f32(144))
+
+	state.input_scrubbing = false
+	state.editor_gizmo_captures_pointer = true
+	testing.expect(t, continuous_pointer_interaction_active(state))
+}
+
+@(test)
 test_consumed_editor_pointer_retains_button_baseline_without_hitting_chrome :: proc(
 	t: ^testing.T,
 ) {
@@ -326,6 +350,71 @@ test_theme_recipes_resolve_to_ordinary_overridable_ui_values :: proc(t: ^testing
 	testing.expect(t, warning_button.color == theme.palette.warning)
 	list := theme_list(theme)
 	testing.expect(t, list.highlight_corner_radius == theme.metrics.radius_small)
+}
+
+@(test)
+test_inspector_component_persistence_uses_scannable_semantic_card_colors :: proc(t: ^testing.T) {
+	scene: shared.Scene
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			name = "Authored",
+			id = ui_test_id("Persistence Visual Authored"),
+			has_transform = true,
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	registry: component.Registry
+	component.init_registry(&registry)
+	transform, found := component.find_definition(&registry, "scrapbot.transform")
+	testing.expect(t, found)
+	if !found { return }
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	state.component_registry = &registry
+	state.editor_visible = true
+	state.editor_simulation_stopped = false
+	state.editor_simulation_playing = true
+	testing.expect(t, editor_select_entity(state, &world, world.entities[0].id, 720))
+	testing.expect(t, reconcile(state, &world, 1280, 720, {}, 1280, 720) == "")
+
+	panel, panel_found := editor_ui_entity(&world, .Inspector_Panel, 0)
+	testing.expect(t, panel_found)
+	if !panel_found { return }
+	theme := reduced_dark_theme()
+	layout := world.ui_layouts[world.entities[panel].ui_layout_index]
+	panel_value := world.ui_panels[world.entities[panel].ui_panel_index]
+	testing.expect(t, layout.border_color == theme.palette.accent)
+	testing.expect_value(t, layout.border_width, f32(1))
+	testing.expect(t, panel_value.title_background == theme.palette.accent_soft)
+	testing.expect(t, panel_value.title_color == theme.palette.accent_text)
+
+	world.entities[0].origin = .Runtime
+	testing.expect_value(
+		t,
+		editor_component_persistence_visual(state, &world, 0, &transform),
+		Editor_Component_Persistence_Visual.Temporary,
+	)
+	editor_ui_apply_component_persistence_visual(&world, panel, .Temporary)
+	layout = world.ui_layouts[world.entities[panel].ui_layout_index]
+	panel_value = world.ui_panels[world.entities[panel].ui_panel_index]
+	testing.expect(t, layout.border_color == theme.palette.warning)
+	testing.expect(t, panel_value.title_background == theme.palette.warning_soft)
+	testing.expect(t, panel_value.title_color == theme.palette.warning)
+
+	derived, derived_found := component.find_definition(&registry, "scrapbot.ui_state")
+	testing.expect(t, derived_found)
+	if derived_found {
+		testing.expect_value(
+			t,
+			editor_component_persistence_visual(state, &world, 0, &derived),
+			Editor_Component_Persistence_Visual.Read_Only,
+		)
+	}
 }
 
 @(test)
@@ -5069,6 +5158,7 @@ test_editor_transport_buttons_preserve_unsaved_authoring_across_playback :: proc
 	}
 	pause_entity := world.entities[int(state.nodes[pause].entity.index)]
 	testing.expect(t, world.ui_buttons[pause_entity.ui_button_index].text == "PAUSE")
+	play_entity := world.entities[int(state.nodes[play].entity.index)]
 	stop_entity := world.entities[int(state.nodes[stop].entity.index)]
 	testing.expect(t, world.ui_buttons[stop_entity.ui_button_index].text == "STOP")
 	save_entity := world.entities[int(state.nodes[save].entity.index)]
@@ -5083,28 +5173,8 @@ test_editor_transport_buttons_preserve_unsaved_authoring_across_playback :: proc
 	testing.expect(
 		t,
 		world.ui_texts[status_entity.ui_text_index].text ==
-		"PLAY MODE  /  RUNNING  /  CHANGES ARE TEMPORARY",
+		"PLAY MODE  /  RUNNING  /  ELIGIBLE EDITS PERSIST ON STOP",
 	)
-	playback_warning_index, playback_warning_found := ecs.entity_index_by_uuid(
-		&world,
-		shared.entity_uuid_from_engine_name(EDITOR_UI_PLAYBACK_WARNING_NAME),
-	)
-	playback_warning_badge_index, playback_warning_badge_found := ecs.entity_index_by_uuid(
-		&world,
-		shared.entity_uuid_from_engine_name(EDITOR_UI_PLAYBACK_WARNING_BADGE_NAME),
-	)
-	testing.expect(t, playback_warning_found && playback_warning_badge_found)
-	if playback_warning_found && playback_warning_badge_found {
-		testing.expect(
-			t,
-			!world.ui_layouts[world.entities[playback_warning_index].ui_layout_index].hidden,
-		)
-		testing.expect_value(
-			t,
-			world.ui_texts[world.entities[playback_warning_badge_index].ui_text_index].text,
-			"PLAY MODE RUNNING  /  SCENE EDITS ARE NOT SAVED",
-		)
-	}
 	top_index, top_found := ecs.entity_index_by_uuid(
 		&world,
 		shared.entity_uuid_from_engine_name(EDITOR_UI_TOP_NAME),
@@ -5131,6 +5201,15 @@ test_editor_transport_buttons_preserve_unsaved_authoring_across_playback :: proc
 	playback_viewport := world.ui_layouts[world.entities[viewport_entity_index].ui_layout_index]
 	testing.expect(t, playback_viewport.border_color == theme.palette.warning_soft)
 	testing.expect(t, playback_viewport.border_width == 2)
+	testing.expect(
+		t,
+		world.ui_layouts[play_entity.ui_layout_index].background == theme.palette.warning_soft,
+	)
+	testing.expect(t, world.ui_buttons[play_entity.ui_button_index].color == theme.palette.warning)
+	testing.expect(
+		t,
+		world.ui_layouts[pause_entity.ui_layout_index].background != theme.palette.warning_soft,
+	)
 
 	press := proc(state: ^State, world: ^shared.World, node_index: int) {
 		rect := state.nodes[node_index].rect
@@ -5153,15 +5232,20 @@ test_editor_transport_buttons_preserve_unsaved_authoring_across_playback :: proc
 	testing.expect(
 		t,
 		world.ui_texts[status_entity.ui_text_index].text ==
-		"PLAY MODE  /  PAUSED  /  CHANGES ARE TEMPORARY",
+		"PLAY MODE  /  PAUSED  /  ELIGIBLE EDITS PERSIST ON STOP",
 	)
-	if playback_warning_badge_found {
-		testing.expect_value(
-			t,
-			world.ui_texts[world.entities[playback_warning_badge_index].ui_text_index].text,
-			"PLAY MODE PAUSED  /  SCENE EDITS ARE NOT SAVED",
-		)
-	}
+	testing.expect(
+		t,
+		world.ui_layouts[pause_entity.ui_layout_index].background == theme.palette.warning_soft,
+	)
+	testing.expect(
+		t,
+		world.ui_buttons[pause_entity.ui_button_index].color == theme.palette.warning,
+	)
+	testing.expect(
+		t,
+		world.ui_layouts[play_entity.ui_layout_index].background != theme.palette.warning_soft,
+	)
 	delta, run := consume_simulation_delta(state, 0.2)
 	testing.expect(t, !run && delta == 0)
 	press(state, &world, pause)
@@ -5169,7 +5253,15 @@ test_editor_transport_buttons_preserve_unsaved_authoring_across_playback :: proc
 	testing.expect(
 		t,
 		world.ui_texts[status_entity.ui_text_index].text ==
-		"PLAY MODE  /  RUNNING  /  CHANGES ARE TEMPORARY",
+		"PLAY MODE  /  RUNNING  /  ELIGIBLE EDITS PERSIST ON STOP",
+	)
+	testing.expect(
+		t,
+		world.ui_layouts[play_entity.ui_layout_index].background == theme.palette.warning_soft,
+	)
+	testing.expect(
+		t,
+		world.ui_layouts[pause_entity.ui_layout_index].background != theme.palette.warning_soft,
 	)
 	delta, run = consume_simulation_delta(state, 0.2)
 	testing.expect(t, run && delta == 0.2)
@@ -5187,7 +5279,7 @@ test_editor_transport_buttons_preserve_unsaved_authoring_across_playback :: proc
 	testing.expect(
 		t,
 		world.ui_texts[status_entity.ui_text_index].text ==
-		"PLAY MODE  /  RUNNING  /  CHANGES ARE TEMPORARY",
+		"PLAY MODE  /  RUNNING  /  ELIGIBLE EDITS PERSIST ON STOP",
 	)
 	delta, run = consume_simulation_delta(state, 0.2)
 	testing.expect(t, run && delta == 0.2)
@@ -5197,12 +5289,14 @@ test_editor_transport_buttons_preserve_unsaved_authoring_across_playback :: proc
 	testing.expect(t, state.editor_simulation_stopped)
 	testing.expect(t, !editor_play_mode_active(state))
 	testing.expect(t, world.ui_texts[status_entity.ui_text_index].text == "STOPPED")
-	if playback_warning_found {
-		testing.expect(
-			t,
-			world.ui_layouts[world.entities[playback_warning_index].ui_layout_index].hidden,
-		)
-	}
+	testing.expect(
+		t,
+		world.ui_layouts[play_entity.ui_layout_index].background != theme.palette.warning_soft,
+	)
+	testing.expect(
+		t,
+		world.ui_layouts[pause_entity.ui_layout_index].background != theme.palette.warning_soft,
+	)
 	if top_found && status_bar_found {
 		testing.expect(
 			t,

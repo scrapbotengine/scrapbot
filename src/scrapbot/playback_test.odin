@@ -616,3 +616,218 @@ test_stop_discards_live_component_membership_changes :: proc(t: ^testing.T) {
 	failure, integrity_ok := ecs.validate_world_integrity(&world)
 	testing.expectf(t, integrity_ok, "%s", ecs.format_world_integrity_failure(failure))
 }
+
+@(test)
+test_stop_applies_staged_authored_component_edits_as_one_transaction :: proc(t: ^testing.T) {
+	scene: shared.Scene
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = shared.entity_uuid_from_engine_name("keep-play-transform"),
+			name = "Keep Play Transform",
+			has_transform = true,
+			transform = {scale = {1, 1, 1}},
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	registry: component.Registry
+	component.init_registry(&registry)
+	state := new(ui.State)
+	defer free(state)
+	testing.expect(t, ui.init(state) == "")
+	defer ui.destroy(state)
+	state.component_registry = &registry
+	state.editor_simulation_stopped = true
+	baseline: Playback_Baseline
+	defer destroy_playback_baseline(&baseline)
+	testing.expect(t, capture_playback_baseline(&baseline, &world) == "")
+
+	ui.editor_play(state)
+	testing.expect(t, ui.consume_playback_begin_request(state))
+	transform_index := world.entities[0].transform_index
+	world.transforms[transform_index].position.x = 7
+	ui.editor_history_push_transform(
+		state,
+		&world,
+		0,
+		.Transform_Position,
+		{},
+		world.transforms[transform_index].position,
+	)
+	testing.expect(t, len(state.editor_play_changes) == 1)
+	testing.expect(t, state.editor_history_count == 0)
+
+	ui.editor_stop(state)
+	testing.expect(t, ui.consume_playback_stop_request(state))
+	runtime: script.Runtime
+	runtime.world = &world
+	testing.expect(t, restore_playback_baseline(&baseline, &runtime, &world) == "")
+	ui.editor_world_restored(state, &world)
+	testing.expect(t, ui.editor_apply_play_changes(state, &world))
+
+	transform_index = world.entities[0].transform_index
+	testing.expect(t, world.transforms[transform_index].position.x == 7)
+	testing.expect(t, len(state.editor_play_changes) == 0)
+	testing.expect(t, state.editor_history_count == 1)
+	testing.expect(t, state.editor_scene_dirty)
+	testing.expect(t, ui.editor_undo(state, &world))
+	testing.expect(t, world.transforms[transform_index].position.x == 0)
+	testing.expect(t, ui.editor_redo(state, &world))
+	testing.expect(t, world.transforms[transform_index].position.x == 7)
+}
+
+@(test)
+test_play_edit_journal_coalesces_repeated_component_edits_and_batches_targets :: proc(
+	t: ^testing.T,
+) {
+	scene: shared.Scene
+	defer delete(scene.entities)
+	names := [2]string{"First Kept Entity", "Second Kept Entity"}
+	for name in names {
+		append(
+			&scene.entities,
+			shared.Scene_Entity {
+				id = shared.entity_uuid_from_engine_name(name),
+				name = name,
+				has_transform = true,
+				transform = {scale = {1, 1, 1}},
+			},
+		)
+	}
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	registry: component.Registry
+	component.init_registry(&registry)
+	state := new(ui.State)
+	defer free(state)
+	testing.expect(t, ui.init(state) == "")
+	defer ui.destroy(state)
+	state.component_registry = &registry
+	state.editor_simulation_stopped = true
+	baseline: Playback_Baseline
+	defer destroy_playback_baseline(&baseline)
+	testing.expect(t, capture_playback_baseline(&baseline, &world) == "")
+
+	ui.editor_play(state)
+	_ = ui.consume_playback_begin_request(state)
+	first_transform := world.entities[0].transform_index
+	world.transforms[first_transform].position.x = 3
+	testing.expect(t, ui.editor_stage_play_definition(state, &world, 0, "scrapbot.transform"))
+	world.transforms[first_transform].position.x = 8
+	testing.expect(t, ui.editor_stage_play_definition(state, &world, 0, "scrapbot.transform"))
+	second_transform := world.entities[1].transform_index
+	world.transforms[second_transform].position.y = -5
+	testing.expect(t, ui.editor_stage_play_definition(state, &world, 1, "scrapbot.transform"))
+	testing.expect_value(t, len(state.editor_play_changes), 2)
+	testing.expect_value(t, state.editor_history_count, 0)
+	testing.expect(t, !state.editor_scene_dirty)
+
+	ui.editor_stop(state)
+	_ = ui.consume_playback_stop_request(state)
+	runtime: script.Runtime
+	runtime.world = &world
+	testing.expect(t, restore_playback_baseline(&baseline, &runtime, &world) == "")
+	ui.editor_world_restored(state, &world)
+	testing.expect(t, ui.editor_apply_play_changes(state, &world))
+	first_transform = world.entities[0].transform_index
+	second_transform = world.entities[1].transform_index
+	testing.expect_value(t, world.transforms[first_transform].position.x, f32(8))
+	testing.expect_value(t, world.transforms[second_transform].position.y, f32(-5))
+	testing.expect_value(t, state.editor_history_count, 1)
+	testing.expect(t, ui.editor_undo(state, &world))
+	testing.expect_value(t, world.transforms[first_transform].position, shared.Vec3{})
+	testing.expect_value(t, world.transforms[second_transform].position, shared.Vec3{})
+	testing.expect(t, !state.editor_scene_dirty)
+	testing.expect(t, ui.editor_redo(state, &world))
+	testing.expect_value(t, world.transforms[first_transform].position.x, f32(8))
+	testing.expect_value(t, world.transforms[second_transform].position.y, f32(-5))
+}
+
+@(test)
+test_stop_without_staged_play_edits_does_not_create_authoring_history :: proc(t: ^testing.T) {
+	world: shared.World
+	defer ecs.destroy_world(&world)
+	state := new(ui.State)
+	defer free(state)
+	testing.expect(t, ui.init(state) == "")
+	defer ui.destroy(state)
+	state.editor_simulation_stopped = true
+	ui.editor_play(state)
+	ui.editor_stop(state)
+	ui.editor_world_restored(state, &world)
+	testing.expect(t, ui.editor_apply_play_changes(state, &world))
+	testing.expect_value(t, state.editor_history_count, 0)
+	testing.expect_value(t, state.editor_history_cursor, 0)
+	testing.expect(t, !state.editor_scene_dirty)
+}
+
+@(test)
+test_play_edit_eligibility_explains_runtime_derived_and_system_written_state :: proc(
+	t: ^testing.T,
+) {
+	scene: shared.Scene
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = shared.entity_uuid_from_engine_name("play-edit-eligibility"),
+			name = "Play Edit Eligibility",
+			has_transform = true,
+			transform = {scale = {1, 1, 1}},
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	registry: component.Registry
+	component.init_registry(&registry)
+	state := new(ui.State)
+	defer free(state)
+	testing.expect(t, ui.init(state) == "")
+	defer ui.destroy(state)
+	state.component_registry = &registry
+	state.editor_simulation_stopped = false
+
+	transform, found := component.find_definition(&registry, "scrapbot.transform")
+	testing.expect(t, found)
+	editable, reason := ui.editor_component_play_editable(state, &world, 0, &transform)
+	testing.expect(t, editable)
+	testing.expect(t, reason == "KEPT ON STOP")
+
+	world.entities[0].origin = .Runtime
+	editable, reason = ui.editor_component_play_editable(state, &world, 0, &transform)
+	testing.expect(t, !editable)
+	testing.expect(t, reason == "TEMPORARY / RESET ON STOP")
+	world.entities[0].origin = .Scene
+
+	derived, derived_found := component.find_definition(&registry, "scrapbot.ui_state")
+	testing.expect(t, derived_found)
+	editable, reason = ui.editor_component_play_editable(state, &world, 0, &derived)
+	testing.expect(t, !editable)
+	testing.expect(t, reason == "READ ONLY")
+
+	testing.expect(t, component.register_system_write_access(&registry, "scrapbot.transform"))
+	transform, found = component.find_definition(&registry, "scrapbot.transform")
+	testing.expect(t, found)
+	editable, reason = ui.editor_component_play_editable(state, &world, 0, &transform)
+	testing.expect(t, editable)
+	testing.expect(t, reason == "KEPT ON STOP")
+
+	ecs.mark_project_system_component_written(&world, 0, transform.id)
+	editable, reason = ui.editor_component_play_editable(state, &world, 0, &transform)
+	testing.expect(t, !editable)
+	testing.expect(t, reason == "TEMPORARY / RESET ON STOP")
+	world.transforms[world.entities[0].transform_index].position.x = 4
+	state.editor_simulation_stopped = false
+	world.entities[0].project_system_written_components = {}
+	testing.expect(t, ui.editor_stage_play_component(state, &world, 0, &transform))
+	ecs.mark_project_system_component_written(&world, 0, transform.id)
+	ui.editor_discard_system_written_play_changes(state, &world)
+	testing.expect_value(t, len(state.editor_play_changes), 0)
+
+	state.editor_simulation_stopped = true
+	editable, reason = ui.editor_component_play_editable(state, &world, 0, &transform)
+	testing.expect(t, editable)
+	testing.expect(t, reason == "SAVED WITH SCENE")
+}

@@ -1121,14 +1121,18 @@ reconcile_model_instances :: proc(world: ^shared.World, registry: ^resources.Reg
 	if world == nil || registry == nil {
 		return ""
 	}
-	if world.model_instance_revision == world.model_instance_reconciled_revision {
+	registry_changed := world.model_registry_reconciled_revision != registry.model_revision
+	if world.model_instance_revision == world.model_instance_reconciled_revision &&
+	   !registry_changed {
 		return ""
 	}
-	for entity, entity_index in world.entities {
-		if !entity.alive || entity.model_owner == (shared.Entity_UUID{}) {
-			continue
+	if registry_changed {
+		for entity, entity_index in world.entities {
+			if !entity.alive || entity.model_owner == (shared.Entity_UUID{}) {
+				continue
+			}
+			ecs.despawn_entity(world, entity_index, entity.id.generation)
 		}
-		ecs.despawn_entity(world, entity_index, entity.id.generation)
 	}
 	root_count := len(world.entities)
 	for root_index in 0 ..< root_count {
@@ -1148,6 +1152,10 @@ reconcile_model_instances :: proc(world: ^shared.World, registry: ^resources.Reg
 		if !alive {
 			return fmt.tprintf("entity '%s' references a stale model resource", root.name)
 		}
+		if !registry_changed && model_instance_is_complete(world, root.uuid, resource_id, model) {
+			continue
+		}
+		ecs.despawn_model_instance_entities(world, root.uuid)
 		node_entities := make([]int, len(model.nodes), context.temp_allocator)
 		for &index in node_entities {
 			index = -1
@@ -1211,7 +1219,46 @@ reconcile_model_instances :: proc(world: ^shared.World, registry: ^resources.Reg
 		}
 	}
 	world.model_instance_reconciled_revision = world.model_instance_revision
+	world.model_registry_reconciled_revision = registry.model_revision
 	return ""
+}
+
+model_instance_is_complete :: proc(
+	world: ^shared.World,
+	root: shared.Entity_UUID,
+	resource: shared.Resource_UUID,
+	model: ^resources.Model,
+) -> bool {
+	if world == nil || model == nil {
+		return false
+	}
+	expected_count := 0
+	for node in model.nodes {
+		expected_count += 1
+		node_uuid := model_instance_uuid(root, resource, node.key, "")
+		entity_index, found := ecs.entity_index_by_uuid(world, node_uuid)
+		if !found || world.entities[entity_index].model_owner != root {
+			return false
+		}
+		if node.mesh_index < 0 || int(node.mesh_index) >= len(model.meshes) {
+			continue
+		}
+		for primitive in model.meshes[node.mesh_index].primitives {
+			expected_count += 1
+			primitive_uuid := model_instance_uuid(root, resource, node.key, primitive.key)
+			primitive_index, primitive_found := ecs.entity_index_by_uuid(world, primitive_uuid)
+			if !primitive_found || world.entities[primitive_index].model_owner != root {
+				return false
+			}
+		}
+	}
+	actual_count := 0
+	for entity in world.entities {
+		if entity.alive && entity.model_owner == root {
+			actual_count += 1
+		}
+	}
+	return actual_count == expected_count
 }
 
 model_instance_uuid :: proc(

@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "timeout_frames": 120,
+  "actions": [
+    {"action": "wait", "frames": 3},
+    {"action": "click", "target": {"text": "Left Cube", "origin": "editor"}},
+    {"action": "expect", "target": {"text": "TEMPORARY / RESET ON STOP", "origin": "editor"}, "expect": "visible"},
+    {"action": "expect", "target": {"text": "KEPT ON STOP", "origin": "editor"}, "expect": "visible"},
+    {"action": "capture", "target": {"text": "TEMPORARY / RESET ON STOP", "origin": "editor"}, "padding": 72}
+  ]
+}

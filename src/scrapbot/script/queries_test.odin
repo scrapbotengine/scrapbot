@@ -90,6 +90,15 @@ scale = [1, 1, 1]
 
 [entities.components.autorotate]
 velocity = [0, 2, 0]
+
+[[entities]]
+id = "a9000000-0000-4000-8000-000000000012"
+name = "Static authored entity"
+
+[entities.transform]
+position = [0, 0, 0]
+rotation = [0, 0, 0]
+scale = [1, 1, 1]
 `,
 	)
 	defer project.destroy_scene(&scene)
@@ -135,10 +144,21 @@ end)
 	testing.expect(t, runtime.systems[0].declaration.accesses[1].mode == .Read)
 	testing.expect(t, runtime.systems[0].declaration.accesses[2].component == "scrapbot.transform")
 	testing.expect(t, runtime.systems[0].declaration.accesses[2].mode == .Write)
+	transform_definition, transform_found := component.find_definition(
+		&runtime.registry,
+		"scrapbot.transform",
+	)
+	testing.expect(t, transform_found)
+	testing.expect(t, transform_definition.system_write_access_count == 1)
 
 	step_err := step_runtime(&runtime, &world, 0.5)
 	testing.expect(t, step_err == "")
 	testing.expect(t, world.transforms[0].rotation.y == 1)
+	testing.expect(t, ecs.project_system_component_was_written(&world, 0, transform_definition.id))
+	testing.expect(
+		t,
+		!ecs.project_system_component_was_written(&world, 1, transform_definition.id),
+	)
 }
 
 @(test)

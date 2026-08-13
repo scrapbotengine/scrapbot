@@ -37,7 +37,7 @@ Browser filters are badge-free and share their outer edges with the selectable r
 
 Scrolling follows the pane under the pointer. A wheel event over Systems, the scene browser, or an inspector pane scrolls that pane. A wheel event over sidebar padding or non-scrollable chrome scrolls the complete sidebar.
 
-The top bar contains the Scrapbot title and project simulation controls. The bottom bar reports simulation and persistence status. Running and paused playback display `PLAY MODE / <STATE> / CHANGES ARE TEMPORARY`. An amber badge inside the viewport states that scene edits are not saved, while an amber viewport frame and status text reinforce the warning without recoloring the complete editor. Pausing preserves the play-mode treatment because edits remain disposable. Stop returns the editor to neutral authoring chrome and removes the badge.
+The top bar contains the Scrapbot title and project simulation controls. The bottom bar reports simulation and persistence status. Running and paused playback display `PLAY MODE / <STATE> / ELIGIBLE EDITS PERSIST ON STOP` and add the staged component count after an eligible edit. The active Play or Pause control turns amber, while a thin viewport frame reinforces that Play Mode is active without obscuring the scene. Stop restores the simulation baseline, then reapplies eligible staged edits as one authoring transaction.
 
 | Control | Behavior |
 | --- | --- |
@@ -59,7 +59,7 @@ The transport also has command shortcuts while the editor is open:
 | `Cmd/Ctrl+R` / `F5` | Play when stopped or resume when paused. |
 | `Cmd/Ctrl+T` / `F6` | Pause when running or resume when paused. |
 | `Cmd/Ctrl+Shift+T` / `F7` | Advance one fixed step while paused. |
-| `Cmd/Ctrl+.` / `F8` | Stop playback and restore the in-memory authoring baseline. |
+| `Cmd/Ctrl+.` / `F8` | Stop playback, restore the in-memory authoring baseline, and reapply eligible staged component edits as one undoable authoring transaction. |
 | `Cmd/Ctrl+D` | Duplicate the complete selection, preserving selected subtrees, and select the explicit copies. The batch is authored while stopped and disposable during playback. |
 | `Delete` / `Backspace` | Delete the complete selection and its Transform descendants as one authored operation while stopped or a disposable operation during playback. |
 | `Escape` | Clear the entity selection. A focused field or open popup consumes Escape first. |
@@ -73,6 +73,7 @@ Pause preserves the current runtime world so Play can resume it. Play captures t
 Stop returns to that captured state without reloading code or the scene file:
 
 - unsaved authored entities, dirty state, selection, and undo history survive;
+- eligible staged inspector and transform edits are reapplied as one undoable authoring transaction;
 - playback mutations and runtime-spawned entities disappear.
 
 Stopped is authoring mode. The bottom bar retains `/ UNSAVED` until Save—or `Ctrl/Cmd+S`—writes the changes, Undo/Redo returns to the clean history position, or Revert discards them.
@@ -105,7 +106,7 @@ Save preserves unrelated source text:
 
 Scrapbot validates the complete generated scene before atomically replacing the source file. A successful Save marks the current history position as clean. Undoing away from that position reports unsaved changes; redoing back to it clears the warning.
 
-Unpromoted runtime and editor-owned entities are never written. Changes made while running or paused remain disposable runtime state.
+Unpromoted runtime and editor-owned entities are never written. During Running or Paused, only fields inside green `KEPT ON STOP` component cards survive Stop; amber temporary cards reset, and gray cards are read-only.
 
 ## Navigate the scene view
 
@@ -312,7 +313,7 @@ Built-in editor numbers and custom fields marked `draggable` can be scrubbed hor
 
 Use the top-bar controls or `Ctrl/Cmd+Z` and `Ctrl/Cmd+Shift+Z` for Undo and Redo. Complete typing, stepping, scrubbing, boolean changes, gizmo drags, renames, entity operations, promotions, and component membership changes each occupy one bounded history entry. Dependent boolean fields changed by one control remain atomic.
 
-While stopped, authored changes can be saved. Edits to unpromoted runtime entities and all edits made while running or paused are session-only and do not enter authoring history.
+Every component card uses a semantic outline and tinted title to make persistence scannable. Green means changes are authored or `KEPT ON STOP`; amber means temporary runtime state that resets on Stop; muted gray means read-only. During Running or Paused, authored components on scene entities remain editable until a project system actually changes that component on that entity. A system declaring Transform write access for one camera therefore does not lock unrelated rocks, cliffs, or trees. Runtime entities and derived components remain read-only. A short status row remains as a secondary textual explanation. Eligible completed edits are staged per entity/component. Stop restores the simulation baseline and reapplies those staged values as one undoable authoring transaction; if a system claims a staged entity/component later in the same play session, that conflicting staged edit is discarded. Entity/component structure and project resources remain playback-only for now.
 
 Resource-browser values and the selected entity's running component values refresh every 200 ms. Selection and stopped-authoring changes refresh immediately. Periodic refresh leaves actively edited text alone and does not rebuild the Scene browser; hierarchy invalidation, filter edits, and selection changes do.
 
@@ -355,7 +356,7 @@ Use `ORIGIN` or `CENTER` beside them to choose the manipulation pivot. Origin us
 
 The selected space and pivot are stored on the transient gizmo component. A drag freezes its basis and pivot when it begins, so the handle stays stable even while the transform changes. For a parented entity, the gizmo edits its world pose and derives the new local Transform automatically.
 
-While stopped, transform edits to scene-authored entities participate in explicit Save. During running or paused playback they affect only runtime state. A complete single- or multi-entity gizmo drag is one undoable transaction, including multi-axis handles, snapping, shared-pivot movement, and parent/child selections. Editing asset origins, custom pivots, and arbitrary surface snapping are not implemented yet.
+While stopped, transform edits to scene-authored entities participate in explicit Save. During Running or Paused, the transform gizmo is available only when every selected entity is authored and `scrapbot.transform` is not declared writable by a project system. A completed gesture stages the latest Transform to persist automatically on Stop. A complete single- or multi-entity stopped-mode gizmo drag is one undoable transaction, including multi-axis handles, snapping, shared-pivot movement, and parent/child selections. Editing asset origins, custom pivots, and arbitrary surface snapping are not implemented yet.
 
 ## Capture the editor
 

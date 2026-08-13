@@ -39,8 +39,6 @@ EDITOR_UI_RESOURCE_PATH_NAME :: "__scrapbot_editor_resource_path"
 EDITOR_UI_VIEWPORT_NAME :: "__scrapbot_editor_viewport"
 EDITOR_UI_VIEWPORT_DOCK_NAME :: "__scrapbot_editor_viewport_dock"
 EDITOR_UI_VIEWPORT_TAB_NAME :: "__scrapbot_editor_viewport_tab"
-EDITOR_UI_PLAYBACK_WARNING_NAME :: "__scrapbot_editor_playback_warning"
-EDITOR_UI_PLAYBACK_WARNING_BADGE_NAME :: "__scrapbot_editor_playback_warning_badge"
 EDITOR_UI_GIZMO_TOOLBAR_NAME :: "__scrapbot_editor_gizmo_toolbar"
 EDITOR_UI_PLACEMENT_TOOLBAR_NAME :: "__scrapbot_editor_placement_toolbar"
 EDITOR_UI_PLACEMENT_SNAP_NAME :: "__scrapbot_editor_placement_snap"
@@ -1434,7 +1432,7 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		EDITOR_UI_TRANSPORT_NAME,
 		EDITOR_UI_TOP_NAME,
 		.None,
-		{size = {566, 30}},
+		{size = {590, 30}},
 	)
 	editor_ui_add_hstack(world, transport, {gap = 4})
 	_ = editor_ui_create_transport_button(
@@ -2028,33 +2026,6 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 				0.18,
 			},
 		},
-	)
-	playback_warning := editor_ui_create_box(
-		world,
-		EDITOR_UI_PLAYBACK_WARNING_NAME,
-		EDITOR_UI_VIEWPORT_NAME,
-		.None,
-		{position = {0, 52}, size = {1, 30}, fill_width = true},
-	)
-	warning_layout, _ := theme_button(theme, .Warning)
-	warning_layout.size = {370, 30}
-	warning_layout.padding = {4, 12, 4, 12}
-	warning_layout.fixed_in_fill = true
-	warning_layout.corner_radius = theme.metrics.radius
-	playback_warning_badge := editor_ui_create_box(
-		world,
-		EDITOR_UI_PLAYBACK_WARNING_BADGE_NAME,
-		EDITOR_UI_PLAYBACK_WARNING_NAME,
-		.None,
-		warning_layout,
-	)
-	world.ui_layouts[world.entities[playback_warning_badge].ui_layout_index].horizontal_alignment = .Center
-	editor_ui_add_text(
-		world,
-		playback_warning_badge,
-		"PLAY MODE RUNNING  /  SCENE EDITS ARE NOT SAVED",
-		theme.palette.warning,
-		EDITOR_TEXT_SIZE,
 	)
 	debug_view_menu := editor_ui_create_box(
 		world,
@@ -3020,6 +2991,7 @@ editor_ui_update_transport :: proc(state: ^State, world: ^shared.World) {
 		revert_failed = state.editor_scene_revert_failed,
 		history_cursor = state.editor_history_cursor,
 		history_count = state.editor_history_count,
+		play_change_count = len(state.editor_play_changes),
 	}
 	if state.editor_transport_visual_valid && state.editor_transport_visual_state == visual_state {
 		return
@@ -3048,22 +3020,6 @@ editor_ui_update_transport :: proc(state: ^State, world: ^shared.World) {
 			layout.border_color = frame.border_color
 			layout.border_width = frame.border_width
 		}
-	}
-	if warning, found := ecs.entity_index_by_uuid(
-		world,
-		shared.entity_uuid_from_engine_name(EDITOR_UI_PLAYBACK_WARNING_NAME),
-	); found {
-		editor_ui_set_hidden(world, warning, !playback)
-	}
-	if warning_badge, found := ecs.entity_index_by_uuid(
-		world,
-		shared.entity_uuid_from_engine_name(EDITOR_UI_PLAYBACK_WARNING_BADGE_NAME),
-	); found {
-		label := "PLAY MODE PAUSED  /  SCENE EDITS ARE NOT SAVED"
-		if state.editor_simulation_playing {
-			label = "PLAY MODE RUNNING  /  SCENE EDITS ARE NOT SAVED"
-		}
-		editor_ui_set_text(world, warning_badge, label)
 	}
 	if status_bar, found := ecs.entity_index_by_uuid(
 		world,
@@ -3095,8 +3051,7 @@ editor_ui_update_transport :: proc(state: ^State, world: ^shared.World) {
 			component.role == .Transport_Play && state.editor_simulation_playing ||
 			component.role == .Transport_Pause &&
 				!state.editor_simulation_playing &&
-				!state.editor_simulation_stopped ||
-			component.role == .Transport_Stop && state.editor_simulation_stopped
+				!state.editor_simulation_stopped
 		layout := &world.ui_layouts[entity.ui_layout_index]
 		button := &world.ui_buttons[entity.ui_button_index]
 		base_layout, base_button := theme_button(theme, .Quiet)
@@ -3126,6 +3081,16 @@ editor_ui_update_transport :: proc(state: ^State, world: ^shared.World) {
 				available = !state.editor_simulation_playing && !state.editor_simulation_stopped
 			case:
 		}
+		if selected {
+			warning_layout, warning_button := theme_button(theme, .Warning)
+			layout.background = warning_layout.background
+			layout.border_color = warning_layout.border_color
+			layout.border_width = warning_layout.border_width
+			button.color = warning_button.color
+			button.hover_background = warning_button.hover_background
+			button.active_background = warning_button.active_background
+			continue
+		}
 		if !available {
 			button.color = theme.palette.text_muted
 			button.hover_background = layout.background
@@ -3151,23 +3116,6 @@ editor_ui_update_transport :: proc(state: ^State, world: ^shared.World) {
 			button.hover_background = destructive_button.hover_background
 			button.active_background = destructive_button.active_background
 			continue
-		}
-		if selected && component.role == .Transport_Play {
-			primary_layout, primary_button := theme_button(theme, .Primary)
-			layout.background = primary_layout.background
-			layout.border_color = primary_layout.border_color
-			layout.border_width = primary_layout.border_width
-			button.color = primary_button.color
-			button.hover_background = primary_button.hover_background
-			button.active_background = primary_button.active_background
-		} else if selected {
-			selected_layout, selected_button := theme_button(theme, .Selected)
-			layout.background = selected_layout.background
-			layout.border_color = selected_layout.border_color
-			layout.border_width = selected_layout.border_width
-			button.color = selected_button.color
-			button.hover_background = selected_button.hover_background
-			button.active_background = selected_button.active_background
 		}
 	}
 	if status, found := editor_ui_entity(world, .Status); found {
@@ -4173,6 +4121,81 @@ Inspector_ECS_Builder :: struct {
 	row_count: int,
 	component_menu_visible: bool,
 	resource_menu_visible: bool,
+	component_read_only: bool,
+	component_play_status: string,
+	component_persistence_visual: Editor_Component_Persistence_Visual,
+}
+
+Editor_Component_Persistence_Visual :: enum {
+	Neutral,
+	Persistent,
+	Temporary,
+	Read_Only,
+}
+
+editor_component_persistence_visual :: proc(
+	state: ^State,
+	world: ^shared.World,
+	entity_index: int,
+	definition: ^component.Definition,
+) -> Editor_Component_Persistence_Visual {
+	if state == nil ||
+	   world == nil ||
+	   definition == nil ||
+	   !ecs.entity_is_alive(world, entity_index) {
+		return .Read_Only
+	}
+	if definition.lifecycle != .Authored {
+		return .Read_Only
+	}
+	if state.editor_simulation_stopped {
+		return .Persistent
+	}
+	if world.entities[entity_index].origin != .Scene {
+		return .Temporary
+	}
+	if ecs.project_system_component_was_written(world, entity_index, definition.id) {
+		return .Temporary
+	}
+	return .Persistent
+}
+
+editor_ui_apply_component_persistence_visual :: proc(
+	world: ^shared.World,
+	panel: int,
+	visual: Editor_Component_Persistence_Visual,
+) {
+	if world == nil || panel < 0 || panel >= len(world.entities) {
+		return
+	}
+	entity := &world.entities[panel]
+	if entity.ui_layout_index < 0 || entity.ui_panel_index < 0 {
+		return
+	}
+	theme := reduced_dark_theme()
+	layout := &world.ui_layouts[entity.ui_layout_index]
+	panel_value := world.ui_panels[entity.ui_panel_index]
+	layout.background = theme.palette.region
+	layout.border_color = theme.palette.border
+	layout.border_width = 1
+	panel_value.title_background = theme.palette.control
+	panel_value.title_color = theme.palette.text_secondary
+	switch visual {
+		case .Persistent:
+			layout.border_color = theme.palette.accent
+			panel_value.title_background = theme.palette.accent_soft
+			panel_value.title_color = theme.palette.accent_text
+		case .Temporary:
+			layout.border_color = theme.palette.warning
+			panel_value.title_background = theme.palette.warning_soft
+			panel_value.title_color = theme.palette.warning
+		case .Read_Only:
+			layout.border_color = theme.palette.border_strong
+			panel_value.title_background = theme.palette.raised
+			panel_value.title_color = theme.palette.text_muted
+		case .Neutral:
+	}
+	_ = ecs.set_ui_panel(world, panel, panel_value)
 }
 
 editor_ui_ensure_resource_menu_button :: proc(
@@ -4636,6 +4659,9 @@ editor_ui_begin_inspector_component :: proc(
 	builder.panel_entity = panel
 	builder.table_entity = table
 	builder.row_count = 0
+	builder.component_read_only = false
+	builder.component_play_status = ""
+	builder.component_persistence_visual = .Neutral
 	builder.panel_count += 1
 	panel_layout := &builder.world.ui_layouts[builder.world.entities[panel].ui_layout_index]
 	table_layout := &builder.world.ui_layouts[builder.world.entities[table].ui_layout_index]
@@ -4649,6 +4675,20 @@ editor_ui_begin_inspector_component :: proc(
 	definition_id := shared.INVALID_COMPONENT_ID
 	if definition != nil {
 		definition_id = definition.id
+		editable, status := editor_component_play_editable(
+			builder.state,
+			builder.world,
+			int(builder.target.index),
+			definition,
+		)
+		builder.component_read_only = !editable
+		builder.component_play_status = status
+		builder.component_persistence_visual = editor_component_persistence_visual(
+			builder.state,
+			builder.world,
+			int(builder.target.index),
+			definition,
+		)
 	}
 	if binding.target != builder.target || binding.reflected_component_id != definition_id {
 		panel_value.collapsed =
@@ -4678,6 +4718,19 @@ editor_ui_begin_inspector_component :: proc(
 		action_binding.reflected_component_id = definition.id
 	}
 	editor_ui_set_panel_title(builder.world, panel, title)
+	editor_ui_apply_component_persistence_visual(
+		builder.world,
+		panel,
+		builder.component_persistence_visual,
+	)
+	if builder.component_play_status != "" {
+		editor_ui_inspector_field_values(
+			builder,
+			"PERSISTENCE",
+			[]string{builder.component_play_status},
+			read_only = true,
+		)
+	}
 }
 
 editor_ui_set_reflected_path :: proc(binding: ^shared.Editor_UI_Component, path: []int) {
@@ -5130,6 +5183,7 @@ editor_ui_inspector_reflected_value :: proc(
 	}
 	display_label := editor_ui_nested_label(label, depth)
 	read_only :=
+		builder.component_read_only ||
 		definition.lifecycle != .Authored ||
 		field.read_only ||
 		!editor_reflected_value_is_writable(value)
@@ -6757,18 +6811,21 @@ refresh_editor_ecs_snapshot :: proc(state: ^State, world: ^shared.World) {
 		editor_ui_set_text(world, path_entity, fmt.tprintf("%s  /  %d ITEMS", path, item_count))
 	}
 	if status, found := editor_ui_entity(world, .Status); found {
-		mode := "PLAY MODE  /  PAUSED  /  CHANGES ARE TEMPORARY"
+		mode := "PLAY MODE  /  PAUSED  /  ELIGIBLE EDITS PERSIST ON STOP"
 		if state.editor_simulation_playing {
-			mode = "PLAY MODE  /  RUNNING  /  CHANGES ARE TEMPORARY"
+			mode = "PLAY MODE  /  RUNNING  /  ELIGIBLE EDITS PERSIST ON STOP"
+		}
+		if !state.editor_simulation_stopped && len(state.editor_play_changes) > 0 {
+			mode = fmt.tprintf("%s  /  %d STAGED", mode, len(state.editor_play_changes))
 		}
 		if state.editor_simulation_stopped { mode = "STOPPED" }
 		if state.editor_scene_dirty {
 			if state.editor_simulation_playing {
-				mode = "PLAY MODE  /  RUNNING  /  CHANGES ARE TEMPORARY  /  UNSAVED AUTHORING"
+				mode = "PLAY MODE  /  RUNNING  /  ELIGIBLE EDITS PERSIST ON STOP  /  UNSAVED AUTHORING"
 			} else if state.editor_simulation_stopped {
 				mode = "STOPPED  /  UNSAVED"
 			} else {
-				mode = "PLAY MODE  /  PAUSED  /  CHANGES ARE TEMPORARY  /  UNSAVED AUTHORING"
+				mode = "PLAY MODE  /  PAUSED  /  ELIGIBLE EDITS PERSIST ON STOP  /  UNSAVED AUTHORING"
 			}
 		}
 		if state.editor_scene_save_failed { mode = "SAVE FAILED  /  UNSAVED" }
@@ -6863,8 +6920,10 @@ refresh_editor_ecs_snapshot :: proc(state: ^State, world: ^shared.World) {
 				index := int(state.editor_selected_entity.index)
 				if index >= 0 && index < len(world.entities) {
 					entity := world.entities[index]
-					origin := "SCENE ENTITY"
-					if entity.origin == .Runtime { origin = "RUNTIME ENTITY" }
+					origin := "AUTHORED ENTITY / CHECK EACH COMPONENT"
+					if entity.origin == .Runtime {
+						origin = "RUNTIME ENTITY / CHANGES CAN'T BE KEPT"
+					}
 					id_buffer: [36]u8
 					id := shared.entity_uuid_to_string(entity.uuid, id_buffer[:])
 					selection_count := editor_selection_count(state)

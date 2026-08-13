@@ -1617,6 +1617,18 @@ editor_reflected_apply_component_snapshot :: proc(
 		return false
 	}
 	target := &world.entities[target_index]
+	definition := editor_component_definition_by_id(state, before, after)
+	if definition == nil {
+		destroy_component_snapshot_pointer(before)
+		destroy_component_snapshot_pointer(after)
+		return false
+	}
+	editable, _ := editor_component_play_editable(state, world, target_index, definition)
+	if !editable {
+		destroy_component_snapshot_pointer(before)
+		destroy_component_snapshot_pointer(after)
+		return false
+	}
 	target_uuid := target.uuid
 	target_origin := target.origin
 	if !ecs.apply_registered_component_snapshot(world, target_index, after) {
@@ -1627,6 +1639,9 @@ editor_reflected_apply_component_snapshot :: proc(
 	if state.editor_simulation_stopped && target_origin == .Scene {
 		push_component_structural_change(state, target_uuid, before, after)
 	} else {
+		if target_origin == .Scene {
+			_ = editor_stage_play_component(state, world, target_index, definition)
+		}
 		destroy_component_snapshot_pointer(before)
 		destroy_component_snapshot_pointer(after)
 		state.editor_snapshot_valid = false
@@ -1649,6 +1664,10 @@ editor_reflected_preview_number :: proc(
 	}
 	_, target_index, target_ok := inspector_target(world, binding)
 	if !target_ok {
+		return false
+	}
+	editable, _ := editor_component_play_editable(state, world, target_index, definition)
+	if !editable {
 		return false
 	}
 	snapshot, captured := ecs.capture_registered_component_snapshot(
@@ -1724,6 +1743,9 @@ editor_reflected_finish_number_scrub :: proc(
 	if state.editor_simulation_stopped && world.entities[target_index].origin == .Scene {
 		push_component_structural_change(state, world.entities[target_index].uuid, before, after)
 	} else {
+		if world.entities[target_index].origin == .Scene {
+			_ = editor_stage_play_component(state, world, target_index, definition)
+		}
 		destroy_component_snapshot_pointer(before)
 		destroy_component_snapshot_pointer(after)
 		state.editor_snapshot_valid = false
@@ -2347,6 +2369,10 @@ editor_reflected_preview_color :: proc(
 	if !target_ok {
 		return false
 	}
+	editable, _ := editor_component_play_editable(state, world, target_index, definition)
+	if !editable {
+		return false
+	}
 	snapshot, captured := ecs.capture_registered_component_snapshot(
 		world,
 		target_index,
@@ -2414,6 +2440,9 @@ editor_reflected_finish_color :: proc(
 	if state.editor_simulation_stopped && world.entities[target_index].origin == .Scene {
 		push_component_structural_change(state, world.entities[target_index].uuid, before, after)
 	} else {
+		if world.entities[target_index].origin == .Scene {
+			_ = editor_stage_play_component(state, world, target_index, definition)
+		}
 		destroy_component_snapshot_pointer(before)
 		destroy_component_snapshot_pointer(after)
 		state.editor_snapshot_valid = false

@@ -19,6 +19,7 @@ MAX_NATIVE_QUERY_PLANS :: 16
 
 Native_Query_Binding_Plan :: struct {
 	component: cstring,
+	component_id: shared.Component_ID,
 	field: cstring,
 	value_type: api.Query_Chunk_Value_Type,
 	access: api.Access_Mode,

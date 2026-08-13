@@ -46,6 +46,7 @@ This file tracks current actionable engineering work. The broad product roadmap 
 
 ## Editor
 
+- [ ] Track exact field-level runtime mutation provenance so play-mode editing can safely unlock fields disjoint from system writes. See [FDR-008](fdr/FDR-008-editor-shell.md).
 - [ ] Reuse the rooted file-browser model for explicit open/save/import dialogs with consumer-owned capabilities, filename validation, overwrite confirmation, and asynchronous scan cancellation. See [ADR-060](adr/ADR-060-browse-files-through-rooted-metadata-models.md).
 - [ ] Extend public dock spaces with same-group tab ordering, automatic empty-split collapse, floating windows, and persisted dock placement plus panel order and sizes. Panels and tabs already transfer across containers and create public resizable splits from enabled edges. See [ADR-045](adr/ADR-045-compose-docking-from-public-groups-and-layout.md).
 - [ ] Add an opt-in runtime-entity browser policy on top of bounded, virtualized list rows.

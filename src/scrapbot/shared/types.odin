@@ -1795,6 +1795,8 @@ Native_Query_Stats :: struct {
 	scalar_tail_lanes: u64,
 }
 
+PROJECT_SYSTEM_WRITE_PROVENANCE_WORDS :: 2
+
 World_Entity :: struct {
 	id: Entity,
 	uuid: Entity_UUID,
@@ -1803,6 +1805,7 @@ World_Entity :: struct {
 	name: string,
 	scene_order: int,
 	component_revision: u64,
+	project_system_written_components: [PROJECT_SYSTEM_WRITE_PROVENANCE_WORDS]u64,
 	transform_index: int,
 	camera_index: int,
 	world_environment_index: int,
@@ -1972,6 +1975,7 @@ World :: struct {
 	render_hierarchy_revision: u64,
 	model_instance_revision: u64,
 	model_instance_reconciled_revision: u64,
+	model_registry_reconciled_revision: u64,
 	free_transform_indices: [dynamic]int,
 	free_mesh_indices: [dynamic]int,
 	free_geometry_indices: [dynamic]int,

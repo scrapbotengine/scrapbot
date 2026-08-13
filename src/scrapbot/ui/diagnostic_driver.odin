@@ -1,5 +1,7 @@
 package ui
 
+import component "../component"
+import ecs "../ecs"
 import shared "../shared"
 import "core:encoding/json"
 import "core:fmt"
@@ -15,6 +17,9 @@ Diagnostic_Target :: struct {
 	text: string,
 	origin: string,
 	part: string,
+	component: string,
+	field: string,
+	axis: string,
 	occurrence: int,
 }
 
@@ -100,6 +105,10 @@ Diagnostic_Node_Dump :: struct {
 	has_input: bool,
 	has_checkbox: bool,
 	has_color_picker: bool,
+	editor_component: string,
+	editor_field: string,
+	editor_axis: string,
+	editor_read_only: bool,
 }
 
 Diagnostic_Tree_Dump :: struct {
@@ -111,6 +120,11 @@ Diagnostic_Tree_Dump :: struct {
 	editor_inspector_snapshot_refresh_count: u64,
 	editor_selection_revision: u64,
 	editor_selected_uuids: []string,
+	editor_simulation: string,
+	editor_scene_dirty: bool,
+	editor_history_cursor: int,
+	editor_history_count: int,
+	editor_staged_play_changes: int,
 	driver_action_index: int,
 	driver_action_count: int,
 	driver_action: string,
@@ -168,11 +182,17 @@ diagnostic_driver_destroy :: proc(driver: ^Diagnostic_Driver) {
 			delete(action.target.text)
 			delete(action.target.origin)
 			delete(action.target.part)
+			delete(action.target.component)
+			delete(action.target.field)
+			delete(action.target.axis)
 			delete(action.destination.uuid)
 			delete(action.destination.name)
 			delete(action.destination.text)
 			delete(action.destination.origin)
 			delete(action.destination.part)
+			delete(action.destination.component)
+			delete(action.destination.field)
+			delete(action.destination.axis)
 			delete(action.destination_anchor)
 			delete(action.expect)
 			delete(action.text)
@@ -208,6 +228,8 @@ diagnostic_action_is_valid :: proc(action: Diagnostic_Action) -> bool {
 				diagnostic_target_is_valid(action.target) &&
 				diagnostic_expectation_is_valid(action.expect) \
 			)
+		case "expect_editor":
+			return diagnostic_editor_expectation_is_valid(action.expect)
 		case "wait":
 			return action.frames > 0
 		case "set_editor_camera":
@@ -234,18 +256,44 @@ diagnostic_target_is_valid :: proc(target: Diagnostic_Target) -> bool {
 	   target.part != "dock_tab" {
 		return false
 	}
+	if target.axis != "" &&
+	   target.axis != "x" &&
+	   target.axis != "y" &&
+	   target.axis != "z" &&
+	   target.axis != "w" {
+		return false
+	}
+	if target.field != "" && target.component == "" {
+		return false
+	}
+	if target.axis != "" && target.field == "" {
+		return false
+	}
 	if target.uuid != "" {
 		_, uuid_ok := shared.entity_uuid_parse(target.uuid)
 		if !uuid_ok {
 			return false
 		}
 	}
-	return target.uuid != "" || target.name != "" || target.text != ""
+	return target.uuid != "" || target.name != "" || target.text != "" || target.component != ""
 }
 
 diagnostic_expectation_is_valid :: proc(expect: string) -> bool {
 	switch expect {
 		case "visible", "hovered", "active", "focused", "text", "inside_parent":
+			return true
+	}
+	return false
+}
+
+diagnostic_editor_expectation_is_valid :: proc(expect: string) -> bool {
+	switch expect {
+		case "simulation",
+		     "dirty",
+		     "history_cursor",
+		     "history_count",
+		     "staged_play_changes",
+		     "selected_count":
 			return true
 	}
 	return false
@@ -342,6 +390,12 @@ diagnostic_driver_input :: proc(
 			}
 			if err := diagnostic_expect(state, world, node_index, action.expect, action.text);
 			   err != "" {
+				return {}, {}, fmt.tprintf("UI diagnostic action %d failed: %s", driver.action_index, err)
+			}
+			diagnostic_driver_advance(driver)
+			return pointer, keyboard, ""
+		case "expect_editor":
+			if err := diagnostic_expect_editor(state, action.expect, action.text); err != "" {
 				return {}, {}, fmt.tprintf("UI diagnostic action %d failed: %s", driver.action_index, err)
 			}
 			diagnostic_driver_advance(driver)
@@ -586,12 +640,155 @@ diagnostic_find_target :: proc(
 		if target.origin != "" && diagnostic_origin_name(entity.origin) != target.origin {
 			continue
 		}
+		if !diagnostic_target_matches_editor_binding(state, world, entity, target) {
+			continue
+		}
 		if occurrence == wanted_occurrence {
 			return node_index, true
 		}
 		occurrence += 1
 	}
 	return -1, false
+}
+
+diagnostic_target_matches_editor_binding :: proc(
+	state: ^State,
+	world: ^shared.World,
+	entity: shared.World_Entity,
+	target: Diagnostic_Target,
+) -> bool {
+	if target.component == "" {
+		return true
+	}
+	if state == nil ||
+	   state.component_registry == nil ||
+	   entity.editor_ui_index < 0 ||
+	   entity.editor_ui_index >= len(world.editor_uis) {
+		return false
+	}
+	binding := world.editor_uis[entity.editor_ui_index]
+	if binding.reflected_component_id == shared.INVALID_COMPONENT_ID {
+		return false
+	}
+	definition, definition_ok := editor_reflected_definition(state, binding)
+	if !definition_ok || definition.name != target.component {
+		return false
+	}
+	if target.field != "" {
+		if diagnostic_binding_field_name(world, binding, definition) != target.field {
+			return false
+		}
+	}
+	if target.axis != "" && diagnostic_axis_name(binding.inspector_axis) != target.axis {
+		return false
+	}
+	return true
+}
+
+diagnostic_binding_field_name :: proc(
+	world: ^shared.World,
+	binding: shared.Editor_UI_Component,
+	definition: ^component.Definition,
+) -> string {
+	#partial switch binding.inspector_field {
+		case .Transform_Position:
+			return "position"
+		case .Transform_Rotation:
+			return "rotation"
+		case .Transform_Scale:
+			return "scale"
+		case .Camera_Fov:
+			return "fov"
+		case .Camera_Near:
+			return "near"
+		case .Camera_Far:
+			return "far"
+		case .Camera_Exposure:
+			return "exposure"
+		case .Ambient_Color:
+			return "color"
+		case .Ambient_Intensity:
+			return "intensity"
+		case .Directional_Direction:
+			return "direction"
+		case .Directional_Color:
+			return "color"
+		case .Directional_Intensity:
+			return "intensity"
+		case .Point_Color:
+			return "color"
+		case .Point_Intensity:
+			return "intensity"
+		case .Point_Range:
+			return "range"
+		case .Material_Base_Color:
+			return "base_color"
+		case .Material_Emissive:
+			return "emissive"
+		case .Material_Metallic:
+			return "metallic"
+		case .Material_Roughness:
+			return "roughness"
+		case .UI_Layout_Hidden:
+			return "hidden"
+		case .UI_HStack_Fill:
+			return "fill"
+		case .UI_HStack_Draggable:
+			return "draggable"
+		case .UI_VStack_Fill:
+			return "fill"
+		case .UI_VStack_Draggable:
+			return "draggable"
+		case .UI_Panel_Collapsible:
+			return "collapsible"
+		case .UI_Panel_Collapsed:
+			return "collapsed"
+		case .UI_Input_Read_Only:
+			return "read_only"
+		case .UI_Checkbox_Checked:
+			return "checked"
+		case .UI_Checkbox_Read_Only:
+			return "read_only"
+	}
+	if definition == nil {
+		return ""
+	}
+	field_index := binding.reflected_field_index
+	target_index := int(binding.target.index)
+	if !ecs.entity_is_current(world, target_index, binding.target.generation) {
+		return ""
+	}
+	component_value, value_found := editor_reflected_live_component_value(
+		world,
+		target_index,
+		definition,
+	)
+	if !value_found {
+		return ""
+	}
+	field, field_found := editor_reflected_field_definition(
+		component_value,
+		definition,
+		field_index,
+	)
+	if !field_found {
+		return ""
+	}
+	return field.name
+}
+
+diagnostic_axis_name :: proc(axis: shared.Editor_Inspector_Axis) -> string {
+	#partial switch axis {
+		case .X:
+			return "x"
+		case .Y:
+			return "y"
+		case .Z:
+			return "z"
+		case .W:
+			return "w"
+	}
+	return ""
 }
 
 diagnostic_node_text :: proc(world: ^shared.World, node: Node) -> string {
@@ -781,6 +978,52 @@ diagnostic_expect :: proc(
 	return ""
 }
 
+diagnostic_expect_editor :: proc(state: ^State, expect, value: string) -> string {
+	if state == nil {
+		return "editor state is unavailable"
+	}
+	switch expect {
+		case "simulation":
+			actual := "paused"
+			if state.editor_simulation_stopped {
+				actual = "stopped"
+			} else if state.editor_simulation_playing {
+				actual = "running"
+			}
+			if actual != value {
+				return fmt.tprintf("editor simulation is %q, expected %q", actual, value)
+			}
+		case "dirty":
+			actual := fmt.tprintf("%t", state.editor_scene_dirty)
+			if actual != value {
+				return fmt.tprintf("editor dirty state is %s, expected %s", actual, value)
+			}
+		case "history_cursor":
+			actual := fmt.tprintf("%d", state.editor_history_cursor)
+			if actual != value {
+				return fmt.tprintf("editor history cursor is %s, expected %s", actual, value)
+			}
+		case "history_count":
+			actual := fmt.tprintf("%d", state.editor_history_count)
+			if actual != value {
+				return fmt.tprintf("editor history count is %s, expected %s", actual, value)
+			}
+		case "staged_play_changes":
+			actual := fmt.tprintf("%d", len(state.editor_play_changes))
+			if actual != value {
+				return fmt.tprintf("staged play change count is %s, expected %s", actual, value)
+			}
+		case "selected_count":
+			actual := fmt.tprintf("%d", len(state.editor_selected_uuids))
+			if actual != value {
+				return fmt.tprintf("editor selected count is %s, expected %s", actual, value)
+			}
+		case:
+			return fmt.tprintf("unknown editor expectation %q", expect)
+	}
+	return ""
+}
+
 diagnostic_keyboard_set :: proc(keyboard: ^Keyboard_Input, key: string) {
 	switch key {
 		case "left":
@@ -846,6 +1089,20 @@ diagnostic_rect_contains_rect :: proc(outer, inner: Rect) -> bool {
 }
 
 diagnostic_target_description :: proc(target: Diagnostic_Target) -> string {
+	if target.component != "" {
+		if target.field != "" && target.axis != "" {
+			return fmt.tprintf(
+				"component field %q.%s.%s",
+				target.component,
+				target.field,
+				target.axis,
+			)
+		}
+		if target.field != "" {
+			return fmt.tprintf("component field %q.%s", target.component, target.field)
+		}
+		return fmt.tprintf("component %q", target.component)
+	}
 	if target.uuid != "" {
 		return fmt.tprintf("UUID %q", target.uuid)
 	}
@@ -962,6 +1219,19 @@ diagnostic_driver_write_dump :: proc(
 		if node.viewport_index >= 0 && node.viewport_index < len(world.ui_viewports) {
 			viewport = world.ui_viewports[node.viewport_index]
 		}
+		editor_component := ""
+		editor_field := ""
+		editor_axis := ""
+		editor_read_only := false
+		if entity.editor_ui_index >= 0 && entity.editor_ui_index < len(world.editor_uis) {
+			binding := world.editor_uis[entity.editor_ui_index]
+			editor_axis = diagnostic_axis_name(binding.inspector_axis)
+			editor_read_only = binding.read_only
+			if definition, found := editor_reflected_definition(state, binding); found {
+				editor_component = definition.name
+				editor_field = diagnostic_binding_field_name(world, binding, definition)
+			}
+		}
 		append(
 			&nodes,
 			Diagnostic_Node_Dump {
@@ -1000,6 +1270,10 @@ diagnostic_driver_write_dump :: proc(
 				has_input = node.input_index >= 0,
 				has_checkbox = node.checkbox_index >= 0,
 				has_color_picker = node.color_picker_index >= 0,
+				editor_component = editor_component,
+				editor_field = editor_field,
+				editor_axis = editor_axis,
+				editor_read_only = editor_read_only,
 			},
 		)
 	}
@@ -1010,6 +1284,12 @@ diagnostic_driver_write_dump :: proc(
 			editor_component_menu_open = world.ui_layouts[entity.ui_layout_index].popup_open
 		}
 	}
+	editor_simulation := "paused"
+	if state.editor_simulation_stopped {
+		editor_simulation = "stopped"
+	} else if state.editor_simulation_playing {
+		editor_simulation = "running"
+	}
 	dump := Diagnostic_Tree_Dump {
 		schema_version = DIAGNOSTIC_DRIVER_SCHEMA_VERSION,
 		drawable_width = drawable_width,
@@ -1019,6 +1299,11 @@ diagnostic_driver_write_dump :: proc(
 		editor_inspector_snapshot_refresh_count = state.editor_inspector_snapshot_refresh_count,
 		editor_selection_revision = state.editor_selection_revision,
 		editor_selected_uuids = selected_uuids[:],
+		editor_simulation = editor_simulation,
+		editor_scene_dirty = state.editor_scene_dirty,
+		editor_history_cursor = state.editor_history_cursor,
+		editor_history_count = state.editor_history_count,
+		editor_staged_play_changes = len(state.editor_play_changes),
 		nodes = nodes[:],
 	}
 	if driver != nil {

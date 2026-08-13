@@ -166,6 +166,11 @@ extension_register_system :: proc "c" (
 		}
 		system.declaration.access_count += 1
 	}
+	for access in system.declaration.accesses[:system.declaration.access_count] {
+		if access.mode == .Write {
+			_ = component.register_system_write_access(set.registry, access.component)
+		}
+	}
 
 	set.systems[set.system_count] = system
 	set.system_count += 1
@@ -700,6 +705,7 @@ system_query_chunk_write_planned :: proc "contextless" (
 		if next != current {
 			step.world.transforms[world_entity.transform_index] = next
 			ecs.mark_render_transform_dirty(step.world, entity_index)
+			ecs.mark_project_system_component_written(step.world, entity_index, plan.component_id)
 		}
 		return true
 	}
@@ -712,25 +718,56 @@ system_query_chunk_write_planned :: proc "contextless" (
 		case .Number:
 			if field_index >= 0 && field_index < len(custom.number_fields) {
 				values := cast([^]f32)binding.values
-				custom.number_fields[field_index].value = values[lane]
+				if custom.number_fields[field_index].value != values[lane] {
+					custom.number_fields[field_index].value = values[lane]
+					ecs.mark_project_system_component_written(
+						step.world,
+						entity_index,
+						plan.component_id,
+					)
+				}
 				return true
 			}
 		case .Vec2:
 			if field_index >= 0 && field_index < len(custom.vec2_fields) {
 				values := cast([^]api.Vec2)binding.values
-				custom.vec2_fields[field_index].value = shared_vec2_from_api(values[lane])
+				next := shared_vec2_from_api(values[lane])
+				if custom.vec2_fields[field_index].value != next {
+					custom.vec2_fields[field_index].value = next
+					ecs.mark_project_system_component_written(
+						step.world,
+						entity_index,
+						plan.component_id,
+					)
+				}
 				return true
 			}
 		case .Vec3:
 			if field_index >= 0 && field_index < len(custom.vec3_fields) {
 				values := cast([^]api.Vec3)binding.values
-				custom.vec3_fields[field_index].value = shared_vec3_from_api(values[lane])
+				next := shared_vec3_from_api(values[lane])
+				if custom.vec3_fields[field_index].value != next {
+					custom.vec3_fields[field_index].value = next
+					ecs.mark_project_system_component_written(
+						step.world,
+						entity_index,
+						plan.component_id,
+					)
+				}
 				return true
 			}
 		case .Vec4:
 			if field_index >= 0 && field_index < len(custom.vec4_fields) {
 				values := cast([^]api.Vec4)binding.values
-				custom.vec4_fields[field_index].value = shared_vec4_from_api(values[lane])
+				next := shared_vec4_from_api(values[lane])
+				if custom.vec4_fields[field_index].value != next {
+					custom.vec4_fields[field_index].value = next
+					ecs.mark_project_system_component_written(
+						step.world,
+						entity_index,
+						plan.component_id,
+					)
+				}
 				return true
 			}
 		case .Transform:
@@ -747,6 +784,7 @@ system_query_chunk_compile_binding :: proc "contextless" (
 ) {
 	plan := Native_Query_Binding_Plan {
 		component = binding.component,
+		component_id = shared.INVALID_COMPONENT_ID,
 		field = binding.field,
 		value_type = binding.value_type,
 		access = binding.access,
@@ -754,13 +792,17 @@ system_query_chunk_compile_binding :: proc "contextless" (
 		typed_field_index = ecs.INVALID_COMPONENT_INDEX,
 	}
 	component_name := string(binding.component)
+	definition, found := component.find_definition(step.registry, component_name)
+	if !found {
+		return {}, false
+	}
+	plan.component_id = definition.id
 	if binding.value_type == .Transform {
 		return plan, component_name == "scrapbot.transform" && binding.field == nil
 	}
 	if binding.field == nil {
 		return {}, false
 	}
-	definition, found := component.find_definition(step.registry, component_name)
 	if !found || definition.storage_kind != .Custom {
 		return {}, false
 	}
@@ -1022,8 +1064,14 @@ system_set_transform :: proc "c" (
 	   !ecs.transform_parent_is_valid(step.world, entity_index, next.parent) {
 		return 0
 	}
+	if next == current {
+		return 1
+	}
 	step.world.transforms[world_entity.transform_index] = next
 	ecs.mark_render_transform_dirty(step.world, entity_index)
+	if definition, found := component.find_definition(step.registry, "scrapbot.transform"); found {
+		ecs.mark_project_system_component_written(step.world, entity_index, definition.id)
+	}
 	return 1
 }
 
@@ -1076,7 +1124,17 @@ system_set_number_field :: proc "c" (
 	}
 	for &field in world_component.number_fields {
 		if field.name == string(field_name) {
+			if field.value == value^ {
+				return 1
+			}
 			field.value = value^
+			if definition, found := component.find_definition(step.registry, name); found {
+				ecs.mark_project_system_component_written(
+					step.world,
+					int(entity.index),
+					definition.id,
+				)
+			}
 			return 1
 		}
 	}
@@ -1132,7 +1190,18 @@ system_set_vec2_field :: proc "c" (
 	}
 	for &field in world_component.vec2_fields {
 		if field.name == string(field_name) {
-			field.value = shared_vec2_from_api(value^)
+			next := shared_vec2_from_api(value^)
+			if field.value == next {
+				return 1
+			}
+			field.value = next
+			if definition, found := component.find_definition(step.registry, name); found {
+				ecs.mark_project_system_component_written(
+					step.world,
+					int(entity.index),
+					definition.id,
+				)
+			}
 			return 1
 		}
 	}
@@ -1188,7 +1257,18 @@ system_set_vec3_field :: proc "c" (
 	}
 	for &field in world_component.vec3_fields {
 		if field.name == string(field_name) {
-			field.value = shared_vec3_from_api(value^)
+			next := shared_vec3_from_api(value^)
+			if field.value == next {
+				return 1
+			}
+			field.value = next
+			if definition, found := component.find_definition(step.registry, name); found {
+				ecs.mark_project_system_component_written(
+					step.world,
+					int(entity.index),
+					definition.id,
+				)
+			}
 			return 1
 		}
 	}
@@ -1244,7 +1324,18 @@ system_set_vec4_field :: proc "c" (
 	}
 	for &field in world_component.vec4_fields {
 		if field.name == string(field_name) {
-			field.value = shared_vec4_from_api(value^)
+			next := shared_vec4_from_api(value^)
+			if field.value == next {
+				return 1
+			}
+			field.value = next
+			if definition, found := component.find_definition(step.registry, name); found {
+				ecs.mark_project_system_component_written(
+					step.world,
+					int(entity.index),
+					definition.id,
+				)
+			}
 			return 1
 		}
 	}

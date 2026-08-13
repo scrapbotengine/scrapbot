@@ -764,12 +764,49 @@ take_free_slot :: proc(free_slots: ^[dynamic]int) -> (index: int, found: bool) {
 	return index, true
 }
 
-bump_component_revision :: proc(world: ^World, entity_index: int) {
+bump_component_revision :: proc "contextless" (world: ^World, entity_index: int) {
 	if world == nil || entity_index < 0 || entity_index >= len(world.entities) { return }
 	world.entities[entity_index].component_revision += 1
 	if world.entities[entity_index].component_revision == 0 {
 		world.entities[entity_index].component_revision = 1
 	}
+}
+
+mark_project_system_component_written :: proc "contextless" (
+	world: ^World,
+	entity_index: int,
+	component_id: Component_ID,
+) {
+	if world == nil || !entity_is_alive(world, entity_index) || component_id < 0 {
+		return
+	}
+	word_index := int(component_id) / 64
+	if word_index < 0 || word_index >= shared.PROJECT_SYSTEM_WRITE_PROVENANCE_WORDS {
+		return
+	}
+	bit := u64(1) << u64(int(component_id) % 64)
+	entity := &world.entities[entity_index]
+	if entity.project_system_written_components[word_index] & bit != 0 {
+		return
+	}
+	entity.project_system_written_components[word_index] |= bit
+	bump_component_revision(world, entity_index)
+}
+
+project_system_component_was_written :: proc "contextless" (
+	world: ^World,
+	entity_index: int,
+	component_id: Component_ID,
+) -> bool {
+	if world == nil || !entity_is_alive(world, entity_index) || component_id < 0 {
+		return false
+	}
+	word_index := int(component_id) / 64
+	if word_index < 0 || word_index >= shared.PROJECT_SYSTEM_WRITE_PROVENANCE_WORDS {
+		return false
+	}
+	bit := u64(1) << u64(int(component_id) % 64)
+	return world.entities[entity_index].project_system_written_components[word_index] & bit != 0
 }
 
 allocate_transform_slot :: proc(world: ^World, value: Transform_Component) -> int {

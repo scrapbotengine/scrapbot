@@ -177,6 +177,24 @@ editor_world_tool_captures_pointer :: proc(state: ^State) -> bool {
 		(state.editor_gizmo_captures_pointer || state.editor_light_gizmo_captures_pointer) \
 	)
 }
+
+continuous_pointer_interaction_active :: proc(state: ^State) -> bool {
+	return(
+		state != nil &&
+		(editor_world_tool_captures_pointer(state) ||
+				state.input_scrub_armed ||
+				state.input_scrubbing) \
+	)
+}
+
+apply_input_scrub_pointer_wrap :: proc(state: ^State, displacement: shared.Vec2) {
+	if state == nil || (!state.input_scrub_armed && !state.input_scrubbing) {
+		return
+	}
+	// The physical pointer jumped, not the user's virtual drag. Move the anchor
+	// by the same amount so the next absolute-position delta remains continuous.
+	state.input_scrub_start_x += displacement.x
+}
 Paint_Kind :: enum {
 	Panel,
 	Glyph,
@@ -418,6 +436,13 @@ Editor_Component_Structural_Change :: struct {
 	before: ^ecs.Registered_Component_Snapshot,
 	after: ^ecs.Registered_Component_Snapshot,
 }
+Editor_Component_Batch_Change :: struct {
+	items: [dynamic]Editor_Component_Structural_Change,
+}
+Editor_Play_Change :: struct {
+	target_uuid: shared.Entity_UUID,
+	after: ^ecs.Registered_Component_Snapshot,
+}
 Editor_Resource_Structural_Change :: struct {
 	resource_id: shared.Resource_UUID,
 	before: ^resources.Project_Material_Snapshot,
@@ -440,6 +465,7 @@ Editor_Edit_Transaction :: struct {
 	structural: ^Editor_Structural_Change,
 	structural_batch: ^Editor_Structural_Batch_Change,
 	component_structural: ^Editor_Component_Structural_Change,
+	component_batch: ^Editor_Component_Batch_Change,
 	resource_structural: ^Editor_Resource_Structural_Change,
 	transform_batch: ^Editor_Transform_Batch_Change,
 }
@@ -460,6 +486,7 @@ Editor_Transport_Visual_State :: struct {
 	revert_failed: bool,
 	history_cursor: int,
 	history_count: int,
+	play_change_count: int,
 }
 
 Editor_Gizmo_Toolbar_Visual_State :: struct {
@@ -665,6 +692,7 @@ State :: struct {
 	editor_history_cursor: int,
 	editor_history_clean_cursor: int,
 	editor_history_clean_valid: bool,
+	editor_play_changes: [dynamic]Editor_Play_Change,
 	editor_pick_requested: bool,
 	editor_pick_position: shared.Vec2,
 	editor_pick_toggle_selection: bool,
@@ -925,6 +953,7 @@ editor_play :: proc(state: ^State) {
 		return
 	}
 	if state.editor_simulation_stopped {
+		editor_clear_play_changes(state)
 		state.editor_playback_begin_requested = true
 	}
 	state.editor_simulation_playing = true
@@ -1062,6 +1091,225 @@ consume_playback_stop_request :: proc(state: ^State) -> bool {
 		return false
 	}
 	state.editor_playback_stop_requested = false
+	return true
+}
+
+editor_clear_play_changes :: proc(state: ^State) {
+	if state == nil {
+		return
+	}
+	for &change in state.editor_play_changes {
+		destroy_component_snapshot_pointer(change.after)
+	}
+	clear(&state.editor_play_changes)
+	state.editor_transport_visual_valid = false
+	state.editor_snapshot_valid = false
+}
+
+editor_component_play_editable :: proc(
+	state: ^State,
+	world: ^shared.World,
+	entity_index: int,
+	definition: ^component.Definition,
+) -> (
+	bool,
+	string,
+) {
+	if state == nil ||
+	   world == nil ||
+	   definition == nil ||
+	   !ecs.entity_is_alive(world, entity_index) {
+		return false, "UNAVAILABLE"
+	}
+	if state.editor_simulation_stopped {
+		if definition.lifecycle == .Authored {
+			return true, "SAVED WITH SCENE"
+		}
+		return false, "READ ONLY"
+	}
+	if world.entities[entity_index].origin != .Scene {
+		return false, "TEMPORARY / RESET ON STOP"
+	}
+	if definition.lifecycle != .Authored {
+		return false, "READ ONLY"
+	}
+	if ecs.project_system_component_was_written(world, entity_index, definition.id) {
+		return false, "TEMPORARY / RESET ON STOP"
+	}
+	return true, "KEPT ON STOP"
+}
+
+editor_stage_play_component :: proc(
+	state: ^State,
+	world: ^shared.World,
+	entity_index: int,
+	definition: ^component.Definition,
+) -> bool {
+	editable, _ := editor_component_play_editable(state, world, entity_index, definition)
+	if state == nil || state.editor_simulation_stopped || !editable {
+		return false
+	}
+	after := capture_component_snapshot_pointer(world, entity_index, definition)
+	if after == nil {
+		return false
+	}
+	target_uuid := world.entities[entity_index].uuid
+	for &change in state.editor_play_changes {
+		if change.target_uuid == target_uuid &&
+		   change.after != nil &&
+		   (change.after.component_id == definition.id || change.after.name == definition.name) {
+			destroy_component_snapshot_pointer(change.after)
+			change.after = after
+			state.editor_transport_visual_valid = false
+			state.editor_snapshot_valid = false
+			return true
+		}
+	}
+	append(
+		&state.editor_play_changes,
+		Editor_Play_Change{target_uuid = target_uuid, after = after},
+	)
+	state.editor_transport_visual_valid = false
+	state.editor_snapshot_valid = false
+	return true
+}
+
+editor_stage_play_definition :: proc(
+	state: ^State,
+	world: ^shared.World,
+	entity_index: int,
+	name: string,
+) -> bool {
+	if state == nil || state.component_registry == nil {
+		return false
+	}
+	definition, found := component.find_definition(state.component_registry, name)
+	if !found {
+		return false
+	}
+	return editor_stage_play_component(state, world, entity_index, &definition)
+}
+
+editor_discard_system_written_play_changes :: proc(state: ^State, world: ^shared.World) {
+	if state == nil || world == nil || state.component_registry == nil {
+		return
+	}
+	for change_index := len(state.editor_play_changes) - 1; change_index >= 0; change_index -= 1 {
+		change := &state.editor_play_changes[change_index]
+		if change.after == nil {
+			continue
+		}
+		entity_index, found := ecs.entity_index_by_uuid(world, change.target_uuid)
+		definition := editor_component_definition_by_id(state, nil, change.after)
+		if found &&
+		   definition != nil &&
+		   !ecs.project_system_component_was_written(world, entity_index, definition.id) {
+			continue
+		}
+		destroy_component_snapshot_pointer(change.after)
+		ordered_remove(&state.editor_play_changes, change_index)
+	}
+}
+
+editor_apply_play_changes :: proc(state: ^State, world: ^shared.World) -> bool {
+	if state == nil || world == nil || !state.editor_simulation_stopped {
+		return false
+	}
+	if len(state.editor_play_changes) == 0 {
+		return true
+	}
+	batch := new(Editor_Component_Batch_Change)
+	transaction := Editor_Edit_Transaction {
+		component_batch = batch,
+	}
+	succeeded := false
+	defer if !succeeded {
+		for item_index := len(batch.items) - 1; item_index >= 0; item_index -= 1 {
+			item := &batch.items[item_index]
+			if entity_index, found := ecs.entity_index_by_uuid(world, item.target_uuid); found {
+				_ = ecs.apply_registered_component_snapshot(world, entity_index, item.before)
+			}
+		}
+		editor_history_destroy_transaction(&transaction)
+	}
+	for &change in state.editor_play_changes {
+		if change.after == nil {
+			continue
+		}
+		entity_index, found := ecs.entity_index_by_uuid(world, change.target_uuid)
+		definition := editor_component_definition_by_id(state, nil, change.after)
+		if !found || definition == nil || world.entities[entity_index].origin != .Scene {
+			return false
+		}
+		before := capture_component_snapshot_pointer(world, entity_index, definition)
+		after := change.after
+		change.after = nil
+		if before == nil || after == nil {
+			destroy_component_snapshot_pointer(before)
+			return false
+		}
+		if !ecs.apply_registered_component_snapshot(world, entity_index, after) {
+			destroy_component_snapshot_pointer(before)
+			destroy_component_snapshot_pointer(after)
+			return false
+		}
+		append(
+			&batch.items,
+			Editor_Component_Structural_Change {
+				target_uuid = change.target_uuid,
+				before = before,
+				after = after,
+			},
+		)
+	}
+	if len(batch.items) == 0 {
+		editor_history_destroy_transaction(&transaction)
+		editor_clear_play_changes(state)
+		succeeded = true
+		return true
+	}
+	for item in batch.items {
+		editor_mark_scene_uuid_dirty(state, item.target_uuid)
+	}
+	editor_history_push_transaction(state, transaction)
+	editor_clear_play_changes(state)
+	succeeded = true
+	return true
+}
+
+editor_transform_play_editable :: proc(state: ^State, world: ^shared.World) -> bool {
+	if state == nil || world == nil {
+		return false
+	}
+	if state.editor_simulation_stopped {
+		return true
+	}
+	if state.component_registry == nil {
+		return true
+	}
+	definition, found := component.find_definition(state.component_registry, "scrapbot.transform")
+	if !found {
+		return false
+	}
+	selected := editor_selection_uuids(state)
+	if len(selected) == 0 && state.editor_has_selection {
+		index := int(state.editor_selected_entity.index)
+		editable, _ := editor_component_play_editable(state, world, index, &definition)
+		return editable
+	}
+	if len(selected) == 0 {
+		return false
+	}
+	for id in selected {
+		index, entity_found := ecs.entity_index_by_uuid(world, id)
+		if !entity_found {
+			return false
+		}
+		editable, _ := editor_component_play_editable(state, world, index, &definition)
+		if !editable {
+			return false
+		}
+	}
 	return true
 }
 
@@ -1325,12 +1573,14 @@ editor_play_mode_active :: proc(state: ^State) -> bool {
 destroy :: proc(state: ^State) {
 	if state == nil { return }
 	editor_history_clear(state)
+	editor_clear_play_changes(state)
 	delete(state.input_original_text)
 	delete(state.editor_dirty_entities)
 	delete(state.editor_dirty_entity_lookup)
 	delete(state.editor_dirty_resources)
 	delete(state.editor_dirty_resource_lookup)
 	delete(state.editor_selected_uuids)
+	delete(state.editor_play_changes)
 	delete(state.editor_gizmo_drag_selection)
 	delete(state.editor_collapsed_entities)
 	delete(state.editor_resource_reimport_message)

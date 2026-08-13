@@ -135,7 +135,7 @@ See [Project Files: Resources](/reference/project-files/#resource-files) and the
 
 ## Authoring and playback
 
-The live editor edits the active ECS world while stopped and records completed gestures as UUID-addressed undo/redo transactions. Save compares dirty candidates with the authored baseline and writes only explicit authoring changes. Play captures an in-memory baseline; Stop discards disposable playback changes and runtime-spawned entities by restoring that baseline without reloading Luau or native Odin code.
+The live editor edits the active ECS world while stopped and records completed gestures as UUID-addressed undo/redo transactions. Save compares dirty candidates with the authored baseline and writes only explicit authoring changes. Play captures an in-memory baseline. During playback, completed editor field and transform gestures on eligible authored components are staged separately from simulation state. Stop restores the baseline, reapplies the staged component values as one authoring transaction, and still removes runtime-spawned entities without reloading Luau or native Odin code.
 
 This separation is intentional: an ECS mutation is not automatically a source-file mutation. See [Live Editor](/guides/live-editor/) for the complete transport and persistence model.
 

@@ -151,7 +151,23 @@ test_editor_duplicate_of_model_root_expands_and_renders :: proc(t: ^testing.T) {
 	testing.expect_value(t, ui.editor_selection_count(state), 1)
 	duplicate_id := state.editor_selected_uuids[0]
 	testing.expect(t, duplicate_id != root_id)
+	source_child: shared.Entity
+	for entity in world.entities {
+		if entity.alive && entity.model_owner == root_id && entity.geometry_index >= 0 {
+			source_child = entity.id
+			break
+		}
+	}
+	testing.expect(t, source_child != (shared.Entity{}))
 	testing.expect(t, reconcile_model_instances(&world, &registry) == "")
+	if source_child != (shared.Entity{}) {
+		source_child_index := int(source_child.index)
+		testing.expect(
+			t,
+			ecs.entity_is_current(&world, source_child_index, source_child.generation) &&
+			world.entities[source_child_index].model_owner == root_id,
+		)
+	}
 	ecs.populate_resource_render_list(&world, &registry, &render_list, true)
 
 	derived_count := 0

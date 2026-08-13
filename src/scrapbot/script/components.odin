@@ -361,6 +361,11 @@ scrapbot_system :: proc "c" (L: Lua_State) -> c.int {
 	}
 
 	system.callback_ref = lua_ref(L, callback_index)
+	for access in system.declaration.accesses[:system.declaration.access_count] {
+		if access.mode == .Write {
+			_ = component.register_system_write_access(&runtime.registry, access.component)
+		}
+	}
 	runtime.systems[runtime.system_count] = system
 	runtime.system_count += 1
 	return 0

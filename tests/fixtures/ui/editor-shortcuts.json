@@ -3,26 +3,26 @@
   "timeout_frames": 120,
   "actions": [
     {"action": "key", "key": "pause"},
-    {"action": "expect", "target": {"name": "__scrapbot_editor_status_text", "origin": "editor"}, "expect": "text", "text": "PLAY MODE  /  PAUSED  /  CHANGES ARE TEMPORARY"},
+    {"action": "expect", "target": {"name": "__scrapbot_editor_status_text", "origin": "editor"}, "expect": "text", "text": "PLAY MODE  /  PAUSED  /  ELIGIBLE EDITS PERSIST ON STOP"},
     {"action": "key", "key": "play"},
-    {"action": "expect", "target": {"name": "__scrapbot_editor_status_text", "origin": "editor"}, "expect": "text", "text": "PLAY MODE  /  RUNNING  /  CHANGES ARE TEMPORARY"},
+    {"action": "expect", "target": {"name": "__scrapbot_editor_status_text", "origin": "editor"}, "expect": "text", "text": "PLAY MODE  /  RUNNING  /  ELIGIBLE EDITS PERSIST ON STOP"},
     {"action": "click", "target": {"text": "PAUSE", "origin": "editor"}},
-    {"action": "expect", "target": {"name": "__scrapbot_editor_status_text", "origin": "editor"}, "expect": "text", "text": "PLAY MODE  /  PAUSED  /  CHANGES ARE TEMPORARY"},
+    {"action": "expect", "target": {"name": "__scrapbot_editor_status_text", "origin": "editor"}, "expect": "text", "text": "PLAY MODE  /  PAUSED  /  ELIGIBLE EDITS PERSIST ON STOP"},
     {"action": "click", "target": {"text": "PAUSE", "origin": "editor"}},
-    {"action": "expect", "target": {"name": "__scrapbot_editor_status_text", "origin": "editor"}, "expect": "text", "text": "PLAY MODE  /  RUNNING  /  CHANGES ARE TEMPORARY"},
+    {"action": "expect", "target": {"name": "__scrapbot_editor_status_text", "origin": "editor"}, "expect": "text", "text": "PLAY MODE  /  RUNNING  /  ELIGIBLE EDITS PERSIST ON STOP"},
     {"action": "click", "target": {"text": "PAUSE", "origin": "editor"}},
-    {"action": "expect", "target": {"name": "__scrapbot_editor_status_text", "origin": "editor"}, "expect": "text", "text": "PLAY MODE  /  PAUSED  /  CHANGES ARE TEMPORARY"},
+    {"action": "expect", "target": {"name": "__scrapbot_editor_status_text", "origin": "editor"}, "expect": "text", "text": "PLAY MODE  /  PAUSED  /  ELIGIBLE EDITS PERSIST ON STOP"},
     {"action": "key", "key": "editor_toggle"},
     {"action": "wait", "frames": 1},
     {"action": "key", "key": "editor_toggle"},
     {"action": "wait", "frames": 1},
-    {"action": "expect", "target": {"name": "__scrapbot_editor_status_text", "origin": "editor"}, "expect": "text", "text": "PLAY MODE  /  PAUSED  /  CHANGES ARE TEMPORARY"},
+    {"action": "expect", "target": {"name": "__scrapbot_editor_status_text", "origin": "editor"}, "expect": "text", "text": "PLAY MODE  /  PAUSED  /  ELIGIBLE EDITS PERSIST ON STOP"},
     {"action": "key", "key": "toggle_left_sidebar"},
     {"action": "key", "key": "toggle_right_sidebar"},
     {"action": "key", "key": "toggle_left_sidebar"},
     {"action": "key", "key": "toggle_right_sidebar"},
     {"action": "expect", "target": {"name": "__scrapbot_editor_left", "origin": "editor"}, "expect": "visible"},
     {"action": "expect", "target": {"name": "__scrapbot_editor_right", "origin": "editor"}, "expect": "visible"},
-    {"action": "capture", "target": {"name": "__scrapbot_editor_playback_warning_badge", "origin": "editor"}, "padding": 10}
+    {"action": "capture", "target": {"text": "PAUSE", "origin": "editor"}, "padding": 10}
   ]
 }
