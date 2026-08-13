@@ -45,6 +45,7 @@ Please refer to the `README.md` for a high-level overview of the engine's featur
 ## Documentation Ownership
 
 - `README.md` is the feature/roadmap overview, `docs/adr/` records durable architecture decisions, and `docs/fdr/` records current feature behavior and rationale.
+- `docs/GLOSSARY.md` is the canonical source for project-specific vocabulary used in code, architecture, feature documentation, editor copy, and agent discussion. Prefer its canonical terms over casual synonyms, update it when introducing or renaming a recurring concept, and keep the public website glossary as an aligned user-facing subset rather than a competing authority. Use the `glossary` skill for terminology changes and audits.
 - Write documentation for scanning as well as completeness. Keep one main idea per paragraph and prefer short bullets for sets of responsibilities, constraints, or fields.
 - Treat a paragraph or list item approaching 120 words or covering more than one lifecycle stage, owner, or user task as a structure warning. Split it under descriptive subheadings or into focused bullets before adding more detail.
 - Do not “fix” a mega-paragraph with source-only line wrapping; Markdown still renders it as one block. Create real paragraph breaks, bullets, or subsections that expose the document's conceptual structure.

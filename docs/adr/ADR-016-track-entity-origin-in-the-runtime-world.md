@@ -8,8 +8,8 @@ The editor inspects one live ECS world containing both entities declared by scen
 
 ## Decision
 
-Every world entity carries immutable origin metadata for its lifetime. Building a world from scene TOML marks those entities as scene-authored; all deferred runtime spawn paths mark new entities as runtime-spawned. Origin describes how an entity entered the current world, not whether its components have changed since then.
+Every world entity carries explicit origin metadata. Building a world from scene TOML and applying authored snapshots marks those entities as scene origin; deferred project spawn paths mark new entities as runtime origin; engine tooling uses editor origin. Origin describes the entity's current lifecycle class, not whether its component values have changed. It remains stable during ordinary simulation. The explicit stopped-mode Keep workflow may promote a runtime entity to scene origin, and duplicating an authored entity creates a new scene-origin entity.
 
 ## Consequences
 
-The editor and future persistence tools can distinguish authored and ephemeral entities without heuristics. Runtime entities remain fully inspectable. World entity data grows slightly, and any future operation that promotes a runtime entity into scene data must create an explicit authoring workflow rather than mutating origin casually.
+The editor and persistence tools can distinguish authored, runtime, and tooling entities without heuristics. Runtime entities remain fully inspectable. World entity data grows slightly, and origin-changing operations must remain explicit authoring workflows rather than casual component mutation.

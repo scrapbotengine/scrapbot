@@ -68,6 +68,7 @@ editor_duplicate_batch_order :: proc(
 	world: ^shared.World,
 	batch: ^Editor_Entity_Batch,
 	duplicate_by_source: map[shared.Entity_UUID]shared.Entity_UUID,
+	authored_only: bool = false,
 ) -> [dynamic]shared.Entity_UUID {
 	result: [dynamic]shared.Entity_UUID
 	if world == nil || batch == nil {
@@ -81,6 +82,9 @@ editor_duplicate_batch_order :: proc(
 	anchor: shared.Entity_UUID
 	anchor_order := -1
 	for source_index in batch.indices {
+		if authored_only && world.entities[source_index].origin != .Scene {
+			continue
+		}
 		if world.entities[source_index].scene_order >= anchor_order {
 			anchor = world.entities[source_index].uuid
 			anchor_order = world.entities[source_index].scene_order
@@ -89,6 +93,9 @@ editor_duplicate_batch_order :: proc(
 	ordered := ecs.ordered_non_editor_entity_indices(world)
 	defer delete(ordered)
 	for entity_index in ordered {
+		if authored_only && world.entities[entity_index].origin != .Scene {
+			continue
+		}
 		id := world.entities[entity_index].uuid
 		if duplicate_ids[id] {
 			continue
@@ -96,6 +103,9 @@ editor_duplicate_batch_order :: proc(
 		append(&result, id)
 		if id == anchor {
 			for source_index in batch.indices {
+				if authored_only && world.entities[source_index].origin != .Scene {
+					continue
+				}
 				append(&result, duplicate_by_source[world.entities[source_index].uuid])
 			}
 		}
@@ -436,6 +446,11 @@ editor_duplicate_selected_entities :: proc(state: ^State, world: ^shared.World) 
 		change.before_order = capture_scene_order(world)
 	}
 	append(&change.before_selection, ..state.editor_selected_uuids[:])
+	authored_before_order: [dynamic]shared.Entity_UUID
+	defer delete(authored_before_order)
+	if !state.editor_simulation_stopped {
+		authored_before_order = capture_authored_scene_order(world)
+	}
 
 	for source_index in batch.indices {
 		source := world.entities[source_index]
@@ -446,7 +461,7 @@ editor_duplicate_selected_entities :: proc(state: ^State, world: ^shared.World) 
 		after.entity.id = duplicate_by_source[source.uuid]
 		delete(after.entity.name)
 		after.entity.name = ecs.clone_snapshot_string(fmt.tprintf("%s Copy", source.name))
-		if state.editor_simulation_stopped {
+		if state.editor_simulation_stopped || source.origin == .Scene {
 			after.origin = .Scene
 		} else {
 			after.origin = .Runtime
@@ -487,6 +502,50 @@ editor_duplicate_selected_entities :: proc(state: ^State, world: ^shared.World) 
 		}
 		editor_history_push_transaction(state, transaction)
 	} else {
+		persisted := new(Editor_Structural_Batch_Change)
+		persisted.before_order = authored_before_order
+		authored_before_order = nil
+		persisted.after_order = editor_duplicate_batch_order(
+			world,
+			&batch,
+			duplicate_by_source,
+			true,
+		)
+		for source_id in batch.explicit_uuids {
+			if source_index, found := ecs.entity_index_by_uuid(world, source_id);
+			   found && world.entities[source_index].origin == .Scene {
+				append(&persisted.before_selection, source_id)
+			}
+		}
+		for item_index in 0 ..< len(change.items) {
+			item := &change.items[item_index]
+			created_index, found := ecs.entity_index_by_uuid(world, item.target_uuid)
+			if found && world.entities[created_index].origin == .Scene {
+				append(&persisted.items, item^)
+				item.after = nil
+				append(&persisted.after_selection, item.target_uuid)
+			}
+		}
+		if len(persisted.items) > 0 {
+			if !apply_scene_order(world, persisted.after_order[:]) {
+				failed := Editor_Edit_Transaction {
+					structural_batch = persisted,
+				}
+				editor_history_destroy_transaction(&failed)
+				return false
+			}
+			append(
+				&state.editor_play_structural_changes,
+				Editor_Edit_Transaction{structural_batch = persisted},
+			)
+			state.editor_transport_visual_valid = false
+			state.editor_snapshot_valid = false
+		} else {
+			empty := Editor_Edit_Transaction {
+				structural_batch = persisted,
+			}
+			editor_history_destroy_transaction(&empty)
+		}
 		editor_history_destroy_transaction(&transaction)
 	}
 	succeeded = true
@@ -766,6 +825,21 @@ capture_scene_order :: proc(world: ^shared.World) -> [dynamic]shared.Entity_UUID
 	defer delete(indices)
 	for entity_index in indices {
 		append(&result, world.entities[entity_index].uuid)
+	}
+	return result
+}
+
+capture_authored_scene_order :: proc(world: ^shared.World) -> [dynamic]shared.Entity_UUID {
+	result: [dynamic]shared.Entity_UUID
+	if world == nil {
+		return result
+	}
+	indices := ecs.ordered_non_editor_entity_indices(world)
+	defer delete(indices)
+	for entity_index in indices {
+		if world.entities[entity_index].origin == .Scene {
+			append(&result, world.entities[entity_index].uuid)
+		}
 	}
 	return result
 }

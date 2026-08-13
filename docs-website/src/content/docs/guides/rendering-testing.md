@@ -488,13 +488,15 @@ bin/scrapbot run examples/ecs-showcase \
 
 `tests/fixtures/ui/playback-authoring.json` covers the editor transport boundary: it stops initial playback, creates an unsaved authored entity, plays, stops again, and asserts that the entity survives restoration.
 
-`tests/fixtures/ui/entity-actions.json` selects an authored entity during playback, duplicates it through the semantic keyboard command, verifies that the disposable copy is visible, deletes it through the matching command, and captures the icon toolbar. The focused unit contract separately proves that duplication moves editor selection to the copy and that playback actions do not enter authoring history.
+`tests/fixtures/ui/entity-actions.json` selects an authored entity during playback, duplicates it through the semantic keyboard command, verifies that the staged copy is visible, deletes it through the matching disposable command, and captures the icon toolbar. The focused unit contract separately proves that duplication moves editor selection to the copy and that playback actions do not enter authoring history before Stop.
 
 `tests/fixtures/ui/virtual-geometry-duplicate-resume.json` selects a streamed Model root, pauses playback, duplicates the selected copy repeatedly, resumes, and retains twelve subsequent frames. It guards the boundary where editor selection feedback must reuse virtual Geometry's pinned proxy instead of creating a conventional cache that consumes its bounded storage-address window.
 
 `tests/fixtures/ui/authoring-history.json` covers the authoring-history boundary: it edits a scene Transform, verifies dirty state across Undo and Redo, uses Revert to reload scene entities without restarting project code, asserts the disk-authored value, and captures the transport controls.
 
 `tests/fixtures/ui/play-mode-persistence.json` covers persistent play edits end to end. It targets a reflected component field without relying on a pooled input name, edits it while Running, verifies that the change is staged but not yet dirty, stops playback, proves the value survived baseline restoration as exactly one authoring-history transaction, and verifies Undo and Redo.
+
+`tests/fixtures/ui/play-mode-duplicate-persistence.json` duplicates an authored entity while Running, proves its component is immediately marked keepable, stops playback, and verifies that the copy survives as one authored Undo/Redo transaction.
 
 `tests/fixtures/ui/gizmo-center-pivot.json` selects a renderable entity, activates the transient Center manipulation pivot through the public ECS toolbar, and captures its selected visual state.
 

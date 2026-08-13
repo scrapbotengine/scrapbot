@@ -487,6 +487,7 @@ Editor_Transport_Visual_State :: struct {
 	history_cursor: int,
 	history_count: int,
 	play_change_count: int,
+	play_structural_change_count: int,
 }
 
 Editor_Gizmo_Toolbar_Visual_State :: struct {
@@ -693,6 +694,7 @@ State :: struct {
 	editor_history_clean_cursor: int,
 	editor_history_clean_valid: bool,
 	editor_play_changes: [dynamic]Editor_Play_Change,
+	editor_play_structural_changes: [dynamic]Editor_Edit_Transaction,
 	editor_pick_requested: bool,
 	editor_pick_position: shared.Vec2,
 	editor_pick_toggle_selection: bool,
@@ -1102,6 +1104,10 @@ editor_clear_play_changes :: proc(state: ^State) {
 		destroy_component_snapshot_pointer(change.after)
 	}
 	clear(&state.editor_play_changes)
+	for &transaction in state.editor_play_structural_changes {
+		editor_history_destroy_transaction(&transaction)
+	}
+	clear(&state.editor_play_structural_changes)
 	state.editor_transport_visual_valid = false
 	state.editor_snapshot_valid = false
 }
@@ -1215,9 +1221,33 @@ editor_apply_play_changes :: proc(state: ^State, world: ^shared.World) -> bool {
 	if state == nil || world == nil || !state.editor_simulation_stopped {
 		return false
 	}
-	if len(state.editor_play_changes) == 0 {
+	if len(state.editor_play_changes) == 0 && len(state.editor_play_structural_changes) == 0 {
 		return true
 	}
+	for &transaction in state.editor_play_structural_changes {
+		batch := transaction.structural_batch
+		if batch == nil || len(batch.items) == 0 {
+			return false
+		}
+		for &item in batch.items {
+			if item.after == nil {
+				return false
+			}
+			if _, ok := ecs.apply_entity_snapshot(world, item.after); !ok {
+				return false
+			}
+		}
+		if len(batch.after_order) > 0 && !apply_scene_order(world, batch.after_order[:]) {
+			return false
+		}
+		for item in batch.items {
+			editor_mark_scene_uuid_dirty(state, item.target_uuid)
+		}
+		editor_restore_selection_uuids(state, world, batch.after_selection[:])
+		editor_history_push_transaction(state, transaction)
+		transaction = {}
+	}
+	clear(&state.editor_play_structural_changes)
 	batch := new(Editor_Component_Batch_Change)
 	transaction := Editor_Edit_Transaction {
 		component_batch = batch,
@@ -1581,6 +1611,7 @@ destroy :: proc(state: ^State) {
 	delete(state.editor_dirty_resource_lookup)
 	delete(state.editor_selected_uuids)
 	delete(state.editor_play_changes)
+	delete(state.editor_play_structural_changes)
 	delete(state.editor_gizmo_drag_selection)
 	delete(state.editor_collapsed_entities)
 	delete(state.editor_resource_reimport_message)

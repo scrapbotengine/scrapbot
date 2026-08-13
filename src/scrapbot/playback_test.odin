@@ -679,6 +679,113 @@ test_stop_applies_staged_authored_component_edits_as_one_transaction :: proc(t: 
 }
 
 @(test)
+test_stop_keeps_play_mode_duplicate_as_one_undoable_authored_batch :: proc(t: ^testing.T) {
+	parent_id := shared.entity_uuid_from_engine_name("keep-play-duplicate-parent")
+	child_id := shared.entity_uuid_from_engine_name("keep-play-duplicate-child")
+	scene: shared.Scene
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = parent_id,
+			name = "Parent",
+			has_transform = true,
+			transform = {scale = {1, 1, 1}},
+		},
+		shared.Scene_Entity {
+			id = child_id,
+			name = "Child",
+			has_transform = true,
+			transform = {parent = parent_id, scale = {1, 1, 1}},
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	state := new(ui.State)
+	defer free(state)
+	testing.expect(t, ui.init(state) == "")
+	defer ui.destroy(state)
+	registry: component.Registry
+	component.init_registry(&registry)
+	state.component_registry = &registry
+	state.editor_simulation_stopped = true
+	baseline: Playback_Baseline
+	defer destroy_playback_baseline(&baseline)
+	testing.expect(t, capture_playback_baseline(&baseline, &world) == "")
+
+	ui.editor_play(state)
+	_ = ui.consume_playback_begin_request(state)
+	ui.editor_authoring_select(state, &world, 0)
+	testing.expect(t, ui.editor_duplicate_selected_entities(state, &world))
+	duplicate_parent_id := state.editor_selected_uuids[0]
+	duplicate_child_id: shared.Entity_UUID
+	for entity in world.entities {
+		if !entity.alive || entity.transform_index < 0 {
+			continue
+		}
+		if world.transforms[entity.transform_index].parent == duplicate_parent_id {
+			duplicate_child_id = entity.uuid
+			break
+		}
+	}
+	testing.expect(t, duplicate_child_id != (shared.Entity_UUID{}))
+	duplicate_parent_index, parent_found := ecs.entity_index_by_uuid(&world, duplicate_parent_id)
+	testing.expect(t, parent_found)
+	if parent_found {
+		testing.expect(t, world.entities[duplicate_parent_index].origin == .Scene)
+		transform_index := world.entities[duplicate_parent_index].transform_index
+		world.transforms[transform_index].position.x = 9
+		testing.expect(
+			t,
+			ui.editor_stage_play_definition(
+				state,
+				&world,
+				duplicate_parent_index,
+				"scrapbot.transform",
+			),
+		)
+	}
+	testing.expect_value(t, len(state.editor_play_structural_changes), 1)
+	testing.expect_value(t, len(state.editor_play_changes), 1)
+
+	ui.editor_stop(state)
+	_ = ui.consume_playback_stop_request(state)
+	runtime: script.Runtime
+	runtime.world = &world
+	testing.expect(t, restore_playback_baseline(&baseline, &runtime, &world) == "")
+	ui.editor_world_restored(state, &world)
+	testing.expect(t, ui.editor_apply_play_changes(state, &world))
+	duplicate_parent_index, parent_found = ecs.entity_index_by_uuid(&world, duplicate_parent_id)
+	duplicate_child_index, child_found := ecs.entity_index_by_uuid(&world, duplicate_child_id)
+	testing.expect(t, parent_found && child_found)
+	if parent_found && child_found {
+		testing.expect(t, world.entities[duplicate_parent_index].origin == .Scene)
+		transform_index := world.entities[duplicate_parent_index].transform_index
+		testing.expect_value(t, world.transforms[transform_index].position.x, f32(9))
+		child_transform := world.transforms[world.entities[duplicate_child_index].transform_index]
+		testing.expect_value(t, child_transform.parent, duplicate_parent_id)
+	}
+	testing.expect_value(t, state.editor_history_count, 2)
+	testing.expect(t, state.editor_scene_dirty)
+	testing.expect(t, ui.editor_undo(state, &world))
+	duplicate_parent_index, parent_found = ecs.entity_index_by_uuid(&world, duplicate_parent_id)
+	testing.expect(t, parent_found)
+	if parent_found {
+		transform_index := world.entities[duplicate_parent_index].transform_index
+		testing.expect_value(t, world.transforms[transform_index].position.x, f32(0))
+	}
+	testing.expect(t, ui.editor_undo(state, &world))
+	_, parent_found = ecs.entity_index_by_uuid(&world, duplicate_parent_id)
+	_, child_found = ecs.entity_index_by_uuid(&world, duplicate_child_id)
+	testing.expect(t, !parent_found && !child_found)
+	testing.expect(t, ui.editor_redo(state, &world))
+	testing.expect(t, ui.editor_redo(state, &world))
+	_, parent_found = ecs.entity_index_by_uuid(&world, duplicate_parent_id)
+	_, child_found = ecs.entity_index_by_uuid(&world, duplicate_child_id)
+	testing.expect(t, parent_found && child_found)
+}
+
+@(test)
 test_play_edit_journal_coalesces_repeated_component_edits_and_batches_targets :: proc(
 	t: ^testing.T,
 ) {

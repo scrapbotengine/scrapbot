@@ -1009,7 +1009,10 @@ diagnostic_expect_editor :: proc(state: ^State, expect, value: string) -> string
 				return fmt.tprintf("editor history count is %s, expected %s", actual, value)
 			}
 		case "staged_play_changes":
-			actual := fmt.tprintf("%d", len(state.editor_play_changes))
+			actual := fmt.tprintf(
+				"%d",
+				len(state.editor_play_changes) + len(state.editor_play_structural_changes),
+			)
 			if actual != value {
 				return fmt.tprintf("staged play change count is %s, expected %s", actual, value)
 			}
@@ -1303,7 +1306,9 @@ diagnostic_driver_write_dump :: proc(
 		editor_scene_dirty = state.editor_scene_dirty,
 		editor_history_cursor = state.editor_history_cursor,
 		editor_history_count = state.editor_history_count,
-		editor_staged_play_changes = len(state.editor_play_changes),
+		editor_staged_play_changes = len(
+			state.editor_play_changes,
+		) + len(state.editor_play_structural_changes),
 		nodes = nodes[:],
 	}
 	if driver != nil {

@@ -11,6 +11,7 @@ This directory is the source-oriented map of Scrapbot's current architecture. It
 | Registered names, reflected fields, lifecycle, ownership, and fixed phase order | Odin source and runtime descriptors |
 | Producers, consumers, invalidation, execution boundaries, implementation and test anchors | This architecture inventory |
 | Public TOML/Luau/native usage, fields/defaults, constraints, and examples | `docs-website/` |
+| Canonical project-specific vocabulary | `docs/GLOSSARY.md` |
 | Durable rationale | ADRs |
 | Supported feature behavior | FDRs |
 
@@ -36,4 +37,4 @@ node .agents/skills/scrapbot-architecture-inventory/scripts/check_inventory.mjs
 
 The audit enforces exact membership for engine systems, engine components, project resource kinds, runtime resource families, public component coverage, and the required lifecycle boundaries. Prose relationships still require source-first review because names alone cannot prove ownership or behavior.
 
-Keep these pages present-tense and compact. Put rationale in `docs/adr/`, detailed behavior in `docs/fdr/`, public API reference in `docs-website/`, and roadmap status in `README.md` or `docs/TODO.md`.
+Keep these pages present-tense and compact. Use the canonical terms in `docs/GLOSSARY.md`; put rationale in `docs/adr/`, detailed behavior in `docs/fdr/`, public API reference in `docs-website/`, and roadmap status in `README.md` or `docs/TODO.md`.

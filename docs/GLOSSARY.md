@@ -1,5 +1,15 @@
 # Glossary
 
+This is Scrapbot's canonical engineering vocabulary. Code, editor copy, ADRs, FDRs, architecture documentation, public documentation, and agent discussion should use these terms consistently. The [public glossary](../docs-website/src/content/docs/reference/glossary.md) is a smaller, user-facing projection of this document.
+
+## Usage rules
+
+- Use **authored entity** for an entity that belongs to authoring state. Use **scene-origin entity** only when the `.Scene` origin classification itself matters.
+- Use **runtime entity** for simulation-created, disposable state. Do not use _temporary entity_ when runtime origin is the important distinction.
+- Use **keep on Stop** for transferring an eligible Play Mode edit back into authoring state. This does not mean the change has been **saved** to disk.
+- Use **derived** for engine-maintained state reconstructed from another authority. Derived is not a synonym for runtime: an authored entity may own derived components or generated child entities.
+- Use **UUID** for stable project identity and **handle** for a generation-checked in-memory reference. Do not call an ECS slot or resource handle an ID when the distinction matters.
+
 ## Records
 
 **ADR (Architecture Decision Record)** - A document in `docs/adr/` that captures a cross-cutting architecture decision and its consequences.
@@ -14,15 +24,27 @@
 
 **Entity UUID** - A non-zero RFC UUID that identifies an entity independently from its editable name, scene order, or runtime storage slot. Scene UUIDs are serialized; each runtime-spawned lifetime receives a new UUID.
 
+**Entity handle** - An index-and-generation reference to one live ECS entity. Handles are efficient and reject stale lifetimes, but they are runtime-local and must not be serialized or used as persistent identity.
+
+**Entity origin** - The live entity's lifecycle classification: `.Scene`, `.Runtime`, or `.Editor`. Origin controls authoring eligibility and editor visibility independently from UUID identity. Explicit promotion changes a runtime entity to scene origin; duplicating an authored entity creates new scene-origin entities. See [ADR-016](adr/ADR-016-track-entity-origin-in-the-runtime-world.md).
+
+**Authored entity** - A scene-origin entity that belongs to the in-memory authored scene and is eligible to be saved. It may have come from a scene file, a stopped-mode editor action, explicit promotion, or an authored duplication staged during Play Mode.
+
+**Runtime entity** - A runtime-origin entity created for the current simulation, normally by a system or script. Stop discards it unless it was explicitly promoted while authoring is stopped.
+
+**Editor entity** - An editor-origin entity owned by engine tooling, such as editor chrome or the scene camera. It is excluded from project authoring and ordinary scene browsing.
+
 **Component** - A typed piece of data attached to an entity, such as a transform, camera, geometry reference, or material reference. Single-token names identify project components; dotted names identify engine or library components.
 
 **Render resource** - Shared geometry or material data owned outside the ECS and referenced by generational handles from entity components. See [ADR-010](adr/ADR-010-keep-render-resources-outside-the-ecs.md).
 
-**Project resource** - A persistent typed bag of reusable project data stored outside the ECS in a standalone `resources/**/*.resource.toml` file. Each project resource has a stable UUID. Scrapbot currently supports materials and generated icosphere LOD chains.
+**Project resource** - Persistent, UUID-addressed reusable project data stored outside the ECS in `resources/**/*.resource.toml`. Materials, textures, models, environments, icon sets, generated geometry, and UI themes are project-resource kinds. See [ADR-030](adr/ADR-030-identify-project-resources-by-uuid-outside-the-ecs.md).
 
 **Resource UUID** - The non-zero project-wide UUID serialized in a project resource file and used by scene references. It remains stable across resource renames and moves and resolves to a transient generational runtime handle.
 
 **Runtime resource** - Registry-owned geometry, material, or font data created while a project is loaded. Authored project resources resolve into runtime resources; Luau or native code can also create transient name-addressed runtime resources that are not saved automatically.
+
+**Resource handle** - A generation-checked runtime reference to registry-owned resource data. Project files store resource UUIDs; loading resolves them to handles, which may change after unload, reload, or replacement.
 
 **Render reconciliation** - The change-driven engine step that adds, updates, or removes internal render-instance components based on an entity's transform and valid geometry/material references. Structural dirty entities are synchronized into a dense active-renderable set instead of rescanning all entity membership every frame.
 
@@ -44,13 +66,17 @@
 
 **System** - Runtime logic that reads or writes components for matching entities. Systems can currently be registered from Luau scripts or native extensions.
 
-**Scheduled system** - A system with declared component reads and writes. Scrapbot batches Luau and native systems together by access conflicts before executing them serially.
+**Scheduled system** - A system with declared component reads and writes. Scrapbot batches systems by access conflicts, executes conflict-free native systems concurrently, and treats Luau or undeclared systems as serial barriers.
 
 **Deferred command buffer** - A per-runtime queue of structural ECS mutations requested while systems are running. Scrapbot currently applies queued entity and component lifecycle commands after the scheduled frame step.
 
 **SoA (Structure of Arrays)** - A data layout used for hot component storage, taking advantage of Odin's `#soa` support.
 
 **World** - The in-memory ECS state built from a project scene and used by runtime systems and rendering.
+
+**Derived state** - Engine-maintained state reconstructed from authoritative ECS components, resources, or editor state. It is invalidated and reconciled through explicit changes rather than authored or saved independently.
+
+**Structural change** - A mutation to entity or component membership, hierarchy, authored order, or resource membership. It is distinct from changing fields inside an existing component or resource.
 
 **Spatial hierarchy** - The acyclic graph formed by optional parent UUIDs on Transform components. Parent links use stable entity identity rather than names or runtime storage slots.
 
@@ -104,6 +130,26 @@
 
 **Odin extension helper** - The `scrapbot:extension` package that wraps Scrapbot's raw native extension ABI with Odin-friendly component and field descriptors, registration accumulation, access declaration, query, transform, vec3 field, and lifecycle command helpers.
 
-**Hot reload** - Runtime behavior where changed project files are reloaded without restarting the engine. Scrapbot currently supports periodic reload checks for `project.toml`, the default scene TOML, `scripts/main.luau`, native libraries in `.scrapbot/cache/extensions`, and declared native extension source directories.
+**Hot reload** - Runtime behavior where changed project files are reloaded without restarting the engine. Current coverage includes `project.toml`, the default scene, standalone resources, `scripts/main.luau`, native extension libraries, and declared native extension source directories.
 
 **Editor GUI** - The in-engine live editor toggled from a running project. It uses transient editor-origin entities and the same public ECS UI components available to projects.
+
+## Authoring and playback
+
+**Authoring state** - The current in-memory state of authored entities and project resources. It may include unsaved editor transactions and is the state that Save compares with the disk baseline.
+
+**Disk baseline** - The last successfully loaded or saved text representation used to determine what Save must write. Revert reloads this state and discards in-memory authoring history.
+
+**Play Mode** - Running or paused simulation over a world that began from the current authoring state. Systems may mutate this world, but those simulation mutations are disposable unless a specific editor change is eligible to keep.
+
+**Playback baseline** - The in-memory snapshot of scene-origin state captured when Play Mode starts. Stop restores this baseline before applying eligible staged play edits.
+
+**Staged play edit** - A completed editor operation recorded separately from mutable simulation state because it is eligible to keep on Stop. Staged component edits target one authored entity/component pair; authored duplication stages a structural batch. See [ADR-026](adr/ADR-026-separate-authoring-persistence-from-runtime-playback.md).
+
+**System-written component** - One specific entity/component pair actually mutated by a project system during the current playback world. It is ineligible for staged editor persistence for the remainder of that playback, even if other instances of the same component type remain eligible.
+
+**Keep on Stop** - Restore the playback baseline, then apply eligible staged play edits to authoring state as one undoable transaction. Keeping does not write project files.
+
+**Save** - Explicitly commit dirty authoring state to project files through the recoverable project transaction. Save is a disk operation and is distinct from keeping an edit on Stop.
+
+**Dirty authoring state** - Authoring state that differs from the last successful Save position or disk baseline. Staging an edit during Play Mode does not make authoring state dirty until Stop keeps it.

@@ -24,7 +24,7 @@ Every entity has two identities:
 - Its UUID is stable across save/load and is the only durable project-wide identity. Scene TOML stores it in `id`, and cross-entity references such as UI parents use it. Names are human-facing labels and need not be unique.
 - Its index and generation form an efficient handle for one in-memory lifetime. The generation rejects stale handles when a storage slot is reused.
 
-The world also records how an entity entered it: scene-authored, runtime-spawned, or editor-owned. Origin does not change when component values change. This distinction lets the editor display runtime entities without accidentally persisting ordinary simulation output.
+The world also records an entity origin: scene, runtime, or editor. Ordinary component changes do not affect origin. An explicit stopped-mode Keep action can promote a runtime entity into authored scene data. This distinction lets the editor display runtime entities without accidentally persisting ordinary simulation output.
 
 ## Components and the registry
 
@@ -135,7 +135,7 @@ See [Project Files: Resources](/reference/project-files/#resource-files) and the
 
 ## Authoring and playback
 
-The live editor edits the active ECS world while stopped and records completed gestures as UUID-addressed undo/redo transactions. Save compares dirty candidates with the authored baseline and writes only explicit authoring changes. Play captures an in-memory baseline. During playback, completed editor field and transform gestures on eligible authored components are staged separately from simulation state. Stop restores the baseline, reapplies the staged component values as one authoring transaction, and still removes runtime-spawned entities without reloading Luau or native Odin code.
+The live editor edits the active ECS world while stopped and records completed gestures as UUID-addressed undo/redo transactions. Save compares dirty candidates with the disk baseline and writes only explicit authoring changes. Play captures an in-memory playback baseline. During playback, completed editor field and transform gestures on eligible authored components are staged separately from simulation state; duplicating an authored subtree stages its new authored snapshots too. Stop restores the baseline, reapplies those staged edits as one authoring transaction, and still removes runtime entities without reloading Luau or native Odin code.
 
 This separation is intentional: an ECS mutation is not automatically a source-file mutation. See [Live Editor](/guides/live-editor/) for the complete transport and persistence model.
 

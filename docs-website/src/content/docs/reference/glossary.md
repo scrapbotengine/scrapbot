@@ -3,6 +3,8 @@ title: Glossary
 description: Scrapbot project vocabulary.
 ---
 
+This page is the user-facing subset of Scrapbot's canonical engineering vocabulary. These terms are used consistently across the editor and documentation.
+
 ## Runtime
 
 **ECS**  
@@ -13,6 +15,21 @@ A Scrapbot world object with two complementary identities: a stable project-wide
 
 **Entity UUID**<br>
 A non-zero RFC UUID that identifies an entity independently from its editable name, scene order, or runtime storage slot. Scene UUIDs are serialized; runtime spawns mint a new UUID for each lifetime.
+
+**Entity handle**<br>
+An index-and-generation reference to one live entity. Handles reject stale lifetimes but are runtime-local; persistent references use entity UUIDs.
+
+**Entity origin**<br>
+The live entity's lifecycle classification: scene, runtime, or editor. Origin controls authoring eligibility independently from UUID identity.
+
+**Authored entity**<br>
+A scene-origin entity belonging to the in-memory authored scene. It can be saved even if it was created, promoted, or duplicated in the editor rather than loaded from the current scene file.
+
+**Runtime entity**<br>
+A simulation-created entity for the current playback. Stop discards it unless it is explicitly promoted while authoring is stopped.
+
+**Editor entity**<br>
+A transient entity owned by editor tooling and excluded from project authoring.
 
 **Component**  
 A typed piece of data attached to an entity. Single-token names such as `autorotate` identify project-level components. Dotted names such as `scrapbot.transform` or `scrappyphysics.rigidbody` identify engine or library components.
@@ -38,6 +55,12 @@ An entity's authored position, rotation, and scale relative to its Transform par
 **World transform**<br>
 The derived position, rotation, and scale produced by composing an entity's local Transform with its ancestor chain. Rendering and editor spatial tools consume this value; it is not separately authored.
 
+**Derived state**<br>
+Engine-maintained data reconstructed from authoritative components, resources, or editor state. It is not saved independently.
+
+**Structural change**<br>
+A change to entity or component membership, hierarchy, authored order, or resource membership rather than a field inside an existing value.
+
 **Transform origin**<br>
 The position represented by an entity's Transform. It is the canonical spatial point inherited by children and remains separate from an editor manipulation pivot or rendered-bounds center.
 
@@ -57,6 +80,9 @@ A persistent typed bag of reusable project data stored outside the ECS in `resou
 
 **Resource UUID**<br>
 A stable project-wide UUID serialized in a resource file and used by scene references. It resolves to a transient generational runtime handle.
+
+**Resource handle**<br>
+A generation-checked in-memory reference to loaded resource data. It may change across unload, reload, or replacement and is never serialized.
 
 **Runtime resource**<br>
 Registry-owned geometry, material, or font data for the current run. Authored project resources resolve into runtime resources; scripts and native code can also create transient name-addressed resources.
@@ -106,8 +132,26 @@ Screen-space UI described by public `scrapbot.ui_*` entities and components. Sce
 
 ## Live editor
 
-**Entity provenance**
-The origin recorded for a live entity: scene-authored, runtime-spawned, or editor-owned. Provenance remains separate from the entity's generation-aware identity.
+**Authoring state**<br>
+The current in-memory authored entities and project resources, including unsaved editor changes.
+
+**Play Mode**<br>
+Running or paused simulation. Simulation mutations are disposable, while eligible editor changes may be staged to keep.
+
+**Playback baseline**<br>
+The in-memory authored scene snapshot captured when Play Mode starts and restored by Stop.
+
+**Staged play edit**<br>
+An eligible, completed editor operation recorded separately from mutable simulation state so Stop can transfer it back to authoring state.
+
+**System-written component**<br>
+One entity/component pair actually changed by a project system during the current playback. That pair cannot keep editor changes on Stop; unrelated instances remain eligible.
+
+**Keep on Stop**<br>
+Restore the playback baseline, then apply eligible staged edits to authoring state as one undoable transaction. This does not save files.
+
+**Save**<br>
+Explicitly write dirty authoring state to project files. Save and keep on Stop are separate operations.
 
 **Editor scene camera**
 A transient editor-owned ECS entity used to navigate the live viewport without mutating the project's camera.

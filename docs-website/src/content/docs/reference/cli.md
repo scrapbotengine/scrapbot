@@ -155,7 +155,7 @@ Hold right mouse inside the viewport to capture the pointer. Look with the mouse
 
 Stopped is authoring mode. Inspector and gizmo gestures enter UUID-addressed undo/redo transactions. Save from the top bar or press `Ctrl/Cmd+S`; only fields that differ semantically from the disk-authored baseline are written. Revert discards unsaved authoring, clears history, and reloads scene entities without reloading code or resources.
 
-Play snapshots the current authoring state in memory. Stop restores that state and discards playback mutations and runtime spawns. Runtime entities and running or paused mutations are never persisted. The Scene pane distinguishes authored entities from runtime spawns and hides editor-origin entities.
+Play captures the current authoring state as an in-memory playback baseline. Stop restores that baseline, discards simulation mutations and runtime entities, then keeps eligible staged editor edits. Authored component edits and authored duplication can be staged during Running or Paused; system-written components and other structural or resource changes remain disposable. The Scene pane distinguishes authored entities from runtime entities and hides editor entities.
 
 Combine `--editor`, `--headless`, `--ui-script`, `--ui-dump`, and `--framegrab` to reproduce editor interactions deterministically. Framegrabs are losslessly compressed; explicit regions or semantic capture targets crop the output without scaling its pixels. See [Rendering And Testing](/guides/rendering-testing/#semantic-ui-diagnostics) for the script contract.
 

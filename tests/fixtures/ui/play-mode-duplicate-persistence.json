@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "timeout_frames": 180,
+  "actions": [
+    {"action": "expect_editor", "expect": "simulation", "text": "running"},
+    {"action": "click", "target": {"text": "Left Cube", "origin": "editor"}},
+    {"action": "key", "key": "duplicate_entity"},
+    {"action": "wait", "frames": 2},
+    {"action": "expect", "target": {"text": "Left Cube Copy", "origin": "editor"}, "expect": "visible"},
+    {"action": "expect", "target": {"text": "KEPT ON STOP", "origin": "editor"}, "expect": "visible"},
+    {"action": "expect_editor", "expect": "staged_play_changes", "text": "1"},
+    {"action": "key", "key": "stop"},
+    {"action": "wait", "frames": 4},
+    {"action": "expect_editor", "expect": "simulation", "text": "stopped"},
+    {"action": "expect_editor", "expect": "staged_play_changes", "text": "0"},
+    {"action": "expect_editor", "expect": "dirty", "text": "true"},
+    {"action": "expect_editor", "expect": "history_count", "text": "1"},
+    {"action": "expect", "target": {"text": "Left Cube Copy", "origin": "editor"}, "expect": "visible"},
+    {"action": "key", "key": "undo"},
+    {"action": "wait", "frames": 2},
+    {"action": "expect_editor", "expect": "dirty", "text": "false"},
+    {"action": "key", "key": "redo"},
+    {"action": "wait", "frames": 2},
+    {"action": "expect", "target": {"text": "Left Cube Copy", "origin": "editor"}, "expect": "visible"}
+  ]
+}

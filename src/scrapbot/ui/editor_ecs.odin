@@ -2992,6 +2992,7 @@ editor_ui_update_transport :: proc(state: ^State, world: ^shared.World) {
 		history_cursor = state.editor_history_cursor,
 		history_count = state.editor_history_count,
 		play_change_count = len(state.editor_play_changes),
+		play_structural_change_count = len(state.editor_play_structural_changes),
 	}
 	if state.editor_transport_visual_valid && state.editor_transport_visual_state == visual_state {
 		return
@@ -6815,8 +6816,9 @@ refresh_editor_ecs_snapshot :: proc(state: ^State, world: ^shared.World) {
 		if state.editor_simulation_playing {
 			mode = "PLAY MODE  /  RUNNING  /  ELIGIBLE EDITS PERSIST ON STOP"
 		}
-		if !state.editor_simulation_stopped && len(state.editor_play_changes) > 0 {
-			mode = fmt.tprintf("%s  /  %d STAGED", mode, len(state.editor_play_changes))
+		staged_count := len(state.editor_play_changes) + len(state.editor_play_structural_changes)
+		if !state.editor_simulation_stopped && staged_count > 0 {
+			mode = fmt.tprintf("%s  /  %d STAGED", mode, staged_count)
 		}
 		if state.editor_simulation_stopped { mode = "STOPPED" }
 		if state.editor_scene_dirty {

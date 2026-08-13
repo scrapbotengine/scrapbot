@@ -6103,7 +6103,8 @@ test_editor_entity_shortcuts_share_authoring_actions_and_select_duplicate :: pro
 		runtime_duplicate_index >= 0 &&
 		runtime_duplicate_index < len(world.entities) &&
 		world.entities[runtime_duplicate_index].alive &&
-		world.entities[runtime_duplicate_index].origin == .Runtime &&
+		world.entities[runtime_duplicate_index].origin == .Scene &&
+		len(state.editor_play_structural_changes) == 1 &&
 		state.editor_history_count == stopped_history_count,
 	)
 	state.editor_simulation_playing = false
@@ -6281,7 +6282,7 @@ test_editor_batch_duplicate_does_not_repeat_explicit_descendants :: proc(t: ^tes
 }
 
 @(test)
-test_editor_batch_duplicate_and_delete_are_disposable_during_playback :: proc(t: ^testing.T) {
+test_editor_batch_duplicate_of_authored_entities_is_staged_during_playback :: proc(t: ^testing.T) {
 	parent_id := ui_test_id("Runtime Batch Parent")
 	child_id := ui_test_id("Runtime Batch Child")
 	scene := shared.Scene{}
@@ -6330,12 +6331,45 @@ test_editor_batch_duplicate_and_delete_are_disposable_during_playback :: proc(t:
 	}
 	testing.expect(t, duplicate_child_id != (shared.Entity_UUID{}))
 	if parent_found {
-		testing.expect(t, world.entities[duplicate_parent_index].origin == .Runtime)
+		testing.expect(t, world.entities[duplicate_parent_index].origin == .Scene)
 	}
-	testing.expect(t, editor_delete_selected_entities(state, &world))
-	_, parent_found = ecs.entity_index_by_uuid(&world, duplicate_parent_id)
-	_, child_found := ecs.entity_index_by_uuid(&world, duplicate_child_id)
-	testing.expect(t, !parent_found && !child_found)
+	testing.expect_value(t, len(state.editor_play_structural_changes), 1)
+	testing.expect_value(t, state.editor_history_count, 0)
+}
+
+@(test)
+test_editor_batch_duplicate_of_runtime_entity_remains_disposable :: proc(t: ^testing.T) {
+	scene := shared.Scene{}
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = ui_test_id("Disposable Runtime Source"),
+			name = "Runtime Source",
+			has_transform = true,
+			transform = {scale = {1, 1, 1}},
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	world.entities[0].origin = .Runtime
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	state.editor_visible = true
+	state.editor_simulation_playing = true
+	state.editor_simulation_stopped = false
+	editor_set_entity_selection(state, &world, []shared.Entity{world.entities[0].id})
+
+	testing.expect(t, editor_duplicate_selected_entities(state, &world))
+	duplicate_id := state.editor_selected_uuids[0]
+	duplicate_index, found := ecs.entity_index_by_uuid(&world, duplicate_id)
+	testing.expect(t, found)
+	if found {
+		testing.expect(t, world.entities[duplicate_index].origin == .Runtime)
+	}
+	testing.expect_value(t, len(state.editor_play_structural_changes), 0)
 	testing.expect_value(t, state.editor_history_count, 0)
 }
 
