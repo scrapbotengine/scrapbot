@@ -240,7 +240,11 @@ Drag from empty Game viewport space to draw a clipped selection rectangle. On re
 
 On WGPU, viewport selection renders an on-demand identity image with the scene's current depth, alpha masking, custom displacement, and geometry submission, then reads only the requested click or rectangle asynchronously. Ordinary frames carry no selection-pass cost. The Null backend uses exact CPU triangle picking as its deterministic fallback. The browser scrolls to reveal the active viewport-picked entity and removes despawned entities from the set.
 
-The inspector reports the active entity's editable name, identity, provenance, attached components, fields, and current values. With several entities selected, its header reports the count and active entity; field edits currently target only that active entity.
+With one entity selected, the inspector reports its editable name, identity, provenance, attached components, fields, and current values.
+
+With several entities selected, the inspector shows only components shared by the complete selection. An amber minus inside a control means that field has mixed values; editing it assigns the new value to every selected entity as one Undo/Redo transaction. Numeric scrubbing and color previews also remain one gesture, and Escape restores every entity's distinct original value. Components that exist on only some selected entities are omitted, and component add/remove plus entity renaming remain single-selection operations.
+
+During Running or Paused Play Mode, a shared component stays editable only when the edit can persist for every selected entity. If even one target is runtime-only, derived, or has been written by a project system, the complete shared component uses the read-only treatment instead of applying a partial edit.
 
 Component cards are runtime-generated:
 

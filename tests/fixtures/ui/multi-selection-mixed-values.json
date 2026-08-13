@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "timeout_frames": 120,
+  "actions": [
+    {"action": "key", "key": "stop"},
+    {"action": "click", "target": {"text": "Left Cube", "origin": "editor"}},
+    {"action": "click", "target": {"text": "Right Cube", "origin": "editor"}, "shift": true},
+    {"action": "expect_editor", "expect": "selected_count", "text": "2"},
+    {"action": "capture", "target": {"component": "scrapbot.transform", "origin": "editor"}, "padding": 8}
+  ]
+}

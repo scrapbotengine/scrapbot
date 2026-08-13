@@ -1017,6 +1017,8 @@ editor_reflected_values_equal :: proc(a, b: any) -> bool {
 			return (cast(^f32)a.data)^ == (cast(^f32)b.data)^
 		case typeid_of(int):
 			return (cast(^int)a.data)^ == (cast(^int)b.data)^
+		case typeid_of(u32):
+			return (cast(^u32)a.data)^ == (cast(^u32)b.data)^
 		case typeid_of(u64):
 			return (cast(^u64)a.data)^ == (cast(^u64)b.data)^
 		case typeid_of(string):
@@ -1036,6 +1038,89 @@ editor_reflected_values_equal :: proc(a, b: any) -> bool {
 			)
 	}
 	return fmt.tprintf("%v", a) == fmt.tprintf("%v", b)
+}
+
+editor_reflected_binding_mixed :: proc(
+	state: ^State,
+	world: ^shared.World,
+	binding: shared.Editor_UI_Component,
+) -> bool {
+	if state == nil || world == nil || !binding.batch {
+		return false
+	}
+	definition, found := editor_reflected_definition(state, binding)
+	if !found {
+		return false
+	}
+	first: any
+	first_snapshot: ecs.Registered_Component_Snapshot
+	first_captured := false
+	defer if first_captured {
+		ecs.destroy_registered_component_snapshot(&first_snapshot)
+	}
+	for id in editor_selection_uuids(state) {
+		entity_index, entity_found := ecs.entity_index_by_uuid(world, id)
+		if !entity_found {
+			return true
+		}
+		snapshot, captured := ecs.capture_registered_component_snapshot(
+			world,
+			entity_index,
+			definition,
+		)
+		if !captured {
+			return true
+		}
+		component_value, component_found := editor_reflected_snapshot_component_value(
+			&snapshot.value,
+			definition,
+		)
+		if !component_found {
+			ecs.destroy_registered_component_snapshot(&snapshot)
+			return true
+		}
+		value, value_found := editor_reflected_binding_value(component_value, definition, binding)
+		if !value_found {
+			ecs.destroy_registered_component_snapshot(&snapshot)
+			return true
+		}
+		if !first_captured {
+			first_snapshot = snapshot
+			first_captured = true
+			first_component, first_component_found := editor_reflected_snapshot_component_value(
+				&first_snapshot.value,
+				definition,
+			)
+			if !first_component_found {
+				return true
+			}
+			first, value_found = editor_reflected_binding_value(
+				first_component,
+				definition,
+				binding,
+			)
+			if !value_found {
+				return true
+			}
+			continue
+		}
+		mixed := false
+		if binding.inspector_axis != .None {
+			first_number, first_found := editor_reflected_axis_number(
+				first,
+				binding.inspector_axis,
+			)
+			next_number, next_found := editor_reflected_axis_number(value, binding.inspector_axis)
+			mixed = !first_found || !next_found || first_number != next_number
+		} else {
+			mixed = !editor_reflected_values_equal(first, value)
+		}
+		ecs.destroy_registered_component_snapshot(&snapshot)
+		if mixed {
+			return true
+		}
+	}
+	return false
 }
 
 editor_registered_component_snapshots_equal :: proc(
@@ -1592,6 +1677,36 @@ editor_reflected_input_valid :: proc(
 	if !found {
 		return false
 	}
+	if binding.batch {
+		if editor_selection_count(state) < 2 {
+			return false
+		}
+		for id in editor_selection_uuids(state) {
+			target_index, target_ok := ecs.entity_index_by_uuid(world, id)
+			if !target_ok {
+				return false
+			}
+			editable, _ := editor_component_play_editable(state, world, target_index, definition)
+			if !editable {
+				return false
+			}
+			snapshot, captured := ecs.capture_entity_snapshot(world, target_index)
+			if !captured {
+				return false
+			}
+			_, valid := editor_reflected_set_binding_text(
+				&snapshot.entity,
+				definition,
+				binding,
+				text,
+			)
+			ecs.destroy_entity_snapshot(&snapshot)
+			if !valid {
+				return false
+			}
+		}
+		return true
+	}
 	target, target_index, target_ok := inspector_target(world, binding)
 	if !target_ok {
 		return false
@@ -1603,6 +1718,185 @@ editor_reflected_input_valid :: proc(
 	defer ecs.destroy_entity_snapshot(&snapshot)
 	_, valid := editor_reflected_set_binding_text(&snapshot.entity, definition, binding, text)
 	return valid && target.uuid == snapshot.entity.id
+}
+
+editor_reflected_destroy_component_batch :: proc(batch: ^Editor_Component_Batch_Change) {
+	if batch == nil {
+		return
+	}
+	for &item in batch.items {
+		destroy_component_snapshot_pointer(item.before)
+		destroy_component_snapshot_pointer(item.after)
+	}
+	delete(batch.items)
+	free(batch)
+}
+
+editor_reflected_apply_batch :: proc(
+	state: ^State,
+	world: ^shared.World,
+	definition: ^component.Definition,
+	batch: ^Editor_Component_Batch_Change,
+) -> bool {
+	if state == nil || world == nil || definition == nil || batch == nil || len(batch.items) == 0 {
+		editor_reflected_destroy_component_batch(batch)
+		return false
+	}
+	applied := 0
+	for &item in batch.items {
+		entity_index, found := ecs.entity_index_by_uuid(world, item.target_uuid)
+		if !found || !ecs.apply_registered_component_snapshot(world, entity_index, item.after) {
+			for rollback_index in 0 ..< applied {
+				rollback := &batch.items[rollback_index]
+				if rollback_entity, rollback_found := ecs.entity_index_by_uuid(
+					world,
+					rollback.target_uuid,
+				); rollback_found {
+					_ = ecs.apply_registered_component_snapshot(
+						world,
+						rollback_entity,
+						rollback.before,
+					)
+				}
+			}
+			editor_reflected_destroy_component_batch(batch)
+			return false
+		}
+		applied += 1
+	}
+	if state.editor_simulation_stopped {
+		for item in batch.items {
+			editor_mark_scene_uuid_dirty(state, item.target_uuid)
+		}
+		editor_history_push_transaction(state, {component_batch = batch})
+	} else {
+		for item in batch.items {
+			if entity_index, found := ecs.entity_index_by_uuid(world, item.target_uuid); found {
+				_ = editor_stage_play_component(state, world, entity_index, definition)
+			}
+		}
+		editor_reflected_destroy_component_batch(batch)
+		state.editor_snapshot_valid = false
+	}
+	return true
+}
+
+editor_reflected_apply_batch_text :: proc(
+	state: ^State,
+	world: ^shared.World,
+	binding: shared.Editor_UI_Component,
+	text: string,
+) -> bool {
+	definition, found := editor_reflected_definition(state, binding)
+	if !found || editor_selection_count(state) < 2 {
+		return false
+	}
+	batch := new(Editor_Component_Batch_Change)
+	for id in editor_selection_uuids(state) {
+		entity_index, entity_found := ecs.entity_index_by_uuid(world, id)
+		if !entity_found {
+			editor_reflected_destroy_component_batch(batch)
+			return false
+		}
+		editable, _ := editor_component_play_editable(state, world, entity_index, definition)
+		if !editable {
+			editor_reflected_destroy_component_batch(batch)
+			return false
+		}
+		before := capture_component_snapshot_pointer(world, entity_index, definition)
+		after := capture_component_snapshot_pointer(world, entity_index, definition)
+		if before == nil || after == nil {
+			destroy_component_snapshot_pointer(before)
+			destroy_component_snapshot_pointer(after)
+			editor_reflected_destroy_component_batch(batch)
+			return false
+		}
+		changed, valid := editor_reflected_set_binding_text(
+			&after.value,
+			definition,
+			binding,
+			text,
+		)
+		if !valid {
+			destroy_component_snapshot_pointer(before)
+			destroy_component_snapshot_pointer(after)
+			editor_reflected_destroy_component_batch(batch)
+			return false
+		}
+		if !changed {
+			destroy_component_snapshot_pointer(before)
+			destroy_component_snapshot_pointer(after)
+			continue
+		}
+		append(
+			&batch.items,
+			Editor_Component_Structural_Change{target_uuid = id, before = before, after = after},
+		)
+	}
+	if len(batch.items) == 0 {
+		editor_reflected_destroy_component_batch(batch)
+		return true
+	}
+	return editor_reflected_apply_batch(state, world, definition, batch)
+}
+
+editor_reflected_apply_batch_bool :: proc(
+	state: ^State,
+	world: ^shared.World,
+	binding: shared.Editor_UI_Component,
+	checked: bool,
+) -> bool {
+	definition, found := editor_reflected_definition(state, binding)
+	if !found || editor_selection_count(state) < 2 {
+		return false
+	}
+	batch := new(Editor_Component_Batch_Change)
+	for id in editor_selection_uuids(state) {
+		entity_index, entity_found := ecs.entity_index_by_uuid(world, id)
+		if !entity_found {
+			editor_reflected_destroy_component_batch(batch)
+			return false
+		}
+		editable, _ := editor_component_play_editable(state, world, entity_index, definition)
+		if !editable {
+			editor_reflected_destroy_component_batch(batch)
+			return false
+		}
+		before := capture_component_snapshot_pointer(world, entity_index, definition)
+		after := capture_component_snapshot_pointer(world, entity_index, definition)
+		if before == nil || after == nil {
+			destroy_component_snapshot_pointer(before)
+			destroy_component_snapshot_pointer(after)
+			editor_reflected_destroy_component_batch(batch)
+			return false
+		}
+		changed, valid := editor_reflected_set_binding_bool(
+			&after.value,
+			definition,
+			binding,
+			checked,
+		)
+		if !valid {
+			destroy_component_snapshot_pointer(before)
+			destroy_component_snapshot_pointer(after)
+			editor_reflected_destroy_component_batch(batch)
+			return false
+		}
+		if !changed {
+			destroy_component_snapshot_pointer(before)
+			destroy_component_snapshot_pointer(after)
+			continue
+		}
+		append(
+			&batch.items,
+			Editor_Component_Structural_Change{target_uuid = id, before = before, after = after},
+		)
+	}
+	if len(batch.items) == 0 {
+		editor_reflected_destroy_component_batch(batch)
+		return true
+	}
+	return editor_reflected_apply_batch(state, world, definition, batch)
 }
 
 editor_reflected_apply_component_snapshot :: proc(
@@ -1652,12 +1946,198 @@ editor_reflected_apply_component_snapshot :: proc(
 	return true
 }
 
+editor_reflected_batch_bindings_equal :: proc(a, b: shared.Editor_UI_Component) -> bool {
+	return(
+		a.batch == b.batch &&
+		a.reflected_component_id == b.reflected_component_id &&
+		a.reflected_field_index == b.reflected_field_index &&
+		a.reflected_path_count == b.reflected_path_count &&
+		a.reflected_path == b.reflected_path &&
+		a.inspector_axis == b.inspector_axis \
+	)
+}
+
+editor_reflected_clear_batch_preview :: proc(state: ^State) {
+	if state == nil {
+		return
+	}
+	editor_reflected_destroy_component_batch(state.editor_inspector_batch_preview)
+	state.editor_inspector_batch_preview = nil
+	state.editor_inspector_batch_preview_binding = {}
+	state.editor_inspector_batch_preview_selection_revision = 0
+}
+
+editor_reflected_begin_batch_preview :: proc(
+	state: ^State,
+	world: ^shared.World,
+	binding: shared.Editor_UI_Component,
+	definition: ^component.Definition,
+) -> bool {
+	if state == nil || world == nil || definition == nil || !binding.batch {
+		return false
+	}
+	if state.editor_inspector_batch_preview != nil {
+		return(
+			state.editor_inspector_batch_preview_selection_revision ==
+				state.editor_selection_revision &&
+			editor_reflected_batch_bindings_equal(
+				state.editor_inspector_batch_preview_binding,
+				binding,
+			) \
+		)
+	}
+	batch := new(Editor_Component_Batch_Change)
+	for id in editor_selection_uuids(state) {
+		entity_index, found := ecs.entity_index_by_uuid(world, id)
+		if !found {
+			editor_reflected_destroy_component_batch(batch)
+			return false
+		}
+		editable, _ := editor_component_play_editable(state, world, entity_index, definition)
+		before := capture_component_snapshot_pointer(world, entity_index, definition)
+		if !editable || before == nil {
+			destroy_component_snapshot_pointer(before)
+			editor_reflected_destroy_component_batch(batch)
+			return false
+		}
+		append(&batch.items, Editor_Component_Structural_Change{target_uuid = id, before = before})
+	}
+	if len(batch.items) < 2 {
+		editor_reflected_destroy_component_batch(batch)
+		return false
+	}
+	state.editor_inspector_batch_preview = batch
+	state.editor_inspector_batch_preview_binding = binding
+	state.editor_inspector_batch_preview_selection_revision = state.editor_selection_revision
+	return true
+}
+
+editor_reflected_preview_batch_text :: proc(
+	state: ^State,
+	world: ^shared.World,
+	binding: shared.Editor_UI_Component,
+	text: string,
+) -> bool {
+	definition, found := editor_reflected_definition(state, binding)
+	if !found || !editor_reflected_begin_batch_preview(state, world, binding, definition) {
+		return false
+	}
+	previews: [dynamic]Editor_Component_Structural_Change
+	defer {
+		for &item in previews {
+			destroy_component_snapshot_pointer(item.after)
+		}
+		delete(previews)
+	}
+	for original in state.editor_inspector_batch_preview.items {
+		entity_index, entity_found := ecs.entity_index_by_uuid(world, original.target_uuid)
+		if !entity_found {
+			return false
+		}
+		after := capture_component_snapshot_pointer(world, entity_index, definition)
+		if after == nil {
+			return false
+		}
+		_, valid := editor_reflected_set_binding_text(&after.value, definition, binding, text)
+		if !valid {
+			destroy_component_snapshot_pointer(after)
+			return false
+		}
+		append(
+			&previews,
+			Editor_Component_Structural_Change{target_uuid = original.target_uuid, after = after},
+		)
+	}
+	for &preview in previews {
+		entity_index, _ := ecs.entity_index_by_uuid(world, preview.target_uuid)
+		if !ecs.apply_registered_component_snapshot(world, entity_index, preview.after) {
+			return false
+		}
+		editor_mark_scene_uuid_dirty(state, preview.target_uuid)
+	}
+	return true
+}
+
+editor_reflected_finish_batch_preview :: proc(
+	state: ^State,
+	world: ^shared.World,
+	binding: shared.Editor_UI_Component,
+	cancelled: bool,
+) -> bool {
+	if state == nil ||
+	   world == nil ||
+	   state.editor_inspector_batch_preview == nil ||
+	   !editor_reflected_batch_bindings_equal(
+			   state.editor_inspector_batch_preview_binding,
+			   binding,
+		   ) {
+		return false
+	}
+	batch := state.editor_inspector_batch_preview
+	state.editor_inspector_batch_preview = nil
+	state.editor_inspector_batch_preview_binding = {}
+	state.editor_inspector_batch_preview_selection_revision = 0
+	definition, found := editor_reflected_definition(state, binding)
+	if !found {
+		editor_reflected_destroy_component_batch(batch)
+		return false
+	}
+	if cancelled {
+		ok := true
+		for &item in batch.items {
+			entity_index, entity_found := ecs.entity_index_by_uuid(world, item.target_uuid)
+			if !entity_found ||
+			   !ecs.apply_registered_component_snapshot(world, entity_index, item.before) {
+				ok = false
+			}
+		}
+		editor_reflected_destroy_component_batch(batch)
+		editor_recompute_scene_dirty(state)
+		return ok
+	}
+	for &item in batch.items {
+		entity_index, entity_found := ecs.entity_index_by_uuid(world, item.target_uuid)
+		if !entity_found {
+			editor_reflected_destroy_component_batch(batch)
+			return false
+		}
+		item.after = capture_component_snapshot_pointer(world, entity_index, definition)
+		if item.after == nil {
+			editor_reflected_destroy_component_batch(batch)
+			return false
+		}
+	}
+	if state.editor_simulation_stopped {
+		for item in batch.items {
+			editor_mark_scene_uuid_dirty(state, item.target_uuid)
+		}
+		editor_history_push_transaction(state, {component_batch = batch})
+	} else {
+		for item in batch.items {
+			if entity_index, entity_found := ecs.entity_index_by_uuid(world, item.target_uuid);
+			   entity_found {
+				_ = editor_stage_play_component(state, world, entity_index, definition)
+			}
+		}
+		editor_reflected_destroy_component_batch(batch)
+	}
+	return true
+}
+
 editor_reflected_preview_number :: proc(
 	state: ^State,
 	world: ^shared.World,
 	binding: shared.Editor_UI_Component,
 	number: f32,
 ) -> bool {
+	if binding.batch {
+		return editor_reflected_preview_batch_text(
+			state,
+			world,
+			binding,
+			fmt.tprintf("%.9g", number),
+		)
+	}
 	definition, found := editor_reflected_definition(state, binding)
 	if !found {
 		return false
@@ -1704,6 +2184,9 @@ editor_reflected_finish_number_scrub :: proc(
 	before_number, after_number: f32,
 	cancelled: bool,
 ) -> bool {
+	if binding.batch {
+		return editor_reflected_finish_batch_preview(state, world, binding, cancelled)
+	}
 	if cancelled {
 		result := editor_reflected_preview_number(state, world, binding, before_number)
 		editor_recompute_scene_dirty(state)
@@ -1759,6 +2242,9 @@ editor_reflected_apply_text :: proc(
 	binding: shared.Editor_UI_Component,
 	text: string,
 ) -> bool {
+	if binding.batch {
+		return editor_reflected_apply_batch_text(state, world, binding, text)
+	}
 	definition, found := editor_reflected_definition(state, binding)
 	if !found {
 		return false
@@ -1789,6 +2275,9 @@ editor_reflected_apply_bool :: proc(
 	binding: shared.Editor_UI_Component,
 	checked: bool,
 ) -> bool {
+	if binding.batch {
+		return editor_reflected_apply_batch_bool(state, world, binding, checked)
+	}
 	definition, found := editor_reflected_definition(state, binding)
 	if !found {
 		return false
@@ -2365,6 +2854,51 @@ editor_reflected_preview_color :: proc(
 	if !found {
 		return false
 	}
+	if binding.batch {
+		if !editor_reflected_begin_batch_preview(state, world, binding, definition) {
+			return false
+		}
+		previews: [dynamic]Editor_Component_Structural_Change
+		defer {
+			for &item in previews {
+				destroy_component_snapshot_pointer(item.after)
+			}
+			delete(previews)
+		}
+		for original in state.editor_inspector_batch_preview.items {
+			entity_index, entity_found := ecs.entity_index_by_uuid(world, original.target_uuid)
+			if !entity_found {
+				return false
+			}
+			after := capture_component_snapshot_pointer(world, entity_index, definition)
+			if after == nil ||
+			   !editor_reflected_set_snapshot_color(
+					   after,
+					   definition,
+					   binding,
+					   value,
+					   component_count,
+				   ) {
+				destroy_component_snapshot_pointer(after)
+				return false
+			}
+			append(
+				&previews,
+				Editor_Component_Structural_Change {
+					target_uuid = original.target_uuid,
+					after = after,
+				},
+			)
+		}
+		for &preview in previews {
+			entity_index, _ := ecs.entity_index_by_uuid(world, preview.target_uuid)
+			if !ecs.apply_registered_component_snapshot(world, entity_index, preview.after) {
+				return false
+			}
+			editor_mark_scene_uuid_dirty(state, preview.target_uuid)
+		}
+		return true
+	}
 	_, target_index, target_ok := inspector_target(world, binding)
 	if !target_ok {
 		return false
@@ -2407,6 +2941,9 @@ editor_reflected_finish_color :: proc(
 	before_value, after_value: shared.Vec4,
 	component_count: int,
 ) -> bool {
+	if binding.batch {
+		return editor_reflected_finish_batch_preview(state, world, binding, false)
+	}
 	if before_value == after_value {
 		editor_recompute_scene_dirty(state)
 		return true

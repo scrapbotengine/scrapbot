@@ -695,6 +695,9 @@ State :: struct {
 	editor_history_clean_valid: bool,
 	editor_play_changes: [dynamic]Editor_Play_Change,
 	editor_play_structural_changes: [dynamic]Editor_Edit_Transaction,
+	editor_inspector_batch_preview: ^Editor_Component_Batch_Change,
+	editor_inspector_batch_preview_binding: shared.Editor_UI_Component,
+	editor_inspector_batch_preview_selection_revision: u64,
 	editor_pick_requested: bool,
 	editor_pick_position: shared.Vec2,
 	editor_pick_toggle_selection: bool,
@@ -1393,6 +1396,7 @@ editor_selection_changed :: proc(state: ^State) {
 	if state == nil {
 		return
 	}
+	editor_reflected_clear_batch_preview(state)
 	state.editor_selection_revision += 1
 	state.editor_has_selection = len(state.editor_selected_uuids) > 0
 	state.editor_snapshot_valid = false
@@ -1602,6 +1606,7 @@ editor_play_mode_active :: proc(state: ^State) -> bool {
 
 destroy :: proc(state: ^State) {
 	if state == nil { return }
+	editor_reflected_clear_batch_preview(state)
 	editor_history_clear(state)
 	editor_clear_play_changes(state)
 	delete(state.input_original_text)
@@ -8980,6 +8985,13 @@ paint_node :: proc(state: ^State, world: ^shared.World, node_index, depth: int) 
 	}
 	if node.checkbox_index >= 0 && node.checkbox_index < len(world.ui_checkboxes) {
 		checkbox := world.ui_checkboxes[node.checkbox_index]
+		checkbox_mixed := false
+		if node.entity.index >= 0 && int(node.entity.index) < len(world.entities) {
+			entity := world.entities[int(node.entity.index)]
+			if entity.editor_ui_index >= 0 && entity.editor_ui_index < len(world.editor_uis) {
+				checkbox_mixed = world.editor_uis[entity.editor_ui_index].mixed
+			}
+		}
 		box_size := min(max(checkbox.box_size, 1), min(node.rect.width, node.rect.height))
 		box_rect := Rect {
 			node.rect.x + layout.padding.w,
@@ -8988,7 +9000,7 @@ paint_node :: proc(state: ^State, world: ^shared.World, node_index, depth: int) 
 			box_size,
 		}
 		box_background := checkbox.background
-		if checkbox.checked { box_background = checkbox.checked_background }
+		if checkbox.checked || checkbox_mixed { box_background = checkbox.checked_background }
 		if !checkbox.read_only {
 			if node.active && checkbox.active_background.w > 0 {
 				box_background = checkbox.active_background
@@ -9011,7 +9023,7 @@ paint_node :: proc(state: ^State, world: ^shared.World, node_index, depth: int) 
 				border_width = checkbox.border_width,
 			},
 		); err != "" { return err }
-		if checkbox.checked {
+		if checkbox.checked || checkbox_mixed {
 			inset := checkbox.check_inset
 			if inset < 0 {
 				inset = max(box_size * 0.22, 3)
@@ -9020,16 +9032,21 @@ paint_node :: proc(state: ^State, world: ^shared.World, node_index, depth: int) 
 			if check_corner_radius < 0 {
 				check_corner_radius = max(box_size * 0.12, 1.25)
 			}
+			check_rect := Rect {
+				box_rect.x + inset,
+				box_rect.y + inset,
+				max(box_rect.width - inset * 2, 0),
+				max(box_rect.height - inset * 2, 0),
+			}
+			if checkbox_mixed {
+				check_rect.y = box_rect.y + box_rect.height * 0.5 - 1
+				check_rect.height = 2
+			}
 			if err := append_paint(
 				state,
 				{
 					kind = .Checkmark,
-					rect = {
-						box_rect.x + inset,
-						box_rect.y + inset,
-						max(box_rect.width - inset * 2, 0),
-						max(box_rect.height - inset * 2, 0),
-					},
+					rect = check_rect,
 					color = checkbox.check_color,
 					corner_radius = check_corner_radius,
 				},

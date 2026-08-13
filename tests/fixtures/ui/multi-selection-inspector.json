@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "timeout_frames": 180,
+  "actions": [
+    {"action": "key", "key": "stop"},
+    {"action": "click", "target": {"text": "Left Cube", "origin": "editor"}},
+    {"action": "click", "target": {"text": "Right Cube", "origin": "editor"}, "shift": true},
+    {"action": "expect_editor", "expect": "selected_count", "text": "2"},
+    {"action": "type", "target": {"name": "__scrapbot_editor_inspector_input_0", "origin": "editor"}, "text": "6.25"},
+    {"action": "key", "key": "enter"},
+    {"action": "wait", "frames": 2},
+    {"action": "expect", "target": {"name": "__scrapbot_editor_inspector_input_0", "origin": "editor"}, "expect": "text", "text": "6.25"},
+    {"action": "expect_editor", "expect": "history_count", "text": "1"},
+    {"action": "expect_editor", "expect": "history_cursor", "text": "1"},
+    {"action": "capture", "target": {"component": "scrapbot.transform", "origin": "editor"}, "padding": 8}
+  ]
+}

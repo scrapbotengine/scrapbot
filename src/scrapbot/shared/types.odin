@@ -1715,6 +1715,8 @@ Editor_UI_Component :: struct {
 	entity_reference: Entity_UUID,
 	resource_id: Resource_UUID,
 	read_only: bool,
+	batch: bool,
+	mixed: bool,
 	input_original_number: f32,
 	input_has_original_number: bool,
 	input_was_scrubbed: bool,

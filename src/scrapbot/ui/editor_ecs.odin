@@ -886,7 +886,9 @@ editor_ui_consume_color_picker_state :: proc(
 		}
 	}
 	if interaction.cancelled && binding.color_has_original {
-		if binding.resource_id != (shared.Resource_UUID{}) {
+		if binding.batch && binding.reflected_component_id != shared.INVALID_COMPONENT_ID {
+			_ = editor_reflected_finish_batch_preview(state, world, binding^, true)
+		} else if binding.resource_id != (shared.Resource_UUID{}) {
 			_ = editor_resource_write_color(state, binding^, binding.color_original)
 		} else if binding.reflected_component_id != shared.INVALID_COMPONENT_ID {
 			_ = editor_reflected_preview_color(
@@ -3801,6 +3803,7 @@ editor_ui_ensure_enum_menu_item :: proc(
 	role.reflected_field_index = binding.reflected_field_index
 	role.reflected_path = binding.reflected_path
 	role.reflected_path_count = binding.reflected_path_count
+	role.batch = binding.batch
 	return item
 }
 
@@ -3828,6 +3831,7 @@ editor_ui_build_enum_menu :: proc(
 	menu_binding.reflected_field_index = binding.reflected_field_index
 	menu_binding.reflected_path = binding.reflected_path
 	menu_binding.reflected_path_count = binding.reflected_path_count
+	menu_binding.batch = binding.batch
 	definition, definition_found := editor_reflected_definition(state, binding)
 	_, target_index, target_found := inspector_target(world, binding)
 	if !definition_found || !target_found {
@@ -3978,6 +3982,7 @@ editor_ui_ensure_entity_menu_item :: proc(
 	role.reflected_field_index = binding.reflected_field_index
 	role.reflected_path = binding.reflected_path
 	role.reflected_path_count = binding.reflected_path_count
+	role.batch = binding.batch
 	role.entity_reference = entity_reference
 	role.read_only = false
 	return item
@@ -4024,6 +4029,7 @@ editor_ui_build_entity_menu :: proc(
 	menu_binding.reflected_field_index = binding.reflected_field_index
 	menu_binding.reflected_path = binding.reflected_path
 	menu_binding.reflected_path_count = binding.reflected_path_count
+	menu_binding.batch = binding.batch
 	filter_value := world.ui_inputs[world.entities[filter].ui_input_index]
 	filter_value.text = ""
 	_ = ecs.set_ui_input(world, filter, filter_value)
@@ -4123,6 +4129,7 @@ Inspector_ECS_Builder :: struct {
 	component_menu_visible: bool,
 	resource_menu_visible: bool,
 	component_read_only: bool,
+	batch: bool,
 	component_play_status: string,
 	component_persistence_visual: Editor_Component_Persistence_Visual,
 }
@@ -4159,6 +4166,31 @@ editor_component_persistence_visual :: proc(
 		return .Temporary
 	}
 	return .Persistent
+}
+
+editor_component_batch_persistence_visual :: proc(
+	state: ^State,
+	world: ^shared.World,
+	definition: ^component.Definition,
+) -> Editor_Component_Persistence_Visual {
+	if state == nil || world == nil || definition == nil {
+		return .Read_Only
+	}
+	visual := Editor_Component_Persistence_Visual.Persistent
+	for id in editor_selection_uuids(state) {
+		entity_index, found := ecs.entity_index_by_uuid(world, id)
+		if !found || !editor_entity_has_registered_component(world, entity_index, definition) {
+			return .Read_Only
+		}
+		next := editor_component_persistence_visual(state, world, entity_index, definition)
+		if next == .Read_Only {
+			return .Read_Only
+		}
+		if next == .Temporary {
+			visual = .Temporary
+		}
+	}
+	return visual
 }
 
 editor_ui_apply_component_persistence_visual :: proc(
@@ -4676,20 +4708,46 @@ editor_ui_begin_inspector_component :: proc(
 	definition_id := shared.INVALID_COMPONENT_ID
 	if definition != nil {
 		definition_id = definition.id
-		editable, status := editor_component_play_editable(
-			builder.state,
-			builder.world,
-			int(builder.target.index),
-			definition,
-		)
-		builder.component_read_only = !editable
-		builder.component_play_status = status
-		builder.component_persistence_visual = editor_component_persistence_visual(
-			builder.state,
-			builder.world,
-			int(builder.target.index),
-			definition,
-		)
+		if builder.batch {
+			builder.component_read_only = false
+			for id in editor_selection_uuids(builder.state) {
+				entity_index, found := ecs.entity_index_by_uuid(builder.world, id)
+				if !found {
+					builder.component_read_only = true
+					break
+				}
+				editable, _ := editor_component_play_editable(
+					builder.state,
+					builder.world,
+					entity_index,
+					definition,
+				)
+				if !editable {
+					builder.component_read_only = true
+					break
+				}
+			}
+			builder.component_persistence_visual = editor_component_batch_persistence_visual(
+				builder.state,
+				builder.world,
+				definition,
+			)
+		} else {
+			editable, status := editor_component_play_editable(
+				builder.state,
+				builder.world,
+				int(builder.target.index),
+				definition,
+			)
+			builder.component_read_only = !editable
+			builder.component_play_status = status
+			builder.component_persistence_visual = editor_component_persistence_visual(
+				builder.state,
+				builder.world,
+				int(builder.target.index),
+				definition,
+			)
+		}
 	}
 	if binding.target != builder.target || binding.reflected_component_id != definition_id {
 		panel_value.collapsed =
@@ -4697,6 +4755,7 @@ editor_ui_begin_inspector_component :: proc(
 	}
 	can_remove :=
 		definition != nil &&
+		!builder.batch &&
 		editor_authoring_definition_is_supported(definition) &&
 		editor_component_membership_available(
 			builder.state,
@@ -4724,7 +4783,7 @@ editor_ui_begin_inspector_component :: proc(
 		panel,
 		builder.component_persistence_visual,
 	)
-	if builder.component_play_status != "" {
+	if builder.component_play_status != "" && !builder.batch {
 		editor_ui_inspector_field_values(
 			builder,
 			"PERSISTENCE",
@@ -4821,6 +4880,8 @@ editor_ui_inspector_field_values :: proc(
 		   builder.state.has_focused_input &&
 		   builder.state.focused_input == builder.world.entities[input_entity].id &&
 		   (role.target != builder.target ||
+				   role.batch !=
+					   (builder.batch && reflected_component_id != shared.INVALID_COMPONENT_ID) ||
 				   role.reflected_component_id != reflected_component_id ||
 				   role.reflected_field_index != reflected_field_index ||
 				   !editor_ui_reflected_path_equal(role, reflected_path) ||
@@ -4846,6 +4907,26 @@ editor_ui_inspector_field_values :: proc(
 		role.reflected_field_index = reflected_field_index
 		editor_ui_set_reflected_path(role, reflected_path)
 		role.resource_id = resource_id
+		role.batch = builder.batch && reflected_component_id != shared.INVALID_COMPONENT_ID
+		role.mixed = editor_reflected_binding_mixed(builder.state, builder.world, role^)
+		delete(value_input.icon)
+		value_input.icon_set = {}
+		value_input.icon = ""
+		value_input.icon_color = {}
+		if role.mixed {
+			theme := reduced_dark_theme()
+			value_input.icon_set = shared.builtin_icon_set_uuid()
+			value_input.icon, _ = strings.clone("minus")
+			value_input.icon_position = .Trailing
+			value_input.icon_size = 12
+			value_input.icon_inset = 2
+			value_input.icon_color = theme.palette.axis_w
+			if builder.state == nil ||
+			   !builder.state.has_focused_input ||
+			   builder.state.focused_input != builder.world.entities[input_entity].id {
+				_ = ecs.set_ui_input_value(builder.world, input_entity, "")
+			}
+		}
 		editor_ui_set_numeric_metadata(value_input, field)
 		if reflected_component_id != shared.INVALID_COMPONENT_ID {
 			editor_ui_set_reflected_numeric_metadata(value_input, reflected_field_type)
@@ -4967,6 +5048,14 @@ editor_ui_inspector_bool :: proc(
 	role.reflected_component_id = reflected_component_id
 	role.reflected_field_index = reflected_field_index
 	editor_ui_set_reflected_path(role, reflected_path)
+	role.batch = builder.batch && reflected_component_id != shared.INVALID_COMPONENT_ID
+	role.mixed = editor_reflected_binding_mixed(builder.state, builder.world, role^)
+	if role.mixed {
+		checkbox.checked = false
+		checkbox.checked_background = reduced_dark_theme().palette.axis_w
+	} else {
+		checkbox.checked_background = theme_checkbox(reduced_dark_theme()).checked_background
+	}
 	builder.row_count += 1
 }
 
@@ -5014,6 +5103,20 @@ editor_ui_inspector_enum :: proc(
 	role.reflected_field_index = reflected_field_index
 	editor_ui_set_reflected_path(role, reflected_path)
 	role.read_only = read_only
+	role.batch = builder.batch
+	role.mixed = editor_reflected_binding_mixed(builder.state, builder.world, role^)
+	button_value := builder.world.ui_buttons[builder.world.entities[button].ui_button_index]
+	button_value.icon_set = {}
+	button_value.icon = ""
+	if role.mixed {
+		button_value.text = " "
+		button_value.icon_set = shared.builtin_icon_set_uuid()
+		button_value.icon = "minus"
+		button_value.icon_size = 12
+		button_value.icon_inset = 6
+		button_value.color = reduced_dark_theme().palette.axis_w
+	}
+	_ = ecs.set_ui_button(builder.world, button, button_value)
 	builder.row_count += 1
 }
 
@@ -5063,6 +5166,20 @@ editor_ui_inspector_entity_reference :: proc(
 	editor_ui_set_reflected_path(role, reflected_path)
 	role.entity_reference = value
 	role.read_only = read_only
+	role.batch = builder.batch
+	role.mixed = editor_reflected_binding_mixed(builder.state, builder.world, role^)
+	button_value := builder.world.ui_buttons[builder.world.entities[button].ui_button_index]
+	button_value.icon_set = {}
+	button_value.icon = ""
+	if role.mixed {
+		button_value.text = " "
+		button_value.icon_set = shared.builtin_icon_set_uuid()
+		button_value.icon = "minus"
+		button_value.icon_size = 12
+		button_value.icon_inset = 6
+		button_value.color = reduced_dark_theme().palette.axis_w
+	}
+	_ = ecs.set_ui_button(builder.world, button, button_value)
 	builder.row_count += 1
 }
 
@@ -5415,6 +5532,8 @@ editor_ui_inspector_color :: proc(
 		binding.reflected_field_index == reflected_field_index &&
 		editor_ui_reflected_path_equal(binding, reflected_path) &&
 		binding.resource_id == resource_id &&
+		binding.batch ==
+			(builder.batch && reflected_component_id != shared.INVALID_COMPONENT_ID) &&
 		builder.world.ui_layouts[builder.world.entities[picker_entity].ui_layout_index].popup_open
 	picker.value = value
 	picker.hdr = hdr
@@ -5438,6 +5557,21 @@ editor_ui_inspector_color :: proc(
 	binding.resource_id = resource_id
 	binding.color_component_count = component_count
 	binding.read_only = read_only
+	binding.batch = builder.batch && reflected_component_id != shared.INVALID_COMPONENT_ID
+	binding.mixed = editor_reflected_binding_mixed(builder.state, builder.world, binding^)
+	button_value := builder.world.ui_buttons[builder.world.entities[button].ui_button_index]
+	button_value.icon_set = {}
+	button_value.icon = ""
+	if binding.mixed {
+		theme := reduced_dark_theme()
+		button_layout.background = theme.palette.control
+		button_value.icon_set = shared.builtin_icon_set_uuid()
+		button_value.icon = "minus"
+		button_value.icon_size = 12
+		button_value.icon_inset = 6
+		button_value.color = theme.palette.axis_w
+	}
+	_ = ecs.set_ui_button(builder.world, button, button_value)
 	builder.row_count += 1
 }
 
@@ -5882,6 +6016,24 @@ editor_ui_build_type_inspected_component_panels :: proc(
 			   !editor_entity_has_registered_component(builder.world, entity_index, definition) {
 				continue
 			}
+			if builder.batch {
+				shared_by_selection := true
+				for id in editor_selection_uuids(builder.state) {
+					selected_index, selected_found := ecs.entity_index_by_uuid(builder.world, id)
+					if !selected_found ||
+					   !editor_entity_has_registered_component(
+							   builder.world,
+							   selected_index,
+							   definition,
+						   ) {
+						shared_by_selection = false
+						break
+					}
+				}
+				if !shared_by_selection {
+					continue
+				}
+			}
 			component_value, found := editor_reflected_snapshot_component_value(
 				&snapshot.entity,
 				definition,
@@ -5910,7 +6062,8 @@ editor_ui_build_type_inspected_component_panels :: proc(
 			}
 		}
 	}
-	if editor_component_membership_available(builder.state, builder.world, entity_index) {
+	if !builder.batch &&
+	   editor_component_membership_available(builder.state, builder.world, entity_index) {
 		editor_ui_build_component_controls(builder, entity_index)
 	}
 	editor_ui_finish_inspector(builder)
@@ -5947,6 +6100,7 @@ editor_ui_build_inspector_panels :: proc(
 		return
 	}
 	builder.target = world.entities[entity_index].id
+	builder.batch = editor_selection_count(state) > 1
 	if !editor_ui_build_type_inspected_component_panels(&builder, entity_index) {
 		editor_ui_finish_inspector(&builder)
 	}
@@ -6947,7 +7101,10 @@ refresh_editor_ecs_snapshot :: proc(state: ^State, world: ^shared.World) {
 			}
 		}
 		if name_input, found := editor_ui_entity(world, .Inspector_Entity_Name); found {
-			hidden := !state.editor_has_selection || state.editor_has_resource_selection
+			hidden :=
+				!state.editor_has_selection ||
+				state.editor_has_resource_selection ||
+				editor_selection_count(state) > 1
 			editor_ui_set_hidden(world, name_input, hidden)
 			if !hidden {
 				selected_index := int(state.editor_selected_entity.index)

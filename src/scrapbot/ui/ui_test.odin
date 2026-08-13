@@ -6555,6 +6555,197 @@ test_reflected_color_picker_preview_finishes_as_one_undoable_transaction :: proc
 }
 
 @(test)
+test_multi_selection_reflected_inspector_edits_are_atomic_mixed_and_undoable :: proc(
+	t: ^testing.T,
+) {
+	scene := shared.Scene{}
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = ui_test_id("Batch Inspector First"),
+			name = "First",
+			has_transform = true,
+			transform = {position = {1, 2, 3}, scale = {1, 1, 1}},
+		},
+		shared.Scene_Entity {
+			id = ui_test_id("Batch Inspector Second"),
+			name = "Second",
+			has_transform = true,
+			transform = {position = {9, 2, 3}, scale = {1, 1, 1}},
+			has_point_light = true,
+			point_light = {intensity = 3, range = 4},
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	registry: component.Registry
+	component.init_registry(&registry)
+	transform, found := component.find_definition(&registry, "scrapbot.transform")
+	testing.expect(t, found)
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	state.component_registry = &registry
+	state.editor_visible = true
+	state.editor_simulation_playing = false
+	state.editor_simulation_stopped = true
+	editor_set_entity_selection(
+		state,
+		&world,
+		[]shared.Entity{world.entities[0].id, world.entities[1].id},
+	)
+	binding := shared.Editor_UI_Component {
+		target = world.entities[1].id,
+		reflected_component_id = transform.id,
+		reflected_field_index = 0,
+		inspector_axis = .X,
+		batch = true,
+	}
+	testing.expect(t, editor_reflected_binding_mixed(state, &world, binding))
+	testing.expect(t, editor_reflected_input_valid(state, &world, binding, "12.5"))
+	testing.expect(t, editor_reflected_apply_text(state, &world, binding, "12.5"))
+	testing.expect_value(
+		t,
+		world.transforms[world.entities[0].transform_index].position.x,
+		f32(12.5),
+	)
+	testing.expect_value(
+		t,
+		world.transforms[world.entities[1].transform_index].position.x,
+		f32(12.5),
+	)
+	testing.expect(t, !editor_reflected_binding_mixed(state, &world, binding))
+	testing.expect_value(t, state.editor_history_count, 1)
+	testing.expect(t, state.editor_history[0].component_batch != nil)
+	testing.expect_value(t, len(state.editor_history[0].component_batch.items), 2)
+	testing.expect(t, editor_undo(state, &world))
+	testing.expect_value(t, world.transforms[world.entities[0].transform_index].position.x, f32(1))
+	testing.expect_value(t, world.transforms[world.entities[1].transform_index].position.x, f32(9))
+	testing.expect(t, editor_redo(state, &world))
+	testing.expect_value(
+		t,
+		world.transforms[world.entities[0].transform_index].position.x,
+		f32(12.5),
+	)
+	testing.expect_value(
+		t,
+		world.transforms[world.entities[1].transform_index].position.x,
+		f32(12.5),
+	)
+	testing.expect(t, editor_undo(state, &world))
+	testing.expect(t, editor_reflected_preview_number(state, &world, binding, 20))
+	testing.expect_value(
+		t,
+		world.transforms[world.entities[0].transform_index].position.x,
+		f32(20),
+	)
+	testing.expect_value(
+		t,
+		world.transforms[world.entities[1].transform_index].position.x,
+		f32(20),
+	)
+	testing.expect(t, editor_reflected_finish_number_scrub(state, &world, binding, 9, 20, true))
+	testing.expect_value(t, world.transforms[world.entities[0].transform_index].position.x, f32(1))
+	testing.expect_value(t, world.transforms[world.entities[1].transform_index].position.x, f32(9))
+	testing.expect_value(t, state.editor_history_cursor, 0)
+	testing.expect(t, editor_reflected_preview_number(state, &world, binding, 20))
+	testing.expect(t, editor_reflected_finish_number_scrub(state, &world, binding, 9, 20, false))
+	testing.expect_value(t, state.editor_history_count, 1)
+	testing.expect_value(t, state.editor_history_cursor, 1)
+	testing.expect(t, editor_undo(state, &world))
+	testing.expect_value(t, world.transforms[world.entities[0].transform_index].position.x, f32(1))
+	testing.expect_value(t, world.transforms[world.entities[1].transform_index].position.x, f32(9))
+	testing.expect(t, editor_redo(state, &world))
+
+	state.editor_snapshot_valid = false
+	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
+	point_light_panel_found := false
+	mixed_position_input_found := false
+	for role in world.editor_uis {
+		if role.role == .Inspector_Panel && role.reflected_component_id >= 0 {
+			definition, definition_found := component.find_definition_by_id(
+				&registry,
+				role.reflected_component_id,
+			)
+			if definition_found && definition.name == "scrapbot.point_light" {
+				point_light_panel_found = true
+			}
+		}
+		if role.role == .Inspector_Input &&
+		   role.reflected_component_id == transform.id &&
+		   role.reflected_field_index == 0 &&
+		   role.inspector_axis == .X {
+			mixed_position_input_found = role.batch && !role.mixed
+		}
+	}
+	testing.expect(t, !point_light_panel_found)
+	testing.expect(t, mixed_position_input_found)
+}
+
+@(test)
+test_multi_selection_reflected_inspector_rejects_partial_play_mode_edits :: proc(t: ^testing.T) {
+	scene := shared.Scene{}
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = ui_test_id("Batch Play First"),
+			name = "First",
+			has_transform = true,
+			transform = {position = {1, 0, 0}, scale = {1, 1, 1}},
+		},
+		shared.Scene_Entity {
+			id = ui_test_id("Batch Play Second"),
+			name = "Second",
+			has_transform = true,
+			transform = {position = {2, 0, 0}, scale = {1, 1, 1}},
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	registry: component.Registry
+	component.init_registry(&registry)
+	transform, found := component.find_definition(&registry, "scrapbot.transform")
+	testing.expect(t, found)
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	state.component_registry = &registry
+	state.editor_visible = true
+	state.editor_simulation_playing = true
+	state.editor_simulation_stopped = false
+	editor_set_entity_selection(
+		state,
+		&world,
+		[]shared.Entity{world.entities[0].id, world.entities[1].id},
+	)
+	binding := shared.Editor_UI_Component {
+		target = world.entities[1].id,
+		reflected_component_id = transform.id,
+		reflected_field_index = 0,
+		inspector_axis = .X,
+		batch = true,
+	}
+	ecs.mark_project_system_component_written(&world, 1, transform.id)
+	testing.expect(t, !editor_reflected_input_valid(state, &world, binding, "8"))
+	testing.expect(t, !editor_reflected_apply_text(state, &world, binding, "8"))
+	testing.expect_value(t, world.transforms[world.entities[0].transform_index].position.x, f32(1))
+	testing.expect_value(t, world.transforms[world.entities[1].transform_index].position.x, f32(2))
+	testing.expect_value(t, len(state.editor_play_changes), 0)
+	testing.expect_value(t, state.editor_history_count, 0)
+
+	world.entities[1].project_system_written_components = {}
+	testing.expect(t, editor_reflected_apply_text(state, &world, binding, "8"))
+	testing.expect_value(t, world.transforms[world.entities[0].transform_index].position.x, f32(8))
+	testing.expect_value(t, world.transforms[world.entities[1].transform_index].position.x, f32(8))
+	testing.expect_value(t, len(state.editor_play_changes), 2)
+	testing.expect_value(t, state.editor_history_count, 0)
+}
+
+@(test)
 test_editor_component_picker_uses_registry_hierarchy_and_structural_history :: proc(
 	t: ^testing.T,
 ) {
