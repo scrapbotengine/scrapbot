@@ -127,17 +127,15 @@ editor_scene_camera_system :: proc(
 		transform.rotation.z = 0
 	}
 	if input.orbit_active {
-		component.orbit_distance = max(
-			component.orbit_distance,
-			EDITOR_SCENE_CAMERA_MIN_ORBIT_DISTANCE,
-		)
-		transform.position = shared.camera_vec3_add(
-			component.orbit_target,
-			shared.camera_vec3_mul(
-				shared.camera_forward(transform.rotation),
-				-component.orbit_distance,
-			),
-		)
+		if input.look_delta != (shared.Vec2{}) {
+			transform.position = shared.camera_vec3_add(
+				component.orbit_target,
+				shared.camera_vec3_mul(
+					shared.camera_forward(transform.rotation),
+					-component.orbit_distance,
+				),
+			)
+		}
 	}
 
 	direction := shared.camera_vec3_add(
@@ -178,6 +176,27 @@ editor_scene_camera_system :: proc(
 			),
 		)
 	}
+}
+
+set_editor_scene_camera_orbit_distance :: proc(world: ^World, distance: f32) -> bool {
+	entity_index, component, ok := editor_scene_camera_entity(world)
+	if !ok || entity_index < 0 || entity_index >= len(world.entities) || component == nil {
+		return false
+	}
+	entity := &world.entities[entity_index]
+	if entity.transform_index < 0 || entity.transform_index >= len(world.transforms) {
+		return false
+	}
+	if distance < EDITOR_SCENE_CAMERA_MIN_ORBIT_DISTANCE {
+		return false
+	}
+	transform := world.transforms[entity.transform_index]
+	component.orbit_target = shared.camera_vec3_add(
+		transform.position,
+		shared.camera_vec3_mul(shared.camera_forward(transform.rotation), distance),
+	)
+	component.orbit_distance = distance
+	return true
 }
 
 focus_editor_scene_camera :: proc(

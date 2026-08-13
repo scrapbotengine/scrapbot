@@ -146,6 +146,14 @@ The point of interest follows ordinary fly translation and the center of free-lo
 selection replaces it with the selected renderables' combined bounds, so subsequent middle-mouse
 movement orbits their shared center without changing any Transform.
 
+Right- and middle-mouse capture uses Scrapbot's frame-local absolute pointer positions, confines the
+pointer to the editor window, and wraps it at window edges. Camera navigation does not enter OS
+relative-mouse mode, so capture cannot inject synthetic relative motion into a gesture.
+Starting an orbit over visible scene geometry uses the surface depth under the pointer to place the
+point of interest on the current view axis. This keeps the first orbit attached to what you are
+looking at instead of an arbitrary distance in front of the project camera, while preserving the
+exact current framing. Empty-space orbit retains the current point of interest.
+
 The transient fly camera inherits the project camera's field of view, far plane, and render policy,
 but uses a near plane no larger than one centimeter. This keeps close surface inspection coherent;
 the fly camera does not currently collide with project geometry, so crossing inside a closed mesh

@@ -571,6 +571,7 @@ Editor_Fly_Camera_Input :: struct {
 	dolly: f32,
 	look_active: bool,
 	orbit_active: bool,
+	orbit_started: bool,
 	move_fast: bool,
 }
 

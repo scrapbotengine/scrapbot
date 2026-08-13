@@ -1221,6 +1221,16 @@ run_frame_system_unmeasured :: proc(
 		if config.ui_driver != nil {
 			camera_input = {}
 		}
+		if camera_input.orbit_started {
+			list := ecs.build_resource_render_list(world, config.resource_registry, true)
+			if ray, ray_ok := editor_pick_ray(&list, camera_pointer.position, viewport); ray_ok {
+				if hit, hit_ok := scene_raycast_nearest(&list, config.resource_registry, ray);
+				   hit_ok {
+					_ = ecs.set_editor_scene_camera_orbit_distance(world, hit.distance)
+				}
+			}
+			ecs.destroy_render_list(&list)
+		}
 		config.ui_state.editor_scene_camera_captures_input =
 			camera_input.look_active || camera_input.orbit_active
 		camera_system_start := time.tick_now()

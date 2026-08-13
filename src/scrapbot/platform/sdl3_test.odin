@@ -76,8 +76,9 @@ test_scene_camera_input_maps_navigation_only_while_looking :: proc(t: ^testing.T
 	testing.expect(t, active.look_delta == shared.Vec2{4, -2})
 	testing.expect(t, active.move_fast)
 
-	orbit := scene_camera_orbit_input({-3, 7}, 2)
+	orbit := scene_camera_orbit_input({-3, 7}, 2, true)
 	testing.expect(t, orbit.orbit_active)
+	testing.expect(t, orbit.orbit_started)
 	testing.expect(t, !orbit.look_active)
 	testing.expect_value(t, orbit.look_delta, shared.Vec2{-3, 7})
 	testing.expect_value(t, orbit.dolly, f32(2))
@@ -85,19 +86,17 @@ test_scene_camera_input_maps_navigation_only_while_looking :: proc(t: ^testing.T
 }
 
 @(test)
-test_scene_camera_capture_discards_relative_mode_warmup_deltas :: proc(t: ^testing.T) {
-	warmup_samples := SCENE_CAMERA_CAPTURE_WARMUP_SAMPLES
-	activation_warp := shared.Vec2{380, -240}
-	followup_warp := shared.Vec2{-380, 240}
-	user_delta := shared.Vec2{4, -2}
-
-	testing.expect(
+test_scene_camera_capture_starts_at_zero_and_uses_absolute_pointer_motion :: proc(t: ^testing.T) {
+	previous: shared.Vec2
+	valid := false
+	testing.expect(t, scene_camera_pointer_delta({400, 240}, &previous, &valid) == shared.Vec2{})
+	testing.expect(t, valid)
+	testing.expect_value(t, previous, shared.Vec2{400, 240})
+	testing.expect_value(
 		t,
-		scene_camera_capture_delta(activation_warp, &warmup_samples) == shared.Vec2{},
+		scene_camera_pointer_delta({407, 236}, &previous, &valid),
+		shared.Vec2{7, -4},
 	)
-	testing.expect(t, scene_camera_capture_delta(followup_warp, &warmup_samples) == shared.Vec2{})
-	testing.expect(t, warmup_samples == 0)
-	testing.expect(t, scene_camera_capture_delta(user_delta, &warmup_samples) == user_delta)
 }
 
 @(test)

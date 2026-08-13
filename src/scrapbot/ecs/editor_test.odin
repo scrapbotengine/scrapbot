@@ -199,6 +199,61 @@ test_editor_scene_camera_focus_preserves_view_direction_and_frames_bounds :: pro
 }
 
 @(test)
+test_editor_scene_camera_orbit_distance_preserves_pose_until_pointer_moves :: proc(t: ^testing.T) {
+	world: World
+	defer destroy_world(&world)
+	position := shared.Vec3{0, 0, 4}
+	rotation := shared.Vec3{}
+	testing.expect(t, set_editor_scene_camera_pose(&world, position, rotation))
+	_, component, component_ok := editor_scene_camera_entity(&world)
+	testing.expect(t, component_ok)
+	testing.expect(t, set_editor_scene_camera_orbit_distance(&world, 4))
+	testing.expect_value(t, component.orbit_target, shared.Vec3{})
+	testing.expect(t, math.abs(component.orbit_distance - 4) < 0.0001)
+	editor_scene_camera_system(&world, {orbit_active = true}, 0, true)
+	unchanged, unchanged_ok := active_camera_instance(&world, true)
+	testing.expect(t, unchanged_ok)
+	testing.expect_value(t, unchanged.transform.position, position)
+	testing.expect_value(t, unchanged.transform.rotation, rotation)
+
+	editor_scene_camera_system(&world, {look_delta = {14, -9}, orbit_active = true}, 0, true)
+	orbited, orbit_ok := active_camera_instance(&world, true)
+	testing.expect(t, orbit_ok)
+	testing.expect(t, orbited.transform.position != position)
+	to_target := shared.camera_vec3_add(
+		shared.Vec3{},
+		shared.camera_vec3_mul(orbited.transform.position, -1),
+	)
+	testing.expect(
+		t,
+		math.abs(
+			math.sqrt(shared.camera_vec3_dot(to_target, to_target)) - component.orbit_distance,
+		) <
+		0.0001,
+	)
+}
+
+@(test)
+test_editor_scene_camera_orbit_distance_keeps_off_axis_hit_from_recentering_view :: proc(
+	t: ^testing.T,
+) {
+	world: World
+	defer destroy_world(&world)
+	position := shared.Vec3{3, 2, 8}
+	rotation := shared.Vec3{-0.2, 0.4, 0}
+	testing.expect(t, set_editor_scene_camera_pose(&world, position, rotation))
+
+	// A ray hit under an off-center pointer supplies depth, not a literal target.
+	// Beginning the orbit must leave the current framing exactly untouched.
+	testing.expect(t, set_editor_scene_camera_orbit_distance(&world, 6.75))
+	editor_scene_camera_system(&world, {orbit_active = true}, 0, true)
+	camera, ok := active_camera_instance(&world, true)
+	testing.expect(t, ok)
+	testing.expect_value(t, camera.transform.position, position)
+	testing.expect_value(t, camera.transform.rotation, rotation)
+}
+
+@(test)
 test_editor_scene_camera_pose_can_be_set_for_semantic_diagnostics :: proc(t: ^testing.T) {
 	world: World
 	defer destroy_world(&world)
