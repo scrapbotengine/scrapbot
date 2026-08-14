@@ -3929,6 +3929,32 @@ wgpu_update_gpu_instance_transform :: proc(
 	record.scale = {transform.scale.x, transform.scale.y, transform.scale.z, 0}
 }
 
+wgpu_update_gpu_instance_record_transform :: proc(
+	record: ^WGPU_GPU_Instance,
+	instance: Render_Instance,
+	geometry: ^resources.Geometry,
+) {
+	if record == nil || geometry == nil {
+		return
+	}
+	model := wgpu_build_model(instance.transform)
+	record.model = model
+	record.normal_model = wgpu_build_normal_model_from_model(model, instance.transform.scale)
+	record.render_flags[2] =
+		1 if wgpu_transform_preserves_meshlet_cones(instance.transform.scale) else 0
+	record.bounds = wgpu_instance_bounds(instance, geometry, model)
+}
+
+wgpu_update_gpu_instance_transform_state :: proc(
+	record: ^WGPU_GPU_Instance,
+	transform_record: ^WGPU_GPU_Instance_Transform,
+	instance: Render_Instance,
+	geometry: ^resources.Geometry,
+) {
+	wgpu_update_gpu_instance_record_transform(record, instance, geometry)
+	wgpu_update_gpu_instance_transform(transform_record, instance.transform)
+}
+
 wgpu_build_gpu_instance :: proc(
 	instance: Render_Instance,
 	geometry: ^resources.Geometry,
@@ -4266,11 +4292,18 @@ wgpu_sync_dirty_instance_slot :: proc(
 				batch_indices,
 				lod_count,
 			)
+		} else if transform_input_changed {
+			wgpu_update_gpu_instance_transform_state(
+				&renderer.gpu_instance_records[slot],
+				&renderer.gpu_instance_transform_records[slot],
+				instance,
+				geometry,
+			)
 		}
 		if static_changed {
 			append(&renderer.gpu_dirty_indices, slot)
 		}
-		if transform_input_changed {
+		if transform_input_changed && (static_changed || cpu_culling) {
 			renderer.gpu_instance_transform_records[slot] = wgpu_build_gpu_instance_transform(
 				instance,
 				geometry,
@@ -5063,15 +5096,20 @@ wgpu_prepare_gpu_draw_batches :: proc(
 			if previous_transform^ == instance.transform {
 				continue
 			}
+			geometry, geometry_ok := resources.get_geometry(registry, instance.geometry.handle)
+			if !geometry_ok {
+				continue
+			}
 			previous_transform^ = instance.transform
-			wgpu_update_gpu_instance_transform(
+			wgpu_update_gpu_instance_transform_state(
+				&renderer.gpu_instance_records[slot],
 				&renderer.gpu_instance_transform_records[slot],
-				instance.transform,
+				instance^,
+				geometry,
 			)
 			if cpu_culling {
-				geometry, geometry_ok := resources.get_geometry(registry, instance.geometry.handle)
 				material, material_ok := resources.get_material(registry, instance.material.handle)
-				if !geometry_ok || !material_ok {
+				if !material_ok {
 					continue
 				}
 				renderer.gpu_instance_records[slot] = wgpu_build_gpu_instance(

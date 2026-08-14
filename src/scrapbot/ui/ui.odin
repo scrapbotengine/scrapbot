@@ -81,6 +81,9 @@ Editor_Action :: enum {
 	Redo,
 	Duplicate_Entity,
 	Delete_Entity,
+	Copy_Entities,
+	Cut_Entities,
+	Paste_Entities,
 	Focus_Selected,
 	Gizmo_Translate,
 	Gizmo_Rotate,
@@ -431,6 +434,20 @@ Editor_Structural_Batch_Change :: struct {
 	before_selection: [dynamic]shared.Entity_UUID,
 	after_selection: [dynamic]shared.Entity_UUID,
 }
+
+Editor_Entity_Clipboard :: struct {
+	snapshots: [dynamic]^ecs.Entity_Snapshot,
+	explicit_roots: [dynamic]shared.Entity_UUID,
+	revision: u64,
+}
+
+Editor_Clipboard_Feedback_Kind :: enum {
+	None,
+	Copied,
+	Cut,
+	Pasted,
+	Rejected,
+}
 Editor_Component_Structural_Change :: struct {
 	target_uuid: shared.Entity_UUID,
 	before: ^ecs.Registered_Component_Snapshot,
@@ -488,6 +505,9 @@ Editor_Transport_Visual_State :: struct {
 	history_count: int,
 	play_change_count: int,
 	play_structural_change_count: int,
+	selection_revision: u64,
+	clipboard_revision: u64,
+	clipboard_feedback_revision: u64,
 }
 
 Editor_Gizmo_Toolbar_Visual_State :: struct {
@@ -695,6 +715,11 @@ State :: struct {
 	editor_history_clean_valid: bool,
 	editor_play_changes: [dynamic]Editor_Play_Change,
 	editor_play_structural_changes: [dynamic]Editor_Edit_Transaction,
+	editor_entity_clipboard: Editor_Entity_Clipboard,
+	editor_clipboard_feedback_kind: Editor_Clipboard_Feedback_Kind,
+	editor_clipboard_feedback_count: int,
+	editor_clipboard_feedback_revision: u64,
+	editor_clipboard_feedback_elapsed: f32,
 	editor_inspector_batch_preview: ^Editor_Component_Batch_Change,
 	editor_inspector_batch_preview_binding: shared.Editor_UI_Component,
 	editor_inspector_batch_preview_selection_revision: u64,
@@ -1232,12 +1257,35 @@ editor_apply_play_changes :: proc(state: ^State, world: ^shared.World) -> bool {
 		if batch == nil || len(batch.items) == 0 {
 			return false
 		}
-		for &item in batch.items {
-			if item.after == nil {
-				return false
+		creating := batch.items[0].after != nil
+		if creating {
+			for &item in batch.items {
+				if item.before != nil || item.after == nil {
+					return false
+				}
+				if _, ok := ecs.apply_entity_snapshot(world, item.after); !ok {
+					return false
+				}
 			}
-			if _, ok := ecs.apply_entity_snapshot(world, item.after); !ok {
-				return false
+		} else {
+			for item_index := len(batch.items) - 1; item_index >= 0; item_index -= 1 {
+				item := &batch.items[item_index]
+				if item.before == nil || item.after != nil {
+					return false
+				}
+				entity_index, found := ecs.entity_index_by_uuid(world, item.target_uuid)
+				if !found || world.entities[entity_index].origin != .Scene {
+					return false
+				}
+				baseline := capture_snapshot_pointer(world, entity_index)
+				if baseline == nil {
+					return false
+				}
+				destroy_snapshot_pointer(item.before)
+				item.before = baseline
+				if !ecs.delete_entity_by_uuid(world, item.target_uuid) {
+					return false
+				}
 			}
 		}
 		if len(batch.after_order) > 0 && !apply_scene_order(world, batch.after_order[:]) {
@@ -1604,11 +1652,27 @@ editor_play_mode_active :: proc(state: ^State) -> bool {
 	return state != nil && !state.editor_simulation_stopped
 }
 
+editor_destroy_entity_clipboard :: proc(clipboard: ^Editor_Entity_Clipboard) {
+	if clipboard == nil {
+		return
+	}
+	for snapshot in clipboard.snapshots {
+		if snapshot != nil {
+			ecs.destroy_entity_snapshot(snapshot)
+			free(snapshot)
+		}
+	}
+	delete(clipboard.snapshots)
+	delete(clipboard.explicit_roots)
+	clipboard^ = {}
+}
+
 destroy :: proc(state: ^State) {
 	if state == nil { return }
 	editor_reflected_clear_batch_preview(state)
 	editor_history_clear(state)
 	editor_clear_play_changes(state)
+	editor_destroy_entity_clipboard(&state.editor_entity_clipboard)
 	delete(state.input_original_text)
 	delete(state.editor_dirty_entities)
 	delete(state.editor_dirty_entity_lookup)
@@ -2368,6 +2432,13 @@ reconcile :: proc(
 	editor_sync_selection(state, world)
 	if state.editor_visible {
 		state.editor_snapshot_elapsed += max(delta_seconds, 0)
+		if state.editor_clipboard_feedback_kind != .None {
+			was_visible := state.editor_clipboard_feedback_elapsed < 2
+			state.editor_clipboard_feedback_elapsed += max(delta_seconds, 0)
+			if was_visible && state.editor_clipboard_feedback_elapsed >= 2 {
+				state.editor_snapshot_valid = false
+			}
+		}
 		system_profile_changed :=
 			state.system_profile != nil &&
 			state.editor_system_profile_revision != state.system_profile.revision

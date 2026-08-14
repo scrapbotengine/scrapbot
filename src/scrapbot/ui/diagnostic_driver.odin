@@ -325,6 +325,9 @@ diagnostic_key_is_valid :: proc(key: string) -> bool {
 		     "toggle_right_sidebar",
 		     "duplicate_entity",
 		     "delete_entity",
+		     "copy_entities",
+		     "cut_entities",
+		     "paste_entities",
 		     "focus_selected":
 			return true
 	}
@@ -1077,6 +1080,12 @@ diagnostic_keyboard_set :: proc(keyboard: ^Keyboard_Input, key: string) {
 			keyboard.actions += {.Duplicate_Entity}
 		case "delete_entity":
 			keyboard.actions += {.Delete_Entity}
+		case "copy_entities":
+			keyboard.actions += {.Copy_Entities}
+		case "cut_entities":
+			keyboard.actions += {.Cut_Entities}
+		case "paste_entities":
+			keyboard.actions += {.Paste_Entities}
 		case "focus_selected":
 			keyboard.actions += {.Focus_Selected}
 	}

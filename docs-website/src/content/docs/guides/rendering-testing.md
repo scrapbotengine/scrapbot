@@ -488,7 +488,9 @@ bin/scrapbot run examples/ecs-showcase \
 
 `tests/fixtures/ui/playback-authoring.json` covers the editor transport boundary: it stops initial playback, creates an unsaved authored entity, plays, stops again, and asserts that the entity survives restoration.
 
-`tests/fixtures/ui/entity-actions.json` selects an authored entity during playback, duplicates it through the semantic keyboard command, verifies that the staged copy is visible, deletes it through the matching disposable command, and captures the icon toolbar. The focused unit contract separately proves that duplication moves editor selection to the copy and that playback actions do not enter authoring history before Stop.
+`tests/fixtures/ui/entity-actions.json` selects an authored entity during playback, duplicates it through the semantic keyboard command, verifies that the staged copy is visible, deletes it through the matching persistent command, then stops and proves that both ordered structural transactions enter authoring history. The focused lifecycle contracts separately verify hierarchy-preserving authored deletion, baseline-safe Undo, runtime deletion disposal, and play-mode Cut/Paste history.
+
+`tests/fixtures/ui/entity-clipboard.json` copies and pastes a multi-selection, cuts the pasted roots, undoes the complete cut, and captures the Scene panel. Its unit companions prove subtree hierarchy remapping, explicit-root selection, one-step Undo/Redo, owned clipboard lifetime, and atomic rejection when the destination lacks a referenced resource.
 
 `tests/fixtures/ui/virtual-geometry-duplicate-resume.json` selects a streamed Model root, pauses playback, duplicates the selected copy repeatedly, resumes, and retains twelve subsequent frames. It guards the boundary where editor selection feedback must reuse virtual Geometry's pinned proxy instead of creating a conventional cache that consumes its bounded storage-address window.
 

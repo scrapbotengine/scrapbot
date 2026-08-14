@@ -849,6 +849,66 @@ test_gpu_instance_transform_stream_is_compact_and_preserves_source :: proc(t: ^t
 }
 
 @(test)
+test_gpu_instance_cpu_mirror_tracks_transform_only_updates :: proc(t: ^testing.T) {
+	geometry := resources.Geometry {
+		bounds = {min = {-2, -1, -3}, max = {4, 5, 7}},
+	}
+	instance := shared.Render_Instance {
+		transform = {position = {-4, 8, 11}, rotation = {0.2, -0.4, 0.7}, scale = {2, 2, 2}},
+	}
+	record := WGPU_GPU_Instance {
+		render_flags = {1, 1, 1, 1},
+	}
+	transform_record: WGPU_GPU_Instance_Transform
+	wgpu_update_gpu_instance_transform_state(&record, &transform_record, instance, &geometry)
+
+	expected_model := wgpu_build_model(instance.transform)
+	testing.expect_value(t, record.model, expected_model)
+	testing.expect_value(
+		t,
+		record.normal_model,
+		wgpu_build_normal_model_from_model(expected_model, instance.transform.scale),
+	)
+	testing.expect_value(
+		t,
+		record.bounds,
+		wgpu_instance_bounds(instance, &geometry, expected_model),
+	)
+	testing.expect_value(t, record.render_flags, [4]f32{1, 1, 1, 1})
+	testing.expect_value(
+		t,
+		transform_record.position,
+		[4]f32 {
+			instance.transform.position.x,
+			instance.transform.position.y,
+			instance.transform.position.z,
+			0,
+		},
+	)
+
+	instance.transform.scale.x = -2
+	wgpu_update_gpu_instance_transform_state(&record, &transform_record, instance, &geometry)
+	testing.expect_value(t, record.render_flags, [4]f32{1, 1, 0, 1})
+
+	renderer: WGPU_Renderer
+	defer delete(renderer.gpu_instance_records)
+	defer delete(renderer.gpu_dirty_indices)
+	defer delete(renderer.gpu_editor_selected_slots)
+	defer delete(renderer.gpu_editor_selected_slot_indices)
+	append(&renderer.gpu_instance_records, record)
+	render_list: Render_List
+	defer ecs.destroy_render_list(&render_list)
+	instance.slot = 0
+	instance.entity.uuid = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
+	append(&render_list.instances, instance)
+	append(&render_list.instance_index_by_slot, 0)
+	wgpu_apply_editor_selection(&renderer, &render_list, nil, 1)
+	testing.expect_value(t, renderer.gpu_instance_records[0].model, record.model)
+	testing.expect_value(t, renderer.gpu_instance_records[0].bounds, record.bounds)
+	testing.expect_value(t, renderer.gpu_instance_records[0].render_flags[3], f32(0))
+}
+
+@(test)
 test_gpu_transform_updates_are_dense_and_encode_the_destination_slot :: proc(t: ^testing.T) {
 	renderer: WGPU_Renderer
 	defer delete(renderer.gpu_instance_transform_records)

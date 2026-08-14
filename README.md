@@ -64,7 +64,7 @@ During development, use `mise build` to compile the optimized CLI and `mise scra
 ### Editor
 
 - Toggleable ECS-built shell (`Cmd/Ctrl+E`, or `--editor` to start open) whose Browse, Game, and Inspect tabs each host a public panel stack around an aspect-correct live viewport, resizable tools, status bar, and scroll panes.
-- Entity browser, expandable UUID-backed hierarchy with icon authoring actions, drag-to-reparent, `Cmd/Ctrl+D` duplication, Delete/Backspace removal, and runtime type-inspected component panels — no per-component UI code, everything derives from the component registry.
+- Entity browser, expandable UUID-backed hierarchy with icon authoring actions, drag-to-reparent, hierarchy-preserving `Cmd/Ctrl+C/X/V` clipboard operations, `Cmd/Ctrl+D` duplication, Delete/Backspace removal, and runtime type-inspected component panels — no per-component UI code, everything derives from the component registry.
 - Explicit Play, Pause, Stop, and Step commands (`Cmd/Ctrl+R`, `Cmd/Ctrl+T`, `Cmd/Ctrl+.`, `Cmd/Ctrl+Shift+T`, with F5–F8 aliases) with a non-destructive in-memory authoring baseline, stopped-mode Undo/Redo, explicit project-wide Save, and scene Revert.
 - RMB-captured WASD fly camera with Shift boost, MMB point-of-interest orbit, viewport wheel dolly, selected-entity framing, a depth-tested infinite world grid, decluttered pickable billboard icons for cameras and lights, window-captured point-range and directional-light handles, precise entity picking, consumable UI interaction propagation, and window-captured snapped translation/rotation/scale gizmos with pointer handles plus Blender-style free modal transforms and later axis constraints.
 - System profiler publishing engine, project-Odin, Luau, and CPU render-phase timings from a rolling window.
@@ -297,7 +297,8 @@ trends; they are not portable performance thresholds.
   - [x] Live transform, camera, light, and custom Number/Vec2/Vec3/Vec4/Color inspector editing
   - [x] UUID-addressed authoring transactions with inspector and gizmo undo/redo
   - [x] Registry-driven, namespaced Add Component picker and panel-title removal actions with undo/redo
-  - [x] Entity create, rename, runtime promotion, and atomic hierarchy-preserving multi-selection Duplicate/Delete
+- [x] Entity create, rename, runtime promotion, and atomic hierarchy-preserving multi-selection Duplicate/Delete
+- [x] Validated hierarchy-preserving entity Copy/Cut/Paste with atomic Undo/Redo
   - [x] Surface-aware Model placement from previews or generic resource drags, with configurable world-grid snapping and structural Undo/Redo
   - [x] Resource create, duplicate, rename, move, delete, usage lookup, and structural undo/redo
   - [x] Explicit stopped-mode scene persistence by stable entity UUID

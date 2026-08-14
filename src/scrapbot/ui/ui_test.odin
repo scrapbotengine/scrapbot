@@ -6282,6 +6282,185 @@ test_editor_batch_duplicate_does_not_repeat_explicit_descendants :: proc(t: ^tes
 }
 
 @(test)
+test_editor_entity_clipboard_preserves_hierarchy_selection_and_atomic_history :: proc(
+	t: ^testing.T,
+) {
+	parent_id := ui_test_id("Clipboard Parent")
+	child_id := ui_test_id("Clipboard Child")
+	scene := shared.Scene{}
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = parent_id,
+			name = "Parent",
+			has_transform = true,
+			transform = {scale = {1, 1, 1}},
+		},
+		shared.Scene_Entity {
+			id = child_id,
+			name = "Child",
+			has_transform = true,
+			transform = {parent = parent_id, scale = {1, 1, 1}},
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	state.editor_visible = true
+	state.editor_simulation_playing = false
+	state.editor_simulation_stopped = true
+	editor_set_entity_selection(state, &world, []shared.Entity{world.entities[0].id})
+
+	testing.expect(t, editor_copy_selected_entities(state, &world))
+	testing.expect_value(t, len(state.editor_entity_clipboard.snapshots), 2)
+	testing.expect_value(t, len(state.editor_entity_clipboard.explicit_roots), 1)
+	testing.expect_value(t, state.editor_history_count, 0)
+	testing.expect(t, editor_paste_entities(state, &world))
+	testing.expect_value(t, editor_selection_count(state), 1)
+	testing.expect_value(t, state.editor_history_count, 1)
+	pasted_parent_id := state.editor_selected_uuids[0]
+	pasted_child_id: shared.Entity_UUID
+	for entity in world.entities {
+		if !entity.alive || entity.transform_index < 0 {
+			continue
+		}
+		if world.transforms[entity.transform_index].parent == pasted_parent_id {
+			pasted_child_id = entity.uuid
+			break
+		}
+	}
+	testing.expect(t, pasted_parent_id != parent_id)
+	testing.expect(t, pasted_child_id != (shared.Entity_UUID{}))
+	testing.expect(t, editor_history_apply(state, &world, false))
+	_, parent_found := ecs.entity_index_by_uuid(&world, pasted_parent_id)
+	_, child_found := ecs.entity_index_by_uuid(&world, pasted_child_id)
+	testing.expect(t, !parent_found && !child_found)
+	testing.expect_value(t, editor_selection_count(state), 1)
+	testing.expect_value(t, state.editor_selected_uuids[0], parent_id)
+	testing.expect(t, editor_history_apply(state, &world, true))
+	_, parent_found = ecs.entity_index_by_uuid(&world, pasted_parent_id)
+	_, child_found = ecs.entity_index_by_uuid(&world, pasted_child_id)
+	testing.expect(t, parent_found && child_found)
+	testing.expect_value(t, editor_selection_count(state), 1)
+	testing.expect_value(t, state.editor_selected_uuids[0], pasted_parent_id)
+}
+
+@(test)
+test_editor_cut_is_one_undoable_subtree_transaction_and_populates_clipboard :: proc(
+	t: ^testing.T,
+) {
+	parent_id := ui_test_id("Cut Parent")
+	child_id := ui_test_id("Cut Child")
+	scene := shared.Scene{}
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = parent_id,
+			name = "Parent",
+			has_transform = true,
+			transform = {scale = {1, 1, 1}},
+		},
+		shared.Scene_Entity {
+			id = child_id,
+			name = "Child",
+			has_transform = true,
+			transform = {parent = parent_id, scale = {1, 1, 1}},
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	state.editor_visible = true
+	state.editor_simulation_playing = false
+	state.editor_simulation_stopped = true
+	editor_set_entity_selection(state, &world, []shared.Entity{world.entities[0].id})
+
+	testing.expect(t, editor_cut_selected_entities(state, &world))
+	testing.expect_value(t, len(state.editor_entity_clipboard.snapshots), 2)
+	testing.expect_value(t, state.editor_history_count, 1)
+	_, parent_found := ecs.entity_index_by_uuid(&world, parent_id)
+	_, child_found := ecs.entity_index_by_uuid(&world, child_id)
+	testing.expect(t, !parent_found && !child_found)
+	testing.expect(t, editor_history_apply(state, &world, false))
+	_, parent_found = ecs.entity_index_by_uuid(&world, parent_id)
+	child_index := -1
+	child_index, child_found = ecs.entity_index_by_uuid(&world, child_id)
+	testing.expect(t, parent_found && child_found)
+	if child_found {
+		testing.expect_value(
+			t,
+			world.transforms[world.entities[child_index].transform_index].parent,
+			parent_id,
+		)
+	}
+}
+
+@(test)
+test_editor_clipboard_rejects_missing_destination_resources_before_mutation :: proc(
+	t: ^testing.T,
+) {
+	resource_id, parsed := shared.resource_uuid_parse("a7000000-0000-4000-8000-000000000091")
+	testing.expect(t, parsed)
+	id_buffer: [36]u8
+	scene := shared.Scene{}
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = ui_test_id("Clipboard Resource Source"),
+			name = "Resource Source",
+			has_transform = true,
+			transform = {scale = {1, 1, 1}},
+			has_material = true,
+			material_resource = shared.resource_uuid_to_string(resource_id, id_buffer[:]),
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	state.editor_visible = true
+	state.editor_simulation_stopped = true
+	editor_set_entity_selection(state, &world, []shared.Entity{world.entities[0].id})
+	testing.expect(t, editor_copy_selected_entities(state, &world))
+
+	destination_registry: resources.Registry
+	resources.init_registry(&destination_registry)
+	defer resources.destroy_registry(&destination_registry)
+	state.resource_registry = &destination_registry
+	live_before := 0
+	for entity in world.entities {
+		if entity.alive && entity.origin != .Editor {
+			live_before += 1
+		}
+	}
+	testing.expect(t, !editor_paste_entities(state, &world))
+	live_after := 0
+	for entity in world.entities {
+		if entity.alive && entity.origin != .Editor {
+			live_after += 1
+		}
+	}
+	testing.expect_value(t, live_after, live_before)
+	testing.expect_value(t, state.editor_history_count, 0)
+	testing.expect_value(
+		t,
+		state.editor_clipboard_feedback_kind,
+		Editor_Clipboard_Feedback_Kind.Rejected,
+	)
+}
+
+@(test)
 test_editor_batch_duplicate_of_authored_entities_is_staged_during_playback :: proc(t: ^testing.T) {
 	parent_id := ui_test_id("Runtime Batch Parent")
 	child_id := ui_test_id("Runtime Batch Child")
@@ -6371,6 +6550,37 @@ test_editor_batch_duplicate_of_runtime_entity_remains_disposable :: proc(t: ^tes
 	}
 	testing.expect_value(t, len(state.editor_play_structural_changes), 0)
 	testing.expect_value(t, state.editor_history_count, 0)
+}
+
+@(test)
+test_editor_playback_delete_of_runtime_entity_remains_disposable :: proc(t: ^testing.T) {
+	scene := shared.Scene{}
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = ui_test_id("Disposable Runtime Delete"),
+			name = "Runtime Delete",
+			has_transform = true,
+			transform = {scale = {1, 1, 1}},
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	world.entities[0].origin = .Runtime
+	state := new(State)
+	defer free(state)
+	testing.expect(t, init(state) == "")
+	defer destroy(state)
+	state.editor_visible = true
+	state.editor_simulation_playing = true
+	state.editor_simulation_stopped = false
+	editor_set_entity_selection(state, &world, []shared.Entity{world.entities[0].id})
+
+	testing.expect(t, editor_delete_selected_entities(state, &world))
+	testing.expect_value(t, len(state.editor_play_structural_changes), 0)
+	testing.expect_value(t, state.editor_history_count, 0)
+	testing.expect(t, !state.editor_has_selection)
 }
 
 @(test)

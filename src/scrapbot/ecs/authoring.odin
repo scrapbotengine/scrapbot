@@ -9,6 +9,73 @@ Entity_Snapshot :: struct {
 	origin: shared.Entity_Origin,
 }
 
+clone_entity_snapshot :: proc(source: ^Entity_Snapshot) -> (^Entity_Snapshot, bool) {
+	if source == nil {
+		return nil, false
+	}
+	result := new(Entity_Snapshot)
+	result^ = source^
+	entity := &result.entity
+	entity.name = clone_snapshot_string(entity.name)
+	entity.geometry.resource = clone_snapshot_string(entity.geometry.resource)
+	entity.material_resource = clone_snapshot_string(entity.material_resource)
+	entity.model.resource = clone_snapshot_string(entity.model.resource)
+	entity.mesh.primitive = clone_snapshot_string(entity.mesh.primitive)
+	entity.world_environment.lighting = clone_snapshot_string(entity.world_environment.lighting)
+	entity.world_environment.background = clone_snapshot_string(
+		entity.world_environment.background,
+	)
+	entity.ui_panel.title = clone_snapshot_string(entity.ui_panel.title)
+	entity.ui_panel.font = clone_snapshot_string(entity.ui_panel.font)
+	entity.ui_dock_space.font = clone_snapshot_string(entity.ui_dock_space.font)
+	entity.ui_dock_item.title = clone_snapshot_string(entity.ui_dock_item.title)
+	entity.ui_text.text = clone_snapshot_string(entity.ui_text.text)
+	entity.ui_text.font = clone_snapshot_string(entity.ui_text.font)
+	entity.ui_icon.icon = clone_snapshot_string(entity.ui_icon.icon)
+	entity.ui_button.text = clone_snapshot_string(entity.ui_button.text)
+	entity.ui_button.font = clone_snapshot_string(entity.ui_button.font)
+	entity.ui_button.icon = clone_snapshot_string(entity.ui_button.icon)
+	entity.ui_input.text = clone_snapshot_string(entity.ui_input.text)
+	entity.ui_input.font = clone_snapshot_string(entity.ui_input.font)
+	entity.ui_input.prefix = clone_snapshot_string(entity.ui_input.prefix)
+	entity.ui_input.icon = clone_snapshot_string(entity.ui_input.icon)
+	entity.ui_action.action = clone_snapshot_string(entity.ui_action.action)
+	entity.ui_action.payload = clone_snapshot_string(entity.ui_action.payload)
+	entity.custom_components = nil
+	for component in source.entity.custom_components {
+		copy := shared.Custom_Component {
+			component_id = component.component_id,
+			name = clone_snapshot_string(component.name),
+		}
+		for field in component.number_fields {
+			append(
+				&copy.number_fields,
+				shared.Named_Number{name = clone_snapshot_string(field.name), value = field.value},
+			)
+		}
+		for field in component.vec2_fields {
+			append(
+				&copy.vec2_fields,
+				shared.Named_Vec2{name = clone_snapshot_string(field.name), value = field.value},
+			)
+		}
+		for field in component.vec3_fields {
+			append(
+				&copy.vec3_fields,
+				shared.Named_Vec3{name = clone_snapshot_string(field.name), value = field.value},
+			)
+		}
+		for field in component.vec4_fields {
+			append(
+				&copy.vec4_fields,
+				shared.Named_Vec4{name = clone_snapshot_string(field.name), value = field.value},
+			)
+		}
+		append(&entity.custom_components, copy)
+	}
+	return result, true
+}
+
 Registered_Component_Snapshot :: struct {
 	component_id: component.Component_ID,
 	name: string,

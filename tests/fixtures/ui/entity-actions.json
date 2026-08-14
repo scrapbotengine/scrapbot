@@ -5,9 +5,16 @@
     {"action": "click", "target": {"text": "Left Cube", "origin": "editor"}},
     {"action": "key", "key": "duplicate_entity"},
     {"action": "expect", "target": {"text": "Left Cube Copy", "origin": "editor"}, "expect": "visible"},
+    {"action": "wait", "frames": 2},
+    {"action": "capture", "target": {"name": "__scrapbot_editor_scene_tools", "origin": "editor"}, "padding": 8},
     {"action": "key", "key": "delete_entity"},
     {"action": "wait", "frames": 2},
     {"action": "expect", "target": {"text": "Left Cube", "origin": "editor"}, "expect": "visible"},
-    {"action": "capture", "target": {"name": "__scrapbot_editor_scene_tools", "origin": "editor"}, "padding": 8}
+    {"action": "expect_editor", "expect": "staged_play_changes", "text": "2"},
+    {"action": "key", "key": "stop"},
+    {"action": "wait", "frames": 4},
+    {"action": "expect_editor", "expect": "simulation", "text": "stopped"},
+    {"action": "expect_editor", "expect": "dirty", "text": "true"},
+    {"action": "expect_editor", "expect": "history_count", "text": "2"}
   ]
 }

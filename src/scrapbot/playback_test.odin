@@ -786,6 +786,141 @@ test_stop_keeps_play_mode_duplicate_as_one_undoable_authored_batch :: proc(t: ^t
 }
 
 @(test)
+test_stop_keeps_play_mode_delete_as_one_undoable_authored_batch :: proc(t: ^testing.T) {
+	parent_id := shared.entity_uuid_from_engine_name("keep-play-delete-parent")
+	child_id := shared.entity_uuid_from_engine_name("keep-play-delete-child")
+	scene: shared.Scene
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = parent_id,
+			name = "Parent",
+			has_transform = true,
+			transform = {scale = {1, 1, 1}},
+		},
+		shared.Scene_Entity {
+			id = child_id,
+			name = "Child",
+			has_transform = true,
+			transform = {parent = parent_id, scale = {1, 1, 1}},
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	state := new(ui.State)
+	defer free(state)
+	testing.expect(t, ui.init(state) == "")
+	defer ui.destroy(state)
+	registry: component.Registry
+	component.init_registry(&registry)
+	state.component_registry = &registry
+	state.editor_simulation_stopped = true
+	baseline: Playback_Baseline
+	defer destroy_playback_baseline(&baseline)
+	testing.expect(t, capture_playback_baseline(&baseline, &world) == "")
+
+	ui.editor_play(state)
+	_ = ui.consume_playback_begin_request(state)
+	transform_index := world.entities[0].transform_index
+	world.transforms[transform_index].position.x = 12
+	testing.expect(t, ui.editor_stage_play_definition(state, &world, 0, "scrapbot.transform"))
+	ui.editor_authoring_select(state, &world, 0)
+	testing.expect(t, ui.editor_delete_selected_entities(state, &world))
+	testing.expect_value(t, len(state.editor_play_changes), 0)
+	testing.expect_value(t, len(state.editor_play_structural_changes), 1)
+	_, parent_found := ecs.entity_index_by_uuid(&world, parent_id)
+	_, child_found := ecs.entity_index_by_uuid(&world, child_id)
+	testing.expect(t, !parent_found && !child_found)
+
+	ui.editor_stop(state)
+	_ = ui.consume_playback_stop_request(state)
+	runtime: script.Runtime
+	runtime.world = &world
+	testing.expect(t, restore_playback_baseline(&baseline, &runtime, &world) == "")
+	ui.editor_world_restored(state, &world)
+	testing.expect(t, ui.editor_apply_play_changes(state, &world))
+	_, parent_found = ecs.entity_index_by_uuid(&world, parent_id)
+	_, child_found = ecs.entity_index_by_uuid(&world, child_id)
+	testing.expect(t, !parent_found && !child_found)
+	testing.expect_value(t, state.editor_history_count, 1)
+	testing.expect(t, state.editor_scene_dirty)
+
+	testing.expect(t, ui.editor_undo(state, &world))
+	parent_index, restored_parent := ecs.entity_index_by_uuid(&world, parent_id)
+	child_index, restored_child := ecs.entity_index_by_uuid(&world, child_id)
+	parent_found = restored_parent
+	child_found = restored_child
+	testing.expect(t, parent_found && child_found)
+	if parent_found && child_found {
+		transform_index = world.entities[parent_index].transform_index
+		testing.expect_value(t, world.transforms[transform_index].position, shared.Vec3{})
+		child_transform := world.transforms[world.entities[child_index].transform_index]
+		testing.expect_value(t, child_transform.parent, parent_id)
+	}
+	testing.expect(t, ui.editor_redo(state, &world))
+	_, parent_found = ecs.entity_index_by_uuid(&world, parent_id)
+	_, child_found = ecs.entity_index_by_uuid(&world, child_id)
+	testing.expect(t, !parent_found && !child_found)
+}
+
+@(test)
+test_stop_keeps_play_mode_paste_and_cut_with_independent_history :: proc(t: ^testing.T) {
+	source_id := shared.entity_uuid_from_engine_name("keep-play-clipboard-source")
+	scene: shared.Scene
+	defer delete(scene.entities)
+	append(
+		&scene.entities,
+		shared.Scene_Entity {
+			id = source_id,
+			name = "Source",
+			has_transform = true,
+			transform = {scale = {1, 1, 1}},
+		},
+	)
+	world := ecs.build_world(&scene)
+	defer ecs.destroy_world(&world)
+	state := new(ui.State)
+	defer free(state)
+	testing.expect(t, ui.init(state) == "")
+	defer ui.destroy(state)
+	state.editor_simulation_stopped = true
+	ui.editor_authoring_select(state, &world, 0)
+	testing.expect(t, ui.editor_copy_selected_entities(state, &world))
+	baseline: Playback_Baseline
+	defer destroy_playback_baseline(&baseline)
+	testing.expect(t, capture_playback_baseline(&baseline, &world) == "")
+
+	ui.editor_play(state)
+	_ = ui.consume_playback_begin_request(state)
+	testing.expect(t, ui.editor_paste_entities(state, &world))
+	pasted_id := state.editor_selected_uuids[0]
+	testing.expect(t, pasted_id != source_id)
+	testing.expect(t, ui.editor_cut_selected_entities(state, &world))
+	testing.expect_value(t, len(state.editor_play_structural_changes), 2)
+	_, pasted_found := ecs.entity_index_by_uuid(&world, pasted_id)
+	testing.expect(t, !pasted_found)
+
+	ui.editor_stop(state)
+	_ = ui.consume_playback_stop_request(state)
+	runtime: script.Runtime
+	runtime.world = &world
+	testing.expect(t, restore_playback_baseline(&baseline, &runtime, &world) == "")
+	ui.editor_world_restored(state, &world)
+	testing.expect(t, ui.editor_apply_play_changes(state, &world))
+	_, source_found := ecs.entity_index_by_uuid(&world, source_id)
+	_, pasted_found = ecs.entity_index_by_uuid(&world, pasted_id)
+	testing.expect(t, source_found && !pasted_found)
+	testing.expect_value(t, state.editor_history_count, 2)
+	testing.expect(t, ui.editor_undo(state, &world))
+	_, pasted_found = ecs.entity_index_by_uuid(&world, pasted_id)
+	testing.expect(t, pasted_found)
+	testing.expect(t, ui.editor_undo(state, &world))
+	_, pasted_found = ecs.entity_index_by_uuid(&world, pasted_id)
+	testing.expect(t, !pasted_found)
+}
+
+@(test)
 test_play_edit_journal_coalesces_repeated_component_edits_and_batches_targets :: proc(
 	t: ^testing.T,
 ) {

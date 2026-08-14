@@ -330,7 +330,13 @@ editor_ui_handle_activation :: proc(
 					state.editor_render_debug_occlusion_frozen = !state.editor_render_debug_occlusion_frozen
 					editor_ui_update_debug_view_button(state, world)
 					return
-				case .Entity_Create, .Entity_Duplicate, .Entity_Delete, .Entity_Promote:
+				case .Entity_Create,
+				     .Entity_Duplicate,
+				     .Entity_Delete,
+				     .Entity_Copy,
+				     .Entity_Cut,
+				     .Entity_Paste,
+				     .Entity_Promote:
 					_ = editor_ui_execute_entity_action(state, world, binding.role)
 					return
 				case .Inspector_Enum_Menu_Button:
@@ -943,6 +949,12 @@ editor_ui_execute_entity_action :: proc(
 			return editor_duplicate_selected_entities(state, world)
 		case .Entity_Delete:
 			return editor_delete_selected_entities(state, world)
+		case .Entity_Copy:
+			return editor_copy_selected_entities(state, world)
+		case .Entity_Cut:
+			return editor_cut_selected_entities(state, world)
+		case .Entity_Paste:
+			return editor_paste_entities(state, world)
 		case .Entity_Promote:
 			if selected, ok := editor_selected_world_index(state, world); ok {
 				return editor_authoring_promote_entity(state, world, selected)
@@ -1030,6 +1042,18 @@ editor_ui_handle_shortcuts :: proc(state: ^State, world: ^shared.World, keyboard
 	}
 	if editor_action_requested(keyboard, .Duplicate_Entity) {
 		_ = editor_ui_execute_entity_action(state, world, .Entity_Duplicate)
+		return
+	}
+	if editor_action_requested(keyboard, .Copy_Entities) {
+		_ = editor_ui_execute_entity_action(state, world, .Entity_Copy)
+		return
+	}
+	if editor_action_requested(keyboard, .Cut_Entities) {
+		_ = editor_ui_execute_entity_action(state, world, .Entity_Cut)
+		return
+	}
+	if editor_action_requested(keyboard, .Paste_Entities) {
+		_ = editor_ui_execute_entity_action(state, world, .Entity_Paste)
 		return
 	}
 	if editor_action_requested(keyboard, .Delete_Entity) {
@@ -1778,13 +1802,40 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		"plus",
 	)
 	world.ui_layouts[world.entities[create_button].ui_layout_index].size.x = 32
+	copy_button := editor_ui_create_transport_button(
+		world,
+		"__scrapbot_editor_entity_copy",
+		EDITOR_UI_SCENE_TOOLS_NAME,
+		"",
+		.Entity_Copy,
+		"copy",
+	)
+	world.ui_layouts[world.entities[copy_button].ui_layout_index].size.x = 32
+	cut_button := editor_ui_create_transport_button(
+		world,
+		"__scrapbot_editor_entity_cut",
+		EDITOR_UI_SCENE_TOOLS_NAME,
+		"",
+		.Entity_Cut,
+		"scissors",
+	)
+	world.ui_layouts[world.entities[cut_button].ui_layout_index].size.x = 32
+	paste_button := editor_ui_create_transport_button(
+		world,
+		"__scrapbot_editor_entity_paste",
+		EDITOR_UI_SCENE_TOOLS_NAME,
+		"",
+		.Entity_Paste,
+		"clipboard",
+	)
+	world.ui_layouts[world.entities[paste_button].ui_layout_index].size.x = 32
 	duplicate_button := editor_ui_create_transport_button(
 		world,
 		"__scrapbot_editor_entity_duplicate",
 		EDITOR_UI_SCENE_TOOLS_NAME,
 		"",
 		.Entity_Duplicate,
-		"copy",
+		"stack",
 	)
 	world.ui_layouts[world.entities[duplicate_button].ui_layout_index].size.x = 32
 	delete_button := editor_ui_create_transport_button(
@@ -2417,6 +2468,18 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		status_layout,
 	)
 	editor_ui_add_hstack(world, status, {gap = 8})
+	status_icon := editor_ui_create_box(
+		world,
+		"__scrapbot_editor_status_clipboard",
+		EDITOR_UI_STATUS_NAME,
+		.Status_Clipboard,
+		{size = {18, 18}, hidden = true},
+	)
+	_ = ecs.set_ui_icon(
+		world,
+		status_icon,
+		{icon_set = shared.builtin_icon_set_uuid(), icon = "clipboard", color = mint},
+	)
 	status_text := editor_ui_create_box(
 		world,
 		"__scrapbot_editor_status_text",
@@ -2995,6 +3058,9 @@ editor_ui_update_transport :: proc(state: ^State, world: ^shared.World) {
 		history_count = state.editor_history_count,
 		play_change_count = len(state.editor_play_changes),
 		play_structural_change_count = len(state.editor_play_structural_changes),
+		selection_revision = state.editor_selection_revision,
+		clipboard_revision = state.editor_entity_clipboard.revision,
+		clipboard_feedback_revision = state.editor_clipboard_feedback_revision,
 	}
 	if state.editor_transport_visual_valid && state.editor_transport_visual_state == visual_state {
 		return
@@ -3042,7 +3108,12 @@ editor_ui_update_transport :: proc(state: ^State, world: ^shared.World) {
 		   component.role != .Transport_Undo &&
 		   component.role != .Transport_Redo &&
 		   component.role != .Transport_Save &&
-		   component.role != .Transport_Revert { continue }
+		   component.role != .Transport_Revert &&
+		   component.role != .Entity_Copy &&
+		   component.role != .Entity_Cut &&
+		   component.role != .Entity_Paste &&
+		   component.role != .Entity_Duplicate &&
+		   component.role != .Entity_Delete { continue }
 		if component.entity_index < 0 || component.entity_index >= len(world.entities) { continue }
 		entity := world.entities[component.entity_index]
 		if !entity.alive ||
@@ -3082,6 +3153,12 @@ editor_ui_update_transport :: proc(state: ^State, world: ^shared.World) {
 				available = !state.editor_simulation_playing
 			case .Transport_Step:
 				available = !state.editor_simulation_playing && !state.editor_simulation_stopped
+			case .Entity_Copy, .Entity_Cut:
+				available = editor_selection_all_authored(state, world)
+			case .Entity_Duplicate, .Entity_Delete:
+				available = state.editor_has_selection
+			case .Entity_Paste:
+				available = len(state.editor_entity_clipboard.snapshots) > 0
 			case:
 		}
 		if selected {
@@ -3098,6 +3175,25 @@ editor_ui_update_transport :: proc(state: ^State, world: ^shared.World) {
 			button.color = theme.palette.text_muted
 			button.hover_background = layout.background
 			button.active_background = layout.background
+			continue
+		}
+		persistent_entity_action :=
+			playback &&
+				(component.role == .Entity_Cut ||
+						component.role == .Entity_Duplicate ||
+						component.role == .Entity_Delete) &&
+				editor_selection_all_authored(state, world) ||
+			playback &&
+				component.role == .Entity_Paste &&
+				len(state.editor_entity_clipboard.snapshots) > 0
+		if persistent_entity_action {
+			primary_layout, primary_button := theme_button(theme, .Primary)
+			layout.background = primary_layout.background
+			layout.border_color = primary_layout.border_color
+			layout.border_width = primary_layout.border_width
+			button.color = primary_button.color
+			button.hover_background = primary_button.hover_background
+			button.active_background = primary_button.active_background
 			continue
 		}
 		if component.role == .Transport_Save && state.editor_scene_dirty {
@@ -6987,6 +7083,26 @@ refresh_editor_ecs_snapshot :: proc(state: ^State, world: ^shared.World) {
 		if state.editor_scene_save_failed { mode = "SAVE FAILED  /  UNSAVED" }
 		if state.editor_scene_revert_failed { mode = "REVERT FAILED  /  UNSAVED" }
 		editor_ui_set_text(world, status, mode)
+	}
+	if icon, found := editor_ui_entity(world, .Status_Clipboard); found {
+		visible :=
+			state.editor_clipboard_feedback_kind != .None &&
+			state.editor_clipboard_feedback_elapsed < 2
+		editor_ui_set_hidden(world, icon, !visible)
+		if visible {
+			value := world.ui_icons[world.entities[icon].ui_icon_index]
+			value.icon = "clipboard"
+			value.color = reduced_dark_theme().palette.accent
+			#partial switch state.editor_clipboard_feedback_kind {
+				case .Cut:
+					value.icon = "scissors"
+				case .Rejected:
+					value.icon = "x"
+					value.color = reduced_dark_theme().palette.danger
+				case:
+			}
+			_ = ecs.set_ui_icon(world, icon, value)
+		}
 	}
 
 	selected_component_revision := u64(0)

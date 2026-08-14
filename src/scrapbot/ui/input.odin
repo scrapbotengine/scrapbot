@@ -102,6 +102,15 @@ keyboard_input_from_snapshot :: proc(
 		if input_key_pressed(physical, .D) {
 			result.actions += {.Duplicate_Entity}
 		}
+		if input_key_pressed(physical, .C) {
+			result.actions += {.Copy_Entities}
+		}
+		if input_key_pressed(physical, .X) {
+			result.actions += {.Cut_Entities}
+		}
+		if input_key_pressed(physical, .V) {
+			result.actions += {.Paste_Entities}
+		}
 		return result
 	}
 	if alt {

@@ -389,6 +389,7 @@ bin/scrapbot run examples/ecs-showcase --backend null --editor --headless --no-h
 bin/scrapbot run examples/ecs-showcase --backend null --editor --headless --no-hot-reload --frames 180 --ui-script tests/fixtures/ui/nested-inspector.json --json
 bin/scrapbot run examples/minimal --backend null --editor --headless --no-hot-reload --frames 120 --ui-script tests/fixtures/ui/entity-actions.json --json
 bin/scrapbot run examples/minimal --backend null --editor --headless --no-hot-reload --frames 180 --ui-script tests/fixtures/ui/entity-batch-actions.json --json
+bin/scrapbot run examples/minimal --backend null --editor --headless --no-hot-reload --frames 180 --ui-script tests/fixtures/ui/entity-clipboard.json --json
 bin/scrapbot run examples/minimal --backend null --editor --headless --no-hot-reload --frames 180 --ui-script tests/fixtures/ui/multi-selection-inspector.json --json
 bin/scrapbot run examples/minimal --backend null --editor --headless --no-hot-reload --frames 180 --ui-script tests/fixtures/ui/play-mode-persistence.json --json
 bin/scrapbot run examples/minimal --backend null --editor --headless --no-hot-reload --frames 180 --ui-script tests/fixtures/ui/play-mode-duplicate-persistence.json --json

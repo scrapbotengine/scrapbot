@@ -144,7 +144,7 @@ This is Scrapbot's canonical engineering vocabulary. Code, editor copy, ADRs, FD
 
 **Playback baseline** - The in-memory snapshot of scene-origin state captured when Play Mode starts. Stop restores this baseline before applying eligible staged play edits.
 
-**Staged play edit** - A completed editor operation recorded separately from mutable simulation state because it is eligible to keep on Stop. Staged component edits target one authored entity/component pair; authored duplication stages a structural batch. See [ADR-026](adr/ADR-026-separate-authoring-persistence-from-runtime-playback.md).
+**Staged play edit** - A completed editor operation recorded separately from mutable simulation state because it is eligible to keep on Stop. Component edits target one authored entity/component pair; authored Duplicate, Paste, Delete, and Cut operations stage structural batches. See [ADR-026](adr/ADR-026-separate-authoring-persistence-from-runtime-playback.md).
 
 **System-written component** - One specific entity/component pair actually mutated by a project system during the current playback world. It is ineligible for staged editor persistence for the remainder of that playback, even if other instances of the same component type remain eligible.
 

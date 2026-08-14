@@ -21,9 +21,14 @@ test_keyboard_snapshot :: proc(
 
 @(test)
 test_editor_actions_resolve_from_one_physical_keyboard_snapshot :: proc(t: ^testing.T) {
-	shortcut := keyboard_input_from_snapshot(test_keyboard_snapshot({.Left_Meta}, {.E, .D}))
+	shortcut := keyboard_input_from_snapshot(
+		test_keyboard_snapshot({.Left_Meta}, {.E, .D, .C, .X, .V}),
+	)
 	testing.expect(t, editor_action_requested(shortcut, .Toggle_Editor))
 	testing.expect(t, editor_action_requested(shortcut, .Duplicate_Entity))
+	testing.expect(t, editor_action_requested(shortcut, .Copy_Entities))
+	testing.expect(t, editor_action_requested(shortcut, .Cut_Entities))
+	testing.expect(t, editor_action_requested(shortcut, .Paste_Entities))
 	testing.expect(t, !editor_action_requested(shortcut, .Gizmo_Rotate))
 
 	run := keyboard_input_from_snapshot(test_keyboard_snapshot({.Left_Control}, {.R}))

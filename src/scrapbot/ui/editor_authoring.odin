@@ -20,6 +20,350 @@ destroy_editor_entity_batch :: proc(batch: ^Editor_Entity_Batch) {
 	batch^ = {}
 }
 
+editor_set_clipboard_feedback :: proc(
+	state: ^State,
+	kind: Editor_Clipboard_Feedback_Kind,
+	count: int,
+) {
+	if state == nil {
+		return
+	}
+	state.editor_clipboard_feedback_kind = kind
+	state.editor_clipboard_feedback_count = count
+	state.editor_clipboard_feedback_elapsed = 0
+	state.editor_clipboard_feedback_revision += 1
+	state.editor_snapshot_valid = false
+}
+
+editor_selection_all_authored :: proc(state: ^State, world: ^shared.World) -> bool {
+	if state == nil || world == nil || len(state.editor_selected_uuids) == 0 {
+		return false
+	}
+	for id in state.editor_selected_uuids {
+		entity_index, found := ecs.entity_index_by_uuid(world, id)
+		if !found || world.entities[entity_index].origin != .Scene {
+			return false
+		}
+	}
+	return true
+}
+
+editor_copy_selected_entities :: proc(state: ^State, world: ^shared.World) -> bool {
+	if state == nil || world == nil || len(state.editor_selected_uuids) == 0 {
+		return false
+	}
+	for id in state.editor_selected_uuids {
+		entity_index, found := ecs.entity_index_by_uuid(world, id)
+		if !found || world.entities[entity_index].origin != .Scene {
+			editor_set_clipboard_feedback(state, .Rejected, 0)
+			return false
+		}
+	}
+	batch := editor_selected_entity_batch(state, world, true)
+	defer destroy_editor_entity_batch(&batch)
+	if len(batch.indices) == 0 {
+		return false
+	}
+	editor_sort_entity_batch_parent_first(world, batch.indices[:])
+
+	next: Editor_Entity_Clipboard
+	for entity_index in batch.indices {
+		if world.entities[entity_index].origin != .Scene {
+			editor_destroy_entity_clipboard(&next)
+			editor_set_clipboard_feedback(state, .Rejected, 0)
+			return false
+		}
+		snapshot := capture_snapshot_pointer(world, entity_index)
+		if snapshot == nil {
+			editor_destroy_entity_clipboard(&next)
+			editor_set_clipboard_feedback(state, .Rejected, 0)
+			return false
+		}
+		append(&next.snapshots, snapshot)
+	}
+	append(&next.explicit_roots, ..batch.explicit_uuids[:])
+	next.revision = state.editor_entity_clipboard.revision + 1
+	if next.revision == 0 {
+		next.revision = 1
+	}
+	editor_destroy_entity_clipboard(&state.editor_entity_clipboard)
+	state.editor_entity_clipboard = next
+	editor_set_clipboard_feedback(state, .Copied, len(next.explicit_roots))
+	return true
+}
+
+editor_clipboard_resource_reference_valid :: proc(
+	state: ^State,
+	entity: ^shared.Scene_Entity,
+) -> bool {
+	if state == nil || entity == nil || state.resource_registry == nil {
+		return true
+	}
+	registry := state.resource_registry
+	if entity.has_geometry && entity.geometry.resource != "" {
+		if id, valid := shared.resource_uuid_parse(entity.geometry.resource); valid {
+			if _, found := resources.geometry_by_uuid(registry, id); !found {
+				return false
+			}
+		} else if _, found := resources.geometry_by_name(registry, entity.geometry.resource);
+		   !found {
+			return false
+		}
+	}
+	if entity.has_material {
+		id, valid := shared.resource_uuid_parse(entity.material_resource)
+		if !valid {
+			return false
+		}
+		if _, found := resources.material_by_uuid(registry, id); !found {
+			return false
+		}
+	}
+	if entity.has_model {
+		id, valid := shared.resource_uuid_parse(entity.model.resource)
+		if !valid {
+			return false
+		}
+		if _, found := resources.model_handle_by_uuid(registry, id); !found {
+			return false
+		}
+	}
+	if entity.has_world_environment {
+		references := [2]string {
+			entity.world_environment.lighting,
+			entity.world_environment.background,
+		}
+		for reference in references {
+			if reference == "" {
+				continue
+			}
+			if id, valid := shared.resource_uuid_parse(reference); valid {
+				if _, found := resources.environment_handle_by_uuid(registry, id); !found {
+					return false
+				}
+			}
+		}
+	}
+	if entity.ui_theme_resource != (shared.Resource_UUID{}) {
+		if _, found := resources.get_ui_theme_by_id(registry, entity.ui_theme_resource); !found {
+			return false
+		}
+	}
+	icon_sets := [3]shared.Resource_UUID{}
+	if entity.has_ui_icon {
+		icon_sets[0] = entity.ui_icon.icon_set
+	}
+	if entity.has_ui_button && entity.ui_button.icon != "" {
+		icon_sets[1] = entity.ui_button.icon_set
+	}
+	if entity.has_ui_input && entity.ui_input.icon != "" {
+		icon_sets[2] = entity.ui_input.icon_set
+	}
+	for id in icon_sets {
+		if id == (shared.Resource_UUID{}) {
+			continue
+		}
+		if _, found := resources.icon_set_handle_by_uuid(registry, id); !found {
+			return false
+		}
+	}
+	return true
+}
+
+editor_clipboard_snapshot_valid :: proc(state: ^State, snapshot: ^ecs.Entity_Snapshot) -> bool {
+	if state == nil || snapshot == nil || snapshot.origin != .Scene {
+		return false
+	}
+	if !editor_clipboard_resource_reference_valid(state, &snapshot.entity) {
+		return false
+	}
+	if state.component_registry == nil {
+		return len(snapshot.entity.custom_components) == 0
+	}
+	for custom in snapshot.entity.custom_components {
+		definition, found := component.find_definition(state.component_registry, custom.name)
+		if !found || definition.storage_kind != .Custom || definition.id != custom.component_id {
+			return false
+		}
+	}
+	return true
+}
+
+editor_clipboard_remap_entity_reference :: proc(
+	value: shared.Entity_UUID,
+	duplicate_by_source: map[shared.Entity_UUID]shared.Entity_UUID,
+) -> shared.Entity_UUID {
+	if remapped, found := duplicate_by_source[value]; found {
+		return remapped
+	}
+	return {}
+}
+
+editor_clipboard_remap_entity_references :: proc(
+	entity: ^shared.Scene_Entity,
+	duplicate_by_source: map[shared.Entity_UUID]shared.Entity_UUID,
+) {
+	if entity == nil {
+		return
+	}
+	entity.transform.parent = editor_clipboard_remap_entity_reference(
+		entity.transform.parent,
+		duplicate_by_source,
+	)
+	entity.ui_layout.parent = editor_clipboard_remap_entity_reference(
+		entity.ui_layout.parent,
+		duplicate_by_source,
+	)
+	entity.ui_layout.popup_anchor = editor_clipboard_remap_entity_reference(
+		entity.ui_layout.popup_anchor,
+		duplicate_by_source,
+	)
+	entity.ui_layout.tree_parent = editor_clipboard_remap_entity_reference(
+		entity.ui_layout.tree_parent,
+		duplicate_by_source,
+	)
+	entity.ui_dock_space.active = editor_clipboard_remap_entity_reference(
+		entity.ui_dock_space.active,
+		duplicate_by_source,
+	)
+	entity.ui_list.selected = editor_clipboard_remap_entity_reference(
+		entity.ui_list.selected,
+		duplicate_by_source,
+	)
+	entity.ui_list.filter_input = editor_clipboard_remap_entity_reference(
+		entity.ui_list.filter_input,
+		duplicate_by_source,
+	)
+	entity.ui_viewport.camera = editor_clipboard_remap_entity_reference(
+		entity.ui_viewport.camera,
+		duplicate_by_source,
+	)
+	entity.ui_viewport.root = editor_clipboard_remap_entity_reference(
+		entity.ui_viewport.root,
+		duplicate_by_source,
+	)
+}
+
+editor_paste_entities :: proc(state: ^State, world: ^shared.World) -> bool {
+	if state == nil || world == nil || len(state.editor_entity_clipboard.snapshots) == 0 {
+		editor_set_clipboard_feedback(state, .Rejected, 0)
+		return false
+	}
+	for snapshot in state.editor_entity_clipboard.snapshots {
+		if !editor_clipboard_snapshot_valid(state, snapshot) {
+			editor_set_clipboard_feedback(state, .Rejected, 0)
+			return false
+		}
+	}
+
+	duplicate_by_source := make(map[shared.Entity_UUID]shared.Entity_UUID)
+	defer delete(duplicate_by_source)
+	for snapshot in state.editor_entity_clipboard.snapshots {
+		duplicate_by_source[snapshot.entity.id] = shared.entity_uuid_generate()
+	}
+	change := new(Editor_Structural_Batch_Change)
+	transaction := Editor_Edit_Transaction {
+		structural_batch = change,
+	}
+	if state.editor_simulation_stopped {
+		change.before_order = capture_scene_order(world)
+	} else {
+		change.before_order = capture_authored_scene_order(world)
+	}
+	append(&change.before_selection, ..state.editor_selected_uuids[:])
+	succeeded := false
+	defer if !succeeded {
+		for item_index := len(change.items) - 1; item_index >= 0; item_index -= 1 {
+			_ = ecs.delete_entity_by_uuid(world, change.items[item_index].target_uuid)
+		}
+		_ = apply_scene_order(world, change.before_order[:])
+		editor_restore_selection_uuids(state, world, change.before_selection[:])
+		editor_history_destroy_transaction(&transaction)
+	}
+
+	next_order := ecs.next_scene_order_index(world)
+	for source in state.editor_entity_clipboard.snapshots {
+		after, cloned := ecs.clone_entity_snapshot(source)
+		if !cloned {
+			return false
+		}
+		after.entity.id = duplicate_by_source[source.entity.id]
+		after.entity.scene_order = next_order
+		next_order += 1
+		delete(after.entity.name)
+		after.entity.name = ecs.clone_snapshot_string(fmt.tprintf("%s Copy", source.entity.name))
+		editor_clipboard_remap_entity_references(&after.entity, duplicate_by_source)
+		created_index, applied := ecs.apply_entity_snapshot(world, after)
+		if !applied {
+			destroy_snapshot_pointer(after)
+			return false
+		}
+		_ = created_index
+		append(
+			&change.items,
+			Editor_Structural_Change{target_uuid = after.entity.id, after = after},
+		)
+	}
+	if state.editor_simulation_stopped {
+		change.after_order = capture_scene_order(world)
+	} else {
+		change.after_order = capture_authored_scene_order(world)
+	}
+	for source_id in state.editor_entity_clipboard.explicit_roots {
+		if pasted_id, found := duplicate_by_source[source_id]; found {
+			append(&change.after_selection, pasted_id)
+		}
+	}
+	editor_restore_selection_uuids(state, world, change.after_selection[:])
+	if state.editor_simulation_stopped {
+		for item in change.items {
+			editor_mark_scene_uuid_dirty(state, item.target_uuid)
+		}
+		editor_history_push_transaction(state, transaction)
+	} else {
+		append(&state.editor_play_structural_changes, transaction)
+		state.editor_transport_visual_valid = false
+		state.editor_snapshot_valid = false
+	}
+	succeeded = true
+	editor_set_clipboard_feedback(state, .Pasted, len(change.after_selection))
+	return true
+}
+
+editor_cut_selected_entities :: proc(state: ^State, world: ^shared.World) -> bool {
+	if state == nil || world == nil {
+		editor_set_clipboard_feedback(state, .Rejected, 0)
+		return false
+	}
+	if !editor_copy_selected_entities(state, world) {
+		return false
+	}
+	count := len(state.editor_entity_clipboard.explicit_roots)
+	if !editor_delete_selected_entities(state, world) {
+		editor_set_clipboard_feedback(state, .Rejected, 0)
+		return false
+	}
+	editor_set_clipboard_feedback(state, .Cut, count)
+	return true
+}
+
+editor_discard_play_component_changes_for_uuid :: proc(
+	state: ^State,
+	target_uuid: shared.Entity_UUID,
+) {
+	if state == nil || target_uuid == (shared.Entity_UUID{}) {
+		return
+	}
+	for change_index := len(state.editor_play_changes) - 1; change_index >= 0; change_index -= 1 {
+		change := &state.editor_play_changes[change_index]
+		if change.target_uuid != target_uuid {
+			continue
+		}
+		destroy_component_snapshot_pointer(change.after)
+		ordered_remove(&state.editor_play_changes, change_index)
+	}
+}
+
 editor_selected_entity_batch :: proc(
 	state: ^State,
 	world: ^shared.World,
@@ -681,15 +1025,65 @@ editor_delete_selected_entities :: proc(state: ^State, world: ^shared.World) -> 
 		editor_history_push_transaction(state, transaction)
 		succeeded = true
 	} else {
-		ids: [dynamic]shared.Entity_UUID
-		defer delete(ids)
-		for entity_index in batch.indices {
-			append(&ids, world.entities[entity_index].uuid)
+		before_order := capture_scene_order(world)
+		defer delete(before_order)
+		rollback_snapshots: [dynamic]^ecs.Entity_Snapshot
+		defer {
+			for snapshot in rollback_snapshots {
+				destroy_snapshot_pointer(snapshot)
+			}
+			delete(rollback_snapshots)
 		}
-		for item_index := len(ids) - 1; item_index >= 0; item_index -= 1 {
-			if !ecs.delete_entity_by_uuid(world, ids[item_index]) {
+		persisted := new(Editor_Structural_Batch_Change)
+		transaction := Editor_Edit_Transaction {
+			structural_batch = persisted,
+		}
+		persisted.before_order = capture_authored_scene_order(world)
+		for id in state.editor_selected_uuids {
+			if entity_index, found := ecs.entity_index_by_uuid(world, id);
+			   found && world.entities[entity_index].origin == .Scene {
+				append(&persisted.before_selection, id)
+			}
+		}
+		for entity_index in batch.indices {
+			snapshot := capture_snapshot_pointer(world, entity_index)
+			if snapshot == nil {
+				editor_history_destroy_transaction(&transaction)
 				return false
 			}
+			append(&rollback_snapshots, snapshot)
+			if world.entities[entity_index].origin == .Scene {
+				before, cloned := ecs.clone_entity_snapshot(snapshot)
+				if !cloned {
+					editor_history_destroy_transaction(&transaction)
+					return false
+				}
+				append(
+					&persisted.items,
+					Editor_Structural_Change{target_uuid = before.entity.id, before = before},
+				)
+			}
+		}
+		for item_index := len(rollback_snapshots) - 1; item_index >= 0; item_index -= 1 {
+			if !ecs.delete_entity_by_uuid(world, rollback_snapshots[item_index].entity.id) {
+				for snapshot in rollback_snapshots {
+					_, _ = ecs.apply_entity_snapshot(world, snapshot)
+				}
+				_ = apply_scene_order(world, before_order[:])
+				editor_history_destroy_transaction(&transaction)
+				return false
+			}
+		}
+		persisted.after_order = capture_authored_scene_order(world)
+		for item in persisted.items {
+			editor_discard_play_component_changes_for_uuid(state, item.target_uuid)
+		}
+		if len(persisted.items) > 0 {
+			append(&state.editor_play_structural_changes, transaction)
+			state.editor_transport_visual_valid = false
+			state.editor_snapshot_valid = false
+		} else {
+			editor_history_destroy_transaction(&transaction)
 		}
 		editor_clear_selection(state)
 	}
@@ -707,12 +1101,8 @@ editor_delete_entity :: proc(state: ^State, world: ^shared.World, entity_index: 
 	   world.entities[entity_index].origin == .Editor {
 		return false
 	}
-	id := world.entities[entity_index].uuid
-	if !ecs.delete_entity_by_uuid(world, id) {
-		return false
-	}
-	editor_remove_selection_uuid(state, world, id)
-	return true
+	editor_set_entity_selection(state, world, []shared.Entity{world.entities[entity_index].id})
+	return editor_delete_selected_entities(state, world)
 }
 
 editor_authoring_rename_entity :: proc(

@@ -142,7 +142,7 @@ Running or paused simulation. Simulation mutations are disposable, while eligibl
 The in-memory authored scene snapshot captured when Play Mode starts and restored by Stop.
 
 **Staged play edit**<br>
-An eligible, completed editor operation recorded separately from mutable simulation state so Stop can transfer it back to authoring state.
+An eligible, completed editor operation recorded separately from mutable simulation state so Stop can transfer it back to authoring state. This includes supported component edits plus authored Duplicate, Paste, Delete, and Cut operations.
 
 **System-written component**<br>
 One entity/component pair actually changed by a project system during the current playback. That pair cannot keep editor changes on Stop; unrelated instances remain eligible.
