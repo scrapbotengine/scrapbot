@@ -142,6 +142,51 @@ test_render_reconciliation_tracks_geometry_and_material_eligibility :: proc(t: ^
 }
 
 @(test)
+test_mesh_primitive_resolves_its_named_runtime_geometry :: proc(t: ^testing.T) {
+	registry: resources.Registry
+	defer resources.destroy_registry(&registry)
+	cube_desc, _ := resources.cube()
+	defer delete(cube_desc.vertices)
+	defer delete(cube_desc.indices)
+	cube, cube_err := resources.register_geometry(&registry, "cube", cube_desc)
+	custom_desc, _ := resources.pyramid(2, 3, 2)
+	defer delete(custom_desc.vertices)
+	defer delete(custom_desc.indices)
+	custom, custom_err := resources.register_geometry(&registry, "custom-terrain", custom_desc)
+	material, material_err := resources.register_material(
+		&registry,
+		"default",
+		{base_color = {1, 1, 1, 1}},
+	)
+	testing.expect(t, cube_err == "" && custom_err == "" && material_err == "")
+	world: World
+	defer destroy_world(&world)
+	entity_index, created := create_world_entity(&world, "Named Mesh")
+	testing.expect(t, created)
+	add_transform(&world, entity_index, {scale = {1, 1, 1}})
+	add_mesh(&world, entity_index, "custom-terrain", .Conventional)
+	add_geometry(&world, entity_index, cube)
+	add_material(&world, entity_index, material)
+	reconcile_render_instances(&world, &registry)
+	entity := world.entities[entity_index]
+	testing.expect(t, entity.geometry_index >= 0)
+	testing.expect_value(t, world.geometries[entity.geometry_index].handle, custom)
+	testing.expect_value(
+		t,
+		world.geometries[entity.geometry_index].geometry_mode,
+		shared.Geometry_Mode.Conventional,
+	)
+	add_mesh(&world, entity_index, "not-registered", .Conventional)
+	reconcile_render_instances(&world, &registry)
+	testing.expect_value(t, world.entities[entity_index].geometry_index, -1)
+	add_mesh(&world, entity_index, "custom-terrain", .Conventional)
+	reconcile_render_instances(&world, &registry)
+	testing.expect(t, world.entities[entity_index].mesh_geometry_derived)
+	remove_mesh(&world, entity_index)
+	testing.expect_value(t, world.entities[entity_index].geometry_index, -1)
+}
+
+@(test)
 test_resource_render_list_updates_only_dirty_entities_and_removes_slots_incrementally :: proc(
 	t: ^testing.T,
 ) {

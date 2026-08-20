@@ -224,7 +224,8 @@ typed ECS/resource mutation
                                                                        ▼
                                                            project shader hooks
                                       │
-                     sorted depth-tested transparent composition
+                     ├─ opaque Conventional draw + depth write
+                     └─ sorted depth-tested transparent composition
                                       │
                          retained UI streams
                            ┌──────────┴──────────┐
@@ -307,11 +308,13 @@ If legal despawn/reuse churn leaves an authoritative retained slot inactive, the
 Material revisions trigger one dependent-instance pass. WGPU replaces only that Material handle/version's factor uniform, bind group, and owned image textures. Stable materials and static instance fields remain resident.
 
 Shader revisions replace only that Shader handle/version's composed WGPU module and pipelines.
-Blended custom-material batches are collected from retained render instances, sorted against the
-active camera, and encoded after opaque world shading. The pass samples a retained opaque-color
-copy and read-only scene depth while preserving the opaque depth buffer. Its time helpers read the
-default `scrapbot.clock` snapshot retained in `world.time`. Redraws without a simulation step publish zero shader delta and retain
-spectral fields without another FFT dispatch.
+Custom-material batches are collected from retained render instances and encoded after ordinary
+opaque world shading through Conventional Geometry. Opaque hooks run first and write the live depth
+target; blended hooks follow in camera-sorted order without depth writes. Both sample immutable
+opaque-color and depth copies, so an opaque hook never binds the depth target it is simultaneously
+writing. Time helpers read the default `scrapbot.clock` snapshot retained in `world.time`. Redraws
+without a simulation step publish zero shader delta and retain spectral fields without another FFT
+dispatch.
 
 The retained previous spectral field also supplies foam history to finalization. Each output texel
 backtraces its world-XZ foam-advection velocity by project delta time, converts that displacement by
@@ -532,6 +535,20 @@ The editor adds transient editor-origin entities but uses the same components an
 Model previews add one editor-bound public button while stopped, and Model resource rows remain generic public drag sources. During an active valid drag, editor orchestration reads the retained generic source, target, and current pointer. The renderer builds a camera ray from the current Game viewport and editor fly camera, asks the backend-neutral scene query for the nearest exact triangle, and falls back to the world ground plane or a five-unit focus point. It quantizes the contact, centers transformed Model bounds around it in the surface plane, offsets the root along the hit normal by their minimum projection, and projects the contact/root pair into the editor-world overlay. The WGPU editor-feedback pass reuses each primitive's resolved submission cache at that transform, producing a translucent ghost without temporary ECS entities or Model reconciliation. Conventional geometry uses its ordinary indexed data; streamed virtual geometry uses its complete pinned proxy without materializing a second conventional cache. Release repeats the same query before the UI authoring transaction creates the scene-origin Transform/Model root. Active drags may query and redraw each input frame; stable frames retain no placement work. Selection, dirty candidates, parenting, and structural history remain in editor authoring; model-derived runtime children remain the ordinary change-driven reconciliation consumer.
 
 The backend-neutral scene query consumes a ray, retained render instances, each Geometry's bounds, and its position-only query proxy. It rejects transformed instance AABBs first. Streamed virtual Geometry reuses retained hierarchy-group and leaf-cluster spheres as an intra-mesh broad phase before exact triangle tests. It returns the nearest entity, world position, geometric normal, and distance for placement and other contact-aware tools.
+
+A selected scene Mesh whose named runtime Geometry retains voxel-source samples exposes transient
+Add Cell and Remove tools while stopped. The exact triangle-query machinery visits only the selected
+Geometry, then transforms the nearest contact and normal into the Mesh's local space, selects the
+adjacent or interior integer cell, and projects its eight corners into a semantic green or red editor
+overlay. A press changes at most the cell's 4 × 4 × 4 sample neighborhood, replaces the Geometry in
+place with a new resource version, dirties render extraction, and stores the exact sample delta in
+one editor history transaction. Undo/Redo replays that delta only while its captured voxel-source
+lineage remains current, and then rebuilds the Geometry. A successful press additionally verifies
+that no nearer scene Geometry occludes the selected terrain. This experimental path rebuilds the
+complete finite surface synchronously. It blocks Save while an applied terrain edit exists and
+retains one bounded baseline snapshot per edited voxel source. Revert restores each baseline with one
+rebuild and keeps a temporary rollback snapshot until the project transaction commits. It writes no
+project source and does not claim the persistent chunk candidate lifecycle in ADR-062.
 
 A viewport press remains an editor-owned armed gesture until release or four pixels of motion. On WGPU, release requests one backend-owned identity pass rather than traversing CPU triangles. The pass reuses retained visibility, submission buffers, transforms, alpha masks, custom vertex displacement, and scene depth; writes `instance_slot + 1` to an `R32Uint` target; scissors to the click or marquee; and copies only that region into a three-slot asynchronous readback ring. The request snapshots each slot's project or Model-owner UUID before submission. Clicks choose the identity nearest the center of a three-by-three neighborhood. Marquees visit retained projected Geometry bounds once, require complete root-level containment, then intersect those roots with every visible identity in the returned pixels before adding enclosed camera/light icons. The completed UUID set drives one replacement or Shift-toggle transition. Stable frames encode no identity pass or readback. Null rendering retains the deterministic CPU query fallback.
 

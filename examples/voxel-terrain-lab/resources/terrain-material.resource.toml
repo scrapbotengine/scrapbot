@@ -1,0 +1,16 @@
+id = "b2400000-0000-4000-8000-000000000002"
+type = "scrapbot.material"
+name = "Living Terrain"
+
+[material]
+base_color = [1, 1, 1, 1]
+emissive = [0, 0, 0]
+metallic = 0
+roughness = 0.98
+shader = "b2400000-0000-4000-8000-000000000001"
+# deep grass.rgb, macro scale
+# sunlit grass.rgb, grass slope threshold
+# weathered rock.rgb, rock slope threshold
+# exposed soil.rgb, color variation strength
+shader_parameters = [0.025, 0.075, 0.018, 0.32, 0.14, 0.24, 0.055, 0.72, 0.095, 0.075, 0.052, 0.42, 0.065, 0.032, 0.014, 0.14]
+double_sided = true

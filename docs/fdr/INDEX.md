@@ -15,3 +15,4 @@
 | [FDR-011](FDR-011-asset-imports.md) | Asset imports | In Progress | 2026-08-09 |
 | [FDR-012](FDR-012-render-profiling.md) | Render profiling | Active | 2026-07-24 |
 | [FDR-013](FDR-013-scene-assets-and-transitions.md) | Scene Assets and Transitions | Experimental | 2026-08-12 |
+| [FDR-014](FDR-014-voxel-terrain.md) | Voxel Terrain | Experimental | 2026-08-20 |

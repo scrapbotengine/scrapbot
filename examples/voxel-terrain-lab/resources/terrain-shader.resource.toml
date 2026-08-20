@@ -1,0 +1,7 @@
+id = "b2400000-0000-4000-8000-000000000001"
+type = "scrapbot.shader"
+name = "Living Terrain Shader"
+
+[shader]
+source = "shaders/terrain.wgsl"
+cull_mode = "none"

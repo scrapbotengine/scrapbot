@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "timeout_frames": 240,
+  "actions": [
+    {"action": "click", "target": {"text": "STOP", "origin": "editor"}},
+    {"action": "wait", "frames": 2},
+    {"action": "click", "target": {"text": "Hybrid Voxel Terrain", "origin": "editor"}},
+    {"action": "wait", "frames": 2},
+    {"action": "click", "target": {"text": "REMOVE", "origin": "editor"}},
+    {"action": "click", "target": {"name": "__scrapbot_editor_viewport", "origin": "editor"}},
+    {"action": "wait", "frames": 3},
+    {"action": "expect", "target": {"name": "__scrapbot_editor_status_text", "origin": "editor"}, "expect": "text", "text": "STOPPED  /  UNSAVED"},
+    {"action": "click", "target": {"text": "UNDO", "origin": "editor"}},
+    {"action": "wait", "frames": 3},
+    {"action": "expect", "target": {"name": "__scrapbot_editor_status_text", "origin": "editor"}, "expect": "text", "text": "STOPPED"},
+    {"action": "hover", "target": {"name": "__scrapbot_editor_viewport", "origin": "editor"}},
+    {"action": "capture", "target": {"name": "__scrapbot_editor_viewport", "origin": "editor"}}
+  ]
+}

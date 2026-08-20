@@ -1090,9 +1090,11 @@ add_geometry :: proc(
 	entity_index: int,
 	handle: shared.Geometry_Handle,
 	geometry_mode: shared.Geometry_Mode = .Inherit,
+	derived_from_mesh: bool = false,
 ) {
 	if !entity_is_alive(world, entity_index) { return }
 	entity := &world.entities[entity_index]
+	entity.mesh_geometry_derived = derived_from_mesh
 	delete_world_string(world, entity.geometry_resource); entity.geometry_resource = ""
 	if entity.geometry_index >= 0 && entity.geometry_index < len(world.geometries) {
 		world.geometries[entity.geometry_index].handle = handle
@@ -1168,6 +1170,7 @@ remove_geometry :: proc(world: ^World, entity_index: int) {
 	if !entity_is_alive(world, entity_index) { return }
 	entity := &world.entities[entity_index]
 	if entity.geometry_index < 0 || entity.geometry_index >= len(world.geometries) { return }
+	entity.mesh_geometry_derived = false
 	release_geometry_slot(world, entity.geometry_index)
 	entity.geometry_index = INVALID_COMPONENT_INDEX
 	release_entity_render_instance(world, entity)
@@ -1201,9 +1204,21 @@ reconcile_render_instances :: proc(world: ^World, registry: ^resources.Registry)
 		entity := &world.entities[entity_index]
 		entity.render_dirty = false
 		sync_render_watch_memberships(world, entity_index)
-		if entity.geometry_index < 0 && entity.mesh_index >= 0 && entity.geometry_resource == "" {
-			if handle, found := resources.geometry_by_name(registry, "cube");
-			   found { add_geometry(world, entity_index, handle) }
+		if entity.mesh_index >= 0 && entity.geometry_resource == "" {
+			mesh := world.meshes[entity.mesh_index]
+			primitive := mesh.primitive
+			if handle, found := resources.geometry_by_name(registry, primitive); found {
+				current_matches :=
+					entity.geometry_index >= 0 &&
+					entity.geometry_index < len(world.geometries) &&
+					world.geometries[entity.geometry_index].handle == handle &&
+					world.geometries[entity.geometry_index].geometry_mode == mesh.geometry_mode
+				if !current_matches {
+					add_geometry(world, entity_index, handle, mesh.geometry_mode, true)
+				}
+			} else if entity.geometry_index >= 0 && entity.mesh_geometry_derived {
+				remove_geometry(world, entity_index)
+			}
 		}
 		if entity.material_index < 0 && entity.mesh_index >= 0 && entity.material_resource == "" {
 			if handle, found := resources.material_by_name(registry, "default");
@@ -2235,8 +2250,12 @@ remove_mesh :: proc(world: ^World, entity_index: int) {
 	}
 	entity := &world.entities[entity_index]
 	if entity.mesh_index < 0 || entity.mesh_index >= len(world.meshes) { return }
+	remove_derived_geometry := entity.mesh_geometry_derived
 	release_mesh_slot(world, entity.mesh_index)
 	entity.mesh_index = INVALID_COMPONENT_INDEX
+	if remove_derived_geometry {
+		remove_geometry(world, entity_index)
+	}
 	invalidate_entity_renderables(world, entity_index)
 	bump_component_revision(world, entity_index)
 	mark_render_entity_dirty(world, entity_index)

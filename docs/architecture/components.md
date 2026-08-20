@@ -30,7 +30,7 @@ Lifecycle meanings:
 | `scrapbot.ambient_light` | Lighting | Authored | Yes | Compact scene-wide ambient light input. |
 | `scrapbot.directional_light` | Lighting | Authored | Yes | Directional light and current shadow-map source. |
 | `scrapbot.point_light` | Lighting | Authored | Yes | Bounded local light using the entity's resolved world position. |
-| `scrapbot.mesh` | Legacy render membership | Authored | Yes | Primitive-name mesh shortcut retained alongside resource-backed geometry/material components. |
+| `scrapbot.mesh` | Legacy render membership | Authored | Yes | Primitive-name mesh shortcut that resolves the matching built-in or runtime-registered Geometry plus the default Material. |
 | `scrapbot.geometry` | Render membership | Authored | Yes | Holds a resolved generational geometry resource handle. |
 | `scrapbot.material` | Render membership | Authored | Yes | Holds a resolved generational material resource handle. |
 | `scrapbot.model` | Render membership | Authored | Yes | UUID-backed imported model root; reconciles derived node/primitive render entities. |

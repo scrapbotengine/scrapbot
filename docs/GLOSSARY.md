@@ -118,6 +118,8 @@ This is Scrapbot's canonical engineering vocabulary. Code, editor copy, ADRs, FD
 
 **Geometry LOD** - One of several indexed geometry representations selected for an instance according to its projected screen radius. A project LOD resource owns one stable UUID and runtime base handle while WGPU selects among its retained alternate draw batches.
 
+**Voxel Terrain** - Smooth authored terrain whose compact height baseline is modified by sparse volumetric density bricks so caves, arches, and overhangs remain possible. See [ADR-062](adr/ADR-062-author-terrain-as-a-height-baseline-with-sparse-voxel-edits.md).
+
 ## Scripting And Editing
 
 **Luau** - Scrapbot's embedded scripting language for project-local code, currently exposed through `scripts/main.luau` and a small `scrapbot` API for logging, systems, component schemas, custom component queries, and transform rotation helpers.

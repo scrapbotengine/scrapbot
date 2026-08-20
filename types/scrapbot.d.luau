@@ -70,14 +70,15 @@ export type Scrapbot = {
 		create: (name: string, descriptor: ScrapbotGeometryDescriptor) -> ScrapbotGeometryResource,
 		cube: (name: string, size: number?) -> ScrapbotGeometryResource,
 		plane: (name: string, width: number?, depth: number?, columns: number?, rows: number?) -> ScrapbotGeometryResource,
+		voxel_surface: (name: string, descriptor: ScrapbotVoxelSurfaceDescriptor) -> ScrapbotGeometryResource,
 		icosphere: (name: string, radius: number?, subdivisions: number?) -> ScrapbotGeometryResource,
 		sphere: (name: string, radius: number?, segments: number?, rings: number?) -> ScrapbotGeometryResource,
 		pyramid: (name: string, width: number?, height: number?, depth: number?) -> ScrapbotGeometryResource,
 		cylinder: (name: string, radius: number?, height: number?, segments: number?) -> ScrapbotGeometryResource,
 	},
 	material: {
-		lit: (name: string, red: number?, green: number?, blue: number?, alpha: number?) -> ScrapbotMaterialResource,
-		unlit: (name: string, red: number?, green: number?, blue: number?, alpha: number?) -> ScrapbotMaterialResource,
+		lit: (name: string, red: number?, green: number?, blue: number?, alpha: number?, double_sided: boolean?) -> ScrapbotMaterialResource,
+		unlit: (name: string, red: number?, green: number?, blue: number?, alpha: number?, double_sided: boolean?) -> ScrapbotMaterialResource,
 		emissive: (name: string, red: number?, green: number?, blue: number?, intensity: number?) -> ScrapbotMaterialResource,
 		textured: (name: string, asset_path: string, red: number?, green: number?, blue: number?, alpha: number?) -> ScrapbotMaterialResource,
 	},
@@ -158,6 +159,8 @@ export type ScrapbotUiEventSnapshot = {
 export type ScrapbotGeometryVertex = {position: Vec3, normal: Vec3, uv: {x: number, y: number}, tangent: Vec4?}
 
 export type ScrapbotGeometryDescriptor = {vertices: {ScrapbotGeometryVertex}, indices: {number}}
+
+export type ScrapbotVoxelSurfaceDescriptor = {origin: Vec3, voxel_size: number, cells: Vec3, densities: {number}}
 
 export type ScrapbotVec3 = {
 	x: number,

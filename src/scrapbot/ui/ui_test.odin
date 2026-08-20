@@ -9097,6 +9097,75 @@ test_editor_history_is_stopped_only_and_tracks_the_saved_cursor :: proc(t: ^test
 }
 
 @(test)
+test_transient_terrain_baseline_blocks_save_and_reverts_atomically :: proc(t: ^testing.T) {
+	registry: resources.Registry
+	resources.init_registry(&registry)
+	defer resources.destroy_registry(&registry)
+	cells := [3]int{4, 4, 4}
+	densities := make([]f32, 125)
+	defer delete(densities)
+	for z in 0 ..= cells[2] {
+		for y in 0 ..= cells[1] {
+			for x in 0 ..= cells[0] {
+				densities[(z * 5 + y) * 5 + x] = 1.5 - f32(y)
+			}
+		}
+	}
+	handle, register_err := resources.register_voxel_surface(
+		&registry,
+		"evicted-edit",
+		{},
+		1,
+		cells,
+		densities,
+	)
+	testing.expect_value(t, register_err, "")
+	geometry, alive := resources.get_geometry(&registry, handle)
+	testing.expect(t, alive)
+	baseline := resources.clone_slice(geometry.voxel_surface.densities, context.allocator)
+	defer delete(baseline)
+	edit, edit_err := resources.edit_voxel_surface_cell(&registry, handle, {2, 1, 2}, false)
+	testing.expect_value(t, edit_err, "")
+	testing.expect(t, edit != nil)
+	geometry, alive = resources.get_geometry(&registry, handle)
+	edited := resources.clone_slice(geometry.voxel_surface.densities, context.allocator)
+	defer delete(edited)
+	state := new(State)
+	defer free(state)
+	testing.expect_value(t, init(state), "")
+	defer destroy(state)
+	state.resource_registry = &registry
+	state.editor_simulation_stopped = true
+	state.editor_scene_dirty = true
+	editor_history_push_terrain_edit(state, edit)
+	testing.expect_value(t, len(state.editor_terrain_baselines), 1)
+	editor_history_destroy_transaction(&state.editor_history[0])
+	state.editor_history_count = 0
+	state.editor_history_cursor = 0
+
+	editor_save(state)
+	testing.expect(t, !state.editor_scene_save_requested)
+	testing.expect(t, state.editor_scene_save_failed)
+	editor_revert(state)
+	testing.expect(t, state.editor_scene_revert_requested)
+	testing.expect(t, !state.editor_scene_revert_failed)
+	testing.expect(t, editor_prepare_transient_terrain_revert(state))
+	testing.expect(t, editor_finish_transient_terrain_revert(state, false))
+	geometry, alive = resources.get_geometry(&registry, handle)
+	testing.expect(t, alive)
+	for value, index in geometry.voxel_surface.densities {
+		testing.expect_value(t, value, edited[index])
+	}
+	testing.expect(t, editor_prepare_transient_terrain_revert(state))
+	testing.expect(t, editor_finish_transient_terrain_revert(state, true))
+	geometry, alive = resources.get_geometry(&registry, handle)
+	testing.expect(t, alive)
+	for value, index in geometry.voxel_surface.densities {
+		testing.expect_value(t, value, baseline[index])
+	}
+}
+
+@(test)
 test_editor_boolean_transaction_restores_dependent_stack_fields :: proc(t: ^testing.T) {
 	scene := shared.Scene{}
 	defer delete(scene.entities)

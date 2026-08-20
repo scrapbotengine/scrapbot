@@ -4,6 +4,7 @@ import asset_import "../asset_import"
 import geometry_package "../geometry"
 import project "../project"
 import shared "../shared"
+import "core:math"
 import "core:os"
 import "core:path/filepath"
 import "core:strings"
@@ -732,6 +733,367 @@ test_plane_subdivisions_build_a_dense_displacement_grid :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_voxel_surface_builds_smooth_arbitrary_topology :: proc(t: ^testing.T) {
+	densities := []f32 {
+		-1,
+		-1,
+		-1,
+		-1,
+		1,
+		-1,
+		-1,
+		-1,
+		-1,
+		1,
+		1,
+		1,
+		1,
+		2,
+		1,
+		1,
+		1,
+		1,
+		-1,
+		-1,
+		-1,
+		-1,
+		1,
+		-1,
+		-1,
+		-1,
+		-1,
+	}
+	desc, err := voxel_surface({-1, -1, -1}, 1, {2, 2, 2}, densities)
+	defer delete(desc.vertices)
+	defer delete(desc.indices)
+	testing.expect(t, err == "")
+	testing.expect(t, validate_geometry(desc) == "")
+	testing.expect(t, len(desc.vertices) > 0)
+	testing.expect(t, len(desc.indices) > 0)
+	_, invalid_err := voxel_surface({}, 1, {2, 2, 2}, densities[:len(densities) - 1])
+	testing.expect(t, invalid_err != "")
+	_, axis_limit_err := voxel_surface({}, 1, {65, 1, 1}, nil)
+	testing.expect(t, axis_limit_err != "")
+	_, total_limit_err := voxel_surface({}, 1, {64, 64, 17}, nil)
+	testing.expect(t, total_limit_err != "")
+	finite_densities := make([]f32, 8)
+	defer delete(finite_densities)
+	_, conversion_overflow_err := voxel_surface({0, -3e38, 0}, 3e38, {1, 1, 1}, finite_densities)
+	testing.expect(t, conversion_overflow_err != "")
+}
+
+@(test)
+test_authorable_voxel_surface_cell_edits_are_discrete_and_reversible :: proc(t: ^testing.T) {
+	registry: Registry
+	init_registry(&registry)
+	defer destroy_registry(&registry)
+	cells := [3]int{4, 4, 4}
+	densities := make([]f32, 125)
+	for z in 0 ..= cells[2] {
+		for y in 0 ..= cells[1] {
+			for x in 0 ..= cells[0] {
+				densities[(z * 5 + y) * 5 + x] = 1.5 - f32(y)
+			}
+		}
+	}
+	handle, register_err := register_voxel_surface(
+		&registry,
+		"authorable-cells",
+		{},
+		1,
+		cells,
+		densities,
+	)
+	delete(densities)
+	testing.expectf(t, register_err == "", "registration failed: %s", register_err)
+	geometry, alive := get_geometry(&registry, handle)
+	testing.expect(t, alive && geometry.has_voxel_surface)
+	before := clone_slice(geometry.voxel_surface.densities, context.allocator)
+	defer delete(before)
+	edit, edit_err := edit_voxel_surface_cell(&registry, handle, {2, 1, 2}, false)
+	testing.expectf(t, edit_err == "", "cell edit failed: %s", edit_err)
+	testing.expect(t, edit != nil && len(edit.changes) > 0 && len(edit.changes) <= 64)
+	defer {
+		if edit != nil {
+			destroy_voxel_surface_edit(edit)
+			free(edit)
+		}
+	}
+	geometry, alive = get_geometry(&registry, handle)
+	testing.expect(t, alive && geometry.has_voxel_surface)
+	changed := false
+	for value, index in geometry.voxel_surface.densities {
+		changed = changed || value != before[index]
+	}
+	testing.expect(t, changed)
+	testing.expect(t, apply_voxel_surface_edit(&registry, edit, false) == "")
+	geometry, alive = get_geometry(&registry, handle)
+	testing.expect(t, alive)
+	for value, index in geometry.voxel_surface.densities {
+		testing.expect_value(t, value, before[index])
+	}
+	testing.expect(t, apply_voxel_surface_edit(&registry, edit, true) == "")
+	replacement, replacement_err := register_voxel_surface(
+		&registry,
+		"authorable-cells",
+		{},
+		1,
+		cells,
+		before,
+	)
+	testing.expect_value(t, replacement_err, "")
+	testing.expect_value(t, replacement, handle)
+	geometry, alive = get_geometry(&registry, handle)
+	testing.expect(t, alive)
+	replacement_source := clone_slice(geometry.voxel_surface.densities, context.allocator)
+	defer delete(replacement_source)
+	testing.expect(t, apply_voxel_surface_edit(&registry, edit, false) != "")
+	geometry, alive = get_geometry(&registry, handle)
+	testing.expect(t, alive)
+	for value, index in geometry.voxel_surface.densities {
+		testing.expect_value(t, value, replacement_source[index])
+	}
+}
+
+@(test)
+test_authorable_voxel_surface_history_shares_one_source_lineage :: proc(t: ^testing.T) {
+	registry: Registry
+	init_registry(&registry)
+	defer destroy_registry(&registry)
+	cells := [3]int{4, 4, 4}
+	densities := make([]f32, 125)
+	defer delete(densities)
+	for z in 0 ..= cells[2] {
+		for y in 0 ..= cells[1] {
+			for x in 0 ..= cells[0] {
+				densities[(z * 5 + y) * 5 + x] = 1.5 - f32(y)
+			}
+		}
+	}
+	handle, register_err := register_voxel_surface(
+		&registry,
+		"edit-chain",
+		{},
+		1,
+		cells,
+		densities,
+	)
+	testing.expect_value(t, register_err, "")
+	geometry, alive := get_geometry(&registry, handle)
+	testing.expect(t, alive)
+	baseline := clone_slice(geometry.voxel_surface.densities, context.allocator)
+	defer delete(baseline)
+	first, first_err := edit_voxel_surface_cell(&registry, handle, {1, 1, 1}, false)
+	second, second_err := edit_voxel_surface_cell(&registry, handle, {2, 1, 2}, false)
+	testing.expect_value(t, first_err, "")
+	testing.expect_value(t, second_err, "")
+	defer {
+		if first != nil {
+			destroy_voxel_surface_edit(first)
+			free(first)
+		}
+		if second != nil {
+			destroy_voxel_surface_edit(second)
+			free(second)
+		}
+	}
+	testing.expect(t, first != nil && second != nil)
+	testing.expect(t, apply_voxel_surface_edit(&registry, second, false) == "")
+	testing.expect(t, apply_voxel_surface_edit(&registry, first, false) == "")
+	geometry, alive = get_geometry(&registry, handle)
+	testing.expect(t, alive)
+	for value, index in geometry.voxel_surface.densities {
+		testing.expect_value(t, value, baseline[index])
+	}
+}
+
+@(test)
+test_authorable_voxel_surface_lineage_is_unique_across_registries :: proc(t: ^testing.T) {
+	first_registry: Registry
+	second_registry: Registry
+	init_registry(&first_registry)
+	init_registry(&second_registry)
+	defer destroy_registry(&first_registry)
+	defer destroy_registry(&second_registry)
+	cells := [3]int{2, 2, 2}
+	densities := []f32 {
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		-1,
+		-1,
+		-1,
+		-1,
+		-1,
+		-1,
+		-1,
+		-1,
+		-1,
+	}
+	first, first_err := register_voxel_surface(
+		&first_registry,
+		"reload-lineage",
+		{},
+		1,
+		cells,
+		densities,
+	)
+	second, second_err := register_voxel_surface(
+		&second_registry,
+		"reload-lineage",
+		{},
+		1,
+		cells,
+		densities,
+	)
+	testing.expect_value(t, first_err, "")
+	testing.expect_value(t, second_err, "")
+	first_geometry, first_alive := get_geometry(&first_registry, first)
+	second_geometry, second_alive := get_geometry(&second_registry, second)
+	testing.expect(t, first_alive && second_alive)
+	testing.expect(
+		t,
+		first_geometry.voxel_surface.lineage != second_geometry.voxel_surface.lineage,
+	)
+}
+
+@(test)
+test_authorable_voxel_surface_contact_targets_inside_or_adjacent_cell :: proc(t: ^testing.T) {
+	source := Voxel_Surface_Source {
+		voxel_size = 1,
+		cells = {4, 4, 4},
+	}
+	removed, remove_ok := voxel_surface_cell_at_contact(&source, {1.2, 2, 1.2}, {0, 1, 0}, false)
+	added, add_ok := voxel_surface_cell_at_contact(&source, {1.2, 2, 1.2}, {0, 1, 0}, true)
+	testing.expect(t, remove_ok && add_ok)
+	testing.expect_value(t, removed, [3]int{1, 1, 1})
+	testing.expect_value(t, added, [3]int{1, 2, 1})
+}
+
+Voxel_Test_Edge :: struct {
+	a, b: u32,
+}
+
+voxel_test_smooth_min :: proc(a, b, radius: f32) -> f32 {
+	blend := clamp(0.5 + 0.5 * (b - a) / radius, 0, 1)
+	return b + (a - b) * blend - radius * blend * (1 - blend)
+}
+
+voxel_test_smooth_max :: proc(a, b, radius: f32) -> f32 {
+	return -voxel_test_smooth_min(-a, -b, radius)
+}
+
+@(test)
+test_voxel_terrain_lab_surface_has_no_interior_boundary_or_reversed_triangles :: proc(
+	t: ^testing.T,
+) {
+	cells := [3]int{50, 26, 50}
+	voxel_size := f32(0.24)
+	origin := Vec3{-6, -2.5, -6}
+	densities := make([]f32, (cells[0] + 1) * (cells[1] + 1) * (cells[2] + 1))
+	defer delete(densities)
+	stride_x := cells[0] + 1
+	stride_y := cells[1] + 1
+	for z_index in 0 ..= cells[2] {
+		z := origin.z + f32(z_index) * voxel_size
+		for y_index in 0 ..= cells[1] {
+			y := origin.y + f32(y_index) * voxel_size
+			for x_index in 0 ..= cells[0] {
+				x := origin.x + f32(x_index) * voxel_size
+				hill := 3.2 * math.exp(-(x * x + z * z) / 24)
+				ridges := math.sin(x * 0.62 + math.sin(z * 0.31) * 1.4) * 0.42
+				detail := math.sin(x * 1.52 - z * 1.08) * 0.1
+				density := hill + ridges + detail - 0.82 - y
+				tunnel_x := x + math.sin(z * 0.3) * 0.34
+				tunnel_y := y - 0.12 - math.sin(z * 0.22) * 0.14
+				tunnel := math.sqrt(tunnel_x * tunnel_x + tunnel_y * tunnel_y) - 1.5
+				density = voxel_test_smooth_min(density, tunnel, 0.32)
+				arch_x := x + 3.25
+				arch_y := y - 1.05
+				arch_ring := math.sqrt(arch_x * arch_x + arch_y * arch_y)
+				arch :=
+					0.62 -
+					math.sqrt((arch_ring - 1.8) * (arch_ring - 1.8) + (z + 1.25) * (z + 1.25))
+				density = voxel_test_smooth_max(density, arch, 0.24)
+				shelf :=
+					1.72 -
+					math.sqrt(
+						((x - 3.35) / 1.25) * ((x - 3.35) / 1.25) +
+						((y - 1.45) / 0.58) * ((y - 1.45) / 0.58) +
+						((z + 0.45) / 1.05) * ((z + 0.45) / 1.05),
+					)
+				support :=
+					1.35 -
+					math.sqrt(
+						((x - 2.8) / 0.62) * ((x - 2.8) / 0.62) +
+						((y - 0.2) / 1.25) * ((y - 0.2) / 1.25) +
+						((z + 0.2) / 0.82) * ((z + 0.2) / 0.82),
+					)
+				density = voxel_test_smooth_max(
+					density,
+					voxel_test_smooth_max(shelf, support, 0.2),
+					0.24,
+				)
+				inset := voxel_size * 0.75
+				boundary := min(
+					x - origin.x - inset,
+					origin.x + f32(cells[0]) * voxel_size - x - inset,
+					y - origin.y - inset,
+					origin.y + f32(cells[1]) * voxel_size - y - inset,
+					z - origin.z - inset,
+					origin.z + f32(cells[2]) * voxel_size - z - inset,
+				)
+				density = min(density, boundary)
+				densities[(z_index * stride_y + y_index) * stride_x + x_index] = density
+			}
+		}
+	}
+	desc, err := voxel_surface(origin, voxel_size, cells, densities)
+	defer delete(desc.vertices)
+	defer delete(desc.indices)
+	testing.expectf(t, err == "", "voxel terrain lab extraction failed: %s", err)
+	edges := make(map[Voxel_Test_Edge]int)
+	defer delete(edges)
+	for index := 0; index < len(desc.indices); index += 3 {
+		triangle := [3]u32{desc.indices[index], desc.indices[index + 1], desc.indices[index + 2]}
+		a := desc.vertices[triangle[0]]
+		b := desc.vertices[triangle[1]]
+		c := desc.vertices[triangle[2]]
+		face := cross(sub(b.position, a.position), sub(c.position, a.position))
+		average_normal := add(add(a.normal, b.normal), c.normal)
+		orientation :=
+			face.x * average_normal.x + face.y * average_normal.y + face.z * average_normal.z
+		testing.expect(t, orientation > 0)
+		for edge_index in 0 ..< 3 {
+			edge_a := triangle[edge_index]
+			edge_b := triangle[(edge_index + 1) % 3]
+			if edge_b < edge_a {
+				edge_a, edge_b = edge_b, edge_a
+			}
+			edges[Voxel_Test_Edge{edge_a, edge_b}] += 1
+		}
+	}
+	for _, incidence in edges {
+		testing.expect_value(t, incidence, 2)
+	}
+}
+
+@(test)
 test_generated_primitives_are_valid_indexed_geometry :: proc(t: ^testing.T) {
 	descriptions := [4]Geometry_Desc{}
 	errors := [4]string{}
@@ -867,6 +1229,20 @@ test_masked_materials_validate_alpha_cutoff :: proc(t: ^testing.T) {
 		{base_color = {1, 1, 1, 1}, alpha_mode = .Mask, alpha_cutoff = 1.5},
 	)
 	testing.expect(t, err != "")
+}
+
+@(test)
+test_custom_materials_support_opaque_and_blended_surfaces :: proc(t: ^testing.T) {
+	shader := Shader_Handle {
+		index = 1,
+		generation = 1,
+	}
+	opaque_err := validate_material_desc({shader = shader, alpha_mode = .Opaque})
+	blended_err := validate_material_desc({shader = shader, alpha_mode = .Blend})
+	masked_err := validate_material_desc({shader = shader, alpha_mode = .Mask})
+	testing.expect(t, opaque_err == "")
+	testing.expect(t, blended_err == "")
+	testing.expect(t, masked_err != "")
 }
 
 @(test)

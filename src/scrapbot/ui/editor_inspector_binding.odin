@@ -761,7 +761,8 @@ editor_history_push_transaction :: proc(state: ^State, transaction: Editor_Edit_
 	   transaction.component_structural == nil &&
 	   transaction.component_batch == nil &&
 	   transaction.resource_structural == nil &&
-	   transaction.transform_batch == nil {
+	   transaction.transform_batch == nil &&
+	   transaction.terrain_edit == nil {
 		editor_recompute_scene_dirty(state)
 		return
 	}
@@ -819,6 +820,43 @@ editor_history_apply :: proc(state: ^State, world: ^shared.World, redo: bool) ->
 		if !redo { index -= 1 }
 		if index < 0 || index >= state.editor_history_count { return false }
 		transaction := state.editor_history[index]
+		if transaction.terrain_edit != nil {
+			apply_err := resources.apply_voxel_surface_edit(
+				state.resource_registry,
+				transaction.terrain_edit,
+				redo,
+			)
+			if apply_err == "" {
+				ecs.mark_all_render_entities_dirty(world)
+				ecs.reconcile_render_instances(world, state.resource_registry)
+				if redo {
+					state.editor_history_cursor = index + 1
+					state.editor_transient_terrain_edit_count += 1
+				} else {
+					state.editor_history_cursor = index
+					state.editor_transient_terrain_edit_count = max(
+						state.editor_transient_terrain_edit_count - 1,
+						0,
+					)
+				}
+				editor_recompute_scene_dirty(state)
+				return true
+			}
+			if resources.voxel_surface_edit_target_matches(
+				state.resource_registry,
+				transaction.terrain_edit,
+			) {
+				return false
+			}
+			if !redo {
+				state.editor_transient_terrain_edit_count = max(
+					state.editor_transient_terrain_edit_count - 1,
+					0,
+				)
+			}
+			editor_history_remove(state, index)
+			continue
+		}
 		if transaction.resource_structural != nil {
 			change := transaction.resource_structural
 			desired := change.before
@@ -1206,7 +1244,115 @@ editor_history_destroy_transaction :: proc(transaction: ^Editor_Edit_Transaction
 		delete(transaction.transform_batch.items)
 		free(transaction.transform_batch)
 	}
+	if transaction.terrain_edit != nil {
+		resources.destroy_voxel_surface_edit(transaction.terrain_edit)
+		free(transaction.terrain_edit)
+	}
 	transaction^ = {}
+}
+
+editor_history_push_terrain_edit :: proc(state: ^State, edit: ^resources.Voxel_Surface_Edit) {
+	if state == nil || edit == nil {
+		return
+	}
+	baseline_found := false
+	for &baseline in state.editor_terrain_baselines {
+		if baseline.geometry == edit.geometry && baseline.source_lineage == edit.source_lineage {
+			baseline_found = true
+			break
+		}
+	}
+	if !baseline_found {
+		for index := len(state.editor_terrain_baselines); index > 0; index -= 1 {
+			baseline := &state.editor_terrain_baselines[index - 1]
+			if baseline.geometry != edit.geometry {
+				continue
+			}
+			resources.destroy_voxel_surface_snapshot(baseline)
+			unordered_remove(&state.editor_terrain_baselines, index - 1)
+		}
+		baseline, baseline_err := resources.capture_voxel_surface_snapshot(
+			state.resource_registry,
+			edit.geometry,
+		)
+		if baseline_err == "" {
+			for change in edit.changes {
+				if change.index >= 0 && change.index < len(baseline.densities) {
+					baseline.densities[change.index] = change.before
+				}
+			}
+			append(&state.editor_terrain_baselines, baseline)
+		}
+	}
+	state.editor_transient_terrain_edit_count += 1
+	editor_history_push_transaction(state, {terrain_edit = edit})
+}
+
+editor_destroy_terrain_revert_rollbacks :: proc(state: ^State) {
+	if state == nil {
+		return
+	}
+	for index in 0 ..< len(state.editor_terrain_revert_rollbacks) {
+		resources.destroy_voxel_surface_snapshot(&state.editor_terrain_revert_rollbacks[index])
+	}
+	delete(state.editor_terrain_revert_rollbacks)
+	state.editor_terrain_revert_rollbacks = nil
+}
+
+editor_prepare_transient_terrain_revert :: proc(state: ^State) -> bool {
+	if state == nil {
+		return false
+	}
+	if len(state.editor_terrain_baselines) == 0 {
+		return true
+	}
+	if state.resource_registry == nil {
+		return false
+	}
+	editor_destroy_terrain_revert_rollbacks(state)
+	for index in 0 ..< len(state.editor_terrain_baselines) {
+		baseline := &state.editor_terrain_baselines[index]
+		if !resources.voxel_surface_snapshot_target_matches(state.resource_registry, baseline) {
+			continue
+		}
+		rollback, capture_err := resources.capture_voxel_surface_snapshot(
+			state.resource_registry,
+			baseline.geometry,
+		)
+		if capture_err != "" {
+			editor_finish_transient_terrain_revert(state, false)
+			return false
+		}
+		append(&state.editor_terrain_revert_rollbacks, rollback)
+		if resources.restore_voxel_surface_snapshot(state.resource_registry, baseline) != "" {
+			editor_finish_transient_terrain_revert(state, false)
+			return false
+		}
+	}
+	return true
+}
+
+editor_finish_transient_terrain_revert :: proc(state: ^State, committed: bool) -> bool {
+	if state == nil {
+		return false
+	}
+	restored := true
+	if !committed {
+		for index in 0 ..< len(state.editor_terrain_revert_rollbacks) {
+			rollback := &state.editor_terrain_revert_rollbacks[index]
+			if !resources.voxel_surface_snapshot_target_matches(
+				state.resource_registry,
+				rollback,
+			) {
+				continue
+			}
+			if resources.restore_voxel_surface_snapshot(state.resource_registry, rollback) != "" {
+				restored = false
+			}
+		}
+	}
+	editor_destroy_terrain_revert_rollbacks(state)
+	return restored
 }
 
 editor_history_push_transform_batch :: proc(
@@ -1262,10 +1408,17 @@ editor_history_clear :: proc(state: ^State) {
 	for index in 0 ..< state.editor_history_count {
 		editor_history_destroy_transaction(&state.editor_history[index])
 	}
+	for index in 0 ..< len(state.editor_terrain_baselines) {
+		resources.destroy_voxel_surface_snapshot(&state.editor_terrain_baselines[index])
+	}
+	delete(state.editor_terrain_baselines)
+	state.editor_terrain_baselines = nil
+	editor_destroy_terrain_revert_rollbacks(state)
 	state.editor_history_count = 0
 	state.editor_history_cursor = 0
 	state.editor_history_clean_cursor = 0
 	state.editor_history_clean_valid = true
+	state.editor_transient_terrain_edit_count = 0
 }
 
 focused_input_binding :: proc(

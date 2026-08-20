@@ -1,0 +1,10 @@
+name = "Voxel Terrain Lab"
+default_scene = "b2000000-0000-4000-8000-000000000014"
+
+[window]
+width = 1280
+height = 720
+
+[render]
+virtual_geometry_budget_mb = 16
+virtual_geometry_prefetch = true

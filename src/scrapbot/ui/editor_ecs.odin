@@ -42,6 +42,9 @@ EDITOR_UI_VIEWPORT_TAB_NAME :: "__scrapbot_editor_viewport_tab"
 EDITOR_UI_GIZMO_TOOLBAR_NAME :: "__scrapbot_editor_gizmo_toolbar"
 EDITOR_UI_PLACEMENT_TOOLBAR_NAME :: "__scrapbot_editor_placement_toolbar"
 EDITOR_UI_PLACEMENT_SNAP_NAME :: "__scrapbot_editor_placement_snap"
+EDITOR_UI_TERRAIN_TOOLBAR_NAME :: "__scrapbot_editor_terrain_toolbar"
+EDITOR_UI_TERRAIN_ADD_NAME :: "__scrapbot_editor_terrain_add_cell"
+EDITOR_UI_TERRAIN_REMOVE_NAME :: "__scrapbot_editor_terrain_remove_cell"
 EDITOR_UI_DEBUG_VIEW_TOOLBAR_NAME :: "__scrapbot_editor_debug_view_toolbar"
 EDITOR_UI_DEBUG_VIEW_BUTTON_NAME :: "__scrapbot_editor_debug_view_button"
 EDITOR_UI_DEBUG_VIEW_MENU_NAME :: "__scrapbot_editor_debug_view_menu"
@@ -303,6 +306,14 @@ editor_ui_handle_activation :: proc(
 						state.editor_scale_snap_step = 0
 					}
 					editor_ui_update_placement_snap_button(state, world)
+					return
+				case .Terrain_Add_Cell:
+					state.editor_terrain_tool = .Add_Cell
+					editor_ui_update_terrain_toolbar(state, world)
+					return
+				case .Terrain_Remove_Cell:
+					state.editor_terrain_tool = .Remove_Cell
+					editor_ui_update_terrain_toolbar(state, world)
 					return
 				case .Debug_View_Item:
 					if binding.slot < 0 {
@@ -2300,6 +2311,39 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		.Placement_Snap,
 	)
 	world.ui_layouts[world.entities[placement_snap].ui_layout_index].size.x = 100
+	terrain_toolbar := editor_ui_create_box(
+		world,
+		EDITOR_UI_TERRAIN_TOOLBAR_NAME,
+		EDITOR_UI_VIEWPORT_NAME,
+		.Terrain_Toolbar,
+		{
+			position = {10, 94},
+			size = {194, 34},
+			padding = {2, 2, 2, 2},
+			background = theme.palette.overlay,
+			corner_radius = theme.metrics.radius,
+			hidden = true,
+		},
+	)
+	editor_ui_add_hstack(world, terrain_toolbar, {gap = 2})
+	terrain_add := editor_ui_create_transport_button(
+		world,
+		EDITOR_UI_TERRAIN_ADD_NAME,
+		EDITOR_UI_TERRAIN_TOOLBAR_NAME,
+		"ADD CELL",
+		.Terrain_Add_Cell,
+		"plus",
+	)
+	terrain_remove := editor_ui_create_transport_button(
+		world,
+		EDITOR_UI_TERRAIN_REMOVE_NAME,
+		EDITOR_UI_TERRAIN_TOOLBAR_NAME,
+		"REMOVE",
+		.Terrain_Remove_Cell,
+		"minus",
+	)
+	world.ui_layouts[world.entities[terrain_add].ui_layout_index].size.x = 98
+	world.ui_layouts[world.entities[terrain_remove].ui_layout_index].size.x = 90
 
 	right := editor_ui_create_box(
 		world,
@@ -3143,7 +3187,12 @@ editor_ui_update_transport :: proc(state: ^State, world: ^shared.World) {
 				available =
 					state.editor_simulation_stopped &&
 					state.editor_history_cursor < state.editor_history_count
-			case .Transport_Save, .Transport_Revert:
+			case .Transport_Save:
+				available =
+					state.editor_simulation_stopped &&
+					state.editor_scene_dirty &&
+					!editor_has_applied_transient_terrain_edit(state)
+			case .Transport_Revert:
 				available = state.editor_simulation_stopped && state.editor_scene_dirty
 			case .Transport_Stop:
 				available = !state.editor_simulation_stopped
@@ -3347,6 +3396,68 @@ editor_ui_update_placement_snap_button :: proc(state: ^State, world: ^shared.Wor
 			button.text = "SNAP 1"
 	}
 	_ = ecs.set_ui_button(world, entity_index, button)
+}
+
+editor_ui_update_terrain_toolbar :: proc(state: ^State, world: ^shared.World) {
+	if state == nil || world == nil {
+		return
+	}
+	toolbar, toolbar_found := editor_ui_entity(world, .Terrain_Toolbar)
+	if !toolbar_found {
+		return
+	}
+	visible := false
+	if selected, selected_ok := editor_selected_world_index(state, world); selected_ok {
+		entity := world.entities[selected]
+		handle: shared.Geometry_Handle
+		has_handle := false
+		if entity.mesh_index >= 0 && entity.mesh_index < len(world.meshes) {
+			handle, has_handle = resources.geometry_by_name(
+				state.resource_registry,
+				world.meshes[entity.mesh_index].primitive,
+			)
+		} else if entity.geometry_index >= 0 && entity.geometry_index < len(world.geometries) {
+			handle = world.geometries[entity.geometry_index].handle
+			has_handle = true
+		}
+		if has_handle {
+			if geometry, alive := resources.get_geometry(state.resource_registry, handle); alive {
+				visible = geometry.has_voxel_surface
+			}
+		}
+	}
+	if !visible {
+		state.editor_terrain_tool = .None
+		state.editor_terrain_preview_visible = false
+	}
+	editor_ui_set_hidden(world, toolbar, !visible)
+	theme := reduced_dark_theme()
+	for component in world.editor_uis {
+		if component.role != .Terrain_Add_Cell && component.role != .Terrain_Remove_Cell {
+			continue
+		}
+		entity := world.entities[component.entity_index]
+		layout := &world.ui_layouts[entity.ui_layout_index]
+		button := &world.ui_buttons[entity.ui_button_index]
+		base_layout, base_button := theme_button(theme, .Quiet)
+		layout.background = base_layout.background
+		layout.border_color = base_layout.border_color
+		layout.border_width = base_layout.border_width
+		button.color = base_button.color
+		selected :=
+			component.role == .Terrain_Add_Cell && state.editor_terrain_tool == .Add_Cell ||
+			component.role == .Terrain_Remove_Cell && state.editor_terrain_tool == .Remove_Cell
+		if selected {
+			selected_layout, selected_button := theme_button(
+				theme,
+				.Primary if component.role == .Terrain_Add_Cell else .Destructive,
+			)
+			layout.background = selected_layout.background
+			layout.border_color = selected_layout.border_color
+			layout.border_width = selected_layout.border_width
+			button.color = selected_button.color
+		}
+	}
 }
 
 editor_ui_update_debug_view_button :: proc(state: ^State, world: ^shared.World) {
@@ -7459,6 +7570,7 @@ reconcile_editor_ui_world :: proc(state: ^State, world: ^shared.World) {
 	editor_ui_update_sidebars(state, world)
 	editor_ui_update_transport(state, world)
 	editor_ui_update_gizmo_toolbar(state, world)
+	editor_ui_update_terrain_toolbar(state, world)
 	if !state.editor_snapshot_valid ||
 	   !state.editor_snapshot_was_visible { refresh_editor_ecs_snapshot(state, world) }
 }

@@ -48,7 +48,7 @@ The generated `.scrapbot/types/scrapbot.d.luau` file is the precise type referen
 | `scrapbot.ambient_light` | Data | Scene-wide ambient contribution. |
 | `scrapbot.directional_light` | Data | Directional light and the source for the current shadow map. |
 | `scrapbot.point_light` | Data | Distance-attenuated light positioned by a Transform. |
-| `scrapbot.mesh` | Resource reference | Built-in primitive convenience component. |
+| `scrapbot.mesh` | Resource reference | Named built-in or runtime-registered geometry convenience component. |
 | `scrapbot.geometry` | Resource reference | Named shared geometry reference. |
 | `scrapbot.material` | Resource reference | UUID-backed shared project material reference. |
 | `scrapbot.model` | Resource reference | UUID-backed static imported model root. |
@@ -405,12 +405,12 @@ Lens dirt requires camera bloom and is suppressed by non-lit debug views. Changi
 
 | Scene field | Type | Meaning |
 | --- | --- | --- |
-| `primitive` | string | Non-empty primitive name. The built-in path supports `cube` and a 64×64 `plane`. |
+| `primitive` | string | Non-empty Geometry name. Built-ins include `cube` and a 64×64 `plane`; scripts may register additional names before world reconciliation. |
 | `geometry_mode` | string | `inherit`, `auto`, `conventional`, or `virtual`; defaults to `inherit`. |
 
-This convenience path resolves built-in cube or plane geometry plus the default material when no
-authored material is present. Queries expose both `primitive` and `geometry_mode`. The plane's
-subdivision density supports vertex-displaced surfaces such as water.
+This convenience path resolves the Geometry with the matching name plus the default material when
+no authored material is present. Queries expose both `primitive` and `geometry_mode`. The built-in
+plane's subdivision density supports vertex-displaced surfaces such as water.
 
 ### `scrapbot.geometry` and `scrapbot.material`
 

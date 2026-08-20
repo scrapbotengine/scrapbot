@@ -404,7 +404,7 @@ wgpu_selection_encode_draws :: proc(
 		if !material_alive {
 			return "selection pass references a stale material"
 		}
-		if material.desc.alpha_mode == .Blend {
+		if material.desc.alpha_mode == .Blend || material.desc.shader != (shared.Shader_Handle{}) {
 			batch_index = span.next_batch
 			continue
 		}
