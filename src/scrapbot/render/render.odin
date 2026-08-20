@@ -1172,8 +1172,18 @@ run_frame_system_unmeasured :: proc(
 	}
 	if ui.consume_scene_revert_request(config.ui_state) {
 		revert_err := "editor revert requires a runtime revert callback"
-		if config.runtime_revert != nil {
+		terrain_prepared := ui.editor_prepare_transient_terrain_revert(config.ui_state)
+		if !terrain_prepared {
+			revert_err = "editor failed to prepare transient terrain revert"
+		} else if config.runtime_revert != nil {
 			revert_err = config.runtime_revert(config.runtime_revert_data, world)
+		}
+		terrain_restored := ui.editor_finish_transient_terrain_revert(
+			config.ui_state,
+			revert_err == "",
+		)
+		if !terrain_restored {
+			revert_err = "editor failed to restore transient terrain after revert failure"
 		}
 		ui.complete_scene_revert(config.ui_state, revert_err == "")
 		if revert_err == "" {
@@ -1359,7 +1369,8 @@ run_frame_system_unmeasured :: proc(
 			has_camera,
 			gizmo_keyboard,
 		)
-		if !config.ui_state.editor_light_gizmo_captures_pointer {
+		if !config.ui_state.editor_light_gizmo_captures_pointer &&
+		   config.ui_state.editor_terrain_tool == .None {
 			editor_transform_gizmo_system(
 				config.ui_state,
 				world,
@@ -1370,7 +1381,23 @@ run_frame_system_unmeasured :: proc(
 				gizmo_keyboard,
 			)
 			editor_gizmo_apply_pointer_wrap(config.ui_state, continuous_pointer_wrap)
+		} else if config.ui_state.editor_terrain_tool != .None {
+			config.ui_state.editor_gizmo_visible = false
 		}
+		terrain_pointer := gizmo_pointer
+		if config.ui_state.editor_gizmo_captures_pointer ||
+		   config.ui_state.editor_light_gizmo_captures_pointer {
+			terrain_pointer = {}
+		}
+		editor_terrain_tool_system(
+			config.ui_state,
+			world,
+			config.resource_registry,
+			terrain_pointer,
+			viewport,
+			camera,
+			has_camera,
+		)
 		if err := ui.rebuild_editor_world_overlay(config.ui_state); err != "" {
 			return err
 		}

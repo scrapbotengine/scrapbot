@@ -192,9 +192,13 @@ descriptor contains `origin: Vec3`, a positive `voxel_size`, integer `cells: Vec
 1 through 64 per axis, and a flat `densities` array with `(x + 1) × (y + 1) × (z + 1)` finite
 values in Z/Y/X row-major order. A field may contain at most 65,536 cells in total so synchronous
 startup extraction remains bounded. Positive density is solid, negative density is empty, and the
-zero crossing becomes a smooth surface. The helper rejects fields without a surface. Persistent
-Terrain resources and editor sculpting build on the same extractor but are not replaced by this
-runtime Geometry API.
+zero crossing becomes a smooth surface. The helper rejects fields without a surface. The runtime
+Geometry retains these source samples, so a scene-authored Mesh whose `primitive` matches the
+registered name can use the experimental stopped-mode Add Cell and Remove tool with Undo/Redo.
+Those edits remain transient: Save stays unavailable until they are undone, Revert discards the
+complete session terrain layer, and each edit currently rebuilds the complete bounded Geometry
+synchronously. Persistent chunked Terrain resources build on the same extractor but are not replaced
+by this runtime Geometry API.
 
 `scrapbot.geometry_component` accepts either a geometry handle or a policy-bearing payload:
 

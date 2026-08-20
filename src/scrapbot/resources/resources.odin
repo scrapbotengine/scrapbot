@@ -12,6 +12,7 @@ import "core:mem"
 import "core:os"
 import "core:path/filepath"
 import "core:strings"
+import "core:sync"
 import stb "vendor:stb/image"
 
 Vec3 :: shared.Vec3
@@ -27,6 +28,7 @@ Geometry_Handle :: shared.Geometry_Handle
 
 MAX_VOXEL_SURFACE_AXIS_CELLS :: 64
 MAX_VOXEL_SURFACE_TOTAL_CELLS :: 65_536
+voxel_surface_lineage_counter: u64
 Texture_Handle :: shared.Texture_Handle
 Environment_Handle :: shared.Environment_Handle
 Icon_Set_Handle :: shared.Icon_Set_Handle
@@ -186,6 +188,33 @@ Geometry :: struct {
 	generation: u32,
 	version: u32,
 	alive: bool,
+	voxel_surface: Voxel_Surface_Source,
+	has_voxel_surface: bool,
+}
+
+Voxel_Surface_Source :: struct {
+	origin: Vec3,
+	voxel_size: f32,
+	cells: [3]int,
+	lineage: u64,
+	densities: []f32,
+}
+
+Voxel_Surface_Sample_Change :: struct {
+	index: int,
+	before, after: f32,
+}
+
+Voxel_Surface_Edit :: struct {
+	geometry: Geometry_Handle,
+	source_lineage: u64,
+	changes: [dynamic]Voxel_Surface_Sample_Change,
+}
+
+Voxel_Surface_Snapshot :: struct {
+	geometry: Geometry_Handle,
+	source_lineage: u64,
+	densities: []f32,
 }
 
 Material :: struct {
@@ -417,6 +446,7 @@ destroy_registry :: proc(registry: ^Registry) {
 		delete(geometry.page_source_path, allocator)
 		delete(geometry.page_payload_records, allocator)
 		delete(geometry.page_payload_bytes, allocator)
+		delete(geometry.voxel_surface.densities, allocator)
 	}
 	for &material in registry.materials {
 		delete(material.name, allocator)
@@ -535,6 +565,7 @@ clone_registry :: proc(source: ^Registry, destination: ^Registry) -> string {
 		cloned.page_source_path, _ = strings.clone(geometry.page_source_path, allocator)
 		cloned.page_payload_records = clone_slice(geometry.page_payload_records, allocator)
 		cloned.page_payload_bytes = clone_slice(geometry.page_payload_bytes, allocator)
+		cloned.voxel_surface.densities = clone_slice(geometry.voxel_surface.densities, allocator)
 		append(&destination.geometries, cloned)
 	}
 	for material in source.materials {
@@ -888,7 +919,10 @@ register_geometry_with_hierarchy :: proc(
 		delete(geometry.cluster_pages, registry.allocator)
 		delete(geometry.cluster_vertices, registry.allocator)
 		delete(geometry.cluster_triangles, registry.allocator)
+		delete(geometry.voxel_surface.densities, registry.allocator)
 		destroy_geometry_page_source(geometry, registry.allocator)
+		geometry.voxel_surface = {}
+		geometry.has_voxel_surface = false
 		geometry.vertices = nil
 		geometry.indices = nil
 		if retain_canonical {
@@ -2717,6 +2751,333 @@ voxel_surface :: proc(
 	indices := make([]u32, len(surface.indices))
 	copy(indices, surface.indices[:])
 	return {vertices, indices}, ""
+}
+
+register_voxel_surface :: proc(
+	registry: ^Registry,
+	name: string,
+	origin: Vec3,
+	voxel_size: f32,
+	cells: [3]int,
+	densities: []f32,
+) -> (
+	Geometry_Handle,
+	string,
+) {
+	desc, generation_err := voxel_surface(origin, voxel_size, cells, densities)
+	if generation_err != "" {
+		return {}, generation_err
+	}
+	defer delete(desc.vertices)
+	defer delete(desc.indices)
+	handle, register_err := register_geometry(registry, name, desc)
+	if register_err != "" {
+		return {}, register_err
+	}
+	geometry, alive := get_geometry(registry, handle)
+	if !alive {
+		return {}, "registered voxel surface is unavailable"
+	}
+	lineage := sync.atomic_add(&voxel_surface_lineage_counter, u64(1)) + 1
+	geometry.voxel_surface = {
+		origin = origin,
+		voxel_size = voxel_size,
+		cells = cells,
+		lineage = lineage,
+		densities = clone_slice(densities, registry.allocator),
+	}
+	geometry.has_voxel_surface = true
+	return handle, ""
+}
+
+voxel_surface_edit_target_matches :: proc(registry: ^Registry, edit: ^Voxel_Surface_Edit) -> bool {
+	if registry == nil || edit == nil {
+		return false
+	}
+	geometry, alive := get_geometry(registry, edit.geometry)
+	return(
+		alive &&
+		geometry.has_voxel_surface &&
+		geometry.voxel_surface.lineage == edit.source_lineage \
+	)
+}
+
+capture_voxel_surface_snapshot :: proc(
+	registry: ^Registry,
+	handle: Geometry_Handle,
+) -> (
+	Voxel_Surface_Snapshot,
+	string,
+) {
+	geometry, alive := get_geometry(registry, handle)
+	if !alive || !geometry.has_voxel_surface {
+		return {}, "voxel surface snapshot target is unavailable"
+	}
+	return {
+			geometry = handle,
+			source_lineage = geometry.voxel_surface.lineage,
+			densities = clone_slice(geometry.voxel_surface.densities),
+		},
+		""
+}
+
+destroy_voxel_surface_snapshot :: proc(snapshot: ^Voxel_Surface_Snapshot) {
+	if snapshot == nil {
+		return
+	}
+	delete(snapshot.densities)
+	snapshot^ = {}
+}
+
+voxel_surface_snapshot_target_matches :: proc(
+	registry: ^Registry,
+	snapshot: ^Voxel_Surface_Snapshot,
+) -> bool {
+	if registry == nil || snapshot == nil {
+		return false
+	}
+	geometry, alive := get_geometry(registry, snapshot.geometry)
+	return(
+		alive &&
+		geometry.has_voxel_surface &&
+		geometry.voxel_surface.lineage == snapshot.source_lineage &&
+		len(geometry.voxel_surface.densities) == len(snapshot.densities) \
+	)
+}
+
+restore_voxel_surface_snapshot :: proc(
+	registry: ^Registry,
+	snapshot: ^Voxel_Surface_Snapshot,
+) -> string {
+	if !voxel_surface_snapshot_target_matches(registry, snapshot) {
+		return "voxel surface snapshot target was replaced"
+	}
+	geometry, _ := get_geometry(registry, snapshot.geometry)
+	rollback := clone_slice(geometry.voxel_surface.densities, context.temp_allocator)
+	copy(geometry.voxel_surface.densities, snapshot.densities)
+	if rebuild_err := rebuild_voxel_surface(registry, snapshot.geometry); rebuild_err != "" {
+		geometry, alive := get_geometry(registry, snapshot.geometry)
+		if alive &&
+		   geometry.has_voxel_surface &&
+		   len(geometry.voxel_surface.densities) == len(rollback) {
+			copy(geometry.voxel_surface.densities, rollback)
+		}
+		return rebuild_err
+	}
+	return ""
+}
+
+destroy_voxel_surface_edit :: proc(edit: ^Voxel_Surface_Edit) {
+	if edit == nil {
+		return
+	}
+	delete(edit.changes)
+	edit^ = {}
+}
+
+voxel_surface_cell_at_contact :: proc(
+	source: ^Voxel_Surface_Source,
+	contact, normal: Vec3,
+	adding: bool,
+) -> (
+	[3]int,
+	bool,
+) {
+	if source == nil || source.voxel_size <= 0 {
+		return {}, false
+	}
+	direction := f32(-1)
+	if adding {
+		direction = 1
+	}
+	target := Vec3 {
+		contact.x + normal.x * source.voxel_size * 0.5 * direction,
+		contact.y + normal.y * source.voxel_size * 0.5 * direction,
+		contact.z + normal.z * source.voxel_size * 0.5 * direction,
+	}
+	cell := [3]int {
+		int(math.floor((target.x - source.origin.x) / source.voxel_size)),
+		int(math.floor((target.y - source.origin.y) / source.voxel_size)),
+		int(math.floor((target.z - source.origin.z) / source.voxel_size)),
+	}
+	for value, axis in cell {
+		if value < 0 || value >= source.cells[axis] {
+			return {}, false
+		}
+	}
+	return cell, true
+}
+
+voxel_surface_cell_bounds :: proc(source: ^Voxel_Surface_Source, cell: [3]int) -> (Vec3, Vec3) {
+	minimum := Vec3 {
+		source.origin.x + f32(cell[0]) * source.voxel_size,
+		source.origin.y + f32(cell[1]) * source.voxel_size,
+		source.origin.z + f32(cell[2]) * source.voxel_size,
+	}
+	maximum := Vec3 {
+		minimum.x + source.voxel_size,
+		minimum.y + source.voxel_size,
+		minimum.z + source.voxel_size,
+	}
+	return minimum, maximum
+}
+
+apply_voxel_surface_edit :: proc(
+	registry: ^Registry,
+	edit: ^Voxel_Surface_Edit,
+	redo: bool,
+) -> string {
+	if registry == nil || edit == nil {
+		return "voxel surface edit is unavailable"
+	}
+	geometry, alive := get_geometry(registry, edit.geometry)
+	if !alive || !geometry.has_voxel_surface {
+		return "voxel surface edit target is unavailable"
+	}
+	if geometry.voxel_surface.lineage != edit.source_lineage {
+		return "voxel surface edit target was replaced"
+	}
+	for change in edit.changes {
+		if change.index < 0 || change.index >= len(geometry.voxel_surface.densities) {
+			return "voxel surface edit sample is outside the source field"
+		}
+	}
+	for change in edit.changes {
+		geometry.voxel_surface.densities[change.index] = change.after if redo else change.before
+	}
+	if rebuild_err := rebuild_voxel_surface(registry, edit.geometry); rebuild_err != "" {
+		geometry, still_alive := get_geometry(registry, edit.geometry)
+		if still_alive && geometry.has_voxel_surface {
+			for change in edit.changes {
+				geometry.voxel_surface.densities[change.index] =
+					change.before if redo else change.after
+			}
+		}
+		return rebuild_err
+	}
+	return ""
+}
+
+edit_voxel_surface_cell :: proc(
+	registry: ^Registry,
+	handle: Geometry_Handle,
+	cell: [3]int,
+	adding: bool,
+) -> (
+	^Voxel_Surface_Edit,
+	string,
+) {
+	geometry, alive := get_geometry(registry, handle)
+	if !alive || !geometry.has_voxel_surface {
+		return nil, "geometry is not an authorable voxel surface"
+	}
+	source := &geometry.voxel_surface
+	for value, axis in cell {
+		if value < 0 || value >= source.cells[axis] {
+			return nil, "voxel surface cell is outside the source field"
+		}
+	}
+	edit := new(Voxel_Surface_Edit)
+	edit.geometry = handle
+	edit.source_lineage = source.lineage
+	edit.changes = make([dynamic]Voxel_Surface_Sample_Change, 0, 64)
+	stride_x := source.cells[0] + 1
+	stride_y := source.cells[1] + 1
+	half_extent := source.voxel_size * 0.72
+	center := Vec3 {
+		source.origin.x + (f32(cell[0]) + 0.5) * source.voxel_size,
+		source.origin.y + (f32(cell[1]) + 0.5) * source.voxel_size,
+		source.origin.z + (f32(cell[2]) + 0.5) * source.voxel_size,
+	}
+	minimum := [3]int{max(cell[0] - 1, 0), max(cell[1] - 1, 0), max(cell[2] - 1, 0)}
+	maximum := [3]int {
+		min(cell[0] + 2, source.cells[0]),
+		min(cell[1] + 2, source.cells[1]),
+		min(cell[2] + 2, source.cells[2]),
+	}
+	for z in minimum[2] ..= maximum[2] {
+		for y in minimum[1] ..= maximum[1] {
+			for x in minimum[0] ..= maximum[0] {
+				position := Vec3 {
+					source.origin.x + f32(x) * source.voxel_size,
+					source.origin.y + f32(y) * source.voxel_size,
+					source.origin.z + f32(z) * source.voxel_size,
+				}
+				box_density := min(
+					half_extent - math.abs(position.x - center.x),
+					min(
+						half_extent - math.abs(position.y - center.y),
+						half_extent - math.abs(position.z - center.z),
+					),
+				)
+				index := (z * stride_y + y) * stride_x + x
+				before := source.densities[index]
+				after := max(before, box_density)
+				if !adding {
+					after = min(before, -box_density)
+				}
+				if after == before {
+					continue
+				}
+				append(
+					&edit.changes,
+					Voxel_Surface_Sample_Change{index = index, before = before, after = after},
+				)
+			}
+		}
+	}
+	if len(edit.changes) == 0 {
+		destroy_voxel_surface_edit(edit)
+		free(edit)
+		return nil, ""
+	}
+	if apply_err := apply_voxel_surface_edit(registry, edit, true); apply_err != "" {
+		destroy_voxel_surface_edit(edit)
+		free(edit)
+		return nil, apply_err
+	}
+	return edit, ""
+}
+
+rebuild_voxel_surface :: proc(registry: ^Registry, handle: Geometry_Handle) -> string {
+	geometry, alive := get_geometry(registry, handle)
+	if !alive || !geometry.has_voxel_surface {
+		return "geometry is not an authorable voxel surface"
+	}
+	name, name_err := strings.clone(geometry.name, context.temp_allocator)
+	if name_err != nil {
+		return "failed to retain voxel surface name during rebuild"
+	}
+	source := geometry.voxel_surface
+	densities := clone_slice(source.densities, context.temp_allocator)
+	desc, generation_err := voxel_surface(
+		source.origin,
+		source.voxel_size,
+		source.cells,
+		densities,
+	)
+	if generation_err != "" {
+		return generation_err
+	}
+	defer delete(desc.vertices)
+	defer delete(desc.indices)
+	rebuilt, register_err := register_geometry(registry, name, desc)
+	if register_err != "" {
+		return register_err
+	}
+	result, result_alive := get_geometry(registry, rebuilt)
+	if !result_alive {
+		return "rebuilt voxel surface is unavailable"
+	}
+	result.voxel_surface = {
+		origin = source.origin,
+		voxel_size = source.voxel_size,
+		cells = source.cells,
+		lineage = source.lineage,
+		densities = clone_slice(densities, registry.allocator),
+	}
+	result.has_voxel_surface = true
+	return ""
 }
 
 pyramid :: proc(width: f32 = 1, height: f32 = 1, depth: f32 = 1) -> (Geometry_Desc, string) {

@@ -523,8 +523,21 @@ scrapbot_geometry_voxel_surface :: proc "c" (L: Lua_State) -> c.int {
 			"voxel surface densities must contain one number per lattice sample",
 		)
 	}
-	desc, generation_err := resources.voxel_surface(origin, voxel_size, cells, densities[:])
-	return register_generated_luau_geometry(L, runtime, name, desc, generation_err)
+	handle, register_err := resources.register_voxel_surface(
+		runtime.resource_registry,
+		name,
+		origin,
+		voxel_size,
+		cells,
+		densities[:],
+	)
+	if register_err != "" {
+		return luau_push_error(L, register_err)
+	}
+	ecs.mark_all_render_entities_dirty(runtime.world)
+	ecs.reconcile_render_instances(runtime.world, runtime.resource_registry)
+	push_resource_handle(L, "geometry", handle.index, handle.generation)
+	return 1
 }
 
 scrapbot_geometry_icosphere :: proc "c" (L: Lua_State) -> c.int {

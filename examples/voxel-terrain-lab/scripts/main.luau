@@ -3,8 +3,6 @@ local CELLS_Y = 26
 local CELLS_Z = 50
 local VOXEL_SIZE = 0.24
 local ORIGIN = { x = -6, y = -2.5, z = -6 }
-local TERRAIN_ENTITY = "98000000-0000-4000-8000-000000000004"
-
 local densities = {}
 
 local function sphere_density(x: number, y: number, z: number, radius: number): number
@@ -68,25 +66,9 @@ for z_index = 0, CELLS_Z do
 	end
 end
 
-local terrain_geometry = scrapbot.geometry.voxel_surface("voxel-terrain-lab", {
+scrapbot.geometry.voxel_surface("voxel-terrain-lab", {
 	origin = ORIGIN,
 	voxel_size = VOXEL_SIZE,
 	cells = { x = CELLS_X, y = CELLS_Y, z = CELLS_Z },
 	densities = densities,
 })
-
-local TerrainAnchors = scrapbot.query(scrapbot.transform)
-local attached = false
-scrapbot.system(TerrainAnchors, {
-	name = "spawn_voxel_terrain_lab",
-	writes = { scrapbot.geometry_component },
-}, function(time: ScrapbotTime, entity: ScrapbotEntity, _transform: ScrapbotTransform)
-	if attached or time.frame_index ~= 1 or entity.id ~= TERRAIN_ENTITY then
-		return
-	end
-	attached = true
-	scrapbot.add_component(entity, scrapbot.geometry_component, {
-		resource = terrain_geometry,
-		geometry_mode = "conventional",
-	})
-end)

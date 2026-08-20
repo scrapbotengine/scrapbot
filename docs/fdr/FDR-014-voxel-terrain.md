@@ -5,8 +5,9 @@
 
 ## Overview
 
-Voxel Terrain lets creators sculpt familiar smooth outdoor surfaces and then carve or add fully
-volumetric forms such as caves, arches, and overhangs without switching to an abstract field graph.
+Voxel Terrain gives creators discrete, spatial add/remove actions like a block-building game while
+extracting a smooth surface. A compact outdoor baseline can therefore grow caves, arches, and
+overhangs without exposing an abstract field graph or forcing the visible result to look cubic.
 
 ## Current Experimental Slice
 
@@ -22,14 +23,27 @@ volumetric forms such as caves, arches, and overhangs without switching to an ab
   repeated invalidations and yields bounded incremental rebuild work; stable frames yield no work.
 - The current Luau Geometry bridge is transient and samples a dense finite field at startup. It is a
   runnable integration path, not the persistent terrain authoring contract.
+- A transient voxel surface retains its source samples in the runtime Geometry entry. In stopped
+  editor mode, selecting a scene-authored named Mesh backed by that surface reveals **Add Cell** and
+  **Remove** tools. Exact triangle hits select one adjacent or interior voxel cell, and a green or
+  red wireframe previews that fixed spatial operation.
+- Each click changes at most one bounded 4 × 4 × 4 lattice neighborhood and enters ordinary
+  Undo/Redo history. The experimental bridge still rebuilds its complete finite Geometry
+  synchronously, and its source is not included in Save. Save remains unavailable until applied
+  transient edits are undone. Revert restores one bounded baseline snapshot per edited voxel source,
+  including changes older than the Undo window, and rolls that restoration back if the project
+  transaction fails. Persistent chunk source and candidate meshing remain required before this
+  becomes the durable Terrain resource workflow.
 
 ## Planned Authoring Contract
 
 - A project can declare a finite Terrain resource and place it in a scene through one terrain root.
 - Untouched terrain begins as a conventional height-based surface.
-- Raise, Lower, Smooth, and Flatten brushes reshape the surface directly in the world viewport.
-- Add and Subtract brushes create smooth volumetric terrain above or below the original surface.
-- Brush feedback remains responsive while affected surface regions rebuild incrementally.
+- Direct Add Cell and Remove Cell actions are the primary topology workflow. A click targets one
+  quantized terrain cell from the pointed surface; dragging does not spray a continuous brush.
+- Optional Raise, Lower, Smooth, and Flatten tools may later reshape broader baseline regions, but
+  do not replace the direct cell workflow.
+- Cell feedback remains responsive while affected surface regions rebuild incrementally.
 - Unaffected regions remain visible and perform no rebuild work.
 - Terrain edits made while authoring is stopped participate in Undo, Redo, Save, and Revert.
 - Caves, overhangs, arches, and cliffs render, receive shadows, and can be selected through the same
@@ -37,11 +51,14 @@ volumetric forms such as caves, arches, and overhangs without switching to an ab
 
 ## Design Decisions
 
-### 1. Present terrain tools instead of field construction
+### 1. Make authored intent discrete and spatial
 
-**Decision:** Expose direct surface and volumetric brushes as the primary workflow.
-**Why:** Creators already understand sculpting, adding, subtracting, smoothing, and flattening.
-**Tradeoff:** Procedural field graphs and editable operation stacks remain future tools.
+**Decision:** Expose fixed, snapped Add Cell and Remove Cell operations as the primary topology
+workflow while rendering their combined density field smoothly.
+**Why:** Pointing at a surface and placing or removing one spatial unit is immediate, predictable,
+and familiar from block-building games. It avoids radius/falloff management for ordinary edits.
+**Tradeoff:** Broad shaping is slower until optional region, stamp, and baseline tools arrive;
+procedural field graphs and editable operation stacks remain future tools.
 
 ### 2. Keep ordinary terrain compact
 

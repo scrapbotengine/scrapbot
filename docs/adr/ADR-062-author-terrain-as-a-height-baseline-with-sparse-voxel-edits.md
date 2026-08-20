@@ -20,9 +20,11 @@ Represent an authored Terrain resource as one canonical scalar field with two so
 - tiled height data defines the compact solid-below-surface baseline; and
 - sparse signed-density voxel bricks store only deviations from that baseline.
 
-Users author the baseline with familiar surface tools and author arbitrary topology with volumetric
-add/subtract tools. Signed-distance operations may generate voxel changes, but the editor does not
-expose an SDF graph as the ordinary authoring experience.
+Users author arbitrary topology primarily through fixed, snapped Add Cell and Remove Cell actions.
+Each action identifies one terrain cell directly from the pointed surface while smooth extraction
+keeps the visible result non-cubic. Broader baseline shaping, stamps, and signed-distance operations
+may generate the same sparse voxel changes, but continuous radius/falloff brushes and SDF graphs are
+not the ordinary topology-authoring experience.
 
 Partition surface extraction into fixed world-space chunks. Evaluate every chunk, including an
 untouched baseline chunk, from the same canonical field and shared lattice samples. Use an
@@ -30,7 +32,7 @@ deterministic tetrahedralized-cube extraction contract with shared-edge interpol
 independently built neighbors agree at their boundaries. This avoids ambiguous cube faces in the
 first implementation while preserving a later path to a compatible indexed Marching Cubes table.
 
-Brush input mutates only bounded source tiles and bricks and enqueues the intersecting extraction
+Cell and region input mutates only bounded source tiles and bricks and enqueues the intersecting extraction
 chunks. Candidate meshing and Geometry construction run away from the interactive frame. The last
 valid surface remains drawable until a complete candidate is ready, and main-thread commits and
 uploads obey explicit per-frame work budgets. Stable frames scan, mesh, hash, and upload no terrain
@@ -54,9 +56,9 @@ streaming, rendering, and persistence have explicit ownership and can remain pro
 changes.
 
 The engine gains a new persistent source format, resource registry, scene component, extraction
-package, background candidate lifecycle, editor tool, and save/recovery coverage. Border sampling,
-surface ambiguity resolution, cancellation, stale completion rejection, and Undo/Redo tile ownership
-become correctness-critical.
+package, background candidate lifecycle, discrete editor tool, and save/recovery coverage. Border
+sampling, surface ambiguity resolution, cancellation, stale completion rejection, and Undo/Redo
+tile ownership become correctness-critical.
 
 The first feature slice is finite and editor-authored. Runtime deformation, unbounded world
 streaming, material painting, erosion, persistent procedural modifiers, and tunnel splines build on

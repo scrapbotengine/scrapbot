@@ -327,6 +327,23 @@ Type in the Scene filter to match entity labels case-insensitively. Matching des
 
 Scene and Resources use the public virtualized-list contract, so scrolling visits only visible rows plus a small overscan window. Their filters, scroll targets, and Inspector scroll remain independent. Each supports frame-time smoothing without line snapping, clipped partial content, proportional scrollbars, and fractional trackpad deltas.
 
+## Edit voxel terrain
+
+The voxel-terrain lab exposes the first experimental direct-cell workflow. Press **Stop**, select
+**Hybrid Voxel Terrain**, then choose **Add Cell** or **Remove** in the upper-left viewport toolbar.
+Point at the smooth terrain: a green add cell snaps immediately outside the hit surface, while a red
+remove cell snaps immediately inside it. Clicking applies exactly that fixed cell operation; terrain
+mode hides the transform gizmo so the two tools never compete for the same press.
+
+Each click changes one bounded lattice neighborhood and occupies one Undo/Redo history entry. The
+surface stays smooth even though the authored intent is discrete. This first slice retains source
+samples only in the transient runtime Geometry and rebuilds its complete finite surface
+synchronously. Save stays unavailable while an applied transient terrain edit exists. Undo returns
+through ordinary retained cell edits, while Revert restores one bounded baseline per edited voxel
+source, including changes older than the Undo window. A failed project Revert restores the edited
+runtime terrain. Persistent Terrain resources, transactional Save, and chunk-local background
+rebuilds remain experimental follow-up work.
+
 ## Transform an entity
 
 Selecting an entity with a Transform adds a screen-legible transform gizmo. Pointer drags remain available on its visible handles. Blender-style keys immediately start a modal transform; an optional axis key can constrain it afterward:

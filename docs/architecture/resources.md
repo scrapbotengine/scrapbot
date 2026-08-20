@@ -76,6 +76,12 @@ The recursive project loader rejects duplicate UUIDs. Scene validation resolves 
 - Each imported base primitive retains a validated quantized distance-field descriptor whose samples remain in their independent chunk until requested. Runtime registration clones the descriptor onto Geometry; generated LOD entries do not duplicate it. Cache-hit loading does not decode complete render vertices, source indices, or distance samples.
 - WGPU is the only current field consumer. Its per-Geometry packed buffer feeds both the local slice diagnostic and the debug-requested three-cascade world composition; the Registry neither owns clipmap state nor observes camera movement.
 - Other producers own equivalent in-memory bytes and retain their canonical arrays because they have no persistent fallback product. Clone, replacement, generated-LOD registration, retirement, and destruction move or release the proxy, source contract, and distance-field descriptor with the Geometry entry.
+- A transient Luau voxel surface additionally retains its finite density lattice, origin, voxel size,
+  cell dimensions, and source lineage in the Geometry entry. Direct editor cell edits mutate a
+  bounded sample set, replace the Geometry in place with a new resource version, and retain an owned
+  reversible sample delta tied to that lineage. Registry clone and teardown copy or release that
+  source with the Geometry. This is session authority only; it is not the persistent Terrain source
+  described by ADR-062.
 - Exact CPU queries iterate leaf-cluster topology and resolve canonical IDs through either resident vertices or the position proxy. Leaves may terminate above maximum hierarchy depth. Backend fallback reconstructs an owned temporary canonical view from every leaf-containing page, while memory-backed Geometry returns a borrowed view. Consumers release owned views after use.
 - Page construction occurs only at import or explicit registration/replacement boundaries. Stable frames do no partitioning, simplification, payload construction, or cluster work.
 - Missing authored declarations mark prior entries dead, increment generation/version, and invalidate old handles without compacting registry indexes.

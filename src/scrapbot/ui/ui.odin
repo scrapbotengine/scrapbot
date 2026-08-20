@@ -485,6 +485,7 @@ Editor_Edit_Transaction :: struct {
 	component_batch: ^Editor_Component_Batch_Change,
 	resource_structural: ^Editor_Resource_Structural_Change,
 	transform_batch: ^Editor_Transform_Batch_Change,
+	terrain_edit: ^resources.Voxel_Surface_Edit,
 }
 
 Editor_Gizmo_Transform_Snapshot :: struct {
@@ -527,6 +528,17 @@ Editor_Model_Placement_Request :: struct {
 	parent: shared.Entity_UUID,
 	pointer: shared.Vec2,
 	has_pointer: bool,
+}
+
+Editor_Terrain_Tool :: enum {
+	None,
+	Add_Cell,
+	Remove_Cell,
+}
+
+EDITOR_TERRAIN_PREVIEW_SEGMENT_COUNT :: 12
+Editor_Terrain_Preview_Segment :: struct {
+	start, end: shared.Vec2,
 }
 
 State :: struct {
@@ -713,6 +725,9 @@ State :: struct {
 	editor_history_cursor: int,
 	editor_history_clean_cursor: int,
 	editor_history_clean_valid: bool,
+	editor_transient_terrain_edit_count: int,
+	editor_terrain_baselines: [dynamic]resources.Voxel_Surface_Snapshot,
+	editor_terrain_revert_rollbacks: [dynamic]resources.Voxel_Surface_Snapshot,
 	editor_play_changes: [dynamic]Editor_Play_Change,
 	editor_play_structural_changes: [dynamic]Editor_Edit_Transaction,
 	editor_entity_clipboard: Editor_Entity_Clipboard,
@@ -743,6 +758,10 @@ State :: struct {
 	editor_model_placement_preview_origin: shared.Vec2,
 	editor_model_placement_preview_clip: Rect,
 	editor_placement_snap_step: f32,
+	editor_terrain_tool: Editor_Terrain_Tool,
+	editor_terrain_preview_visible: bool,
+	editor_terrain_preview_segments: [EDITOR_TERRAIN_PREVIEW_SEGMENT_COUNT]Editor_Terrain_Preview_Segment,
+	editor_terrain_preview_clip: Rect,
 	editor_rotation_snap_step: f32,
 	editor_scale_snap_step: f32,
 	editor_scene_camera_captures_input: bool,
@@ -1032,6 +1051,11 @@ editor_save :: proc(state: ^State) {
 	if state == nil || !state.editor_simulation_stopped || !state.editor_scene_dirty {
 		return
 	}
+	if editor_has_applied_transient_terrain_edit(state) {
+		state.editor_scene_save_failed = true
+		state.editor_snapshot_valid = false
+		return
+	}
 	state.editor_scene_save_requested = true
 	state.editor_scene_save_failed = false
 	state.editor_scene_revert_failed = false
@@ -1044,6 +1068,10 @@ editor_revert :: proc(state: ^State) {
 	state.editor_scene_revert_requested = true
 	state.editor_scene_revert_failed = false
 	state.editor_scene_save_failed = false
+}
+
+editor_has_applied_transient_terrain_edit :: proc(state: ^State) -> bool {
+	return state != nil && state.editor_transient_terrain_edit_count > 0
 }
 
 editor_undo :: proc(state: ^State, world: ^shared.World) -> bool {
@@ -9496,6 +9524,9 @@ rebuild_editor_world_overlay :: proc(state: ^State) -> string {
 	if err := append_editor_model_placement_preview(state); err != "" {
 		return err
 	}
+	if err := append_editor_terrain_preview(state); err != "" {
+		return err
+	}
 	if err := append_editor_box_selection(state); err != "" {
 		return err
 	}
@@ -9504,6 +9535,39 @@ rebuild_editor_world_overlay :: proc(state: ^State) -> string {
 		state.editor_overlay_paint_output_revision += 1
 		if state.editor_overlay_paint_output_revision == 0 {
 			state.editor_overlay_paint_output_revision = 1
+		}
+	}
+	return ""
+}
+
+append_editor_terrain_preview :: proc(state: ^State) -> string {
+	if state == nil || !state.editor_terrain_preview_visible {
+		return ""
+	}
+	color := shared.Vec4{0.3, 0.92, 0.58, 0.98}
+	if state.editor_terrain_tool == .Remove_Cell {
+		color = {1, 0.32, 0.24, 0.98}
+	}
+	soft := color
+	soft.w = 0.28
+	for segment, index in state.editor_terrain_preview_segments {
+		if err := append_paint(
+			state,
+			Paint_Command {
+				kind = .Line,
+				color = color,
+				line_start = segment.start,
+				line_end = segment.end,
+				line_thickness = 2 * max(state.editor_pixel_density, 1),
+				corner_radius = max(state.editor_pixel_density, 1),
+				clip = state.editor_terrain_preview_clip,
+				has_clip = true,
+			},
+		); err != "" {
+			return err
+		}
+		if index == 3 || index == 7 {
+			color = soft
 		}
 	}
 	return ""

@@ -48,7 +48,7 @@ This file tracks current actionable engineering work. The broad product roadmap 
 
 ## Editor
 
-- [ ] Add viewport Raise, Lower, Smooth, Flatten, Add, and Subtract terrain brushes with bounded previews, Undo/Redo tile snapshots, transactional save/revert, and semantic tool-state cues. See [FDR-014](fdr/FDR-014-voxel-terrain.md).
+- [ ] Promote the transient voxel-surface Add/Remove Cell editor slice into persistent Terrain tile snapshots with chunk-local background rebuilds, transactional Save/Revert, and stale-result rejection; then evaluate optional broad baseline shaping and stamps. See [FDR-014](fdr/FDR-014-voxel-terrain.md).
 - [ ] Track exact field-level runtime mutation provenance so play-mode editing can safely unlock fields disjoint from system writes. See [FDR-008](fdr/FDR-008-editor-shell.md).
 - [ ] Reuse the rooted file-browser model for explicit open/save/import dialogs with consumer-owned capabilities, filename validation, overwrite confirmation, and asynchronous scan cancellation. See [ADR-060](adr/ADR-060-browse-files-through-rooted-metadata-models.md).
 - [ ] Extend public dock spaces with same-group tab ordering, automatic empty-split collapse, floating windows, and persisted dock placement plus panel order and sizes. Panels and tabs already transfer across containers and create public resizable splits from enabled edges. See [ADR-045](adr/ADR-045-compose-docking-from-public-groups-and-layout.md).

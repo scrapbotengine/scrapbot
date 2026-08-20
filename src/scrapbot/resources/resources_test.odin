@@ -782,6 +782,209 @@ test_voxel_surface_builds_smooth_arbitrary_topology :: proc(t: ^testing.T) {
 	testing.expect(t, conversion_overflow_err != "")
 }
 
+@(test)
+test_authorable_voxel_surface_cell_edits_are_discrete_and_reversible :: proc(t: ^testing.T) {
+	registry: Registry
+	init_registry(&registry)
+	defer destroy_registry(&registry)
+	cells := [3]int{4, 4, 4}
+	densities := make([]f32, 125)
+	for z in 0 ..= cells[2] {
+		for y in 0 ..= cells[1] {
+			for x in 0 ..= cells[0] {
+				densities[(z * 5 + y) * 5 + x] = 1.5 - f32(y)
+			}
+		}
+	}
+	handle, register_err := register_voxel_surface(
+		&registry,
+		"authorable-cells",
+		{},
+		1,
+		cells,
+		densities,
+	)
+	delete(densities)
+	testing.expectf(t, register_err == "", "registration failed: %s", register_err)
+	geometry, alive := get_geometry(&registry, handle)
+	testing.expect(t, alive && geometry.has_voxel_surface)
+	before := clone_slice(geometry.voxel_surface.densities, context.allocator)
+	defer delete(before)
+	edit, edit_err := edit_voxel_surface_cell(&registry, handle, {2, 1, 2}, false)
+	testing.expectf(t, edit_err == "", "cell edit failed: %s", edit_err)
+	testing.expect(t, edit != nil && len(edit.changes) > 0 && len(edit.changes) <= 64)
+	defer {
+		if edit != nil {
+			destroy_voxel_surface_edit(edit)
+			free(edit)
+		}
+	}
+	geometry, alive = get_geometry(&registry, handle)
+	testing.expect(t, alive && geometry.has_voxel_surface)
+	changed := false
+	for value, index in geometry.voxel_surface.densities {
+		changed = changed || value != before[index]
+	}
+	testing.expect(t, changed)
+	testing.expect(t, apply_voxel_surface_edit(&registry, edit, false) == "")
+	geometry, alive = get_geometry(&registry, handle)
+	testing.expect(t, alive)
+	for value, index in geometry.voxel_surface.densities {
+		testing.expect_value(t, value, before[index])
+	}
+	testing.expect(t, apply_voxel_surface_edit(&registry, edit, true) == "")
+	replacement, replacement_err := register_voxel_surface(
+		&registry,
+		"authorable-cells",
+		{},
+		1,
+		cells,
+		before,
+	)
+	testing.expect_value(t, replacement_err, "")
+	testing.expect_value(t, replacement, handle)
+	geometry, alive = get_geometry(&registry, handle)
+	testing.expect(t, alive)
+	replacement_source := clone_slice(geometry.voxel_surface.densities, context.allocator)
+	defer delete(replacement_source)
+	testing.expect(t, apply_voxel_surface_edit(&registry, edit, false) != "")
+	geometry, alive = get_geometry(&registry, handle)
+	testing.expect(t, alive)
+	for value, index in geometry.voxel_surface.densities {
+		testing.expect_value(t, value, replacement_source[index])
+	}
+}
+
+@(test)
+test_authorable_voxel_surface_history_shares_one_source_lineage :: proc(t: ^testing.T) {
+	registry: Registry
+	init_registry(&registry)
+	defer destroy_registry(&registry)
+	cells := [3]int{4, 4, 4}
+	densities := make([]f32, 125)
+	defer delete(densities)
+	for z in 0 ..= cells[2] {
+		for y in 0 ..= cells[1] {
+			for x in 0 ..= cells[0] {
+				densities[(z * 5 + y) * 5 + x] = 1.5 - f32(y)
+			}
+		}
+	}
+	handle, register_err := register_voxel_surface(
+		&registry,
+		"edit-chain",
+		{},
+		1,
+		cells,
+		densities,
+	)
+	testing.expect_value(t, register_err, "")
+	geometry, alive := get_geometry(&registry, handle)
+	testing.expect(t, alive)
+	baseline := clone_slice(geometry.voxel_surface.densities, context.allocator)
+	defer delete(baseline)
+	first, first_err := edit_voxel_surface_cell(&registry, handle, {1, 1, 1}, false)
+	second, second_err := edit_voxel_surface_cell(&registry, handle, {2, 1, 2}, false)
+	testing.expect_value(t, first_err, "")
+	testing.expect_value(t, second_err, "")
+	defer {
+		if first != nil {
+			destroy_voxel_surface_edit(first)
+			free(first)
+		}
+		if second != nil {
+			destroy_voxel_surface_edit(second)
+			free(second)
+		}
+	}
+	testing.expect(t, first != nil && second != nil)
+	testing.expect(t, apply_voxel_surface_edit(&registry, second, false) == "")
+	testing.expect(t, apply_voxel_surface_edit(&registry, first, false) == "")
+	geometry, alive = get_geometry(&registry, handle)
+	testing.expect(t, alive)
+	for value, index in geometry.voxel_surface.densities {
+		testing.expect_value(t, value, baseline[index])
+	}
+}
+
+@(test)
+test_authorable_voxel_surface_lineage_is_unique_across_registries :: proc(t: ^testing.T) {
+	first_registry: Registry
+	second_registry: Registry
+	init_registry(&first_registry)
+	init_registry(&second_registry)
+	defer destroy_registry(&first_registry)
+	defer destroy_registry(&second_registry)
+	cells := [3]int{2, 2, 2}
+	densities := []f32 {
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		1,
+		-1,
+		-1,
+		-1,
+		-1,
+		-1,
+		-1,
+		-1,
+		-1,
+		-1,
+	}
+	first, first_err := register_voxel_surface(
+		&first_registry,
+		"reload-lineage",
+		{},
+		1,
+		cells,
+		densities,
+	)
+	second, second_err := register_voxel_surface(
+		&second_registry,
+		"reload-lineage",
+		{},
+		1,
+		cells,
+		densities,
+	)
+	testing.expect_value(t, first_err, "")
+	testing.expect_value(t, second_err, "")
+	first_geometry, first_alive := get_geometry(&first_registry, first)
+	second_geometry, second_alive := get_geometry(&second_registry, second)
+	testing.expect(t, first_alive && second_alive)
+	testing.expect(
+		t,
+		first_geometry.voxel_surface.lineage != second_geometry.voxel_surface.lineage,
+	)
+}
+
+@(test)
+test_authorable_voxel_surface_contact_targets_inside_or_adjacent_cell :: proc(t: ^testing.T) {
+	source := Voxel_Surface_Source {
+		voxel_size = 1,
+		cells = {4, 4, 4},
+	}
+	removed, remove_ok := voxel_surface_cell_at_contact(&source, {1.2, 2, 1.2}, {0, 1, 0}, false)
+	added, add_ok := voxel_surface_cell_at_contact(&source, {1.2, 2, 1.2}, {0, 1, 0}, true)
+	testing.expect(t, remove_ok && add_ok)
+	testing.expect_value(t, removed, [3]int{1, 1, 1})
+	testing.expect_value(t, added, [3]int{1, 2, 1})
+}
+
 Voxel_Test_Edge :: struct {
 	a, b: u32,
 }

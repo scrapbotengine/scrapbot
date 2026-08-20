@@ -64,6 +64,10 @@ position = [0, 0, 0]
 rotation = [0, 0, 0]
 scale = [1, 1, 1]
 
+[entities.mesh]
+primitive = "voxel-terrain-lab"
+geometry_mode = "conventional"
+
 [entities.material]
 resource = "b2400000-0000-4000-8000-000000000002"
 
