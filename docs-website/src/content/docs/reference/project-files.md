@@ -251,7 +251,11 @@ Shaders without the block pay no FFT work.
 
 Scene sampling functions accept full-target UVs. Use `input.scene_uv` as the undisplaced sample; passing `input.screen_uv` directly is incorrect when rendering inside an offset editor or game viewport.
 
-Custom shaders currently require `alpha_mode = "blend"`. Opaque custom materials need matching displaced depth-prepass and shadow contracts before they can be enabled safely. Blended draws are sorted back-to-front per instance on the CPU; a bounded GPU sort for very large transparent sets remains tracked work.
+Custom shaders support `opaque` and `blend` alpha modes. Opaque hooks render through Conventional
+Geometry, write depth in the custom-surface pass, and therefore self-occlude correctly. They do not
+yet participate in the earlier depth prepass or cast directional shadows because a displaced hook
+needs matching depth and shadow vertex contracts. Blended draws are sorted back-to-front per
+instance on the CPU; a bounded GPU sort for very large transparent sets remains tracked work.
 
 A shader that computes ordinary translucent coverage returns that coverage in `Scrapbot_Surface.color.a`. A single-layer transmission shader may instead sample the opaque scene, compose transmission and reflection itself, and return alpha one so the pass does not blend the background into the result twice.
 

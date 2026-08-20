@@ -7,6 +7,7 @@ import shared "../shared"
 import base_runtime "base:runtime"
 import c "core:c"
 import libc "core:c/libc"
+import "core:math"
 
 register_scrapbot_api :: proc(L: Lua_State) {
 	lua_createtable(L, 0, 20)
@@ -188,7 +189,7 @@ register_scrapbot_api :: proc(L: Lua_State) {
 	push_registered_component_handle_by_name(L, "scrapbot.model")
 	lua_setfield(L, -2, "model")
 
-	lua_createtable(L, 0, 4)
+	lua_createtable(L, 0, 8)
 	lua_pushcclosurek(
 		L,
 		scrapbot_geometry_create,
@@ -210,6 +211,13 @@ register_scrapbot_api :: proc(L: Lua_State) {
 		0,
 		nil,
 	); lua_setfield(L, -2, "plane")
+	lua_pushcclosurek(
+		L,
+		scrapbot_geometry_voxel_surface,
+		"scrapbot.geometry.voxel_surface",
+		0,
+		nil,
+	); lua_setfield(L, -2, "voxel_surface")
 	lua_pushcclosurek(
 		L,
 		scrapbot_geometry_icosphere,
@@ -428,6 +436,97 @@ scrapbot_geometry_plane :: proc "c" (L: Lua_State) -> c.int {
 	push_resource_handle(L, "geometry", handle.index, handle.generation); return 1
 }
 
+scrapbot_geometry_voxel_surface :: proc "c" (L: Lua_State) -> c.int {
+	context = base_runtime.default_context()
+	runtime := cast(^Runtime)lua_getthreaddata(L)
+	name, name_ok := luau_required_string(L, 1)
+	if runtime == nil ||
+	   runtime.resource_registry == nil ||
+	   !name_ok ||
+	   lua_type(L, 2) != LUA_TTABLE {
+		return luau_push_error(L, "geometry.voxel_surface expects a resource name and descriptor")
+	}
+	lua_getfield(L, 2, "origin")
+	origin, origin_ok := vec3_argument(L, -1)
+	lua_settop(L, -2)
+	voxel_size, voxel_size_ok := number_field(L, 2, "voxel_size")
+	lua_getfield(L, 2, "cells")
+	cells_value, cells_ok := vec3_argument(L, -1)
+	lua_settop(L, -2)
+	cells_finite_and_bounded :=
+		!math.is_nan(cells_value.x) &&
+		!math.is_inf(cells_value.x) &&
+		cells_value.x >= 1 &&
+		cells_value.x <= resources.MAX_VOXEL_SURFACE_AXIS_CELLS &&
+		!math.is_nan(cells_value.y) &&
+		!math.is_inf(cells_value.y) &&
+		cells_value.y >= 1 &&
+		cells_value.y <= resources.MAX_VOXEL_SURFACE_AXIS_CELLS &&
+		!math.is_nan(cells_value.z) &&
+		!math.is_inf(cells_value.z) &&
+		cells_value.z >= 1 &&
+		cells_value.z <= resources.MAX_VOXEL_SURFACE_AXIS_CELLS
+	if !origin_ok || !voxel_size_ok || !cells_ok || !cells_finite_and_bounded {
+		return luau_push_error(
+			L,
+			"voxel surface origin, voxel_size, and bounded integer cells are required",
+		)
+	}
+	cells := [3]int{int(cells_value.x), int(cells_value.y), int(cells_value.z)}
+	if f32(cells[0]) != cells_value.x ||
+	   f32(cells[1]) != cells_value.y ||
+	   f32(cells[2]) != cells_value.z {
+		return luau_push_error(
+			L,
+			"voxel surface origin, voxel_size, and integer cells are required",
+		)
+	}
+	for count in cells {
+		if count < 1 || count > resources.MAX_VOXEL_SURFACE_AXIS_CELLS {
+			return luau_push_error(
+				L,
+				"voxel surface dimensions must be between 1 and 64 cells per axis",
+			)
+		}
+	}
+	if cells[0] * cells[1] * cells[2] > resources.MAX_VOXEL_SURFACE_TOTAL_CELLS {
+		return luau_push_error(L, "voxel surface fields may contain at most 65536 cells")
+	}
+	expected_count := (cells[0] + 1) * (cells[1] + 1) * (cells[2] + 1)
+	densities := make([dynamic]f32, 0, expected_count)
+	defer delete(densities)
+	lua_getfield(L, 2, "densities")
+	if lua_type(L, -1) != LUA_TTABLE {
+		lua_settop(L, -2)
+		return luau_push_error(L, "voxel surface densities must be an array")
+	}
+	for index in 1 ..= expected_count {
+		lua_rawgeti(L, -1, c.int(index))
+		is_number: c.int
+		value := lua_tonumberx(L, -1, &is_number)
+		lua_settop(L, -2)
+		if is_number == 0 {
+			lua_settop(L, -2)
+			return luau_push_error(
+				L,
+				"voxel surface densities must contain one number per lattice sample",
+			)
+		}
+		append(&densities, f32(value))
+	}
+	lua_rawgeti(L, -1, c.int(expected_count + 1))
+	has_extra := lua_type(L, -1) != LUA_TNIL
+	lua_settop(L, -3)
+	if has_extra {
+		return luau_push_error(
+			L,
+			"voxel surface densities must contain one number per lattice sample",
+		)
+	}
+	desc, generation_err := resources.voxel_surface(origin, voxel_size, cells, densities[:])
+	return register_generated_luau_geometry(L, runtime, name, desc, generation_err)
+}
+
 scrapbot_geometry_icosphere :: proc "c" (L: Lua_State) -> c.int {
 	context = base_runtime.default_context(); runtime := cast(^Runtime)lua_getthreaddata(L)
 	name, ok := luau_required_string(
@@ -548,10 +647,17 @@ scrapbot_material_unlit :: proc "c" (L: Lua_State) -> c.int {
 	   !ok { return luau_push_error(L, "material.unlit expects a resource name") }
 	values := [4]f32{1, 1, 1, 1}
 	for i in 0 ..< 4 { if lua_gettop(L) >= c.int(i + 2) { is_number: c.int; values[i] = f32(lua_tonumberx(L, c.int(i + 2), &is_number)); if is_number == 0 { return luau_push_error(L, "material color values must be numbers") } } }
+	double_sided := false
+	if lua_gettop(L) >= 6 {
+		if lua_type(L, 6) != LUA_TBOOLEAN {
+			return luau_push_error(L, "material double_sided must be a boolean")
+		}
+		double_sided = lua_toboolean(L, 6) != 0
+	}
 	handle, err := resources.register_material(
 		runtime.resource_registry,
 		name,
-		{base_color = {values[0], values[1], values[2], values[3]}},
+		{base_color = {values[0], values[1], values[2], values[3]}, double_sided = double_sided},
 	)
 	if err != "" { return luau_push_error(L, err) }
 	ecs.mark_all_render_entities_dirty(runtime.world)

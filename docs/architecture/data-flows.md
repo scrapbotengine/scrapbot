@@ -224,7 +224,8 @@ typed ECS/resource mutation
                                                                        ▼
                                                            project shader hooks
                                       │
-                     sorted depth-tested transparent composition
+                     ├─ opaque Conventional draw + depth write
+                     └─ sorted depth-tested transparent composition
                                       │
                          retained UI streams
                            ┌──────────┴──────────┐
@@ -307,11 +308,13 @@ If legal despawn/reuse churn leaves an authoritative retained slot inactive, the
 Material revisions trigger one dependent-instance pass. WGPU replaces only that Material handle/version's factor uniform, bind group, and owned image textures. Stable materials and static instance fields remain resident.
 
 Shader revisions replace only that Shader handle/version's composed WGPU module and pipelines.
-Blended custom-material batches are collected from retained render instances, sorted against the
-active camera, and encoded after opaque world shading. The pass samples a retained opaque-color
-copy and read-only scene depth while preserving the opaque depth buffer. Its time helpers read the
-default `scrapbot.clock` snapshot retained in `world.time`. Redraws without a simulation step publish zero shader delta and retain
-spectral fields without another FFT dispatch.
+Custom-material batches are collected from retained render instances and encoded after ordinary
+opaque world shading through Conventional Geometry. Opaque hooks run first and write the live depth
+target; blended hooks follow in camera-sorted order without depth writes. Both sample immutable
+opaque-color and depth copies, so an opaque hook never binds the depth target it is simultaneously
+writing. Time helpers read the default `scrapbot.clock` snapshot retained in `world.time`. Redraws
+without a simulation step publish zero shader delta and retain spectral fields without another FFT
+dispatch.
 
 The retained previous spectral field also supplies foam history to finalization. Each output texel
 backtraces its world-XZ foam-advection velocity by project delta time, converts that displacement by

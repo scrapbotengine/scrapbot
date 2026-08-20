@@ -121,6 +121,9 @@ The placeholder renderer that accepts world-derived frame data without opening a
 **WebGPU**  
 The graphics API model Scrapbot targets for the first real renderer through `wgpu-native`.
 
+**Voxel Terrain**<br>
+Smooth terrain whose compact height baseline can be changed by sparse volumetric density edits, allowing caves, arches, and overhangs.
+
 **Shadow caster**
 An entity marked to contribute geometry to the first directional light's shadow map.
 

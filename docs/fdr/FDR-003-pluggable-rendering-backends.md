@@ -1,7 +1,7 @@
 # FDR-003: Pluggable rendering backends
 
 **Status:** Active
-**Last reviewed:** 2026-08-11
+**Last reviewed:** 2026-08-20
 
 ## Overview
 
@@ -35,6 +35,7 @@ Pluggable rendering backends allow Scrapbot to start with `wgpu-native` while ke
 - WGPU keeps a persistent slot-addressed GPU instance table, separates static source state from hot Transform state, and sends Transform-only changes through one dense update upload. The CPU full-record mirror advances with that compact stream so later selection/static uploads cannot regress model matrices or bounds. Nearby static slot changes coalesce into bounded uploads. Compact render/culling uniforms and instance-to-LOD batch mappings remain retained, camera and shadow frustum visibility compacts into batch slices, and indexed indirect draw arguments provide instance counts.
 - The retained draw database grows geometrically past the original 64-batch limit. It rebuilds only when render membership, geometry LOD topology, or required capacity changes.
 - Every Geometry version owns bounded meshlets and a crack-aware, deterministically paged cluster hierarchy. Simplification preserves normal and UV discontinuities and never falls back to attribute-blind reduction.
+- Luau can extract a finite smooth Geometry from a sampled signed-density lattice. The resulting surface uses the same Geometry registration, meshlet, hierarchy, paging, shadow, and debug paths as another procedural resource.
 - Geometry submission resolves at stable topology boundaries from entity override, Model-resource preference, project default, and backend automatic policy. Conventional and Virtual instances of one Geometry can coexist in separate retained batches and caches.
 - Complete page sets that fit the remaining budget are admitted immediately; coarse pages remain pinned for streamed resources. The GPU selects resident detail, requests missing finer pages, and draws the nearest resident fallback before camera sphere, normal-cone, and Hi-Z tests.
 - Native multi-draw adapters retain one indirect command per ordinary meshlet or hierarchy cluster
@@ -472,6 +473,11 @@ lighting remains consistent with opaque world lighting.
 
 Blended hooks receive the opaque scene color/depth and render in a depth-tested, no-depth-write pass. This supports both conventional alpha blending and single-layer transmission shaders that return an already-composited result with alpha one.
 
+Opaque hooks use Conventional Geometry and render after the ordinary opaque pass with depth writes
+enabled, so closed and double-sided project-shader surfaces self-occlude independently of triangle
+order. They do not yet enter the earlier depth prepass or directional-shadow pass; those require
+matching variants of the project's vertex displacement hook.
+
 For temporal reprojection, WGPU evaluates the same vertex hook once in the current project-time
 context and once against the previous project-time snapshot. The previous context also samples the
 retained previous spectral field. The fragment writes the previous viewport position to a compact
@@ -488,8 +494,8 @@ one another. Custom-surface SSR sees only current-frame, on-screen opaque geomet
 
 Previous hook evaluation tracks engine project time and spectral fields, but arbitrary project
 parameter changes and object transforms do not yet retain their previous values. A bounded GPU sort,
-imported glTF blending, structured compiler diagnostics, displaced depth/shadow variants, and
-general per-object motion remain explicit follow-up work.
+Virtual Geometry project-shader submission, imported glTF blending, structured compiler diagnostics,
+displaced depth/shadow variants, and general per-object motion remain explicit follow-up work.
 
 ### 25. Generate reusable spectral surfaces for project shaders
 
@@ -564,9 +570,21 @@ path. Mixed scenes need local control without camera-motion-driven topology chur
 **Tradeoff:** Automatic selection begins with one portable threshold. Profiles expose the resolved
 batch and instance mix, but qualified adapter-specific calibration remains future work.
 
+### 27. Keep sampled voxel extraction behind the Geometry boundary
+
+**Decision:** Let the low-level Luau voxel-surface helper produce ordinary indexed Geometry and
+keep persistent Terrain authority, editing, chunk invalidation, and residency above that boundary.
+See ADR-062.
+
+**Why:** Smooth arbitrary topology should immediately reuse established rendering behavior without
+making WGPU understand terrain fields or example identities.
+
+**Tradeoff:** Passing a complete density lattice is a transient procedural escape hatch, not the
+persistent or incremental terrain authoring API.
+
 ## Related
 
-- **ADRs:** ADR-003, ADR-005, ADR-010, ADR-011, ADR-029, ADR-034, ADR-038, ADR-039, ADR-046, ADR-047, ADR-048, ADR-049, ADR-050, ADR-054, ADR-056
+- **ADRs:** ADR-003, ADR-005, ADR-010, ADR-011, ADR-029, ADR-034, ADR-038, ADR-039, ADR-046, ADR-047, ADR-048, ADR-049, ADR-050, ADR-054, ADR-056, ADR-062
 - **FDRs:** FDR-001, FDR-002, FDR-008
 
 ## Open Questions

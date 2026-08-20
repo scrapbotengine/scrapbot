@@ -249,7 +249,7 @@ local triangle = scrapbot.geometry.create("triangle", {
     { position = {x=0,y=1,z=0}, normal = {x=0,y=0,z=1}, uv = {x=0.5,y=1} },
   }, indices = {0,1,2},
 })
-local red = scrapbot.material.unlit("red", 1, 0, 0, 1)
+local red = scrapbot.material.unlit("red", 1, 0, 0, 1, true)
 scrapbot.material.emissive("neon", 0.25, 0.5, 1, 8)
 scrapbot.spawn({components = {
   ["scrapbot.transform"] = {position={x=0,y=0,z=0}, scale={x=1,y=1,z=1}},
@@ -271,6 +271,10 @@ scrapbot.spawn({components = {
 	testing.expect(t, ok)
 	geometry_data, valid := resources.get_geometry(&resource_registry, geometry)
 	testing.expect(t, valid && len(geometry_data.indices) == 3)
+	red, found_red := resources.material_by_name(&resource_registry, "red")
+	testing.expect(t, found_red)
+	red_data, valid_red := resources.get_material(&resource_registry, red)
+	testing.expect(t, valid_red && red_data.desc.double_sided)
 	neon, found_neon := resources.material_by_name(&resource_registry, "neon")
 	testing.expect(t, found_neon)
 	neon_data, valid_neon := resources.get_material(&resource_registry, neon)
@@ -292,6 +296,12 @@ scrapbot.geometry.icosphere("ico", 1, 1)
 scrapbot.geometry.sphere("sphere", 1, 12, 8)
 scrapbot.geometry.pyramid("pyramid", 2, 3, 2)
 scrapbot.geometry.cylinder("cylinder", 1, 2, 12)
+scrapbot.geometry.voxel_surface("voxel", {
+	origin = { x = -1, y = -1, z = -1 },
+	voxel_size = 1,
+	cells = { x = 2, y = 2, z = 2 },
+	densities = { -1, -1, -1, -1, 1, -1, -1, -1, -1, 1, -1, 1, 2, 1, -1, 1, -1, 1, -1, -1, -1, -1, 1, -1, -1, -1, -1 },
+})
 `,
 		"=primitive-test",
 		&world,
@@ -299,10 +309,38 @@ scrapbot.geometry.cylinder("cylinder", 1, 2, 12)
 		Source_Options{resource_registry = &resource_registry},
 	)
 	testing.expectf(t, result.err == "", "script failed: %s", result.err)
-	names := [?]string{"ico", "sphere", "pyramid", "cylinder"}
+	names := [?]string{"ico", "sphere", "pyramid", "cylinder", "voxel"}
 	for name in names {
 		_, ok := resources.geometry_by_name(&resource_registry, name)
 		testing.expectf(t, ok, "expected geometry %s", name)
+	}
+}
+
+@(test)
+test_luau_voxel_surface_rejects_non_finite_cells_before_integer_conversion :: proc(t: ^testing.T) {
+	world: ecs.World
+	defer ecs.destroy_world(&world)
+	registry: component.Registry
+	component.init_registry(&registry)
+	resource_registry: resources.Registry
+	resources.init_registry(&resource_registry)
+	defer resources.destroy_registry(&resource_registry)
+	sources := [?]string {
+		`scrapbot.geometry.voxel_surface("nan", { origin = { x = 0, y = 0, z = 0 }, voxel_size = 1, cells = { x = 0 / 0, y = 1, z = 1 }, densities = {} })`,
+		`scrapbot.geometry.voxel_surface("infinity", { origin = { x = 0, y = 0, z = 0 }, voxel_size = 1, cells = { x = math.huge, y = 1, z = 1 }, densities = {} })`,
+	}
+	for source, index in sources {
+		runtime: Runtime
+		result := run_source_with_registry(
+			&runtime,
+			source,
+			"=voxel-cell-validation-test",
+			&world,
+			&registry,
+			Source_Options{resource_registry = &resource_registry},
+		)
+		testing.expectf(t, result.err != "", "non-finite voxel cell case %d was accepted", index)
+		destroy_runtime(&runtime)
 	}
 }
 

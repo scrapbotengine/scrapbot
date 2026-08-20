@@ -1177,6 +1177,7 @@ wgpu_release_custom_shader_cache_entry :: proc(entry: ^WGPU_Custom_Shader_Cache)
 	if entry.spectral_intermediate_buffer != nil {
 		wgpu.BufferRelease(entry.spectral_intermediate_buffer)
 	}
+	if entry.opaque_pipeline != nil { wgpu.RenderPipelineRelease(entry.opaque_pipeline) }
 	if entry.blend_pipeline != nil { wgpu.RenderPipelineRelease(entry.blend_pipeline) }
 	if entry.selection_pipeline != nil { wgpu.RenderPipelineRelease(entry.selection_pipeline) }
 	if entry.water_surface_query_pipeline != nil {
@@ -1252,6 +1253,13 @@ wgpu_custom_shader_cache :: proc(
 	if shader.cull_mode == .None {
 		cull_mode = .None
 	}
+	entry.opaque_pipeline = wgpu_create_custom_world_pipeline(
+		renderer,
+		entry.module,
+		&vertex_layout,
+		cull_mode,
+		false,
+	)
 	entry.blend_pipeline = wgpu_create_custom_world_pipeline(
 		renderer,
 		entry.module,
@@ -1265,7 +1273,9 @@ wgpu_custom_shader_cache :: proc(
 		&vertex_layout,
 		cull_mode,
 	)
-	if entry.blend_pipeline == nil || entry.selection_pipeline == nil {
+	if entry.opaque_pipeline == nil ||
+	   entry.blend_pipeline == nil ||
+	   entry.selection_pipeline == nil {
 		wgpu_release_custom_shader_cache_entry(entry)
 		return nil, fmt.tprintf("failed to create pipelines for shader '%s'", shader.name)
 	}
@@ -1711,9 +1721,17 @@ wgpu_release_custom_shader_target :: proc(renderer: ^WGPU_Renderer) {
 		wgpu.TextureRelease(renderer.custom_shader_scene_texture)
 		renderer.custom_shader_scene_texture = nil
 	}
+	if renderer.custom_shader_depth_view != nil {
+		wgpu.TextureViewRelease(renderer.custom_shader_depth_view)
+		renderer.custom_shader_depth_view = nil
+	}
+	if renderer.custom_shader_depth_texture != nil {
+		wgpu.TextureRelease(renderer.custom_shader_depth_texture)
+		renderer.custom_shader_depth_texture = nil
+	}
 	renderer.custom_shader_scene_width = 0
 	renderer.custom_shader_scene_height = 0
-	renderer.custom_shader_depth_view = nil
+	renderer.custom_shader_source_depth_view = nil
 }
 
 wgpu_ensure_custom_shader_target :: proc(
@@ -1724,7 +1742,8 @@ wgpu_ensure_custom_shader_target :: proc(
 	if renderer.custom_shader_scene_width == width &&
 	   renderer.custom_shader_scene_height == height &&
 	   renderer.custom_shader_scene_view != nil &&
-	   renderer.custom_shader_depth_view == depth_view {
+	   renderer.custom_shader_depth_view != nil &&
+	   renderer.custom_shader_source_depth_view == depth_view {
 		return ""
 	}
 	wgpu_release_custom_shader_target(renderer)
@@ -1747,9 +1766,28 @@ wgpu_ensure_custom_shader_target :: proc(
 	)
 	if renderer.custom_shader_scene_view ==
 	   nil { return "failed to create custom shader scene view" }
+	renderer.custom_shader_depth_texture = wgpu.DeviceCreateTexture(
+		renderer.device,
+		&wgpu.TextureDescriptor {
+			label = "Scrapbot Opaque Depth Copy",
+			usage = {.CopyDst, .TextureBinding},
+			dimension = ._2D,
+			size = {width = width, height = height, depthOrArrayLayers = 1},
+			format = .Depth24Plus,
+			mipLevelCount = 1,
+			sampleCount = 1,
+		},
+	)
+	if renderer.custom_shader_depth_texture ==
+	   nil { return "failed to create custom shader depth texture" }
+	renderer.custom_shader_depth_view = wgpu.TextureCreateView(
+		renderer.custom_shader_depth_texture,
+	)
+	if renderer.custom_shader_depth_view ==
+	   nil { return "failed to create custom shader depth view" }
 	renderer.custom_shader_scene_width = width
 	renderer.custom_shader_scene_height = height
-	renderer.custom_shader_depth_view = depth_view
+	renderer.custom_shader_source_depth_view = depth_view
 	renderer.custom_shader_target_generation += 1
 	if renderer.custom_shader_target_generation == 0 {
 		renderer.custom_shader_target_generation = 1
@@ -2088,9 +2126,7 @@ wgpu_prepare_transparent_draws :: proc(
 		}
 		source := renderer.gpu_instance_sources[slot]
 		material, material_ok := resources.get_material(registry, source.material)
-		if !material_ok ||
-		   material.desc.alpha_mode != .Blend ||
-		   material.desc.shader == (shared.Shader_Handle{}) {
+		if !material_ok || material.desc.shader == (shared.Shader_Handle{}) {
 			continue
 		}
 		offset := vec3_sub(renderer.gpu_instance_source_transforms[slot].position, eye)
@@ -2101,10 +2137,17 @@ wgpu_prepare_transparent_draws :: proc(
 				geometry = source.geometry,
 				material = source.material,
 				distance_squared = offset.x * offset.x + offset.y * offset.y + offset.z * offset.z,
+				blended = material.desc.alpha_mode == .Blend,
 			},
 		)
 	}
 	slice.sort_by(renderer.transparent_draws[:], proc(a, b: WGPU_Transparent_Draw) -> bool {
+		if a.blended != b.blended {
+			return !a.blended
+		}
+		if !a.blended {
+			return a.instance_slot < b.instance_slot
+		}
 		return a.distance_squared > b.distance_squared
 	})
 }
@@ -2212,6 +2255,7 @@ wgpu_encode_transparent_pass :: proc(
 	renderer: ^WGPU_Renderer,
 	encoder: wgpu.CommandEncoder,
 	depth_view: wgpu.TextureView,
+	depth_texture: wgpu.Texture,
 	registry: ^resources.Registry,
 	viewport: ui.Rect,
 ) -> string {
@@ -2255,6 +2299,22 @@ wgpu_encode_transparent_pass :: proc(
 			depthOrArrayLayers = 1,
 		},
 	)
+	if depth_texture == nil || renderer.custom_shader_depth_texture == nil {
+		return "custom shader depth copy is unavailable"
+	}
+	wgpu.CommandEncoderCopyTextureToTexture(
+		encoder,
+		&wgpu.TexelCopyTextureInfo{texture = depth_texture, aspect = .DepthOnly},
+		&wgpu.TexelCopyTextureInfo {
+			texture = renderer.custom_shader_depth_texture,
+			aspect = .DepthOnly,
+		},
+		&wgpu.Extent3D {
+			width = renderer.custom_shader_scene_width,
+			height = renderer.custom_shader_scene_height,
+			depthOrArrayLayers = 1,
+		},
+	)
 	color_attachments := [4]wgpu.RenderPassColorAttachment {
 		{
 			view = renderer.hdr_view,
@@ -2284,10 +2344,10 @@ wgpu_encode_transparent_pass :: proc(
 	}
 	depth_attachment := wgpu.RenderPassDepthStencilAttachment {
 		view = depth_view,
-		depthLoadOp = .Undefined,
-		depthStoreOp = .Undefined,
+		depthLoadOp = .Load,
+		depthStoreOp = .Store,
 		depthClearValue = 1,
-		depthReadOnly = true,
+		depthReadOnly = false,
 		stencilLoadOp = .Undefined,
 		stencilStoreOp = .Undefined,
 		stencilReadOnly = true,
@@ -2351,7 +2411,11 @@ wgpu_encode_transparent_pass :: proc(
 		if custom_err != "" { return custom_err }
 		material_cached, material_err := wgpu_material_cache(renderer, registry, draw.material)
 		if material_err != "" { return material_err }
-		wgpu.RenderPassEncoderSetPipeline(pass, custom.blend_pipeline)
+		pipeline := custom.opaque_pipeline
+		if draw.blended {
+			pipeline = custom.blend_pipeline
+		}
+		wgpu.RenderPassEncoderSetPipeline(pass, pipeline)
 		wgpu.RenderPassEncoderSetBindGroup(pass, 1, material_cached.bind_group)
 		wgpu.RenderPassEncoderSetBindGroup(pass, 3, custom.render_bind_group)
 		wgpu.RenderPassEncoderDrawIndexed(

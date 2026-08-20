@@ -22,6 +22,7 @@ This file tracks current actionable engineering work. The broad product roadmap 
 - [ ] Add mip-resident texture streaming so projects can use 2K–8K source images without eagerly expanding every complete RGBA8 mip chain on the GPU.
 - [ ] Add sorted glTF `BLEND` transparency, richer PBR extensions, animation, skins, morph targets, and compressed geometry. (`OPAQUE`, `MASK`, alpha cutoffs, and double-sided materials are supported.)
 - [ ] Add a bounded GPU sort path for large transparent sets; project-shader transparency currently performs exact CPU back-to-front instance sorting.
+- [ ] Add Virtual Geometry submission for opaque project shaders; the current custom-surface path intentionally uses Conventional Geometry.
 - [ ] Promote spectral surfaces into reusable water resources with authored water influences, water-body depth/shape, and adaptive quality; add simulation, foam, current, and deformation masks. See [FDR-003](fdr/FDR-003-pluggable-rendering-backends.md#25-generate-reusable-spectral-surfaces-for-project-shaders).
 - [ ] Add custom-vertex depth and shadow variants so displaced opaque geometry participates in the prepass and cascades without running a mismatched vertex contract.
 - [ ] Surface WGSL compilation and pipeline-validation failures as structured project diagnostics instead of allowing wgpu-native's default uncaptured-error handler to abort.
@@ -35,6 +36,7 @@ This file tracks current actionable engineering work. The broad product roadmap 
 
 ## Project Runtime And Scripting
 
+- [ ] Complete persistent finite Terrain resources, chunk Geometry ownership, background candidate meshing, and stale-result rejection on top of [ADR-062](adr/ADR-062-author-terrain-as-a-height-baseline-with-sparse-voxel-edits.md) and [FDR-014](fdr/FDR-014-voxel-terrain.md).
 - [ ] Add time-budgeted/background scene preparation with project-visible preload/progress/cancellation while preserving ADR-061's active/staging ownership and transactional activation. See [ADR-058](adr/ADR-058-identify-scenes-by-uuid-and-replace-worlds-transactionally.md).
 - [ ] Add configurable CPU/GPU scene-residency byte budgets, pressure-driven early eviction, and structured residency telemetry on top of dependency-indexed closures and delayed payload eviction. See [ADR-061](adr/ADR-061-index-scene-resource-dependencies-and-evict-unused-payloads.md).
 - [ ] Design additive scene instances, explicit unload, persistent layers, and scoped cross-scene references. See [FDR-013](fdr/FDR-013-scene-assets-and-transitions.md).
@@ -46,6 +48,7 @@ This file tracks current actionable engineering work. The broad product roadmap 
 
 ## Editor
 
+- [ ] Add viewport Raise, Lower, Smooth, Flatten, Add, and Subtract terrain brushes with bounded previews, Undo/Redo tile snapshots, transactional save/revert, and semantic tool-state cues. See [FDR-014](fdr/FDR-014-voxel-terrain.md).
 - [ ] Track exact field-level runtime mutation provenance so play-mode editing can safely unlock fields disjoint from system writes. See [FDR-008](fdr/FDR-008-editor-shell.md).
 - [ ] Reuse the rooted file-browser model for explicit open/save/import dialogs with consumer-owned capabilities, filename validation, overwrite confirmation, and asynchronous scan cancellation. See [ADR-060](adr/ADR-060-browse-files-through-rooted-metadata-models.md).
 - [ ] Extend public dock spaces with same-group tab ordering, automatic empty-split collapse, floating windows, and persisted dock placement plus panel order and sizes. Panels and tabs already transfer across containers and create public resizable splits from enabled edges. See [ADR-045](adr/ADR-045-compose-docking-from-public-groups-and-layout.md).

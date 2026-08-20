@@ -263,7 +263,7 @@ source identity so a default change adopts the replacement clock's own timeline.
 time helpers receive its elapsed time and frame index; shader delta is zero on a redraw without a simulation step. Each active
 spectral Shader updates its uniform and encodes one horizontal plus one vertical inverse FFT followed
 by one spatial finalization dispatch at most once per elapsed-time change, even when several
-transparent draws share it. Before an advancing simulation overwrites the current field, a GPU copy
+custom-surface draws share it. Before an advancing simulation overwrites the current field, a GPU copy
 retains it as previous-frame deformation input. Paused redraws retain both fields without an upload,
 copy, or dispatch.
 Finalization derives the compression Jacobian, deposits breaking foam, and exponentially decays
@@ -276,10 +276,12 @@ Changing the Shader version releases only that Shader's spectral state, includin
 render pipeline. Resizing the scene target rebuilds only per-Shader scene/depth bind groups; the
 spectral field survives.
 
-The post-target set owns one viewport-sized `RG16Float` custom-surface motion texture. Transparent
-custom shaders write previous viewport UVs; `[-1, -1]` is the invalid sentinel. The target clears
-once per frame and TAA samples it directly, so stable frames do not create CPU extraction or
-per-object uploads. Target resize recreates it with the other post targets.
+The post-target set owns one viewport-sized `RG16Float` custom-surface motion texture plus immutable
+opaque-color and depth snapshots for project-shader scene sampling. Opaque custom shaders write the
+live depth attachment while sampling the snapshot; blended shaders test the live depth without
+writing it. Custom shaders write previous viewport UVs; `[-1, -1]` is the invalid sentinel. The
+motion target clears once per frame and TAA samples it directly, so stable frames do not create CPU
+extraction or per-object uploads. Target resize recreates these textures with the other post targets.
 
 ### Water volumes
 

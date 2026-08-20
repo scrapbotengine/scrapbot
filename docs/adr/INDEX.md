@@ -63,3 +63,4 @@
 | [ADR-059](ADR-059-route-input-from-one-physical-frame.md) | Route input from one physical frame | 2026-08-12 |
 | [ADR-060](ADR-060-browse-files-through-rooted-metadata-models.md) | Browse files through rooted metadata models | 2026-08-12 |
 | [ADR-061](ADR-061-index-scene-resource-dependencies-and-evict-unused-payloads.md) | Index scene resource dependencies and evict unused payloads | 2026-08-12 |
+| [ADR-062](ADR-062-author-terrain-as-a-height-baseline-with-sparse-voxel-edits.md) | Author terrain as a height baseline with sparse voxel edits | 2026-08-20 |

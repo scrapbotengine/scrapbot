@@ -173,18 +173,28 @@ end)
 | `scrapbot.geometry.create(name, descriptor)` | Register position/normal/UV vertices, optional `Vec4` tangents (`xyz` direction, `w` handedness), and `u32` triangle indices. |
 | `scrapbot.geometry.cube(name, size?)` | Generate and register indexed cube geometry. |
 | `scrapbot.geometry.plane(name, width?, depth?, columns?, rows?)` | Generate an indexed plane; optional subdivisions support displaced surfaces. |
+| `scrapbot.geometry.voxel_surface(name, descriptor)` | Extract smooth indexed Geometry from a finite sampled density lattice. |
 | `scrapbot.geometry.icosphere(name, radius?, subdivisions?)` | Generate an indexed icosphere. Subdivisions range from 0 to 4. |
 | `scrapbot.geometry.sphere(name, radius?, segments?, rings?)` | Generate an indexed UV sphere. |
 | `scrapbot.geometry.pyramid(name, width?, height?, depth?)` | Generate an indexed square pyramid. |
 | `scrapbot.geometry.cylinder(name, radius?, height?, segments?)` | Generate an indexed capped cylinder. |
-| `scrapbot.material.lit(name, r?, g?, b?, a?)` | Register a shared Lambert-lit base-color material. |
-| `scrapbot.material.unlit(name, r?, g?, b?, a?)` | Compatibility alias for `material.lit`. |
+| `scrapbot.material.lit(name, r?, g?, b?, a?, double_sided?)` | Register a shared Lambert-lit base-color material; opt into rendering both face orientations when needed. |
+| `scrapbot.material.unlit(name, r?, g?, b?, a?, double_sided?)` | Compatibility alias for `material.lit`. |
 | `scrapbot.material.emissive(name, r?, g?, b?, intensity?)` | Register an unlit HDR material. RGB defaults to white and intensity defaults to `4`; values above display white feed bloom. |
 | `scrapbot.material.textured(name, asset_path, r?, g?, b?, a?)` | Decode a project PNG under `assets/` and register a textured, optionally tinted material. |
 
 Texture paths must be project-relative paths beginning with `assets/`; absolute paths and parent traversal are rejected. Missing, invalid, oversized, or undecodable images fail `scrapbot check` and `run` while the script registers resources.
 
 Named registration updates an existing transient runtime resource while preserving its handle. Spawn component maps use `scrapbot.geometry` and `scrapbot.material` names with the returned handles. These functions do not create persistent project resources; authored materials live in standalone `.resource.toml` files and scenes reference their UUIDs.
+
+`voxel_surface` is the low-level transient Geometry bridge used by the voxel-terrain lab. Its
+descriptor contains `origin: Vec3`, a positive `voxel_size`, integer `cells: Vec3` dimensions from
+1 through 64 per axis, and a flat `densities` array with `(x + 1) × (y + 1) × (z + 1)` finite
+values in Z/Y/X row-major order. A field may contain at most 65,536 cells in total so synchronous
+startup extraction remains bounded. Positive density is solid, negative density is empty, and the
+zero crossing becomes a smooth surface. The helper rejects fields without a surface. Persistent
+Terrain resources and editor sculpting build on the same extractor but are not replaced by this
+runtime Geometry API.
 
 `scrapbot.geometry_component` accepts either a geometry handle or a policy-bearing payload:
 

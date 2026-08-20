@@ -635,6 +635,7 @@ WGPU_Custom_Shader_Cache :: struct {
 	handle: shared.Shader_Handle,
 	version: u32,
 	module: wgpu.ShaderModule,
+	opaque_pipeline: wgpu.RenderPipeline,
 	blend_pipeline: wgpu.RenderPipeline,
 	selection_pipeline: wgpu.RenderPipeline,
 	water_surface_query_pipeline: wgpu.ComputePipeline,
@@ -666,6 +667,7 @@ WGPU_Transparent_Draw :: struct {
 	geometry: shared.Geometry_Handle,
 	material: shared.Material_Handle,
 	distance_squared: f32,
+	blended: bool,
 }
 
 WGPU_Texture_Cache :: struct {
@@ -1326,7 +1328,9 @@ WGPU_Renderer :: struct {
 	custom_shader_sampler: wgpu.Sampler,
 	custom_shader_scene_texture: wgpu.Texture,
 	custom_shader_scene_view: wgpu.TextureView,
+	custom_shader_depth_texture: wgpu.Texture,
 	custom_shader_depth_view: wgpu.TextureView,
+	custom_shader_source_depth_view: wgpu.TextureView,
 	custom_shader_target_generation: u64,
 	custom_shader_scene_width: u32,
 	custom_shader_scene_height: u32,
@@ -3427,6 +3431,7 @@ wgpu_encode_render_pass :: proc(
 	color_view: wgpu.TextureView,
 	output_depth_view: wgpu.TextureView,
 	render_depth_view: wgpu.TextureView,
+	render_depth_texture: wgpu.Texture,
 	batches: []WGPU_Draw_Batch,
 	registry: ^resources.Registry,
 	world: ^World,
@@ -3546,7 +3551,8 @@ wgpu_encode_render_pass :: proc(
 			span := wgpu_draw_submission_span(renderer, batches, batch_index)
 			material, material_alive := resources.get_material(registry, batch.material)
 			if !material_alive { return "render material handle is stale during world pass" }
-			if material.desc.alpha_mode == .Blend {
+			if material.desc.alpha_mode == .Blend ||
+			   material.desc.shader != (shared.Shader_Handle{}) {
 				batch_index = span.next_batch
 				continue
 			}
@@ -3651,6 +3657,7 @@ wgpu_encode_render_pass :: proc(
 		renderer,
 		encoder,
 		render_depth_view,
+		render_depth_texture,
 		registry,
 		layout.render_viewport,
 	); err != "" {
@@ -4721,6 +4728,7 @@ wgpu_draw_frame :: proc(
 		view,
 		renderer.depth_view,
 		render_depth_view,
+		renderer.render_depth_texture if renderer.render_depth_texture != nil else renderer.depth_texture,
 		batches[:batch_count],
 		config.resource_registry,
 		world,
@@ -4838,6 +4846,7 @@ wgpu_render_offscreen_frame :: proc(
 	world: ^World,
 	texture: wgpu.Texture,
 	view: wgpu.TextureView,
+	depth_texture: wgpu.Texture,
 	depth_view: wgpu.TextureView,
 	readback: wgpu.Buffer = nil,
 	row_stride: u32 = 0,
@@ -5068,6 +5077,7 @@ wgpu_render_offscreen_frame :: proc(
 		view,
 		depth_view,
 		render_depth_view,
+		renderer.render_depth_texture if renderer.render_depth_texture != nil else depth_texture,
 		batches[:batch_count],
 		config.resource_registry,
 		world,
@@ -5384,6 +5394,7 @@ wgpu_run_headless :: proc(world: ^World, config: ^Run_Config) -> string {
 			world,
 			texture,
 			view,
+			depth_texture,
 			depth_view,
 			readback if capture else nil,
 			row_stride if capture else 0,

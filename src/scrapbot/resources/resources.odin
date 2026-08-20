@@ -3,6 +3,7 @@ package resources
 import geometry "../geometry"
 import project "../project"
 import shared "../shared"
+import terrain_package "../terrain"
 import c "core:c"
 import "core:encoding/json"
 import "core:fmt"
@@ -23,6 +24,9 @@ Vec4 :: struct {
 }
 
 Geometry_Handle :: shared.Geometry_Handle
+
+MAX_VOXEL_SURFACE_AXIS_CELLS :: 64
+MAX_VOXEL_SURFACE_TOTAL_CELLS :: 65_536
 Texture_Handle :: shared.Texture_Handle
 Environment_Handle :: shared.Environment_Handle
 Icon_Set_Handle :: shared.Icon_Set_Handle
@@ -2355,8 +2359,8 @@ validate_material_desc :: proc(desc: Material_Desc) -> string {
 	if desc.alpha_mode == .Blend && desc.shader == (Shader_Handle{}) {
 		return "blended materials require a custom shader"
 	}
-	if desc.shader != (Shader_Handle{}) && desc.alpha_mode != .Blend {
-		return "custom shaders currently require blend alpha mode"
+	if desc.shader != (Shader_Handle{}) && desc.alpha_mode == .Mask {
+		return "custom shaders do not support mask alpha mode"
 	}
 	if !finite4(desc.base_color) {
 		return "material base color must be finite"
@@ -2608,6 +2612,110 @@ plane :: proc(
 			indices[offset + 5] = next_row + 1
 		}
 	}
+	return {vertices, indices}, ""
+}
+
+voxel_surface :: proc(
+	origin: Vec3,
+	voxel_size: f32,
+	cells: [3]int,
+	densities: []f32,
+) -> (
+	Geometry_Desc,
+	string,
+) {
+	if !finite(voxel_size) || voxel_size <= 0 {
+		return {}, "voxel surface size must be positive and finite"
+	}
+	for count in cells {
+		if count < 1 || count > MAX_VOXEL_SURFACE_AXIS_CELLS {
+			return {}, "voxel surface dimensions must be between 1 and 64 cells per axis"
+		}
+	}
+	if cells[0] * cells[1] * cells[2] > MAX_VOXEL_SURFACE_TOTAL_CELLS {
+		return {}, "voxel surface fields may contain at most 65536 cells"
+	}
+	expected_count := (cells[0] + 1) * (cells[1] + 1) * (cells[2] + 1)
+	if len(densities) != expected_count {
+		return {}, "voxel surface density data must contain one finite value per lattice sample"
+	}
+	for density in densities {
+		if !finite(density) {
+			return {},
+				"voxel surface density data must contain one finite value per lattice sample"
+		}
+	}
+
+	field: terrain_package.Terrain
+	init_err := terrain_package.init(
+		&field,
+		terrain_package.Description {
+			origin = origin,
+			voxel_size = voxel_size,
+			height_columns = 1,
+			height_rows = 1,
+			height_cell_size = f32(max(cells[0], cells[2])) * voxel_size,
+			heights = []f32{0, 0, 0, 0},
+		},
+	)
+	if init_err != "" {
+		return {}, init_err
+	}
+	defer terrain_package.destroy(&field)
+	stride_x := cells[0] + 1
+	stride_y := cells[1] + 1
+	for z in 0 ..= cells[2] {
+		for y in 0 ..= cells[1] {
+			for x in 0 ..= cells[0] {
+				index := (z * stride_y + y) * stride_x + x
+				baseline_density := -(origin.y + f32(y) * voxel_size)
+				if !finite(baseline_density) {
+					return {}, "voxel surface coordinates exceed the finite numeric range"
+				}
+				edit := densities[index] - baseline_density
+				if !finite(edit) {
+					return {}, "voxel surface density conversion exceeds the finite numeric range"
+				}
+				if edit != 0 {
+					if edit_err := terrain_package.set_density_edit(&field, {x, y, z}, edit);
+					   edit_err != "" {
+						return {}, edit_err
+					}
+				}
+			}
+		}
+	}
+	surface, extract_err := terrain_package.extract_region(
+		&field,
+		{},
+		{cells[0], cells[1], cells[2]},
+	)
+	if extract_err != "" {
+		return {}, extract_err
+	}
+	defer terrain_package.destroy_surface_mesh(&surface)
+	if len(surface.indices) == 0 {
+		return {}, "voxel surface density does not cross zero inside the requested region"
+	}
+	vertices := make([]Vertex, len(surface.vertices))
+	for surface_vertex, index in surface.vertices {
+		normal := surface_vertex.normal
+		tangent := normalize(Vec3{normal.y, -normal.x, 0})
+		if math.abs(normal.z) > 0.99 {
+			tangent = {1, 0, 0}
+		}
+		vertices[index] = {
+			position = surface_vertex.position,
+			normal = normal,
+			uv = {
+				(surface_vertex.position.x - origin.x) / (f32(cells[0]) * voxel_size),
+				(surface_vertex.position.z - origin.z) / (f32(cells[2]) * voxel_size),
+			},
+			tangent = {tangent.x, tangent.y, tangent.z, 1},
+		}
+	}
+	indices := make([]u32, len(surface.indices))
+	copy(indices, surface.indices[:])
 	return {vertices, indices}, ""
 }
 

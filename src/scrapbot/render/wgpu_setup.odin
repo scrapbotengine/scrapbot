@@ -1700,7 +1700,7 @@ wgpu_create_depth_texture :: proc(
 		renderer.device,
 		&wgpu.TextureDescriptor {
 			label = "Scrapbot Depth Texture",
-			usage = {.RenderAttachment, .TextureBinding},
+			usage = {.RenderAttachment, .TextureBinding, .CopySrc},
 			dimension = ._2D,
 			size = wgpu.Extent3D{width = width, height = height, depthOrArrayLayers = 1},
 			format = .Depth24Plus,

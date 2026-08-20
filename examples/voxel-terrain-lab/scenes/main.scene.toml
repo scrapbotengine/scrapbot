@@ -1,0 +1,70 @@
+id = "b2000000-0000-4000-8000-000000000014"
+name = "Voxel Terrain Lab"
+
+[[entities]]
+id = "98000000-0000-4000-8000-000000000001"
+name = "Terrain Camera"
+
+[entities.transform]
+position = [0, 4.7, 12]
+rotation = [-0.2, 0, 0]
+scale = [1, 1, 1]
+
+[entities.camera]
+fov = 55
+near = 0.1
+far = 120
+exposure = 1
+temporal_antialiasing = true
+fast_antialiasing = false
+ambient_occlusion = true
+screen_space_reflections = true
+bloom = true
+
+[[entities]]
+id = "98000000-0000-4000-8000-000000000002"
+name = "Terrain Atmosphere"
+
+[entities.world_environment]
+lighting = ""
+lighting_intensity = 1
+lighting_rotation = 0
+exposure = 1
+background_visible = true
+background = ""
+background_intensity = 1
+background_rotation = 0
+background_exposure = 0.85
+background_blur = 0
+sky_tint = [0.55, 0.76, 1.05]
+ground_color = [0.09, 0.12, 0.08]
+turbidity = 2.4
+atmosphere_thickness = 1.1
+horizon_softness = 1.3
+sun_direction = [-0.48, 0.55, -0.68]
+sun_color = [1, 0.82, 0.58]
+sun_intensity = 1.65
+sun_size = 0.75
+sun_glow = 0.65
+
+[[entities]]
+id = "98000000-0000-4000-8000-000000000003"
+name = "Cool Ambient"
+
+[entities.ambient_light]
+color = [0.38, 0.48, 0.62]
+intensity = 0.42
+
+[[entities]]
+id = "98000000-0000-4000-8000-000000000004"
+name = "Hybrid Voxel Terrain"
+
+[entities.transform]
+position = [0, 0, 0]
+rotation = [0, 0, 0]
+scale = [1, 1, 1]
+
+[entities.material]
+resource = "b2400000-0000-4000-8000-000000000002"
+
+[entities.shadow_receiver]
