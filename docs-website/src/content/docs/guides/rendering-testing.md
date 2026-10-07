@@ -20,155 +20,29 @@ The WGPU backend includes:
 
 WGPU retains geometry/material/LOD batches across Transform-only frames. Stable ECS render slots address a backend-owned instance table. Transform changes pack into one dense update stream and one upload before GPU matrix/bounds expansion; static record changes still upload only coalesced dirty ranges. One compute pass produces separate camera-visible and shadow-visible instance lists plus their indirect counts. The renderer supports 131,072 instance slots and grows its draw database geometrically.
 
-Ordinary Geometry versions occupy aligned ranges in shared WGPU vertex and index arenas. Virtual
-Geometry uses self-contained, group-aligned pages containing the referenced vertices and
-page-local indices. Streamed resident pages receive ranges in both arenas; absent pages consume no
-GPU vertex or index memory. A complete resource that fits the remaining budget retains canonical
-vertex/index ranges plus expanded page indices as a faster nonduplicating path. Changed versions
-reuse fitting ranges or allocate from coalescing free lists, and backing buffers grow
-geometrically.
+Geometry versions occupy aligned ranges in shared WGPU vertex and index arenas.
+The registry owns complete CPU vertex attributes and indices. GPU cache misses
+upload these arrays directly; unchanged geometry does not upload again.
 
-Every registered Geometry also owns deterministic meshlets capped at 64 vertices and 124 triangles,
-including local index streams, conservative sphere bounds, and normal cones. Imported Model
-products persist a compact runtime catalog plus their page payloads inside Scrapbot's common
-versioned product envelope. Cache-hit loading validates the chunk directory, buffers catalog reads,
-skips payload byte ranges, and derives compatibility meshlets from exact hierarchy leaves. Other
-Geometry producers build the same data in memory only when the resource is created or replaced.
+Imported models compile eligible primitives into up to three ordinary LOD meshes.
+Their handles survive harmless source reordering and reimport. GPU culling and
+the CPU-reference path use the same screen-size thresholds.
 
-Imported Geometry does not decode its complete CPU render vertices and source indices during a
-cache-hit bootstrap. It retains canonical counts, exact leaf-cluster topology, and a position-only
-query proxy for picking and tooling. Registration publishes and releases decoded catalog entries
-incrementally. Classic rendering, `--cpu-culling`, resource previews, and adapters
-without virtual submission reconstruct a temporary canonical view from leaf-containing product
-pages when that Geometry version enters the WGPU cache. The upload consumes and releases the view;
-stable frames do not repeat reconstruction or file reads. Procedural/runtime Geometry retains its
-canonical arrays because its fallback source exists only in memory.
+Virtual Geometry is no longer an active renderer path. There is no geometry-page
+streaming, refinement admission, or meshlet submission. Model product v22 replaces
+the paged representation; the engine reimports older caches automatically.
+Existing geometry-mode settings have no rendering effect and will be removed.
+Removed streaming-budget and prefetch settings produce a project validation error.
+Dense meshes must fit available memory; use ordinary
+LODs and scene resource residency to control the workload.
 
-Imported models compile eligible primitives into up to three deterministic compact LOD Geometry resources before runtime bootstrap. Their semantic handles survive harmless source reordering and reimport. The base resource publishes the same thresholds and alternate handles as procedural LOD resources, so classic GPU and CPU-reference selection have no importer-specific path. When WGPU can submit the base Geometry's continuous virtual hierarchy, that hierarchy performs the detail selection and the renderer omits the redundant discrete LOD batches.
+Set `scrapbot.camera.debug_view` to `base_color`, `world_normals`, `roughness`, `metallic`, `depth`, `lod`, `hiz`, `occlusion_queries`, `distance_field`, or `world_distance_field` for diagnostics. `debug_hiz_mip` selects the pyramid level; `debug_occlusion_freeze` preserves query evidence.
 
-When an adapter exposes indirect-first-instance, WGPU projects each hierarchy group's monotonic
-geometric error into pixels. A Geometry's complete page set is admitted immediately when it fits
-the remaining project budget. For larger resources, coarsest pages remain pinned; if finer pages
-are absent, the GPU draws the nearest resident frontier and requests refinement through
-asynchronous visibility feedback. Feedback includes projected-error priority for missing groups
-and actual use touches from visible instances. Deterministic hashing spreads resident touches over
-16 frames; missing-group requests remain immediate.
-
-The CPU processes the highest-priority groups first. Imported refinement pages are read from exact
-Model-product byte ranges on a dedicated I/O worker; rendering continues with the nearest resident
-fallback. Completed payloads are admitted and complete groups evicted under
-`render.virtual_geometry_budget_mb`, with fixed per-frame byte and group limits. Demand protects a
-stronger recent working set, prefetch never displaces demand residency, and each resident child
-keeps its direct parent fallback available until the child is released. Residency changes patch
-only affected cluster ranges. The budget counts both vertex and index residency.
-
-Admission is capped at four hierarchy groups and 512 KiB per frame. This bounds CPU upload work
-during camera motion; excess refinement remains queued while the pinned coarse frontier stays
-complete.
-
-On portable compact paths, page vertices and indices must also fit inside the adapter's storage
-binding window. Scrapbot defers a refinement that cannot receive legal ranges and keeps its coarse
-fallback visible. A large configured payload budget can therefore improve native indexed paths
-without allowing portable vertex pulling to address beyond the device limit.
-
-A resident hierarchy does not switch levels at one exact projected-error boundary. Adjacent levels
-overlap from 98% through 102% around the active camera target. World, depth, and cascade shadow
-passes submit both complete opaque levels and let ordinary depth testing retain the nearest
-surface. TAA receives a transition marker so it can reject incompatible history around bounded
-depth and silhouette changes.
-
-Residency pressure never changes that target. If requested detail does not fit, Scrapbot keeps the
-resident parent drawable and prioritizes or evicts complete groups. Native indexed submission uses
-a one-pixel maximum-quality target. Portable compact submission starts at two pixels when virtual
-batches are active because its padded vertex-pulling lanes have a different measured cost/quality
-crossover. Dynamic resolution first reduces the viewport-local render grid; after reaching its
-authored scale floor, the same frame-budget controller may select coarser power-of-two tiers. The
-camera's adaptive-quality floor bounds the coarsest permitted tier.
-
-A newly streamed child also does not replace its parent in one frame. It first passes a bounded
-demand-aware settling window. After any direct-parent handoff settles, both levels are submitted for
-a 16-render-frame admission transition. That temporal progress limits the same complementary
-coverage contract. The child becomes the logical refinement only when the handoff completes; nested
-admission transitions therefore proceed one hierarchy level at a time.
-
-Native multi-draw adapters retain one indexed-indirect command and exact per-cluster
-visible-instance slice, and use that frontier for shadows too. These shared-buffer slices reserve
-one element per possible instance; they do not inherit classic batches' 256-byte dynamic-binding
-alignment. Other capable adapters append selected `{instance slot, cluster index}` records into a
-bounded camera stream. A first GPU pass builds batch-local instance candidates. Parallel camera
-and shadow passes then test one hierarchy cluster per invocation, avoiding a serial complete-model
-walk for a large single-instance resource. Compatible same-material batches share one record span
-and indirect command; the vertex shader pulls cluster indices and attributes directly from the
-shared geometry arenas.
-
-Portable shadows use classic indexed submission while the complete resource is resident. Under
-actual page pressure, they switch to the same page-local compact representation as the camera, so
-evicted canonical geometry is never required. Selection, compaction, cascade visibility, and
-command counts remain GPU-produced. Near cascades retain a finer hierarchy frontier; farther
-cascades use progressively coarser error thresholds to bound vertex-pulling and raster work.
-
-Small Geometry whose hierarchy cannot simplify retains ordinary meshlets. Those batches require
-at least two instances to amortize cluster culling; a single-instance batch keeps one whole-
-primitive command. Native multi-draw adapters retain one indexed command per meshlet. Other
-indirect-first-instance adapters feed ordinary meshlets through the same candidate and parallel
-meshlet stages as virtual Geometry, then vertex-pull at most four triangle-count lanes per
-compatible material span.
-
-After whole-object rejection and LOD selection, compute tests camera meshlets against the frustum,
-single-sided normal cone, and Hi-Z; shadow lanes test each cascade frustum. World and depth can mix
-whole-primitive indirect draws with native cluster multi-draw or portable compact spans. Shadows
-mix whole-primitive draws, native cluster multi-draw, compact conventional spans, classic indexed
-spans for complete portable virtual resources, and compact page-local spans for streamed virtual
-resources.
-
-Arena-global offsets let adjacent same-material LOD commands share one native multi-draw span. On
-portable compact paths, compatible material batches share bounded record spans. Meshlets, Meshlet
-Visibility, and Occlusion Queries force eligible batches through the detailed native/emulated
-meshlet path so diagnostics cover the complete retained cluster layout.
-
-Set `scrapbot.camera.debug_view` to `base_color`, `world_normals`, `roughness`, `metallic`, `depth`, `meshlets`, `lod`, `meshlet_visibility`, `hiz`, `occlusion_queries`, `virtual_geometry`, `distance_field`, or `world_distance_field` to capture the same diagnostics without opening the editor.
-
-`virtual_geometry` colors the GPU-selected resident cluster frontier by cluster identity and
-hierarchy depth. Amber marks a branch whose finer group is not completely resident. Cyan marks a
-selected page that arrived through future-camera prefetch and has not yet been promoted by sampled
-visible use.
-
-Sponza uses the normal renderer budget so it remains a representative quality showcase. The
-generated Impossible Archive uses a 64 MiB budget so its showcase preset remains fully resident
-while a cinematic camera moves across dense, unique relief geometry and periodically jumps back to
-its starting point. Lower that public project setting, or generate the `unhinged` preset, when the
-goal is to study streaming pressure instead of presentation quality. Dedicated pressure fixtures
-exercise stricter persistent fallback and eviction contracts.
-`debug_hiz_mip` selects the retained
-pyramid level for `hiz`; `debug_occlusion_freeze` preserves the latest valid query records for
-`occlusion_queries`.
-
-The checked-in semantic replays `tests/fixtures/ui/game-debug-meshlets.json`,
-`game-debug-lod.json`, `game-debug-visibility.json`, `game-debug-hiz.json`,
-`game-debug-occlusion.json`, and `game-debug-virtual-geometry.json` drive the editor selector and
-capture only Game. Pair LOD with `tests/fixtures/gpu-lod` for exact CPU/GPU parity. Pair visibility
-or Hi-Z with `examples/ecs-showcase`, the meshlet and virtual-geometry views with
-`examples/sponza`, and the automated Occlusion Queries gate with `tests/fixtures/gpu-driven` for a
-deterministic wall-and-hidden-bounds workload. Use the dense `examples/clustered-lights` cathedral
-to explore occlusion queries interactively in a representative scene.
-
-Visibility diagnostics remain GPU-native. The culling pass emits records into an aligned diagnostic range only while a matching view is active, copies its count into an indirect line draw, and publishes `meshlet_debug_records` through the existing asynchronous statistics path. Meshlet Visibility records rejected bounds. Occlusion Queries records the exact query rectangle, selected mip, nearest bound depth, sampled farthest depth, identity, and decision for every tested object or meshlet.
-
-Freeze stops replacing only the diagnostic range and indirect count. It does not pause simulation or reuse stale Hi-Z for real visibility decisions. Leaving the view invalidates the retained evidence. No topology rebuild or synchronous CPU readback is required.
-
-`--cpu-culling`, adapters without indirect-first-instance, non-hierarchical single-instance batches,
-and layouts exceeding 1,048,576 cluster-visible entries use whole-primitive indexed-indirect
-submission. Complete resources use their canonical or imported-LOD payload. Streamed virtual
-Geometry instead uses the indexed compatibility proxy assembled from its pinned coarse pages, so
-capacity pressure lowers detail rather than emitting an empty draw.
-
-This is a policy, capability, or memory fallback, not a different project-facing geometry format.
-The compact path is what prevents an adapter without native multi-draw from turning fixed cluster
-ranges into thousands of CPU-encoded calls.
+The retired `meshlets`, `meshlet_visibility`, and `virtual_geometry` debug-view names are rejected. All geometry uses indexed submission.
 
 Pass `--cpu-culling` to run the same bounding-sphere tests, screen-radius LOD selection, and compaction on the CPU while retaining WGPU storage-buffer shaders and indirect draws. This is useful as a correctness oracle and compatibility diagnostic; compute culling remains the default. Hi-Z rejection is GPU-only and therefore disabled on the reference path.
 
-The compute path never applies previous-camera Hi-Z after camera motion. With stable instance data, it renders a complete coarse virtual frontier into transient current-camera depth, builds Hi-Z, and reruns detailed visibility before clearing and writing final depth. Persistent instance changes retain the conservative frustum-only fallback for that frame.
+The compute path rejects previous-camera Hi-Z after camera motion or instance changes and uses conservative object visibility.
 
 Run `mise test-gpu` for the complete bounded GPU regression suite. It drives a greater-than-64-batch stress scene through compute and CPU visibility. It also verifies adaptive Hi-Z rejection plus asynchronous timestamps and counters.
 
@@ -177,10 +51,7 @@ lazy product loading and signed-sample packing. The world view requires one reta
 build, 98,304 derived voxels, seven compute dispatches, no repeated stable-frame rebuild, and a
 fixed image contract separating near geometry from empty field space.
 
-Run `mise test-virtual-geometry-gpu` for the dedicated residency-pressure gate. Its scripted camera
-traverses distinct procedural 48-page resources under a 64 KiB payload budget and requires
-streaming, prefetch promotion, whole-group eviction, fallback residency, bounded feedback, and a
-nonblank framegrab.
+`mise test-indexed-transforms-gpu` compares five consecutive indexed-renderer frames against CPU culling under nonuniform transforms. `mise test-custom-surface-gpu` checks animated vertex and transparent fragment hooks in a scene with no opaque batches. Both are part of `mise test-gpu`.
 
 For streaming, residency, LOD, temporal-history, animation, hot-reload, or camera-motion work, a
 single final frame is not sufficient evidence. Capture at least five consecutive frames with
@@ -195,7 +66,7 @@ Inspect every source frame as well as the sheets. Correlate suspicious transitio
 profile rows and `counter_deltas`; ordinary camera motion can change many pixels, while an isolated
 full-screen spike or a fixed-camera topology change is evidence of a temporal rendering defect.
 
-Whole-primitive compute/CPU comparisons permit at most one 8-bit channel step in sixteen channels across a complete frame. This covers harmless backend rounding without accepting a visible mismatch. The LOD fixture instead requires 44 dB PSNR: both paths must choose the same imported object LOD, while the compute path may additionally select its sub-object virtual-geometry frontier.
+Whole-primitive compute/CPU comparisons permit at most one 8-bit channel step in sixteen channels across a complete frame. The LOD fixture uses a 44 dB PSNR threshold; both paths must select the same imported object LOD.
 
 The gate pauses the dense Cluster Cathedral inside the editor and requires large near-field bounds to remain visible while Hi-Z rejects eligible hidden instances. A separate authored-resource fixture places one instance in each of three GPU-selected LODs and requires the CPU reference to select and render the same result.
 
@@ -348,103 +219,16 @@ mise setup-assets
 mise scrapbot -- run examples/sponza --editor
 ```
 
-Use `examples/impossible-archive` to inspect virtual geometry across a dense generated scene. Its
-deterministic generator writes an ordinary GLB; the project then exercises
-the public model importer, ECS scene components, Luau camera mutation, and standard renderer
-configuration without an example-specific backend path:
+Use `examples/impossible-archive` for dense indexed geometry and camera-motion testing:
 
 ```sh
 mise archive-assets --preset showcase
 mise scrapbot -- run examples/impossible-archive --editor
 ```
 
-Choose **Virtual Geometry** in the Game debug-view selector to inspect the resident cluster
-frontier. Use `mise archive-profile` for a bounded 1600×900 profile of the showcase preset.
+Use `examples/coastal-cliff` for an isolated high-density mesh and `examples/coastal-wilds` for a large photogrammetry scene. Run `mise setup-assets` first. Complete meshes and their LODs remain resident; size workloads accordingly.
 
-Use `examples/virtual-wilds` when virtual geometry needs real photogrammetry rather than generated
-geometry. It imports twelve pinned CC0 Poly Haven models containing 3.54 million source triangles,
-generates their LOD and cluster hierarchies, and flies along a coastal route while 9,112 imported
-pages compete for a 192 MiB residency budget:
-
-```sh
-mise setup-assets
-mise scrapbot -- run examples/virtual-wilds --editor
-```
-
-The example is an ordinary project. Its glTF resources, scene components, Luau camera system, and
-render settings use the same public paths available to games.
-
-A deterministic Luau scatter system adds 220 procedural rocks through public Geometry, Material,
-ECS spawn, and Transform APIs. Authored shared-model foliage and landscape instances bring the scene
-to 1,425 renderables while continuous virtual geometry submits 26 retained material batches.
-
-`mise test-virtual-wilds` rebuilds and validates the pinned import products.
-`mise test-virtual-wilds-gpu` profiles deterministic fixed-camera coverage and moving-camera
-refinement segments, preserves consecutive PNGs, and rejects feedback overflow, page-read failure,
-or an unbounded GPU workload. Import-level tests separately prove that every hierarchy region owns a
-resident terminal fallback and that source boundary loops survive into that fallback frontier.
-
-The GPU virtual-geometry pressure test also captures an active refinement. Its sequence gate
-requires at least one transitioning group, visible clusters using blended coverage, and a settled
-endpoint, preserving the complete handoff for inspection:
-
-```sh
-node tools/test_render_sequence.mjs \
-  --project tests/fixtures/gpu-virtual-geometry-pressure \
-  --warmup 0 --frames 80 --capture-range 36:52 \
-  --resolution 960x540 --require-transition \
-  --out /tmp/scrapbot-virtual-geometry-transition
-```
-
-Projects can use the same reusable sequence gate directly:
-
-```sh
-node tools/test_render_sequence.mjs --project examples/virtual-wilds \
-  --warmup 120 --frames 120 --capture-range 56:63 \
-  --stable-frontier --out /tmp/virtual-wilds-sequence
-```
-
-`examples/virtual-geometry-cliff` removes Wilds' water, foliage, scatter, scripts,
-post-processing, and competing geometry while preserving one real Coastal Cliff 04 instance at the
-captured near-cliff transform and camera pose. Its 32 MiB budget cannot retain the complete
-3,996-page product, so the renderer must preserve a complete coarse fallback while streaming
-detail:
-
-```sh
-mise setup-assets
-mise test-virtual-geometry-cliff
-mise scrapbot run examples/virtual-geometry-cliff --live-debug
-```
-
-Use this project to reproduce imported hierarchy or residency defects before returning to the
-integrated Wilds workload. Approaching, crossing, or orbiting the cliff may change geometric detail;
-it must not expose the background through missing clusters.
-
-`examples/virtual-geometry-lab` isolates near-camera hierarchy coverage from imported assets,
-streaming-world composition, and postprocessing. Its roughly 197,000-triangle warped wall uses a
-strongly nonuniform world transform and fills the viewport while a deterministic camera moves
-toward it. A deliberately small residency budget keeps most hierarchy pages nonresident and forces
-deferred admission under pressure.
-
-The dedicated gate renders each captured frame through both GPU virtual geometry and full-index CPU
-submission. It rejects per-frame image mismatches, unhealthy residency, missing pressure, and any
-candidate, camera, or shadow visibility record overflow:
-
-```sh
-mise test-virtual-geometry-coverage-gpu
-```
-
-Projects can opt into the same reference comparison with `--cpu-reference`. Use
-`--minimum-psnr <dB>` to select the tolerated image difference; exact matches are accepted without
-special casing. Add `--require-residency-pressure` when the project must prove that its bounded
-working set reaches at least 90% of budget, leaves pages nonresident, and exercises eviction or
-deferred admission.
-
-`--stable-frontier` rejects active admission transitions as well as uploads, evictions, policy changes,
-feedback overflow, and page-read failures. Use `--require-transition` on a transition-focused
-capture; it requires an active handoff, a visible blended cluster somewhere in the range, and a
-zero-transition final frame. Use `--require-transition-activity` for a streaming-world capture that
-must exercise healthy blended handoffs but is not expected to settle the entire visible working set.
+Use `node tools/test_render_sequence.mjs --cpu-reference` for ordinary indexed reference comparisons. Omit retired residency and transition requirements.
 
 Add `--golden-dir <directory> --minimum-psnr <dB>` for platform-qualified golden images. Prefer a
 tolerant PSNR baseline per adapter family over byte equality across different GPU implementations.
@@ -492,7 +276,6 @@ bin/scrapbot run examples/ecs-showcase \
 
 `tests/fixtures/ui/entity-clipboard.json` copies and pastes a multi-selection, cuts the pasted roots, undoes the complete cut, and captures the Scene panel. Its unit companions prove subtree hierarchy remapping, explicit-root selection, one-step Undo/Redo, owned clipboard lifetime, and atomic rejection when the destination lacks a referenced resource.
 
-`tests/fixtures/ui/virtual-geometry-duplicate-resume.json` selects a streamed Model root, pauses playback, duplicates the selected copy repeatedly, resumes, and retains twelve subsequent frames. It guards the boundary where editor selection feedback must reuse virtual Geometry's pinned proxy instead of creating a conventional cache that consumes its bounded storage-address window.
 
 `tests/fixtures/ui/authoring-history.json` covers the authoring-history boundary: it edits a scene Transform, verifies dirty state across Undo and Redo, uses Revert to reload scene entities without restarting project code, asserts the disk-authored value, and captures the transport controls.
 
@@ -555,7 +338,7 @@ Shadow participation is explicit and independent:
 
 WGPU retains four 2048×2048 layers. With dynamic resolution enabled, the frame-budget controller can rasterize a quantized 2048, 1024, or 512 square region without reallocating that texture or rebuilding bindings.
 
-The active size also controls cascade stabilization, bias, filtering, and virtual-geometry detail selection. A lower-resolution shadow pass therefore avoids processing geometric detail it cannot represent. The editor's Performance panel reports the active `SHADOW MAP` size.
+The active size also controls cascade stabilization, bias, filtering, and filtering. The editor's Performance panel reports the active `SHADOW MAP` size.
 
 The cascades use practical logarithmic/uniform camera-depth splits out to 80 world units, texel-stabilized light projections, per-cascade GPU caster culling, slope-scaled caster depth bias, cascade-texel-scaled receiver-normal offset, and a tent-weighted nine-comparison PCF kernel. The final 10% of each slice blends into its successor. The final slice fades to unshadowed beyond the shadow distance.
 
@@ -605,13 +388,13 @@ The output directory contains:
 - `overview.png` from the final measured frame.
 - An optional `frames/` sequence for the inclusive range passed to `--capture-range`.
 
-Each row includes active CPU time, exact per-pass GPU time, their summed GPU frame duration, logical and physical dimensions, pixel density, viewport, shaded pixels, and a raw renderer snapshot. The snapshot includes effective `render_scale`, `shadow_resolution`, `virtual_geometry_error_pixels`, `adaptive_post_quality`, whether adaptation is active, and its filtered scalable-GPU signal.
+Each row includes active CPU time, exact per-pass GPU time, their summed GPU frame duration, logical and physical dimensions, pixel density, viewport, shaded pixels, and a raw renderer snapshot. The snapshot includes effective `render_scale`, `shadow_resolution`, `adaptive_post_quality`, whether adaptation is active, and its filtered scalable-GPU signal.
 
 The `workload` object records the dispatch size, render extent, encoded draw-submission spans,
 instances, or sample count behind each pass. Shadow workload dimensions report the active raster
 resolution rather than retained capacity. The raw renderer snapshot's
 `shadow_cascade_render_mask` and the `shadow_cascade_0` through `shadow_cascade_3` workload entries
-report exactly which retained layers rendered and how many clusters they processed. A zero timing
+report exactly which retained layers rendered and how many instances they processed. A zero timing
 on a skipped far cascade means its prior depth layer was retained; it does not mean shadows were
 unsupported. Spectral-surface workload reports its fixed field dimensions,
 both inverse-FFT axes, and spatial finalization pass for every active Shader resource.
@@ -619,12 +402,10 @@ both inverse-FFT axes, and spatial finalization pass for every active Shader res
 This makes a timing actionable. It distinguishes an expensive shader at a modest resolution from
 expected cost at a HiDPI physical resolution.
 
-`counter_deltas` turns cumulative upload, rebuild, dispatch, resize, redraw, cache-hit, geometry-
-arena mutation, and virtual page/group totals into the work attributable to that frame. Stable
-measured rows should report zero geometry arena uploads, growths, page/group uploads, drawable
-group activations, evictions, and deferred admissions. Virtual-geometry metadata upload count and
-bytes expose the queue writes used to patch changed cluster records, indirect templates, and debug
-identities; they remain zero when residency and activation are stable.
+`counter_deltas` turns cumulative upload, rebuild, dispatch, resize, redraw, cache-hit, and
+geometry-arena totals into work attributable to that frame. Stable measured rows should report
+zero geometry arena uploads and growths. Inspect changed instance and material uploads alongside
+the workload before attributing a timing change to shaders.
 
 GPU timestamps arrive asynchronously. Scrapbot tags every readback with its originating frame and merges it into that exact row. Check `gpu_timing_valid` before using a row.
 
@@ -644,9 +425,7 @@ adaptive_quality_minimum = 0.25
 The manual scale is the ceiling, not a second multiplier. WGPU processes every completed scene-span timestamp sample once, filters the result, and advances at most one step on a shared quality ladder. Delayed samples from an old quality generation or active project camera are discarded.
 
 The ladder coordinates 5% world-resolution steps, 2048²/1024²/512² directional-shadow tiers,
-virtual-geometry projected-error tiers, and a normalized post factor. Native indexed virtual
-submission starts at one pixel; portable compact virtual submission starts at two pixels. The post
-factor scales the authored AO and SSR quality ceilings and volumetric-fog ray count.
+and a normalized post factor. The post factor scales the authored AO and SSR quality ceilings and volumetric-fog ray count.
 `adaptive_quality_minimum` bounds the last outputs. Quality returns in the exact reverse order only
 after sustained headroom, preventing adjacent tiers from fighting each other.
 

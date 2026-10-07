@@ -78,7 +78,7 @@ Stop returns to that captured state without reloading code or the scene file:
 
 Stopped is authoring mode. The bottom bar retains `/ UNSAVED` until Save—or `Ctrl/Cmd+S`—writes the changes, Undo/Redo returns to the clean history position, or Revert discards them.
 
-Project resources participate in the same authoring state. Open the Resources dock to browse nested folders under `resources/`. Use `<` to move to the parent directory and `R` to refresh explicit filesystem changes. The breadcrumb reports the current rooted path and direct-item count. Folder and non-renderable resource rows use type icons; laid-out Texture, Model, and Material rows generate revision-cached thumbnails on demand under a fixed GPU-memory budget. Large Model thumbnails reuse their bounded virtual-geometry proxy when available. Rows retain a type-icon fallback while a thumbnail is loading or when the device cannot admit a preview. Interactive Inspector previews use separate live targets, so the number of browser rows does not displace them.
+Project resources participate in the same authoring state. Open the Resources dock to browse nested folders under `resources/`. Use `<` to move to the parent directory and `R` to refresh explicit filesystem changes. The breadcrumb reports the current rooted path and direct-item count. Folder and non-renderable resource rows use type icons; laid-out Texture, Model, and Material rows generate revision-cached thumbnails on demand under a fixed GPU-memory budget. Model thumbnails use the same indexed geometry as scene rendering. Rows retain a type-icon fallback while a thumbnail is loading or when the device cannot admit a preview. Interactive Inspector previews use separate live targets, so the number of browser rows does not displace them.
 
 The dock composes the public filter input, virtualized selectable list, and scroll-area components with Create, Duplicate, Delete, and Reimport All controls. Rows show resource type and display name. Type a case-insensitive substring to match either without changing resource selection or registry state. Folder discovery reads metadata only; it does not load extra asset payloads.
 
@@ -119,15 +119,12 @@ Use the `VIEW / CAMERA` menu inside the Game surface to inspect the rendered inp
 - Lit shows the ordinary HDR result.
 - Base Color, World Normals, Roughness, and Metallic isolate material inputs.
 - Depth maps the camera's near-to-far range logarithmically from white to black.
-- Meshlets colors the actual retained clusters submitted by capable adapters.
 - LOD colors the exact GPU-selected geometry level: green for 0, blue for 1, purple for 2, and orange for 3.
-- Meshlet Visibility colors submitted meshlets green and overlays rejected bounds from the GPU culler. Red and purple identify object-level frustum and Hi-Z rejection; orange, cyan, and magenta identify meshlet-level frustum, cone, and Hi-Z rejection.
 - Hi-Z displays the retained max-depth pyramid in false color. Use the adjacent minus and plus controls to inspect each mip; visible cell boundaries show the exact coarse regions sampled by conservative occlusion queries.
-- Occlusion Queries dims the world and overlays the exact projected rectangle tested for each object or meshlet. Mint survived; pink was rejected. Use **Freeze** to retain one valid evidence set while you inspect it; ordinary culling and simulation continue.
-- Virtual Geometry colors the retained hierarchy frontier and residency state used for submission.
+- Occlusion Queries dims the world and overlays the exact projected rectangle tested for each object. Mint survived; pink was rejected. Use **Freeze** to retain one valid evidence set while you inspect it; ordinary culling and simulation continue.
 - Distance Field shows a middle voxel slice from the first submitted imported Geometry field. The renderer range-loads and uploads that field on demand; cyan represents unsigned surface distance, while signed fields distinguish inside and outside.
 
-`Camera` follows the project camera's authored debug fields. Choosing another item, mip, or freeze state is a transient editor override: it changes neither the project camera nor authoring history. Non-lit views bypass temporal jitter and presentation effects so the displayed values remain stable and direct. Meshlets, Meshlet Visibility, and Occlusion Queries show a red/slate checker when the current adapter or `--cpu-culling` run uses whole-primitive submission.
+`Camera` follows the project camera's authored debug fields. Choosing another item, mip, or freeze state is a transient editor override: it changes neither the project camera nor authoring history. Non-lit views bypass temporal jitter and presentation effects so the displayed values remain stable and direct.
 
 | Input | Action |
 | --- | --- |

@@ -1,0 +1,8 @@
+name = "Coastal Cliff"
+default_scene = "b2000000-0000-4000-8000-000000000012"
+
+[window]
+width = 1280
+height = 720
+
+[render]

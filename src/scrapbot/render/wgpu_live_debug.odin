@@ -8,51 +8,26 @@ import "core:math"
 import "core:os"
 import wgpu "vendor:wgpu"
 
-WGPU_LIVE_DEBUG_VISIBILITY_RECORD_LIMIT :: WGPU_MESHLET_DEBUG_RECORD_CAPACITY
+WGPU_LIVE_DEBUG_VISIBILITY_RECORD_LIMIT :: WGPU_OBJECT_DEBUG_RECORD_CAPACITY
 
 WGPU_Live_Debug_Visibility_Record :: struct {
 	classification: string,
 	lod_level: u32,
-	meshlet_identity: u32,
+	instance_slot: u32,
 	bounds: [4]f32,
 	query_rect: [4]f32,
 	query_depths: [4]f32,
-	virtual_geometry: bool,
-	page_resident: bool,
-	refined_resident: bool,
-	group_depth: u32,
-	max_depth: u32,
-	group_error: f32,
-	refined_error: f32,
-	group_index: u32,
-	request_group_index: u32,
-	request_enabled: bool,
-	transition_start: u32,
-	refined_transition_start: u32,
-	has_coarse_parent: bool,
 }
 
 WGPU_Live_Debug_Visibility :: struct {
 	schema_version: int,
 	frame_number: u32,
-	meshlet_submission_active: bool,
 	record_count: u32,
 	records_written: int,
 	records_truncated: bool,
 	visible_instances: u32,
-	visible_meshlets: u32,
-	visible_virtual_clusters: u32,
-	visible_virtual_blend_clusters: u32,
-	visible_virtual_triangles: u32,
-	compact_triangles: u32,
-	compact_vertex_invocations: u32,
-	virtual_rejected_clusters: u32,
 	frustum_culled_instances: u32,
 	occlusion_culled_instances: u32,
-	frustum_culled_meshlets: u32,
-	cone_culled_meshlets: u32,
-	occlusion_culled_meshlets: u32,
-	candidate_record_overflow: u32,
 	visible_record_overflow: u32,
 	shadow_record_overflow: u32,
 	records: []WGPU_Live_Debug_Visibility_Record,
@@ -146,7 +121,7 @@ wgpu_live_debug_prepare_capture :: proc(
 		capture.visibility_record_capacity = WGPU_LIVE_DEBUG_VISIBILITY_RECORD_LIMIT
 		capture.visibility_readback_size =
 			u64(size_of(WGPU_GPU_Visibility_Summary)) +
-			u64(capture.visibility_record_capacity * size_of(WGPU_GPU_Meshlet_Debug_Record))
+			u64(capture.visibility_record_capacity * size_of(WGPU_GPU_Object_Debug_Record))
 		capture.visibility_buffer = wgpu_live_debug_create_readback(
 			renderer,
 			"Scrapbot Live Debug Visibility Readback",
@@ -268,11 +243,11 @@ wgpu_live_debug_encode_capture :: proc(
 		)
 		wgpu.CommandEncoderCopyBufferToBuffer(
 			encoder,
-			renderer.gpu_meshlet_debug_record_buffer,
+			renderer.gpu_object_debug_record_buffer,
 			0,
 			capture.visibility_buffer,
 			summary_size,
-			u64(capture.visibility_record_capacity * size_of(WGPU_GPU_Meshlet_Debug_Record)),
+			u64(capture.visibility_record_capacity * size_of(WGPU_GPU_Object_Debug_Record)),
 		)
 	}
 }
@@ -422,64 +397,33 @@ wgpu_live_debug_write_visibility :: proc(
 	}
 	defer wgpu.BufferUnmap(capture.visibility_buffer)
 	summary := cast(^WGPU_GPU_Visibility_Summary)raw_data(mapped)
-	record_count := min(int(summary.meshlet_debug_records), capture.visibility_record_capacity)
-	total_record_count := summary.meshlet_debug_records + summary.meshlet_debug_record_overflow
+	record_count := min(int(summary.object_debug_records), capture.visibility_record_capacity)
+	total_record_count := summary.object_debug_records + summary.object_debug_record_overflow
 	record_offset := size_of(WGPU_GPU_Visibility_Summary)
 	record_bytes := mapped[record_offset:]
-	meshlet_records := (cast([^]WGPU_GPU_Meshlet_Debug_Record)raw_data(
-			record_bytes,
-		))[:record_count]
+	object_records := (cast([^]WGPU_GPU_Object_Debug_Record)raw_data(record_bytes))[:record_count]
 	records := make([]WGPU_Live_Debug_Visibility_Record, record_count)
 	defer delete(records)
-	for meshlet_source, index in meshlet_records {
-		source := meshlet_source
+	for object_source, index in object_records {
+		source := object_source
 		record := &records[index]
 		record.classification = wgpu_live_debug_visibility_classification(source.classification)
 		record.lod_level = source.lod_level
-		record.meshlet_identity = source.meshlet_identity
+		record.instance_slot = source.instance_slot
 		record.bounds = source.bounds
 		record.query_rect = source.query_rect
 		record.query_depths = source.query_depths
-		meshlet_index := int(source.meshlet_identity) - 1
-		if meshlet_index < 0 || meshlet_index >= len(renderer.gpu_meshlet_infos) {
-			continue
-		}
-		info := renderer.gpu_meshlet_infos[meshlet_index]
-		record.virtual_geometry = info.virtual_geometry != 0
-		record.page_resident = info.page_resident != 0
-		record.refined_resident = info.refined_resident != 0
-		record.group_depth = info.group_depth
-		record.max_depth = info.max_depth
-		record.group_error = info.group_error
-		record.refined_error = info.refined_error
-		record.group_index = info.group_index
-		record.request_group_index = info.request_group_index
-		record.request_enabled = info.request_enabled != 0
-		record.transition_start = info.transition_start
-		record.refined_transition_start = info.refined_transition_start
-		record.has_coarse_parent = info.has_coarse_parent != 0
+
 	}
 	payload := WGPU_Live_Debug_Visibility {
 		schema_version = live_debug.SCHEMA_VERSION,
 		frame_number = capture.plan.frame_number,
-		meshlet_submission_active = renderer.gpu_meshlet_submission_active,
 		record_count = total_record_count,
 		records_written = record_count,
-		records_truncated = summary.meshlet_debug_record_overflow > 0,
+		records_truncated = summary.object_debug_record_overflow > 0,
 		visible_instances = summary.visible_instances,
-		visible_meshlets = summary.visible_meshlets,
-		visible_virtual_clusters = summary.visible_virtual_clusters,
-		visible_virtual_blend_clusters = summary.visible_virtual_blend_clusters,
-		visible_virtual_triangles = summary.visible_virtual_triangles,
-		compact_triangles = summary.compact_triangles,
-		compact_vertex_invocations = summary.compact_vertex_invocations,
-		virtual_rejected_clusters = summary.virtual_rejected_clusters,
 		frustum_culled_instances = summary.frustum_culled_instances,
 		occlusion_culled_instances = summary.occlusion_culled_instances,
-		frustum_culled_meshlets = summary.frustum_culled_meshlets,
-		cone_culled_meshlets = summary.cone_culled_meshlets,
-		occlusion_culled_meshlets = summary.occlusion_culled_meshlets,
-		candidate_record_overflow = summary.candidate_record_overflow,
 		visible_record_overflow = summary.visible_record_overflow,
 		shadow_record_overflow = summary.shadow_record_overflow,
 		records = records,
@@ -497,22 +441,16 @@ wgpu_live_debug_write_visibility :: proc(
 
 wgpu_live_debug_visibility_classification :: proc "contextless" (value: u32) -> string {
 	switch value {
+		case 1:
+			return "instance_visible"
 		case 2:
 			return "instance_frustum_culled"
 		case 3:
 			return "instance_occlusion_culled"
-		case 4:
-			return "meshlet_frustum_culled"
-		case 5:
-			return "meshlet_cone_culled"
-		case 6:
-			return "meshlet_occlusion_culled"
 		case 7:
 			return "occlusion_query_visible"
 		case 8:
 			return "occlusion_query_culled"
-		case 9:
-			return "virtual_cluster_rejected"
 	}
 	return "unknown"
 }

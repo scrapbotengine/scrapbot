@@ -830,27 +830,18 @@ init_registry :: proc(registry: ^Registry) {
 	register_engine_component(
 		registry,
 		"scrapbot.mesh",
-		{
-			Field_Definition{name = "primitive", field_type = .String},
-			Field_Definition{name = "geometry_mode", field_type = .String},
-		},
+		{Field_Definition{name = "primitive", field_type = .String}},
 	)
 	register_engine_component(
 		registry,
 		"scrapbot.geometry",
-		{
-			Field_Definition{name = "resource", field_type = .String},
-			Field_Definition{name = "geometry_mode", field_type = .String},
-		},
+		{Field_Definition{name = "resource", field_type = .String}},
 	)
 	register_engine_component(registry, "scrapbot.material", {})
 	register_engine_component(
 		registry,
 		"scrapbot.model",
-		{
-			Field_Definition{name = "resource", field_type = .String},
-			Field_Definition{name = "geometry_mode", field_type = .String},
-		},
+		{Field_Definition{name = "resource", field_type = .String}},
 	)
 	register_engine_component(registry, "scrapbot.shadow_caster", {})
 	register_engine_component(registry, "scrapbot.shadow_receiver", {})

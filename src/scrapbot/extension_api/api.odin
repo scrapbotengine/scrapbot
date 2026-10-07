@@ -112,15 +112,8 @@ Time :: struct {
 
 Mesh_Payload :: struct {
 	primitive: cstring,
-	geometry_mode: Geometry_Mode,
 }
 
-Geometry_Mode :: enum u8 {
-	Inherit,
-	Auto,
-	Conventional,
-	Virtual,
-}
 
 Component_Vec3_Field :: struct {
 	name: cstring,
@@ -604,7 +597,6 @@ Spawn_Options :: struct {
 	transform: ^Transform,
 	mesh: ^Mesh_Payload,
 	geometry: ^Resource_Handle,
-	geometry_mode: Geometry_Mode,
 	material: ^Resource_Handle,
 	components: [^]Component_Payload,
 	component_count: c.int,

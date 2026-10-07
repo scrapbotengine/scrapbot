@@ -1,0 +1,4 @@
+name = "GPU Indexed Transform Fixture"
+default_scene = "b3000000-0000-4000-8000-000000000006"
+
+[render]

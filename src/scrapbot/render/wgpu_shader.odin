@@ -1190,13 +1190,6 @@ fn apply_underwater_medium(pixel: vec2<i32>, source_color: vec3<f32>) -> vec3<f3
 	return refracted_color * transmittance + in_scattering;
 }
 
-const VIRTUAL_TRANSITION_MARKER: f32 = 0.25;
-const VIRTUAL_TRANSITION_MARKER_WITH_BLOOM: f32 = 0.75;
-
-fn virtual_transition_reactive(value: f32) -> bool {
-	return abs(value - VIRTUAL_TRANSITION_MARKER) < 0.0625 ||
-		abs(value - VIRTUAL_TRANSITION_MARKER_WITH_BLOOM) < 0.0625;
-}
 
 fn fog_shadow_cascade(world_position: vec3<f32>, cascade_index: u32) -> f32 {
 	let shadow_position =
@@ -1817,11 +1810,7 @@ fn temporal_aa_cs(
 					previous_full_uv,
 					0.0,
 				);
-				let transition_reactive =
-					virtual_transition_reactive(textureLoad(current_color, pixel, 0).a) ||
-					virtual_transition_reactive(history_sample.a);
-				let depth_tolerance_scale = select(0.01, 0.12, transition_reactive);
-				let depth_tolerance = max(0.01, expected_linear_depth * depth_tolerance_scale);
+				let depth_tolerance = max(0.01, expected_linear_depth * 0.01);
 				var stored_depth = textureLoad(history_depth, previous_pixel_i, 0).r;
 				var stored_linear_depth =
 					temporal.previous_projection.w /
@@ -1887,9 +1876,6 @@ fn temporal_aa_cs(
 						0.72,
 						clamp(motion_pixels / 8.0, 0.0, 1.0),
 					);
-					if (transition_reactive) {
-						history_weight = max(history_weight, 0.9);
-					}
 					if (
 						water_surface_query.values.w > 0.5 &&
 						(water_surface_query.values.y >= 0.5) !=
@@ -1910,11 +1896,7 @@ fn temporal_aa_cs(
 		pixel,
 		vec4<f32>(
 			result,
-			select(
-				temporal.features.w,
-				VIRTUAL_TRANSITION_MARKER + temporal.features.w * 0.5,
-				virtual_transition_reactive(textureLoad(current_color, pixel, 0).a),
-			),
+			temporal.features.w,
 		),
 	);
 	textureStore(resolved_depth, pixel, vec4<f32>(depth, 0.0, 0.0, 0.0));

@@ -14,6 +14,9 @@ frames.
 
 ## Decision
 
+Superseded by [ADR-062](ADR-062-return-to-conventional-indexed-geometry.md).
+The renderer now always uses conventional indexed geometry.
+
 Geometry submission uses one backend-neutral `Geometry_Mode` policy with `auto`, `conventional`,
 and `virtual` choices. `inherit` exists only at lower authoring layers.
 

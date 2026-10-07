@@ -66,23 +66,15 @@ test_project_model_products_register_generated_meshes_and_materials :: proc(t: ^
 	testing.expect(t, geometry_alive)
 	testing.expect(t, material_alive)
 	if geometry_alive {
-		testing.expect_value(t, geometry_canonical_vertex_count(geometry), 3)
-		testing.expect_value(t, geometry_canonical_index_count(geometry), 3)
-		testing.expect_value(t, len(geometry.vertices), 0)
-		testing.expect_value(t, len(geometry.indices), 0)
-		testing.expect_value(t, len(geometry.query_proxy.positions), 3)
-		testing.expect(t, !geometry_has_resident_canonical(geometry))
+		testing.expect_value(t, len(geometry.vertices), 3)
+		testing.expect_value(t, len(geometry.indices), 3)
 		iterator := geometry_query_iterator(geometry)
 		_, triangle_ok := geometry_query_next(&iterator)
 		testing.expect(t, triangle_ok)
 		_, exhausted := geometry_query_next(&iterator)
 		testing.expect(t, !exhausted)
-		fallback, fallback_err := load_geometry_canonical(geometry)
-		defer destroy_geometry_canonical_view(&fallback)
-		testing.expectf(t, fallback_err == "", "canonical fallback failed: %s", fallback_err)
-		testing.expect(t, fallback.owned)
-		testing.expect_value(t, len(fallback.vertices), 3)
-		testing.expect_value(t, len(fallback.indices), 3)
+		testing.expect_value(t, len(geometry.vertices), 3)
+		testing.expect_value(t, len(geometry.indices), 3)
 		testing.expect(t, geometry.distance_field.product_size > 0)
 		testing.expect_value(
 			t,
@@ -115,12 +107,8 @@ test_project_model_products_register_generated_meshes_and_materials :: proc(t: ^
 		)
 		testing.expect(t, cloned_geometry_alive)
 		if cloned_geometry_alive {
-			testing.expect_value(t, len(cloned_geometry.vertices), 0)
-			testing.expect_value(t, len(cloned_geometry.query_proxy.positions), 3)
-			fallback, fallback_err := load_geometry_canonical(cloned_geometry)
-			defer destroy_geometry_canonical_view(&fallback)
-			testing.expectf(t, fallback_err == "", "cloned fallback failed: %s", fallback_err)
-			testing.expect_value(t, len(fallback.indices), 3)
+			testing.expect_value(t, len(cloned_geometry.vertices), 3)
+			testing.expect_value(t, len(cloned_geometry.indices), 3)
 			testing.expect_value(t, cloned_geometry.distance_field, geometry.distance_field)
 			cloned_samples, cloned_samples_err := load_geometry_distance_field_samples(
 				cloned_geometry,
@@ -146,11 +134,7 @@ test_project_model_products_register_generated_meshes_and_materials :: proc(t: ^
 	testing.expect(t, !geometry_still_alive)
 	testing.expect(t, !material_still_alive)
 	testing.expect_value(t, len(registry.models[handle.index].meshes), 0)
-	testing.expect_value(
-		t,
-		len(registry.geometries[geometry_handle.index].query_proxy.positions),
-		0,
-	)
+	testing.expect_value(t, len(registry.geometries[geometry_handle.index].vertices), 0)
 	testing.expect_value(t, len(registry.materials[material_handle.index].desc.texture_pixels), 0)
 
 	register_err = register_project_models(
@@ -291,7 +275,6 @@ make_semantic_reimport_product :: proc(
 			append(&lod.indices, 0, 1, 2)
 			append(&primitive.lods, lod)
 		}
-		_ = asset_import.build_model_primitive_hierarchies(&primitive)
 		append(&mesh.primitives, primitive)
 		append(&product.meshes, mesh)
 	}

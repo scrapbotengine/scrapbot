@@ -25,18 +25,11 @@ test_live_debug_snapshot_supports_json_and_cbor :: proc(t: ^testing.T) {
 		Snapshot {
 			phase = "running",
 			frame_index = 42,
-			camera = {available = true, debug_view = "meshlet-visibility"},
+			camera = {available = true, debug_view = "occlusion_queries"},
 			renderer = {
 				backend = "wgpu",
 				dynamic_resolution_filtered_gpu_ms = 14.25,
 				dynamic_resolution_tail_gpu_ms = 17.75,
-				meshlet_compacted = true,
-				meshlet_compact_batches = 7,
-				meshlet_compact_instances = 91,
-				visible_virtual_clusters = 73,
-				visible_virtual_triangles = 4_096,
-				compact_triangles = 5_120,
-				compact_vertex_invocations = 15_360,
 			},
 		},
 	)
@@ -55,25 +48,13 @@ test_live_debug_snapshot_supports_json_and_cbor :: proc(t: ^testing.T) {
 		t,
 		math.abs(decoded_json.renderer.dynamic_resolution_tail_gpu_ms - 17.75) < 0.001,
 	)
-	testing.expect(t, decoded_json.renderer.meshlet_compacted)
-	testing.expect_value(t, decoded_json.renderer.meshlet_compact_batches, 7)
-	testing.expect_value(t, decoded_json.renderer.meshlet_compact_instances, 91)
-	testing.expect_value(t, decoded_json.renderer.visible_virtual_clusters, u32(73))
-	testing.expect_value(t, decoded_json.renderer.visible_virtual_triangles, u32(4_096))
-	testing.expect_value(t, decoded_json.renderer.compact_triangles, u32(5_120))
-	testing.expect_value(t, decoded_json.renderer.compact_vertex_invocations, u32(15_360))
 	cbor_data, cbor_err := encode_snapshot(&service, .CBOR)
 	defer delete(cbor_data)
 	testing.expect_value(t, cbor_err, "")
 	decoded_cbor: Snapshot
 	defer destroy_snapshot_strings(&decoded_cbor)
 	testing.expect(t, cbor.unmarshal(cbor_data, &decoded_cbor) == nil)
-	testing.expect_value(t, decoded_cbor.camera.debug_view, "meshlet-visibility")
-	testing.expect(t, decoded_cbor.renderer.meshlet_compacted)
-	testing.expect_value(t, decoded_cbor.renderer.meshlet_compact_batches, 7)
-	testing.expect_value(t, decoded_cbor.renderer.visible_virtual_triangles, u32(4_096))
-	testing.expect_value(t, decoded_cbor.renderer.compact_triangles, u32(5_120))
-	testing.expect_value(t, decoded_cbor.renderer.compact_vertex_invocations, u32(15_360))
+	testing.expect_value(t, decoded_cbor.camera.debug_view, "occlusion_queries")
 	testing.expect(
 		t,
 		math.abs(decoded_cbor.renderer.dynamic_resolution_tail_gpu_ms - 17.75) < 0.001,

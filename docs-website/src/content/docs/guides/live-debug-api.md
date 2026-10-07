@@ -3,12 +3,12 @@ title: Live Debug API
 description: Inspect a running Scrapbot process and capture consecutive frame telemetry and images over a local authenticated API.
 ---
 
-Scrapbot's live debug API lets local tools inspect the exact state of a running editor or game. It is useful when a renderer defect depends on camera pose, viewport size, virtual-geometry residency, or changes across several frames.
+Scrapbot's live debug API lets local tools inspect the exact state of a running editor or game. It is useful when a renderer defect depends on camera pose, viewport size or changes across several frames.
 
 Windowed editor runs enable the API automatically:
 
 ```sh
-bin/scrapbot run examples/virtual-wilds --editor
+bin/scrapbot run examples/coastal-wilds --editor
 ```
 
 Other source and packaged runs must opt in:
@@ -49,7 +49,7 @@ curl --header "Authorization: Bearer $token" \
 - Process, project, lifecycle phase, world UUID, entity count, and editor visibility.
 - Active camera UUID, transform, forward vector, clip planes, field of view, and debug view.
 - Backend, frame index, physical output dimensions, internal render dimensions, pixel density, and viewport.
-- Draw, visibility, virtual-geometry residency, streaming, transition, and GPU timing counters.
+- Indexed draw, object visibility, and GPU timing counters.
 
 Read `schema_version` before assuming a response shape. Human log messages are not part of the API contract.
 
@@ -78,13 +78,13 @@ The optional WGPU artifacts are:
 
 - `color`: the final composited output as `color-0000.png`. Editor captures include the chrome and game viewport exactly as presented.
 - `depth`: tightly packed, row-major little-endian `f32` device-depth values as `depth-0000.f32`, plus `depth-preview-0000.png` for quick inspection.
-- `visibility`: deterministic CBOR as `visibility-0000.cbor`, containing per-frame counters and bounded meshlet decision records.
+- `visibility`: deterministic CBOR as `visibility-0000.cbor`, containing per-frame counters and bounded object decision records.
 
 The matching `frame-0000.json` reports `renderer.render_width` and `renderer.render_height` for interpreting raw depth. Camera near/far planes are included, but raw values remain device depth rather than linear distance.
 
-Visibility records expose their classification and world-space bounds. Virtual meshlets also include page/refinement residency, hierarchy depth and error, group/request identity, transition frames, and coarse-parent availability.
+Visibility records expose classification, world-space bounds, selected LOD, transient instance slot, and any Hi-Z query rectangle and depths. Slots identify the captured renderer state; they are not persistent entity UUIDs.
 
-The record lane retains at most 65,536 camera-relevant decisions per frame. Its GPU allocation is a fixed 4 MiB and never follows the renderer's dynamically grown meshlet arenas. Inspect `record_count`, `records_written`, and `records_truncated` before assuming the artifact is exhaustive.
+The record lane retains at most 65,536 object decisions per frame. Its GPU allocation is a fixed 4 MiB and never follows the renderer's visible-instance storage. Inspect `record_count`, `records_written`, and `records_truncated` before assuming the artifact is exhaustive.
 
 Download a completed artifact through the authenticated API:
 
@@ -133,4 +133,4 @@ The server binds only to `127.0.0.1`, requires its per-process bearer token, rej
 
 The network worker never traverses or mutates ECS, resource, renderer, or GPU state. The engine thread publishes immutable snapshots at frame boundaries and consumes bounded capture requests. Remote binding is intentionally unsupported.
 
-WGPU owns color, depth, and visibility providers without exposing textures, command encoders, or readback buffers to the service or network worker. Visibility evidence runs as a separate diagnostic compute pass over the same retained camera, instance, meshlet, hierarchy, residency, and Hi-Z inputs as ordinary culling. Its dedicated, fixed-size output buffer cannot change or scale with compact draw records and render-visible capacity, and capture does not change the camera's visible debug view.
+WGPU owns color, depth, and visibility providers without exposing textures, command encoders, or readback buffers to the service or network worker. Visibility evidence runs as a separate diagnostic compute pass over the same retained camera, instance, LOD, and Hi-Z inputs as ordinary culling. Its dedicated, fixed-size output buffer cannot change or scale with render-visible capacity, and capture does not change the camera's visible debug view.

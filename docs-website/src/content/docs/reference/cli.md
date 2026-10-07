@@ -80,7 +80,7 @@ Compiles declared Texture, Model, Environment, and Icon Set sources into version
 Human output identifies the active asset before processing begins. Its completion line reports the elapsed time, cache result, and a compact product summary:
 
 - Texture and Environment summaries include dimensions and mip counts.
-- Model summaries include primitive, vertex, LOD, cluster-page, and byte counts.
+- Model summaries include primitive, vertex, index, LOD, distance-field, and byte counts.
 - Icon Set summaries include symbol and atlas dimensions.
 
 A failed asset names its source, elapsed time, and error immediately. JSON results contain `imported`, `cached`, and `products` without emitting progress lines.
@@ -159,22 +159,19 @@ Play captures the current authoring state as an in-memory playback baseline. Sto
 
 Combine `--editor`, `--headless`, `--ui-script`, `--ui-dump`, and `--framegrab` to reproduce editor interactions deterministically. Framegrabs are losslessly compressed; explicit regions or semantic capture targets crop the output without scaling its pixels. See [Rendering And Testing](/guides/rendering-testing/#semantic-ui-diagnostics) for the script contract.
 
-The [Live Debug API](/guides/live-debug-api/) exposes current camera, viewport, renderer, virtual-geometry, and GPU timing state to local tools. It can also preserve a bounded sequence of consecutive telemetry snapshots and frame-matched composited WGPU images from the running process.
+The [Live Debug API](/guides/live-debug-api/) exposes current camera, viewport, renderer and GPU timing state to local tools. It can also preserve a bounded sequence of consecutive telemetry snapshots and frame-matched composited WGPU images from the running process.
 
 With `--runtime-stats`, JSON results include a `runtime_stats` object. It reports the frame count, warm-up and sample-window sizes, early and late nanoseconds per engine frame, their ratio, engine-allocator bytes, and early/late/peak/final ECS storage slot counts. Timing covers systems, engine UI/editor updates, render reconciliation, extraction, and batching preparation; it excludes GPU command encoding, submission, and execution. `allocator_final_bytes` is captured after project runtime teardown. Allocator numbers cover allocations routed through Odin's engine allocator; direct Luau, SDL, WGPU, driver, GPU, and OS allocations are outside this report.
 
 JSON run results also include `render_stats`. For WGPU, the object groups together:
 
-- Active-path flags for compute culling, any active meshlet batch, native multi-draw acceleration, portable meshlet compaction, virtual-geometry compaction, and clustered lighting. `meshlet_compacted` reports any portable compact work; `meshlet_compact_batches` and `meshlet_compact_instances` report its retained scope. `virtual_geometry_compacted` narrows that flag to frames with compact virtual batches. A capable frame may mix classic, native, and compact batches.
+- Active-path flags for GPU-driven rendering, compute culling, and clustered lighting.
 - Adaptive-quality state includes `render_scale`, `shadow_resolution`,
-  `virtual_geometry_error_pixels`, `adaptive_post_quality`, the filtered GPU-scene trend in
+  `adaptive_post_quality`, the filtered GPU-scene trend in
   `dynamic_resolution_filtered_gpu_ms`, and the bounded p95 decision signal in
   `dynamic_resolution_tail_gpu_ms`.
-- Meshlet capability, retained `draw_batches`, compatible fixed multi-draw spans in `draw_submissions`, selected meshlet command count in `meshlet_draws`, camera `visible_batches`, nonempty `visible_meshlet_draws`, visibility capacity, separate object/meshlet frustum, cone, and occlusion counters, and the opt-in `meshlet_debug_records` count.
-- Virtual-geometry topology and residency: page budget, resident bytes, total/resident/pinned pages, request/feedback counts, overflow, cumulative page/group uploads, evictions, upload bytes, and deferred group admissions.
-- Virtual-geometry selection and handoff: the active drawable frontier, projected-error overlap, drawable-group activations, `virtual_geometry_transitioning_groups`, and `visible_virtual_blend_clusters`. `visible_virtual_triangles` reports useful selected virtual geometry. `compact_triangles` reports all useful conventional and virtual triangles routed through portable compaction, while `compact_vertex_invocations` includes its padded vertex work.
-- Visibility capacity: `candidate_record_overflow`, `visible_record_overflow`, and `shadow_record_overflow` count GPU records rejected because their retained slice was full. Healthy frames report zero. `shadow_visible_meshlets` reports ordinary or page-local compact shadow records; fully resident portable virtual resources may instead report conservative indexed object-LOD visibility through `shadow_visible_instances`.
-- Shadow refresh mask, per-cascade visible meshlet counts, cluster count, per-cluster light capacity, clustered-point-light count, and cluster-dispatch values.
+- Retained `draw_batches`, encoded indexed `draw_submissions`, and camera `visible_batches`.
+- Shadow refresh mask, cluster count, per-cluster light capacity, clustered-point-light count, and cluster-dispatch values.
 - Draw-database, instance-slot, and visibility-buffer capacities, database rebuilds, and cumulative instance uploads.
 - Shared vertex/index arena capacity and resident bytes plus cumulative geometry uploads, upload bytes, and backing-buffer growths.
 - Frustum candidates, explicit frustum rejections, visible instances, per-LOD visible counts, and Hi-Z validity, status, mip count, and adaptive instance threshold.

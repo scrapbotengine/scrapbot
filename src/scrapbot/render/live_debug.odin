@@ -89,41 +89,7 @@ publish_live_debug_render_stats :: proc(
 		return
 	}
 	destination.draw_batches = stats.draw_batches
-	destination.conventional_batches = stats.conventional_batches
-	destination.virtual_batches = stats.virtual_batches
-	destination.conventional_instances = stats.conventional_instances
-	destination.virtual_instances = stats.virtual_instances
-	destination.meshlet_compacted = stats.meshlet_compacted
-	destination.meshlet_compact_batches = stats.meshlet_compact_batches
-	destination.meshlet_compact_instances = stats.meshlet_compact_instances
 	destination.visible_batches = stats.visible_batches
-	destination.visible_meshlet_draws = stats.visible_meshlet_draws
-	destination.visible_virtual_clusters = stats.visible_virtual_clusters
-	destination.visible_virtual_blend_clusters = stats.visible_virtual_blend_clusters
-	destination.visible_virtual_triangles = stats.visible_virtual_triangles
-	destination.compact_triangles = stats.compact_triangles
-	destination.compact_vertex_invocations = stats.compact_vertex_invocations
-	destination.virtual_rejected_clusters = stats.virtual_rejected_clusters
-	destination.virtual_geometry_page_budget_bytes = stats.virtual_geometry_page_budget_bytes
-	destination.virtual_geometry_page_resident_bytes = stats.virtual_geometry_page_resident_bytes
-	destination.virtual_geometry_pages = stats.virtual_geometry_pages
-	destination.virtual_geometry_resident_pages = stats.virtual_geometry_resident_pages
-	destination.virtual_geometry_pinned_pages = stats.virtual_geometry_pinned_pages
-	destination.virtual_geometry_prefetched_pages = stats.virtual_geometry_prefetched_pages
-	destination.virtual_geometry_page_requests = stats.virtual_geometry_page_requests
-	destination.virtual_geometry_page_prefetches = stats.virtual_geometry_page_prefetches
-	destination.virtual_geometry_page_request_overflow =
-		stats.virtual_geometry_page_request_overflow
-	destination.virtual_geometry_page_uploads = stats.virtual_geometry_page_uploads
-	destination.virtual_geometry_page_evictions = stats.virtual_geometry_page_evictions
-	destination.virtual_geometry_group_uploads = stats.virtual_geometry_group_uploads
-	destination.virtual_geometry_metadata_uploads = stats.virtual_geometry_metadata_uploads
-	destination.virtual_geometry_metadata_upload_bytes =
-		stats.virtual_geometry_metadata_upload_bytes
-	destination.virtual_geometry_group_activations = stats.virtual_geometry_group_activations
-	destination.virtual_geometry_transitioning_groups = stats.virtual_geometry_transitioning_groups
-	destination.virtual_geometry_group_evictions = stats.virtual_geometry_group_evictions
-	destination.virtual_geometry_deferred_groups = stats.virtual_geometry_deferred_groups
 	destination.gpu_timestamps_valid = stats.gpu_timestamps_valid
 	destination.gpu_frame_ms = stats.gpu_frame_ms
 	destination.gpu_scene_ms = stats.gpu_scene_ms

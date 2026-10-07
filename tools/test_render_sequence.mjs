@@ -16,10 +16,6 @@ export function parseArguments(arguments_) {
     captureRange: "60:67",
     resolution: "1280x720",
     out: path.join(os.tmpdir(), "scrapbot-render-sequence"),
-    stableFrontier: false,
-    requireTransition: false,
-    requireTransitionActivity: false,
-    requireResidencyPressure: false,
     cpuReference: false,
     editor: false,
     uiScript: undefined,
@@ -28,24 +24,8 @@ export function parseArguments(arguments_) {
   };
   for (let index = 0; index < arguments_.length; index += 1) {
     const argument = arguments_[index];
-    if (argument === "--stable-frontier") {
-      options.stableFrontier = true;
-      continue;
-    }
-    if (argument === "--require-transition") {
-      options.requireTransition = true;
-      continue;
-    }
-    if (argument === "--require-transition-activity") {
-      options.requireTransitionActivity = true;
-      continue;
-    }
     if (argument === "--cpu-reference") {
       options.cpuReference = true;
-      continue;
-    }
-    if (argument === "--require-residency-pressure") {
-      options.requireResidencyPressure = true;
       continue;
     }
     if (argument === "--editor") {
@@ -83,14 +63,6 @@ export function parseArguments(arguments_) {
   }
   options.captureStart = Number(match[1]);
   options.captureEnd = Number(match[2]);
-  const temporalGates = [
-    options.stableFrontier,
-    options.requireTransition,
-    options.requireTransitionActivity,
-  ].filter(Boolean).length;
-  if (temporalGates > 1) {
-    throw new Error("temporal sequence gates are mutually exclusive");
-  }
   return options;
 }
 
@@ -154,78 +126,6 @@ function assertVisibleImage(image, filename) {
   }
 }
 
-export function validateRecordCapacity(profile) {
-  for (const frame of profile.frames) {
-    for (const field of [
-      "candidate_record_overflow",
-      "visible_record_overflow",
-      "shadow_record_overflow",
-    ]) {
-      if ((frame.render?.[field] ?? 0) !== 0) {
-        throw new Error(`${field} is nonzero at frame ${frame.index}`);
-      }
-    }
-  }
-}
-
-export function isVirtualGeometryErrorTier(value, maximum = 16) {
-  return (
-    Number.isFinite(value) &&
-    value >= 1 &&
-    value <= maximum &&
-    Number.isInteger(Math.log2(value))
-  );
-}
-
-export function validateResidencyPressure(profile) {
-  const pressuredRows = profile.frames.filter((frame) => {
-    const render = frame.render;
-    return (
-      render?.virtual_geometry === true &&
-      render.virtual_geometry_pages > render.virtual_geometry_resident_pages &&
-      render.virtual_geometry_page_budget_bytes > 0 &&
-      render.virtual_geometry_page_resident_bytes * 10 >=
-        render.virtual_geometry_page_budget_bytes * 9
-    );
-  });
-  if (pressuredRows.length === 0) {
-    throw new Error("profile does not exercise bounded virtual-geometry residency pressure");
-  }
-  if (
-    !profile.frames.some(
-      (frame) =>
-        (frame.counter_deltas?.virtual_geometry_group_evictions ?? 0) > 0 ||
-        (frame.render?.virtual_geometry_deferred_groups ?? 0) > 0,
-    )
-  ) {
-    throw new Error("residency pressure does not exercise eviction or deferred admission");
-  }
-  for (const frame of profile.frames) {
-    if (
-      frame.render?.virtual_geometry_page_request_overflow !== 0 ||
-      frame.render?.virtual_geometry_page_read_failures !== 0
-    ) {
-      throw new Error(`virtual-geometry residency became unhealthy at frame ${frame.index}`);
-    }
-  }
-  const adaptive = profile.frames.some(
-    (frame) => frame.render?.dynamic_resolution === true,
-  );
-  for (const frame of profile.frames) {
-    const error = frame.render?.virtual_geometry_error_pixels;
-    if (
-      (adaptive && !isVirtualGeometryErrorTier(error)) ||
-      (!adaptive && error !== 1)
-    ) {
-      throw new Error(
-        adaptive
-          ? `adaptive virtual-geometry error left its bounded tiers at frame ${frame.index}`
-          : "residency pressure changed the one-pixel virtual-geometry error target",
-      );
-    }
-  }
-}
-
 export function validateProfile(options, profile, framesDirectory) {
   if (profile.schema_version !== 2 || profile.frames?.length !== options.frames) {
     throw new Error("profile does not match the requested bounded run");
@@ -237,7 +137,6 @@ export function validateProfile(options, profile, framesDirectory) {
     throw new Error("profile is missing captured frame rows");
   }
   const captures = [];
-  validateRecordCapacity(profile);
   for (const frame of capturedRows) {
     const filename = `frame-${String(frame.index).padStart(6, "0")}.png`;
     const imagePath = path.join(framesDirectory, filename);
@@ -256,57 +155,6 @@ export function validateProfile(options, profile, framesDirectory) {
       }
     }
     captures.push({ frame: frame.index, image: filename, ...(score ? { psnr_db: score } : {}) });
-  }
-  if (options.stableFrontier) {
-    const errors = new Set(
-      capturedRows.map((frame) => frame.render?.virtual_geometry_error_pixels),
-    );
-    for (const frame of capturedRows) {
-      if (
-        frame.render?.virtual_geometry !== true ||
-        frame.render?.virtual_geometry_page_request_overflow !== 0 ||
-        frame.render?.virtual_geometry_page_read_failures !== 0 ||
-        frame.counter_deltas?.virtual_geometry_group_uploads !== 0 ||
-        frame.counter_deltas?.virtual_geometry_group_activations !== 0 ||
-        frame.counter_deltas?.virtual_geometry_group_evictions !== 0 ||
-        frame.render?.virtual_geometry_transitioning_groups !== 0
-      ) {
-        throw new Error(`virtual-geometry frontier mutated during captured frame ${frame.index}`);
-      }
-    }
-    if (errors.size !== 1) {
-      throw new Error("virtual-geometry projected-error policy changed during capture");
-    }
-  }
-  if (options.requireTransition || options.requireTransitionActivity) {
-    const transitionCounts = capturedRows.map(
-      (frame) => frame.render?.virtual_geometry_transitioning_groups ?? 0,
-    );
-    if (!transitionCounts.some((count) => count > 0)) {
-      throw new Error("captured range does not contain a virtual-geometry transition");
-    }
-    if (
-      !capturedRows.some(
-        (frame) => (frame.render?.visible_virtual_blend_clusters ?? 0) > 0,
-      )
-    ) {
-      throw new Error("captured transition does not exercise visible blended clusters");
-    }
-    if (options.requireTransition && transitionCounts.at(-1) !== 0) {
-      throw new Error("captured virtual-geometry transition does not reach a settled endpoint");
-    }
-    for (const frame of capturedRows) {
-      if (
-        frame.render?.virtual_geometry !== true ||
-        frame.render?.virtual_geometry_page_request_overflow !== 0 ||
-        frame.render?.virtual_geometry_page_read_failures !== 0
-      ) {
-        throw new Error(`virtual-geometry transition became unhealthy at frame ${frame.index}`);
-      }
-    }
-  }
-  if (options.requireResidencyPressure) {
-    validateResidencyPressure(profile);
   }
   return captures;
 }
@@ -405,9 +253,6 @@ function main() {
     warmup_frames: options.warmup,
     recorded_frames: options.frames,
     capture_range: options.captureRange,
-    stable_frontier: options.stableFrontier,
-    required_transition: options.requireTransition,
-    required_residency_pressure: options.requireResidencyPressure,
     cpu_reference: options.cpuReference,
     editor: options.editor,
     ui_script: options.uiScript ?? null,

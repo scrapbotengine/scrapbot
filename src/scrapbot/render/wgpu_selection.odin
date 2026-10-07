@@ -416,52 +416,12 @@ wgpu_selection_encode_draws :: proc(
 		if material_cached.double_sided {
 			pipeline = renderer.gpu_selection_double_sided_pipeline
 		}
-		if span.mode == .Compact {
-			pipeline = renderer.gpu_compact_selection_pipeline
-			if material_cached.double_sided {
-				pipeline = renderer.gpu_compact_selection_double_sided_pipeline
-			}
-		}
+
 		wgpu.RenderPassEncoderSetPipeline(pass, pipeline)
-		world_bind_group := renderer.gpu_world_bind_group
-		if !renderer.gpu_meshlet_supported {
-			world_bind_group = batch.world_bind_group
-		} else if span.mode != .Classic {
-			world_bind_group = renderer.gpu_meshlet_world_bind_group
-		}
+		world_bind_group := batch.world_bind_group
 		wgpu.RenderPassEncoderSetBindGroup(pass, 0, world_bind_group)
 		wgpu.RenderPassEncoderSetBindGroup(pass, 1, material_cached.bind_group)
-		if span.mode == .Compact {
-			wgpu.RenderPassEncoderSetVertexBuffer(
-				pass,
-				0,
-				renderer.gpu_compact_visible_buffer,
-				0,
-				wgpu.WHOLE_SIZE,
-			)
-			for command_offset in 0 ..< span.indirect_count {
-				wgpu.RenderPassEncoderDrawIndirect(
-					pass,
-					renderer.gpu_indirect_buffer,
-					u64(span.first_indirect + command_offset) *
-					u64(size_of(WGPU_Draw_Indexed_Indirect)),
-				)
-			}
-		} else if span.mode == .Meshlet {
-			wgpu.RenderPassEncoderSetVertexBuffer(
-				pass,
-				0,
-				renderer.geometry_vertex_arena.buffer,
-				0,
-				wgpu.WHOLE_SIZE,
-			)
-			wgpu.RenderPassEncoderMultiDrawIndexedIndirect(
-				pass,
-				renderer.gpu_meshlet_indirect_buffer,
-				u64(span.first_indirect) * u64(size_of(WGPU_Draw_Indexed_Indirect)),
-				span.indirect_count,
-			)
-		} else if span.indirect_count > 1 {
+		if span.indirect_count > 1 {
 			wgpu.RenderPassEncoderMultiDrawIndexedIndirect(
 				pass,
 				renderer.gpu_indirect_buffer,
@@ -509,12 +469,7 @@ wgpu_selection_encode_transparent :: proc(
 		if !material_ok {
 			return "selection pass references a stale transparent material"
 		}
-		geometry, geometry_err := wgpu_geometry_cache(
-			renderer,
-			registry,
-			draw.geometry,
-			.Conventional,
-		)
+		geometry, geometry_err := wgpu_geometry_cache(renderer, registry, draw.geometry)
 		if geometry_err != "" {
 			return geometry_err
 		}
@@ -535,7 +490,7 @@ wgpu_selection_encode_transparent :: proc(
 		wgpu.RenderPassEncoderSetBindGroup(pass, 3, custom.render_bind_group)
 		wgpu.RenderPassEncoderDrawIndexed(
 			pass,
-			u32(resources.geometry_fallback_index_count(geometry_resource)),
+			u32(resources.geometry_index_count(geometry_resource)),
 			1,
 			u32(geometry.index_range.offset / u64(size_of(u32))),
 			i32(geometry.vertex_range.offset / u64(size_of(resources.Vertex))),

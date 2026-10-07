@@ -206,24 +206,12 @@ write_scene_entity :: proc(builder: ^strings.Builder, entity: ^shared.Scene_Enti
 	if entity.has_mesh {
 		write_scene_section(builder, "mesh")
 		write_scene_string(builder, "primitive", entity.mesh.primitive)
-		if entity.mesh.geometry_mode != .Inherit {
-			write_scene_string(
-				builder,
-				"geometry_mode",
-				shared.geometry_mode_name(entity.mesh.geometry_mode),
-			)
-		}
+
 	}
 	if entity.has_geometry {
 		write_scene_section(builder, "geometry")
 		write_scene_string(builder, "resource", entity.geometry.resource)
-		if entity.geometry.geometry_mode != .Inherit {
-			write_scene_string(
-				builder,
-				"geometry_mode",
-				shared.geometry_mode_name(entity.geometry.geometry_mode),
-			)
-		}
+
 	}
 	if entity.has_material {
 		write_scene_section(builder, "material")
@@ -232,13 +220,7 @@ write_scene_entity :: proc(builder: ^strings.Builder, entity: ^shared.Scene_Enti
 	if entity.has_model {
 		write_scene_section(builder, "model")
 		write_scene_string(builder, "resource", entity.model.resource)
-		if entity.model.geometry_mode != .Inherit {
-			write_scene_string(
-				builder,
-				"geometry_mode",
-				shared.geometry_mode_name(entity.model.geometry_mode),
-			)
-		}
+
 	}
 	if entity.has_shadow_caster { write_scene_section(builder, "shadow_caster") }
 	if entity.has_shadow_receiver { write_scene_section(builder, "shadow_receiver") }

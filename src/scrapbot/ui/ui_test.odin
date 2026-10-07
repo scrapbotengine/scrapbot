@@ -4968,15 +4968,11 @@ test_editor_game_view_debug_selector_is_transient_public_ui :: proc(t: ^testing.
 	testing.expect(t, reconcile(state, &world, 1280, 720) == "")
 	button, button_found := editor_ui_entity(&world, .Debug_View_Button)
 	menu, menu_found := editor_ui_entity(&world, .Debug_View_Menu)
-	meshlets, meshlets_found := editor_ui_entity(
-		&world,
-		.Debug_View_Item,
-		int(shared.Render_Debug_View.Meshlets),
-	)
+	lod, lod_found := editor_ui_entity(&world, .Debug_View_Item, int(shared.Render_Debug_View.LOD))
 	visibility, visibility_found := editor_ui_entity(
 		&world,
 		.Debug_View_Item,
-		int(shared.Render_Debug_View.Meshlet_Visibility),
+		int(shared.Render_Debug_View.World_Normals),
 	)
 	hiz, hiz_found := editor_ui_entity(&world, .Debug_View_Item, int(shared.Render_Debug_View.HiZ))
 	occlusion, occlusion_found := editor_ui_entity(
@@ -5002,7 +4998,7 @@ test_editor_game_view_debug_selector_is_transient_public_ui :: proc(t: ^testing.
 		t,
 		button_found &&
 		menu_found &&
-		meshlets_found &&
+		lod_found &&
 		visibility_found &&
 		hiz_found &&
 		occlusion_found &&
@@ -5015,7 +5011,7 @@ test_editor_game_view_debug_selector_is_transient_public_ui :: proc(t: ^testing.
 	)
 	if !button_found ||
 	   !menu_found ||
-	   !meshlets_found ||
+	   !lod_found ||
 	   !visibility_found ||
 	   !hiz_found ||
 	   !occlusion_found ||
@@ -5046,23 +5042,23 @@ test_editor_game_view_debug_selector_is_transient_public_ui :: proc(t: ^testing.
 	testing.expect_value(t, effective_render_debug_hiz_mip(state, project_camera), u32(3))
 	testing.expect(t, effective_render_debug_occlusion_freeze(state, project_camera))
 
-	editor_ui_handle_activation(state, &world, world.entities[meshlets].id, {})
+	editor_ui_handle_activation(state, &world, world.entities[lod].id, {})
 	testing.expect(t, state.editor_render_debug_view_override)
-	testing.expect(t, state.editor_render_debug_view == .Meshlets)
-	testing.expect(t, effective_render_debug_view(state, project_camera) == .Meshlets)
+	testing.expect(t, state.editor_render_debug_view == .LOD)
+	testing.expect(t, effective_render_debug_view(state, project_camera) == .LOD)
 	testing.expect_value(
 		t,
 		world.ui_buttons[world.entities[button].ui_button_index].text,
-		"VIEW / MESHLETS",
+		"VIEW / LOD",
 	)
 	testing.expect(t, world.cameras[0].debug_view == .Lit)
 
 	editor_ui_handle_activation(state, &world, world.entities[visibility].id, {})
-	testing.expect(t, state.editor_render_debug_view == .Meshlet_Visibility)
+	testing.expect(t, state.editor_render_debug_view == .World_Normals)
 	testing.expect_value(
 		t,
 		world.ui_buttons[world.entities[button].ui_button_index].text,
-		"VIEW / MESHLET VISIBILITY",
+		"VIEW / WORLD NORMALS",
 	)
 
 	editor_ui_handle_activation(state, &world, world.entities[hiz].id, {})
@@ -10207,10 +10203,8 @@ test_editor_performance_panel_uses_public_panel_table_and_text_components :: pro
 		entity_count = 42,
 		retained_batches = 7,
 		visible_batches = 4,
-		visible_meshlet_draws = 11,
 		frustum_culled_instances = 9,
 		occlusion_culled_instances = 13,
-		occlusion_culled_meshlets = 17,
 		hiz_occlusion_status = .Active,
 		hiz_instance_threshold = 256,
 		sample_frames = 50,
@@ -10238,7 +10232,7 @@ test_editor_performance_panel_uses_public_panel_table_and_text_components :: pro
 		testing.expect(t, entity.ui_table_index >= 0)
 		testing.expect(t, entity.ui_scroll_area_index >= 0)
 	}
-	expected_labels := [15]string {
+	expected_labels := [13]string {
 		"FPS",
 		"CPU FRAME",
 		"GPU FRAME",
@@ -10249,11 +10243,9 @@ test_editor_performance_panel_uses_public_panel_table_and_text_components :: pro
 		"ENTITIES",
 		"RETAINED BATCHES",
 		"VISIBLE BATCHES",
-		"VISIBLE MESHLET DRAWS",
 		"HI-Z CULLING",
 		"FRUSTUM CULLED",
 		"OBJECT OCCLUSION",
-		"MESHLET OCCLUSION",
 	}
 	for expected, slot in expected_labels {
 		cell, found := editor_ui_entity(&world, .Diagnostics_Label, slot)
@@ -10265,7 +10257,7 @@ test_editor_performance_panel_uses_public_panel_table_and_text_components :: pro
 		testing.expect(t, entity.ui_text_index >= 0)
 		testing.expect(t, world.ui_texts[entity.ui_text_index].text == expected)
 	}
-	expected_values := [15]string {
+	expected_values := [13]string {
 		"59.9",
 		"16.69 ms",
 		"2.25 ms",
@@ -10276,11 +10268,9 @@ test_editor_performance_panel_uses_public_panel_table_and_text_components :: pro
 		"42",
 		"7",
 		"4",
-		"11",
 		"ACTIVE",
 		"9",
 		"13",
-		"17",
 	}
 	for expected, slot in expected_values {
 		cell, found := editor_ui_entity(&world, .Diagnostics_Value, slot)
@@ -10646,7 +10636,6 @@ test_editor_model_preview_requests_an_undoable_precise_scene_placement :: proc(t
 		entity.model_resource,
 		shared.resource_uuid_to_string(resource_id, id_buffer[:]),
 	)
-	testing.expect(t, entity.geometry_mode == .Inherit)
 	placed_id := entity.uuid
 	testing.expect(t, state.editor_scene_dirty)
 	testing.expect_value(t, state.editor_history_count, 1)

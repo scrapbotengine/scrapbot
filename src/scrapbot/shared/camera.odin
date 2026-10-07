@@ -16,18 +16,12 @@ render_debug_view_name :: proc "contextless" (view: Render_Debug_View) -> string
 			return "metallic"
 		case .Depth:
 			return "depth"
-		case .Meshlets:
-			return "meshlets"
 		case .LOD:
 			return "lod"
-		case .Meshlet_Visibility:
-			return "meshlet_visibility"
 		case .HiZ:
 			return "hiz"
 		case .Occlusion_Queries:
 			return "occlusion_queries"
-		case .Virtual_Geometry:
-			return "virtual_geometry"
 		case .Distance_Field:
 			return "distance_field"
 		case .World_Distance_Field:
@@ -50,18 +44,12 @@ render_debug_view_from_name :: proc "contextless" (name: string) -> (Render_Debu
 			return .Metallic, true
 		case "depth":
 			return .Depth, true
-		case "meshlets":
-			return .Meshlets, true
 		case "lod":
 			return .LOD, true
-		case "meshlet_visibility":
-			return .Meshlet_Visibility, true
 		case "hiz":
 			return .HiZ, true
 		case "occlusion_queries":
 			return .Occlusion_Queries, true
-		case "virtual_geometry":
-			return .Virtual_Geometry, true
 		case "distance_field":
 			return .Distance_Field, true
 		case "world_distance_field":

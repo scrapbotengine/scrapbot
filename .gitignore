@@ -8,4 +8,6 @@ examples/*/build/
 /examples/impossible-archive/assets/
 /examples/virtual-wilds/assets/
 /examples/virtual-geometry-cliff/assets/
+/examples/coastal-wilds/assets/
+/examples/coastal-cliff/assets/
 .vscode/settings.json

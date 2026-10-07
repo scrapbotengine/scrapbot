@@ -41,12 +41,6 @@ Renderer_Backend :: enum {
 	WGPU,
 }
 
-Geometry_Mode :: enum u8 {
-	Inherit,
-	Auto,
-	Conventional,
-	Virtual,
-}
 
 Project_Config :: struct {
 	name: string,
@@ -69,9 +63,6 @@ Project_Window_Config :: struct {
 }
 
 Project_Render_Config :: struct {
-	geometry_mode: Geometry_Mode,
-	virtual_geometry_budget_mb: f32,
-	virtual_geometry_prefetch: bool,
 	environment: Resource_UUID,
 	environment_intensity: f32,
 	environment_reflection_intensity: f32,
@@ -156,7 +147,6 @@ Project_Texture_Resource :: struct {
 
 Project_Model_Resource :: struct {
 	source: string,
-	geometry_mode: Geometry_Mode,
 	generate_lods: bool,
 	lod_ratios: [MAX_GEOMETRY_LODS - 1]f32,
 	lod_screen_radii: [MAX_GEOMETRY_LODS - 1]f32,
@@ -242,12 +232,10 @@ Scene :: struct {
 
 Scene_Geometry_Component :: struct {
 	resource: string,
-	geometry_mode: Geometry_Mode,
 }
 
 Scene_Model_Component :: struct {
 	resource: string,
-	geometry_mode: Geometry_Mode,
 }
 
 Scene_Entity :: struct {
@@ -385,12 +373,9 @@ Render_Debug_View :: enum u32 {
 	Roughness,
 	Metallic,
 	Depth,
-	Meshlets,
 	LOD,
-	Meshlet_Visibility,
 	HiZ,
 	Occlusion_Queries,
-	Virtual_Geometry,
 	Distance_Field,
 	World_Distance_Field,
 }
@@ -1582,13 +1567,11 @@ Performance_Diagnostics :: struct {
 	entity_count: int,
 	retained_batches: int,
 	visible_batches: u32,
-	visible_meshlet_draws: u32,
 	instance_count: int,
 	frustum_candidates: u32,
 	frustum_culled_instances: u32,
 	visible_instances: u32,
 	occlusion_culled_instances: u32,
-	occlusion_culled_meshlets: u32,
 	hiz_occlusion_status: HiZ_Occlusion_Status,
 	hiz_instance_threshold: int,
 	sample_frames: int,
@@ -1737,12 +1720,10 @@ Editor_UI_Lookup_Key :: struct {
 
 Mesh_Component :: struct {
 	primitive: string,
-	geometry_mode: Geometry_Mode,
 }
 
 Geometry_Component :: struct {
 	handle: Geometry_Handle,
-	geometry_mode: Geometry_Mode,
 }
 Material_Component :: struct {
 	handle: Material_Handle,
@@ -1750,7 +1731,6 @@ Material_Component :: struct {
 Render_Instance_Component :: struct {
 	geometry: Geometry_Handle,
 	material: Material_Handle,
-	geometry_mode: Geometry_Mode,
 }
 
 Named_Vec3 :: struct {
@@ -1822,7 +1802,6 @@ World_Entity :: struct {
 	geometry_index: int,
 	material_index: int,
 	model_resource: string,
-	geometry_mode: Geometry_Mode,
 	model_owner: Entity_UUID,
 	render_instance_index: int,
 	render_active_index: int,
@@ -1884,7 +1863,6 @@ Render_Instance :: struct {
 Render_Batch_Key :: struct {
 	geometry: Geometry_Handle,
 	material: Material_Handle,
-	geometry_mode: Geometry_Mode,
 }
 
 Camera_Instance :: struct {

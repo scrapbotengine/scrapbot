@@ -35,10 +35,8 @@ Use `examples/clustered-lights --editor` to inspect the GPU clustered-lighting p
 
 Use `mise archive-profile` for a bounded 1600×900 capture of the generated Impossible Archive.
 The task creates the showcase GLB, warms the renderer, records 240 measured frames, and prints the
-profile directory. Its dense imported reliefs and 64 MiB virtual-geometry budget are useful for
-examining hierarchy traversal, visible clusters, culling, and portable compact-submission cost in
-one reproducible workload. The checked-in 64 MiB budget keeps the showcase preset resident; lower
-it deliberately when profiling page requests, uploads, deferred groups, prefetches, and evictions.
+profile directory. Its dense imported reliefs exercise indexed geometry, ordinary LOD selection,
+object culling, shared geometry arenas, lighting, and post-processing in one reproducible workload.
 
 Open the editor to compare individual engine, project-Odin, and Luau systems. The Systems panel publishes a rolling 50-frame average every five frames. Engine phases and project systems measure their CPU callback boundaries. Renderer work is split across `scrapbot.render.cull`, `.shadow`, `.world`, `.post`, `.ui`, `.finish`, `.submit`, and `.present`; these are CPU encoding and API timings. FIFO/vsync waiting belongs to the core window loop and is excluded from engine-system and active-frame timings. Native project systems with non-conflicting access may execute in parallel, so their individual callback durations are attribution rather than strictly additive wall time. Structured WGPU `render_stats` separately expose asynchronous GPU execution samples.
 
@@ -46,22 +44,13 @@ The collapsible Performance panel gives a compact frame-health view beside the S
 
 `CPU FRAME` begins after presentation-surface acquisition. It includes scheduled systems, retained render preparation, GPU command encoding and finalization, queue submission, and the CPU-side present call. Surface acquisition, vsync waiting, profiler drains, and other between-frame idle time affect FPS but not `CPU FRAME`.
 
-The panel also shows the latest valid asynchronous GPU frame and scene durations, effective render scale, scene-plus-runtime entity count, retained and camera-visible GPU batch counts, visible meshlet draws, Hi-Z state, frustum rejects, whole-object occlusion rejects, and meshlet occlusion rejects. `GPU FRAME` spans the earliest through latest executed timed pass boundaries, including native-resolution UI when present. `GPU SCENE` shares that beginning and ends after final composition, before UI. Both remain `--` until timestamp-query results are available.
-
-Structured renderer snapshots split retained batch and instance counts into `conventional_*` and
-`virtual_*` fields. Use those counts to verify automatic policy before attributing a pass cost to
-virtual geometry; two instances of one Geometry may intentionally use different paths.
+The panel also shows the latest valid asynchronous GPU frame and scene durations, effective render scale, scene-plus-runtime entity count, retained and camera-visible GPU batch counts. `GPU FRAME` spans the earliest through latest executed timed pass boundaries, including native-resolution UI when present. `GPU SCENE` shares that beginning and ends after final composition, before UI. Both remain `--` until timestamp-query results are available.
 
 **Retained Batches** is stable draw-database topology: one entry for each geometry/material/LOD combination the loaded scene may render. Culling never removes these records merely because the camera turns.
 
-Structured `render_stats.draw_submissions` is the number of compatible indirect command spans
-encoded for one pass. It can be lower than Retained Batches because shared geometry arenas let
-adjacent same-material LOD or meshlet commands retain separate visibility while sharing bindings
-and one fixed multi-draw call.
+Structured `render_stats.draw_submissions` counts indexed draw commands encoded for one pass.
 
-**Visible Batches** counts camera batches with at least one object that survived object-level frustum and Hi-Z culling and selected that LOD. **Visible Meshlet Draws** counts meshlet indirect commands that received at least one surviving instance after meshlet frustum, cone, and Hi-Z tests. The latter is zero on the whole-primitive CPU-reference path.
-
-The panel's three values describe camera visibility, not shadow-cascade visibility. Retained batches can therefore remain high while visible batches and meshlet draws approach zero. Empty indirect commands produce no triangles. Compatible commands still occupy retained topology but share bounded submission spans.
+**Visible Batches** counts camera batches with at least one object that survived frustum and Hi-Z culling and selected that LOD. Shadow-cascade visibility is reported separately. Retained batches remain present when the camera turns away; empty indirect commands produce no triangles.
 
 The Hi-Z state explains why an occlusion count may be zero:
 
@@ -124,7 +113,7 @@ Scrapbot's portable SIMD layer currently uses four `f32` lanes for matrix multip
 - Geometry submission resolves from entity, Model asset, and project policy when retained topology changes. Automatic mode keeps small geometry conventional and selects a resident virtual cluster frontier for capable hierarchy-bearing geometry with at least 50,000 source triangles. An automatically sized coarse-to-medium bootstrap tail guarantees a complete startup model while asynchronous requests load finer pages under the project budget. Only terminal safety geometry is permanently pinned. Optional startup detail stops before it consumes the first-camera streaming reserve and can yield under later global pressure. Camera motion changes detail, never the selected submission path.
 - A deterministic cluster-centric compute pass assigns the retained point-light list into 3,456 view-frustum clusters without CPU cluster construction. Light and cluster-index buffers grow geometrically.
 - WGPU retains a 131,072-slot instance limit. Its draw database grows instead of imposing a fixed batch count.
-- Scenes with at least 256 occupied instance slots build a max-depth Hi-Z pyramid on stable-instance frames. An unchanged camera consumes its retained pyramid directly. Camera or render-target movement instead renders a frustum-only complete coarse virtual-geometry frontier into transient current-camera depth, builds current Hi-Z, and refines the detailed visibility stream before final depth and world shading. The transient depth is cleared, so its coarse surface is never visible. Persistent instance, membership, geometry, material, or LOD changes still use conservative frustum-only visibility until current depth is eligible again. Queries project an enclosing cube and use its nearest possible depth at a coarse mip covering the complete footprint. Objects crossing the camera plane or occupying a large near-field angle bypass occlusion and remain conservatively visible.
+- Scenes with at least 256 occupied instance slots build a max-depth Hi-Z pyramid on stable-instance frames. An unchanged camera consumes its retained pyramid directly. Camera or render-target movement instead renders frustum-visible indexed objects into transient current-camera depth, builds current Hi-Z, and computes final object visibility before final depth and world shading. The transient depth is cleared, so it does not remain in the final depth target. Persistent instance, membership, geometry, material, or LOD changes still use conservative frustum-only visibility until current depth is eligible again. Queries project an enclosing cube and use its nearest possible depth at a coarse mip covering the complete footprint. Objects crossing the camera plane or occupying a large near-field angle bypass occlusion and remain conservatively visible.
 - Authored geometry LOD resources and importer-generated model LODs resolve alternate batches for classic GPU and CPU-reference submission. Each instance carries compact batch indices and descending screen-radius thresholds, and both paths select the same whole-object level. A supported continuous virtual hierarchy replaces that selection with its cluster frontier and omits the redundant alternate batches.
 - Imported LOD simplification, vertex compaction, and product serialization run only when the Model import fingerprint changes. Stable frames consume retained Geometry handles. Alternate levels contribute batch topology on fallback paths, so tune the model recipe's level count and thresholds when their product size or fallback cost exceeds their triangle savings.
 - UI structural synchronization is dirty-entity driven. Stable project and editor roots skip layout independently when their topology, layout values, and viewport are unchanged. Their resolved nodes and visual inputs are also independently signatured, so unchanged domains retain paint commands and skip traversal and glyph emission while interaction remains live.
@@ -138,38 +127,12 @@ Scrapbot's portable SIMD layer currently uses four `f32` lanes for matrix multip
 - Use `--scheduler-trace` to inspect worker count, parallel stages, and maximum native width.
 - Use the Performance panel for frame-rate and active-CPU health, the Systems panel for CPU phase attribution, and `tests/fixtures/ui/ui-performance.json` for editor interaction costs.
 - Use bounded headless WGPU plus a framegrab when renderer correctness or submission cost matters.
-- Inspect structured `render_stats` for GPU-driven mode, retained `draw_batches`, camera `visible_batches`, nonempty `visible_meshlet_draws`, draw/slot/visibility capacity, database rebuilds, occupied slot span, cumulative instance upload calls/bytes, Hi-Z status and threshold, frustum candidates, separate object/meshlet occlusion rejects, per-LOD visible counts, and UI vertex rebuild/upload counts and bytes.
-
-  `virtual_cluster_draws` is retained hierarchy command topology. `visible_virtual_clusters` counts
-  selected resident camera clusters after ordinary visibility tests. `virtual_rejected_clusters`
-  counts candidates rejected because another hierarchy level owns their screen-space region.
-
-  `visible_virtual_triangles` is the useful virtual-geometry triangle count selected for the
-  camera. Portable compact submission reports `compact_triangles` across conventional and virtual
-  meshlets plus `compact_vertex_invocations`, including padded vertex work. Compare
-  `compact_triangles * 3` with `compact_vertex_invocations` to measure lane utilization. The
-  portable path groups selected records into 32-, 64-, 96-, and 124-triangle lanes, so smaller
-  meshlets no longer pay the maximum 124-triangle vertex cost. Native multi-draw and classic whole-
-  primitive submission leave both compact counters at zero.
-
-  `virtual_geometry_page_budget_bytes`, `virtual_geometry_page_resident_bytes`, and the total,
-  resident, pinned, and prefetched page counts describe current residency. Demand requests,
-  prefetch requests, and overflow describe the latest completed asynchronous feedback. Prefetch
-  group uploads, hits, and reclamations explain whether prediction arrived usefully or yielded to
-  demand. Upload, drawable-group activation, byte, hit, reclamation, and eviction counts are
-  cumulative; profile `counter_deltas` make cumulative counters frame-local.
-
-  `visible_virtual_blend_clusters` counts selected clusters inside either the steady projected-error
-  overlap or a streamed-admission handoff. `virtual_geometry_transitioning_groups` counts only the
-  latter: refinements currently replacing their complete parents. A resident child passes a bounded
-  demand-aware settling window and waits for its direct parent to settle. Both then remain drawable
-  for a 16-render-frame admission transition. World, depth, and shadows use complementary coverage,
-  so refinement does not introduce translucent overlap or a one-frame topology hole. TAA integrates
-  a low-discrepancy camera mask into a soft fade. Its transition-aware history tolerates bounded
-  parent/child depth changes and closes one-frame silhouette gaps. Non-temporal views and shadows
-  keep a stable spatial partition.
-
-  `meshlet_debug_records` counts the active Meshlet Visibility records or the live/frozen Occlusion Queries evidence; it is zero when neither diagnostic owns records. `instance_transform_uploads` and `instance_transform_upload_bytes` isolate the dense Transform-update stream from total instance traffic; ordinary Transform-only frames use one upload regardless of persistent-slot fragmentation. `instance_expand_dispatches` and `instance_expanded_slots` report the corresponding GPU expansion work. `ui_project_vertex_rebuilds`, `ui_editor_vertex_rebuilds`, and `ui_overlay_vertex_rebuilds` identify which retained domain invalidated.
+- Use `--json` renderer statistics to inspect retained batches, indexed draw submissions,
+  object visibility, ordinary LOD selection, and geometry arena capacity and uploads.
+  Profile `counter_deltas` report cumulative uploads and rebuilds as frame-local changes.
+  `instance_transform_uploads` and `instance_transform_upload_bytes` isolate Transform updates;
+  `instance_expand_dispatches` and `instance_expanded_slots` report GPU expansion work.
+  UI rebuild counters identify the retained domain that changed.
 - When `gpu_timestamps_supported` and `gpu_timestamps_valid` are true, `gpu_frame_ms` spans the earliest through latest executed timed pass boundaries, including UI when present. `gpu_scene_ms` shares that beginning and ends after composition, before UI. Cull, shadow, depth, world, Hi-Z, bloom, composite, and UI milliseconds come from separate pass timestamps for attribution; do not add them to reconstruct frame duration. Four-frame readback rings publish completed samples without synchronously waiting on the GPU. Use external GPU tooling for shader costs, bandwidth, occupancy, presentation, and deeper captures.
 
 Avoid absolute cross-machine budgets in tests. Scrapbot's regression suite instead checks bounded work, topology reuse, linear cursor behavior, stable storage, zero post-teardown allocator bytes, and same-machine before/after measurements.

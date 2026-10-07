@@ -185,15 +185,6 @@ register_project_model :: proc(
 			return {}, "failed to allocate imported model mesh name"
 		}
 		for &primitive in mesh.primitives {
-			page_source := Geometry_Page_Source_Desc {
-				kind = .File,
-				path = artifact_path,
-				records = primitive.page_payloads,
-			}
-			page_source_pointer: ^Geometry_Page_Source_Desc
-			if artifact_path != "" && len(primitive.page_payloads) > 0 {
-				page_source_pointer = &page_source
-			}
 			distance_field := Geometry_Distance_Field_Desc {
 				dimensions = primitive.distance_field.dimensions,
 				bounds = {
@@ -206,42 +197,18 @@ register_project_model :: proc(
 				product_offset = primitive.distance_field.product_offset,
 				product_size = primitive.distance_field.product_size,
 			}
-			distance_field_pointer: ^Geometry_Distance_Field_Desc
-			if primitive.distance_field.product_size > 0 {
-				distance_field_pointer = &distance_field
-			}
 			geometry_name := fmt.tprintf(
 				"__model_%s_geometry_%016x",
 				id_text,
 				hash.fnv64a(transmute([]byte)primitive.key),
 			)
-			geometry: Geometry_Handle
-			geometry_err: string
-			if len(primitive.query_positions) > 0 {
-				geometry, geometry_err = register_geometry_catalog(
-					registry,
-					geometry_name,
-					{
-						query_positions = primitive.query_positions,
-						canonical_index_count = primitive.index_count,
-						geometry_mode = declaration.model.geometry_mode,
-						hierarchy = &primitive.hierarchy,
-						page_source = page_source_pointer,
-						distance_field = distance_field_pointer,
-					},
-				)
-			} else {
-				vertices := model_geometry_vertices(primitive.vertices[:])
-				geometry, geometry_err = register_geometry_with_hierarchy(
-					registry,
-					geometry_name,
-					{vertices = vertices, indices = primitive.indices[:]},
-					&primitive.hierarchy,
-					page_source_pointer,
-					declaration.model.geometry_mode,
-				)
-				delete(vertices)
-			}
+			vertices := model_geometry_vertices(primitive.vertices[:])
+			geometry, geometry_err := register_geometry(
+				registry,
+				geometry_name,
+				{vertices, primitive.indices[:]},
+			)
+			delete(vertices)
 			if geometry_err != "" {
 				destroy_model(&model, registry.allocator)
 				return {}, geometry_err
@@ -249,45 +216,23 @@ register_project_model :: proc(
 			model_primitive := Model_Primitive {
 				geometry = geometry,
 			}
+			registered, _ := get_geometry(registry, geometry)
+			registered.distance_field = distance_field
+			registered.distance_field_source_path, _ = strings.clone(
+				artifact_path,
+				registry.allocator,
+			)
 			lod_screen_radii: [shared.MAX_GEOMETRY_LODS - 1]f32
 			lod_simplification_errors: [shared.MAX_GEOMETRY_LODS - 1]f32
 			for &lod, lod_index in primitive.lods {
-				lod_page_source := Geometry_Page_Source_Desc {
-					kind = .File,
-					path = artifact_path,
-					records = lod.page_payloads,
-				}
-				lod_page_source_pointer: ^Geometry_Page_Source_Desc
-				if artifact_path != "" && len(lod.page_payloads) > 0 {
-					lod_page_source_pointer = &lod_page_source
-				}
 				lod_geometry_name := fmt.tprintf("%s_lod_%d", geometry_name, lod.level + 1)
-				lod_geometry: Geometry_Handle
-				lod_geometry_err: string
-				if len(lod.query_positions) > 0 {
-					lod_geometry, lod_geometry_err = register_geometry_catalog(
-						registry,
-						lod_geometry_name,
-						{
-							query_positions = lod.query_positions,
-							canonical_index_count = lod.index_count,
-							geometry_mode = declaration.model.geometry_mode,
-							hierarchy = &lod.hierarchy,
-							page_source = lod_page_source_pointer,
-						},
-					)
-				} else {
-					lod_vertices := model_geometry_vertices(lod.vertices[:])
-					lod_geometry, lod_geometry_err = register_geometry_with_hierarchy(
-						registry,
-						lod_geometry_name,
-						{vertices = lod_vertices, indices = lod.indices[:]},
-						&lod.hierarchy,
-						lod_page_source_pointer,
-						declaration.model.geometry_mode,
-					)
-					delete(lod_vertices)
-				}
+				lod_vertices := model_geometry_vertices(lod.vertices[:])
+				lod_geometry, lod_geometry_err := register_geometry(
+					registry,
+					lod_geometry_name,
+					{lod_vertices, lod.indices[:]},
+				)
+				delete(lod_vertices)
 				if lod_geometry_err != "" {
 					destroy_model(&model, registry.allocator)
 					return {}, lod_geometry_err
@@ -365,7 +310,7 @@ load_geometry_distance_field_samples :: proc(
 	[]i16,
 	string,
 ) {
-	if geometry == nil || geometry.page_source_path == "" {
+	if geometry == nil || geometry.distance_field_source_path == "" {
 		return nil, "geometry distance-field source is unavailable"
 	}
 	desc := geometry.distance_field
@@ -373,7 +318,7 @@ load_geometry_distance_field_samples :: proc(
 		return nil, "geometry has no distance field"
 	}
 	field, field_err := asset_import.read_model_distance_field_samples(
-		geometry.page_source_path,
+		geometry.distance_field_source_path,
 		{
 			dimensions = desc.dimensions,
 			bounds_min = desc.bounds.min,

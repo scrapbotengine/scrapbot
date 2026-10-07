@@ -47,15 +47,15 @@
 | [ADR-043](ADR-043-model-responsive-ui-as-an-authored-canvas-transform.md) | Model responsive UI as an authored canvas transform | 2026-07-29 |
 | [ADR-044](ADR-044-resolve-intrinsic-and-flex-ui-layout-in-retained-passes.md) | Resolve intrinsic and flex UI layout in retained passes | 2026-07-30 |
 | [ADR-045](ADR-045-compose-docking-from-public-groups-and-layout.md) | Compose docking from public groups and layout | 2026-07-30 |
-| [ADR-046](ADR-046-store-meshlets-with-geometry-resources.md) | Store meshlets with geometry resources | 2026-07-30 |
+| [ADR-046](ADR-046-store-meshlets-with-geometry-resources.md) | Store meshlets with geometry resources (superseded by ADR-062) | 2026-07-30 |
 | [ADR-047](ADR-047-generate-imported-mesh-lods-in-asset-products.md) | Generate imported mesh LODs in asset products | 2026-07-31 |
 | [ADR-048](ADR-048-suballocate-geometry-in-shared-wgpu-arenas.md) | Suballocate geometry in shared WGPU arenas | 2026-07-31 |
-| [ADR-049](ADR-049-select-fully-resident-virtual-geometry-frontiers-on-the-gpu.md) | Select fully resident virtual Geometry frontiers on the GPU | 2026-07-31 |
-| [ADR-050](ADR-050-page-virtual-geometry-payloads.md) | Page virtual Geometry payloads | 2026-07-31 |
+| [ADR-049](ADR-049-select-fully-resident-virtual-geometry-frontiers-on-the-gpu.md) | Select fully resident virtual Geometry frontiers on the GPU (superseded by ADR-062) | 2026-07-31 |
+| [ADR-050](ADR-050-page-virtual-geometry-payloads.md) | Page virtual Geometry payloads (superseded by ADR-062) | 2026-07-31 |
 | [ADR-051](ADR-051-wrap-runtime-assets-in-chunked-products.md) | Wrap runtime assets in chunked products | 2026-08-02 |
 | [ADR-052](ADR-052-coordinate-adaptive-render-quality-from-one-frame-budget.md) | Coordinate adaptive render quality from one frame budget | 2026-08-02 |
 | [ADR-053](ADR-053-expose-live-debugging-through-a-transport-independent-service.md) | Expose live debugging through a transport-independent service | 2026-08-05 |
-| [ADR-054](ADR-054-select-geometry-submission-through-layered-policy.md) | Select geometry submission through layered policy | 2026-08-08 |
+| [ADR-054](ADR-054-select-geometry-submission-through-layered-policy.md) | Select geometry submission through layered policy (superseded by ADR-062) | 2026-08-08 |
 | [ADR-055](ADR-055-compile-mesh-distance-fields-offline.md) | Compile mesh distance fields offline | 2026-08-08 |
 | [ADR-056](ADR-056-separate-engine-time-from-project-clocks.md) | Separate engine time from project clocks | 2026-08-10 |
 | [ADR-057](ADR-057-render-editor-selection-through-an-on-demand-identity-pass.md) | Render editor selection through an on-demand identity pass | 2026-08-12 |
@@ -63,3 +63,4 @@
 | [ADR-059](ADR-059-route-input-from-one-physical-frame.md) | Route input from one physical frame | 2026-08-12 |
 | [ADR-060](ADR-060-browse-files-through-rooted-metadata-models.md) | Browse files through rooted metadata models | 2026-08-12 |
 | [ADR-061](ADR-061-index-scene-resource-dependencies-and-evict-unused-payloads.md) | Index scene resource dependencies and evict unused payloads | 2026-08-12 |
+| [ADR-062](ADR-062-return-to-conventional-indexed-geometry.md) | Return to conventional indexed geometry | 2026-10-06 |

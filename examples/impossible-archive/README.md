@@ -47,15 +47,10 @@ per-primitive triangle counts as one machine-readable document.
 ## What to look for
 
 The authored camera advances through the first twelve bays over 30 seconds, then jumps back to the
-threshold. That discontinuity exercises camera-cut and visibility recovery. Predictive prefetch
-remains enabled, while the checked-in 64 MiB budget keeps the showcase preset fully resident for a
-clean presentation. Lower the public `render.virtual_geometry_budget_mb` setting deliberately, or
-generate `unhinged`, when testing residency pressure and coarse-fallback recovery.
+threshold. That discontinuity exercises camera-cut and visibility recovery. Meshes and ordinary LODs now remain resident. Choose a smaller generated preset when the complete scene exceeds available memory.
 
-Open the Game debug-view selector and choose **Virtual Geometry**. The colored clusters are the
-actual fully resident frontier selected by the GPU; amber marks a branch waiting for its complete
-fine page group. **LOD** shows the whole-object imported fallback levels, and **Meshlets** exposes
-the underlying source partition.
+Choose **LOD** in the Game debug-view selector to inspect ordinary imported detail levels.
+Choose **Depth** to inspect surface ordering and topology.
 
 For a reproducible performance capture, use:
 
@@ -64,5 +59,5 @@ mise archive-profile
 ```
 
 The task prints the profile directory. Compare profiles only on the same adapter and dimensions;
-the public profiler records the workload and frame-local virtual-geometry counter deltas alongside
+the public profiler records the workload and frame-local upload and rebuild counter deltas alongside
 CPU and valid GPU timings.

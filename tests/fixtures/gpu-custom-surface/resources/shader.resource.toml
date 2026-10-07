@@ -1,0 +1,6 @@
+id = "bc000000-0000-4000-8000-000000000005"
+type = "scrapbot.shader"
+name = "Animated Surface"
+[shader]
+source = "shaders/surface.wgsl"
+cull_mode = "none"

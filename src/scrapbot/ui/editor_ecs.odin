@@ -1647,11 +1647,9 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		"ENTITIES",
 		"RETAINED BATCHES",
 		"VISIBLE BATCHES",
-		"VISIBLE MESHLET DRAWS",
 		"HI-Z CULLING",
 		"FRUSTUM CULLED",
 		"OBJECT OCCLUSION",
-		"MESHLET OCCLUSION",
 	}
 	for label_text, slot in diagnostic_labels {
 		label_name := fmt.tprintf("__scrapbot_editor_diagnostics_label_%d", slot)
@@ -2119,12 +2117,9 @@ editor_ui_create_shell :: proc(world: ^shared.World) {
 		"ROUGHNESS",
 		"METALLIC",
 		"DEPTH",
-		"MESHLETS",
 		"LOD",
-		"MESHLET VISIBILITY",
 		"HI-Z",
 		"OCCLUSION QUERIES",
-		"VIRTUAL GEOMETRY",
 		"DISTANCE FIELD",
 		"WORLD DISTANCE FIELD",
 	}
@@ -3014,7 +3009,7 @@ editor_ui_refresh_performance_diagnostics :: proc(state: ^State, world: ^shared.
 	if diagnostics.shadow_resolution > 0 {
 		shadow_resolution = fmt.tprintf("%d²", diagnostics.shadow_resolution)
 	}
-	values := [15]string {
+	values := [13]string {
 		fmt.tprintf("%.1f", diagnostics.fps),
 		fmt.tprintf("%.2f ms", diagnostics.frame_ms),
 		"--",
@@ -3025,11 +3020,9 @@ editor_ui_refresh_performance_diagnostics :: proc(state: ^State, world: ^shared.
 		fmt.tprintf("%d", diagnostics.entity_count),
 		fmt.tprintf("%d", diagnostics.retained_batches),
 		fmt.tprintf("%d", diagnostics.visible_batches),
-		fmt.tprintf("%d", diagnostics.visible_meshlet_draws),
 		hiz_status,
 		fmt.tprintf("%d", diagnostics.frustum_culled_instances),
 		fmt.tprintf("%d", diagnostics.occlusion_culled_instances),
-		fmt.tprintf("%d", diagnostics.occlusion_culled_meshlets),
 	}
 	if diagnostics.gpu_timestamps_valid {
 		values[2] = fmt.tprintf("%.2f ms", diagnostics.gpu_frame_ms)
@@ -3376,18 +3369,12 @@ editor_ui_update_debug_view_button :: proc(state: ^State, world: ^shared.World) 
 				label = "METALLIC"
 			case .Depth:
 				label = "DEPTH"
-			case .Meshlets:
-				label = "MESHLETS"
 			case .LOD:
 				label = "LOD"
-			case .Meshlet_Visibility:
-				label = "MESHLET VISIBILITY"
 			case .HiZ:
 				label = "HI-Z"
 			case .Occlusion_Queries:
 				label = "OCCLUSION QUERIES"
-			case .Virtual_Geometry:
-				label = "VIRTUAL GEOMETRY"
 			case .Distance_Field:
 				label = "DISTANCE FIELD"
 			case .World_Distance_Field:

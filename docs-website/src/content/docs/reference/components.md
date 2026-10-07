@@ -128,7 +128,7 @@ Parent UUIDs must resolve to another entity with a Transform and may not form a 
 | `fov` | number | Vertical field of view in degrees. The editor constrains authored values to 1–179. |
 | `near` | number | Positive near clipping plane. |
 | `far` | number | Far clipping plane, greater than `near`. |
-| `debug_view` | string | Backend-neutral output view. Defaults to `"lit"`; supported values are `"lit"`, `"base_color"`, `"world_normals"`, `"roughness"`, `"metallic"`, `"depth"`, `"meshlets"`, `"lod"`, `"meshlet_visibility"`, `"hiz"`, `"occlusion_queries"`, `"virtual_geometry"`, `"distance_field"`, and `"world_distance_field"`. |
+| `debug_view` | string | Backend-neutral output view. Defaults to `"lit"`; supported values are `"lit"`, `"base_color"`, `"world_normals"`, `"roughness"`, `"metallic"`, `"depth"`, `"lod"`, `"hiz"`, `"occlusion_queries"`, `"distance_field"`, and `"world_distance_field"`. |
 | `debug_hiz_mip` | number | Hi-Z pyramid mip shown by the `"hiz"` debug view, from `0` through `15`. WGPU clamps it to the retained pyramid's highest available mip. Defaults to `0`. |
 | `debug_occlusion_freeze` | boolean | Preserves the latest GPU query records while the `"occlusion_queries"` view remains active. Culling continues normally. Defaults to `false`. |
 | `resolution_scale` | number | World/depth/post render-grid scale from `0.5` to `1`. Defaults to native resolution (`1`). When dynamic resolution is enabled, this is its maximum scale. |
@@ -164,21 +164,15 @@ SSR ray-marches the current frame's HDR color, depth, and material surface data.
 
 AO and SSR quality change only bounded shader work; neither reallocates a target. Lower SSR tiers widen their step stride to preserve approximately the same ray reach with coarser intersection precision. Disabling AO, SSR, or bloom skips their compute work; disabling TAA removes jitter and history sampling. Luau queries expose and may write the complete payload when the system declares `scrapbot.camera` in `writes`.
 
-Non-lit debug views display renderer inputs directly. They disable temporal jitter, AO, SSR, volumetric fog, automatic exposure, bloom, tone mapping, and temporal/fast AA for a stable diagnostic image. Depth uses a logarithmic mapping from the camera's near plane (white) toward its far plane (black). Meshlets colors the actual retained meshlet identity. LOD colors the exact GPU-selected level from green through blue, purple, and orange.
-
-Meshlet Visibility colors submitted meshlets green and overlays rejected meshlet bounds without CPU readback. Object-frustum and object-Hi-Z rejection use red and purple; meshlet-frustum, normal-cone, and meshlet-Hi-Z rejection use orange, cyan, and magenta. Meshlets and Meshlet Visibility show a red/slate diagnostic checker during whole-primitive fallback instead of presenting unrelated triangles as clusters.
-
-Virtual Geometry colors the selected resident hierarchy frontier by cluster identity and depth.
-Amber marks a selected branch whose finer page group is not completely resident, so it also shows
-the coarse fallback used while asynchronous page feedback catches up.
+Non-lit debug views display renderer inputs directly. They disable temporal jitter, AO, SSR, volumetric fog, automatic exposure, bloom, tone mapping, and temporal/fast AA for a stable diagnostic image. Depth uses a logarithmic mapping from the camera's near plane (white) toward its far plane (black). LOD colors the exact GPU-selected level from green through blue, purple, and orange.
 
 Hi-Z displays the current max-depth pyramid in false color. Near occluders appear mint, distant depth trends toward dark blue, and selected mip texel boundaries are drawn directly over the expanded cells. Mip `0` is the full render-grid depth copy; each subsequent mip conservatively stores the farthest depth from a 2×2 block.
 
-Occlusion Queries dims the world and draws the exact projected rectangle evaluated against Hi-Z for every tested object or meshlet. Mint rectangles survived; pink rectangles were rejected. The renderer records this evidence in the GPU culling pass and draws it indirectly without copying geometry to the CPU.
+Occlusion Queries dims the world and draws the exact projected rectangle evaluated against Hi-Z for every tested object. Mint rectangles survived; pink rectangles were rejected. The renderer records this evidence in the GPU culling pass and draws it indirectly without copying geometry to the CPU.
 
 Setting `debug_occlusion_freeze = true` preserves the latest valid record range and indirect count. It does not freeze the camera, scene, or ordinary culling result. Leaving Occlusion Queries discards the retained diagnostic evidence.
 
-Occlusion Queries requires active GPU meshlet submission because its bounded evidence tail belongs to that retained layout. Unsupported adapters and `--cpu-culling` show the same red/slate unavailable checker as the meshlet views.
+Occlusion Queries uses a separate bounded object-record buffer and requires GPU culling. `--cpu-culling` shows an unavailable checker.
 
 The editor Game-view selector is transient. `Camera` follows this authored field, while another selection changes only the editor preview and does not dirty or persist the scene.
 
@@ -406,10 +400,9 @@ Lens dirt requires camera bloom and is suppressed by non-lit debug views. Changi
 | Scene field | Type | Meaning |
 | --- | --- | --- |
 | `primitive` | string | Non-empty primitive name. The built-in path supports `cube` and a 64×64 `plane`. |
-| `geometry_mode` | string | `inherit`, `auto`, `conventional`, or `virtual`; defaults to `inherit`. |
 
 This convenience path resolves built-in cube or plane geometry plus the default material when no
-authored material is present. Queries expose both `primitive` and `geometry_mode`. The plane's
+authored material is present. Queries expose `primitive`. The plane's
 subdivision density supports vertex-displaced surfaces such as water.
 
 ### `scrapbot.geometry` and `scrapbot.material`
@@ -417,7 +410,6 @@ subdivision density supports vertex-displaced surfaces such as water.
 | Component | Scene field | Meaning |
 | --- | --- | --- |
 | `scrapbot.geometry` | `resource` | Non-empty geometry name registered by Luau or native Odin. |
-| `scrapbot.geometry` | `geometry_mode` | `inherit`, `auto`, `conventional`, or `virtual`; defaults to `inherit`. |
 | `scrapbot.material` | `resource` | UUID of an authored `scrapbot.material` project resource. |
 
 An entity using this resource-backed path becomes renderable when it has a Transform plus valid geometry and material handles. Materials may contribute metallic-roughness factors, mipmapped base-color/normal/occlusion/emissive images, and unbounded linear HDR emission that feeds world bloom. Imported glTF models populate that complete PBR contract; authored project materials currently expose base color, an optional Texture resource, and emission. The ECS stores generational resource handles; scene files store geometry names and stable material resource UUIDs. Luau and native material creation remains a transient runtime facility rather than authored project-resource persistence. See [Project File Reference](/reference/project-files/#project-resources) and [Luau API: Render resources](/reference/luau-api/#render-resources).
@@ -427,7 +419,6 @@ An entity using this resource-backed path becomes renderable when it has a Trans
 | Scene field | Type | Meaning |
 | --- | --- | --- |
 | `resource` | UUID string | Authored `scrapbot.model` project resource to instantiate. |
-| `geometry_mode` | string | Instance override: `inherit`, `auto`, `conventional`, or `virtual`. |
 
 The authored entity is the model root. Resource initialization and reload reconcile the imported glTF node hierarchy into derived runtime ECS entities with Transform, Geometry, and Material state. `shadow_caster` and `shadow_receiver` markers on the root are inherited by every generated primitive during that reconciliation. Models may contain multiple meshes and primitives; the renderer continues to consume ordinary renderable ECS entities rather than a model-specific draw path. Luau and native systems can query membership, but model resource replacement is currently a scene/editor authoring operation rather than a runtime payload write.
 

@@ -546,26 +546,6 @@ test_cluster_index_budget_starts_at_256_and_grows_geometrically :: proc(t: ^test
 }
 
 @(test)
-test_storage_binding_growth_uses_legal_capacity_below_device_limit :: proc(t: ^testing.T) {
-	capacity, ok := wgpu_grow_storage_binding_capacity(
-		256,
-		800_000,
-		size_of(WGPU_GPU_Meshlet_Info),
-		128 * 1024 * 1024,
-	)
-	testing.expect(t, ok)
-	testing.expect_value(t, capacity, 838_860)
-	capacity, ok = wgpu_grow_storage_binding_capacity(
-		256,
-		838_861,
-		size_of(WGPU_GPU_Meshlet_Info),
-		128 * 1024 * 1024,
-	)
-	testing.expect(t, !ok)
-	testing.expect_value(t, capacity, 0)
-}
-
-@(test)
 test_cluster_viewport_tracks_editor_origin_and_available_world_extent :: proc(t: ^testing.T) {
 	viewport := ui.Rect{320, 96, 1280, 720}
 	testing.expect_value(t, wgpu_cluster_viewport_uniform(viewport), [4]f32{320, 96, 1280, 720})
@@ -663,21 +643,7 @@ test_temporal_resolve_reuses_one_workgroup_tile_for_exact_neighborhood_clamping 
 			"let color = rgb_to_ycocg(current_color_at(sample_pixel))",
 		),
 	)
-	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "virtual_transition_reactive"))
-	testing.expect(
-		t,
-		strings.contains(WGPU_TEMPORAL_AA_SHADER, "VIRTUAL_TRANSITION_MARKER_WITH_BLOOM"),
-	)
-	testing.expect(t, strings.contains(WGPU_TEMPORAL_AA_SHADER, "depth_tolerance_scale"))
-	testing.expect(
-		t,
-		strings.contains(WGPU_TEMPORAL_AA_SHADER, "history_weight = max(history_weight, 0.9)"),
-	)
-	testing.expect(
-		t,
-		strings.contains(WGPU_TEMPORAL_AA_SHADER, "depth >= 0.999999") &&
-		strings.contains(WGPU_TEMPORAL_AA_SHADER, "virtual_transition_reactive(history_sample.a)"),
-	)
+
 }
 
 @(test)
@@ -765,58 +731,13 @@ test_gpu_normal_model_can_reuse_the_model_matrix :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_gpu_meshlet_cone_culling_requires_a_positive_uniform_transform :: proc(t: ^testing.T) {
-	testing.expect(t, wgpu_transform_preserves_meshlet_cones({1, 1, 1}))
-	testing.expect(t, wgpu_transform_preserves_meshlet_cones({4, 4.003, 4}))
-	testing.expect(t, !wgpu_transform_preserves_meshlet_cones({0.92, 3.8, 0.82}))
-	testing.expect(t, !wgpu_transform_preserves_meshlet_cones({1, -1, 1}))
-	testing.expect(t, !wgpu_transform_preserves_meshlet_cones({1, 0, 1}))
-	testing.expect(
-		t,
-		strings.contains(
-			WGPU_GPU_TRANSFORM_SHADER,
-			"transform_preserves_meshlet_cones(transform.scale.xyz)",
-		),
-	)
-	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "instance.render_flags.z"))
-	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "meshlet_cone_culled"))
-	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "candidate_record_overflow"))
-	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "visible_record_overflow"))
-	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "shadow_record_overflow"))
-	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "shadow_visible_meshlets_by_cascade"))
-}
-
-@(test)
-test_gpu_virtual_feedback_layout_preserves_lane_specific_capacity :: proc(t: ^testing.T) {
-	testing.expect_value(t, WGPU_VIRTUAL_PAGE_DEMAND_FEEDBACK_CAPACITY, 32_768)
-	testing.expect_value(t, WGPU_VIRTUAL_PAGE_FEEDBACK_CAPACITY, 16_384)
+test_gpu_visibility_readback_contains_only_frame_summary :: proc(t: ^testing.T) {
 	testing.expect_value(
 		t,
-		offset_of(WGPU_GPU_Visibility_Counters, virtual_page_demand_feedback),
+		size_of(WGPU_GPU_Visibility_Counters),
 		size_of(WGPU_GPU_Visibility_Summary),
 	)
-	testing.expect(
-		t,
-		strings.contains(
-			WGPU_GPU_CULL_SHADER,
-			"virtual_page_demand_feedback: array<Virtual_Page_Feedback, 32768>",
-		),
-	)
-	testing.expect(
-		t,
-		strings.contains(
-			WGPU_GPU_CULL_SHADER,
-			"virtual_page_touch_feedback: array<Virtual_Page_Feedback, 16384>",
-		),
-	)
-	testing.expect(
-		t,
-		strings.contains(
-			WGPU_GPU_CULL_SHADER,
-			"virtual_page_prefetch_feedback: array<Virtual_Page_Feedback, 16384>",
-		),
-	)
-	testing.expect_value(t, strings.count(WGPU_GPU_CULL_SHADER, "feedback_index < 16384u"), 2)
+	testing.expect(t, size_of(WGPU_GPU_Visibility_Counters) < 256)
 }
 
 @(test)
@@ -874,7 +795,7 @@ test_gpu_instance_cpu_mirror_tracks_transform_only_updates :: proc(t: ^testing.T
 		record.bounds,
 		wgpu_instance_bounds(instance, &geometry, expected_model),
 	)
-	testing.expect_value(t, record.render_flags, [4]f32{1, 1, 1, 1})
+	testing.expect_value(t, record.render_flags, [4]f32{1, 1, 0, 1})
 	testing.expect_value(
 		t,
 		transform_record.position,
@@ -1030,12 +951,7 @@ test_gpu_dirty_instance_sync_reactivates_an_authoritative_render_slot :: proc(t:
 	defer delete(cache.batches)
 	append(
 		&cache.batches,
-		WGPU_Draw_Batch {
-			geometry = geometry,
-			material = material,
-			geometry_mode = .Conventional,
-			visible_capacity = 64,
-		},
+		WGPU_Draw_Batch{geometry = geometry, material = material, visible_capacity = 64},
 	)
 	cache.batch_count = 1
 
@@ -1185,11 +1101,7 @@ test_editor_feedback_draws_are_suppressed_while_editor_is_hidden :: proc(t: ^tes
 	defer ecs.destroy_render_list(&render_list)
 	append(
 		&render_list.instances,
-		Render_Instance {
-			slot = 0,
-			geometry = {handle = geometry, geometry_mode = .Virtual},
-			material = {handle = material},
-		},
+		Render_Instance{slot = 0, geometry = {handle = geometry}, material = {handle = material}},
 	)
 	append(&render_list.instance_index_by_slot, 0)
 	render_list.instance_slot_count = 1
@@ -1201,7 +1113,6 @@ test_editor_feedback_draws_are_suppressed_while_editor_is_hidden :: proc(t: ^tes
 	state.editor_visible = true
 	visible_draws := wgpu_collect_editor_feedback_draws(&renderer, &registry, &render_list, state)
 	testing.expect_value(t, len(visible_draws), 1)
-	testing.expect_value(t, visible_draws[0].geometry_mode, shared.Geometry_Mode.Virtual)
 
 	state.editor_visible = false
 	hidden_draws := wgpu_collect_editor_feedback_draws(&renderer, &registry, &render_list, state)
@@ -1290,8 +1201,7 @@ test_gpu_resource_cache_reuses_slots_across_handle_generations :: proc(t: ^testi
 		{handle = {index = 7, generation = 4}},
 	}
 	geometries := [?]WGPU_Geometry_Cache {
-		{handle = {index = 3, generation = 2}, virtual_geometry = false},
-		{handle = {index = 3, generation = 2}, virtual_geometry = true},
+		{handle = {index = 3, generation = 2}},
 		{handle = {index = 9, generation = 5}},
 	}
 	testing.expect_value(
@@ -1301,16 +1211,12 @@ test_gpu_resource_cache_reuses_slots_across_handle_generations :: proc(t: ^testi
 	)
 	testing.expect_value(
 		t,
-		wgpu_geometry_cache_slot_for_submission(
-			geometries[:],
-			{index = 3, generation = 88},
-			false,
-		),
+		wgpu_geometry_cache_slot(geometries[:], {index = 3, generation = 88}),
 		0,
 	)
 	testing.expect_value(
 		t,
-		wgpu_geometry_cache_slot_for_submission(geometries[:], {index = 3, generation = 88}, true),
+		wgpu_geometry_cache_slot(geometries[:], {index = 9, generation = 88}),
 		1,
 	)
 }
@@ -1360,49 +1266,6 @@ test_wgpu_geometry_arena_bounded_allocation_never_publishes_an_unaddressable_ran
 }
 
 @(test)
-test_wgpu_virtual_geometry_residency_rejects_compact_pages_outside_the_binding_window :: proc(
-	t: ^testing.T,
-) {
-	renderer := WGPU_Renderer {
-		max_storage_buffer_binding_size = 128,
-		geometry_cache = make([dynamic]WGPU_Geometry_Cache, 0, 1),
-	}
-	defer delete(renderer.geometry_cache)
-	cache := WGPU_Geometry_Cache {
-		valid = true,
-		virtual_geometry = true,
-		cluster_pages = make([dynamic]WGPU_Cluster_Page_Cache, 1),
-		cluster_groups = make([dynamic]WGPU_Cluster_Group_Cache, 1),
-		refined_group_parent_offsets = make([dynamic]u32, 2),
-	}
-	cache.cluster_pages[0] = {
-		vertex_range = {offset = 96, size = 48},
-		range = {offset = 0, size = 16},
-		resident = true,
-	}
-	cache.cluster_groups[0] = {
-		resident = true,
-		active = true,
-		pinned = true,
-	}
-	append(&renderer.geometry_cache, cache)
-	defer delete(renderer.geometry_cache[0].cluster_pages)
-	defer delete(renderer.geometry_cache[0].cluster_groups)
-	defer delete(renderer.geometry_cache[0].refined_group_parent_offsets)
-
-	testing.expect_value(
-		t,
-		wgpu_validate_virtual_geometry_residency(&renderer),
-		"resident virtual-geometry page exceeds the compact storage-binding window",
-	)
-	renderer.geometry_cache[0].cluster_pages[0].vertex_range = {
-		offset = 80,
-		size = 48,
-	}
-	testing.expect_value(t, wgpu_validate_virtual_geometry_residency(&renderer), "")
-}
-
-@(test)
 test_wgpu_geometry_arena_does_not_reuse_retired_ranges_before_gpu_completion :: proc(
 	t: ^testing.T,
 ) {
@@ -1436,12 +1299,10 @@ test_wgpu_geometry_cache_release_returns_all_arena_ranges :: proc(t: ^testing.T)
 	defer delete(renderer.geometry_index_arena.retirements)
 	vertex_range := wgpu_arena_allocate(&renderer.geometry_vertex_arena.allocator, 96, 16)
 	index_range := wgpu_arena_allocate(&renderer.geometry_index_arena.allocator, 48, 4)
-	meshlet_range := wgpu_arena_allocate(&renderer.geometry_index_arena.allocator, 64, 4)
 	cached := WGPU_Geometry_Cache {
 		handle = {index = 3, generation = 2},
 		vertex_range = vertex_range,
 		index_range = index_range,
-		meshlet_index_range = meshlet_range,
 		valid = true,
 	}
 
@@ -1449,157 +1310,13 @@ test_wgpu_geometry_cache_release_returns_all_arena_ranges :: proc(t: ^testing.T)
 
 	testing.expect(t, !cached.valid)
 	testing.expect_value(t, renderer.geometry_vertex_arena.allocator.resident_bytes, u64(96))
-	testing.expect_value(t, renderer.geometry_index_arena.allocator.resident_bytes, u64(112))
+	testing.expect_value(t, renderer.geometry_index_arena.allocator.resident_bytes, u64(48))
 	testing.expect_value(t, len(renderer.geometry_vertex_arena.retirements), 1)
-	testing.expect_value(t, len(renderer.geometry_index_arena.retirements), 2)
+	testing.expect_value(t, len(renderer.geometry_index_arena.retirements), 1)
 	wgpu_geometry_arena_reclaim(&renderer.geometry_vertex_arena, 0)
 	wgpu_geometry_arena_reclaim(&renderer.geometry_index_arena, 0)
 	testing.expect_value(t, renderer.geometry_vertex_arena.allocator.resident_bytes, u64(0))
 	testing.expect_value(t, renderer.geometry_index_arena.allocator.resident_bytes, u64(0))
-}
-
-@(test)
-test_wgpu_geometry_arena_submission_spans_merge_compatible_lod_batches :: proc(t: ^testing.T) {
-	material := shared.Material_Handle {
-		index = 4,
-		generation = 2,
-	}
-	other_material := shared.Material_Handle {
-		index = 5,
-		generation = 1,
-	}
-	batches := [?]WGPU_Draw_Batch {
-		{material = material, meshlet_draw_offset = 0, meshlet_draw_count = 2},
-		{material = material, meshlet_draw_offset = 2, meshlet_draw_count = 3},
-		{material = material, meshlet_draw_offset = 5, meshlet_draw_count = 4},
-		{material = other_material, meshlet_draw_offset = 9, meshlet_draw_count = 1},
-	}
-	renderer := WGPU_Renderer {
-		gpu_meshlet_supported = true,
-	}
-	span := wgpu_draw_submission_span(&renderer, batches[:], 0)
-	testing.expect_value(t, span.next_batch, 3)
-	testing.expect_value(t, span.first_indirect, u32(0))
-	testing.expect_value(t, span.indirect_count, u32(3))
-	testing.expect_value(t, span.mode, WGPU_Submission_Mode.Classic)
-	testing.expect_value(t, wgpu_draw_submission_count(&renderer, batches[:]), 2)
-
-	renderer.gpu_meshlet_submission_active = true
-	for &batch in batches[:3] {
-		batch.meshlet_submission = true
-	}
-	span = wgpu_draw_submission_span(&renderer, batches[:], 0)
-	testing.expect_value(t, span.next_batch, 3)
-	testing.expect_value(t, span.first_indirect, u32(0))
-	testing.expect_value(t, span.indirect_count, u32(9))
-	testing.expect_value(t, span.mode, WGPU_Submission_Mode.Meshlet)
-	testing.expect_value(t, wgpu_draw_submission_count(&renderer, batches[:]), 2)
-
-	batches[0].compact_submission = true
-	batches[0].compact_command_count = 4
-	span = wgpu_draw_submission_span(&renderer, batches[:], 0)
-	testing.expect_value(t, span.next_batch, 1)
-	testing.expect_value(t, span.first_indirect, u32(0))
-	testing.expect_value(t, span.indirect_count, u32(4))
-	testing.expect_value(t, span.mode, WGPU_Submission_Mode.Compact)
-	for &batch in batches[:3] {
-		batch.compact_submission = true
-	}
-	shadow_span := wgpu_shadow_draw_submission_span(&renderer, batches[:], 0)
-	testing.expect_value(t, shadow_span.next_batch, 3)
-	testing.expect_value(t, shadow_span.first_indirect, u32(0))
-	testing.expect_value(t, shadow_span.indirect_count, u32(3))
-	testing.expect_value(t, shadow_span.mode, WGPU_Submission_Mode.Classic)
-	testing.expect_value(t, wgpu_shadow_draw_submission_count(&renderer, batches[:]), 2)
-	renderer.gpu_meshlet_force_enabled = true
-	span = wgpu_draw_submission_span(&renderer, batches[:], 0)
-	testing.expect_value(t, span.mode, WGPU_Submission_Mode.Meshlet)
-	renderer.gpu_meshlet_force_enabled = false
-
-	renderer.gpu_meshlet_supported = false
-	span = wgpu_draw_submission_span(&renderer, batches[:], 0)
-	testing.expect_value(t, span.next_batch, 1)
-	testing.expect_value(t, span.indirect_count, u32(1))
-}
-
-@(test)
-test_wgpu_compact_submission_spans_share_one_bounded_record_range :: proc(t: ^testing.T) {
-	material := shared.Material_Handle {
-		index = 2,
-		generation = 1,
-	}
-	other_material := shared.Material_Handle {
-		index = 3,
-		generation = 1,
-	}
-	batches := [?]WGPU_Draw_Batch {
-		{
-			material = material,
-			compact_submission = true,
-			meshlet_visible_offset = 0,
-			meshlet_visible_capacity = 12,
-			compact_visible_capacities = {4, 8, 0, 0},
-		},
-		{
-			material = material,
-			compact_submission = true,
-			meshlet_visible_offset = 12,
-			meshlet_visible_capacity = 20,
-			compact_visible_capacities = {0, 4, 16, 0},
-		},
-		{
-			material = other_material,
-			compact_submission = true,
-			meshlet_visible_offset = 32,
-			meshlet_visible_capacity = 8,
-			compact_visible_capacities = {0, 0, 0, 8},
-		},
-	}
-	command_count := wgpu_assign_compact_submission_spans(batches[:], 3)
-	testing.expect_value(t, command_count, u32(7))
-	for index in 0 ..< 2 {
-		testing.expect_value(t, batches[index].compact_command_index, u32(3))
-		testing.expect_value(t, batches[index].compact_command_count, u32(3))
-		testing.expect_value(t, batches[index].compact_bucket_commands, [4]u32{3, 4, 5, ~u32(0)})
-		testing.expect_value(t, batches[index].compact_visible_offsets, [4]u32{0, 4, 16, 32})
-		testing.expect_value(t, batches[index].compact_visible_capacities, [4]u32{4, 12, 16, 0})
-	}
-	testing.expect_value(t, batches[2].compact_command_index, u32(6))
-	testing.expect_value(t, batches[2].compact_command_count, u32(1))
-	testing.expect_value(
-		t,
-		batches[2].compact_bucket_commands,
-		[4]u32{~u32(0), ~u32(0), ~u32(0), 6},
-	)
-	testing.expect_value(t, batches[2].compact_visible_offsets, [4]u32{32, 32, 32, 32})
-	testing.expect_value(t, batches[2].compact_visible_capacities, [4]u32{0, 0, 0, 8})
-}
-
-@(test)
-test_wgpu_compact_cluster_buckets_bound_padded_vertex_work :: proc(t: ^testing.T) {
-	cases := [?]struct {
-		triangles: u32,
-		bucket: int,
-		vertices: u32,
-	} {
-		{1, 0, 96},
-		{32, 0, 96},
-		{33, 1, 192},
-		{64, 1, 192},
-		{65, 2, 288},
-		{96, 2, 288},
-		{97, 3, 372},
-		{124, 3, 372},
-	}
-	for test_case in cases {
-		bucket := wgpu_compact_cluster_bucket(test_case.triangles)
-		testing.expect_value(t, bucket, test_case.bucket)
-		testing.expect_value(
-			t,
-			wgpu_compact_cluster_bucket_vertex_count(bucket),
-			test_case.vertices,
-		)
-	}
 }
 
 @(test)
@@ -1642,7 +1359,6 @@ test_performance_diagnostics_publish_retained_rolling_snapshot :: proc(t: ^testi
 	stats := Render_Stats {
 		draw_batches = 7,
 		visible_batches = 3,
-		visible_meshlet_draws = 6,
 		gpu_timestamps_valid = true,
 		gpu_frame_ms = 2.25,
 		gpu_scene_ms = 1.75,
@@ -1653,7 +1369,6 @@ test_performance_diagnostics_publish_retained_rolling_snapshot :: proc(t: ^testi
 		frustum_culled_instances = 4,
 		visible_instances = 8,
 		occlusion_culled_instances = 3,
-		occlusion_culled_meshlets = 5,
 		hiz_occlusion_status = .Active,
 		hiz_instance_threshold = WGPU_HIZ_MIN_INSTANCES,
 	}
@@ -1677,13 +1392,11 @@ test_performance_diagnostics_publish_retained_rolling_snapshot :: proc(t: ^testi
 	testing.expect(t, snapshot.entity_count == 2)
 	testing.expect(t, snapshot.retained_batches == 7)
 	testing.expect(t, snapshot.visible_batches == 3)
-	testing.expect(t, snapshot.visible_meshlet_draws == 6)
 	testing.expect(t, snapshot.instance_count == 12)
 	testing.expect(t, snapshot.frustum_candidates == 11)
 	testing.expect(t, snapshot.frustum_culled_instances == 4)
 	testing.expect(t, snapshot.visible_instances == 8)
 	testing.expect(t, snapshot.occlusion_culled_instances == 3)
-	testing.expect(t, snapshot.occlusion_culled_meshlets == 5)
 	testing.expect(t, snapshot.hiz_occlusion_status == .Active)
 	testing.expect(t, snapshot.hiz_instance_threshold == WGPU_HIZ_MIN_INSTANCES)
 	ecs.despawn_entity(&world, runtime_index, world.entities[runtime_index].id.generation)
@@ -2302,9 +2015,7 @@ test_wgpu_draw_database_materializes_only_effective_geometry_lod_batches :: proc
 		&list.instances,
 		Render_Instance{geometry = {handle = base}, material = {handle = material}},
 	)
-	renderer := WGPU_Renderer {
-		geometry_mode = .Virtual,
-	}
+	renderer := WGPU_Renderer{}
 	defer delete(renderer.draw_batch_cache.batches)
 	defer delete(renderer.draw_batch_cache.source_indices)
 	defer delete(renderer.gpu_batch_indices_by_slot)
@@ -2321,20 +2032,6 @@ test_wgpu_draw_database_materializes_only_effective_geometry_lod_batches :: proc
 
 	base_geometry, base_alive := resources.get_geometry(&registry, base)
 	testing.expect(t, base_alive)
-	delete(base_geometry.cluster_groups, registry.allocator)
-	base_geometry.cluster_groups = make([]resources.Geometry_Cluster_Group, 2, registry.allocator)
-	base_geometry.cluster_max_depth = 1
-	registry.geometry_topology_revision += 1
-	renderer.gpu_meshlet_supported = true
-	cache = wgpu_ensure_draw_batch_cache(&renderer, &list, &registry)
-	testing.expect_value(t, cache.batch_count, 1)
-	testing.expect(
-		t,
-		wgpu_rebuild_instance_batch_cache(&renderer, cache, &list, &registry, 1) == "",
-	)
-	testing.expect_value(t, renderer.gpu_batch_indices_by_slot[0], [4]u32{0, 0, 0, 0})
-	testing.expect_value(t, wgpu_geometry_draw_lod_count(&renderer, base_geometry), 0)
-	renderer.cpu_culling = true
 	testing.expect_value(t, wgpu_geometry_draw_lod_count(&renderer, base_geometry), 2)
 }
 
@@ -2350,35 +2047,6 @@ test_wgpu_cpu_lod_selection_uses_screen_radius_thresholds :: proc(t: ^testing.T)
 	testing.expect_value(t, wgpu_cpu_instance_lod_level(instance, mat4_identity()), 1)
 	instance.bounds.w = 0.04
 	testing.expect_value(t, wgpu_cpu_instance_lod_level(instance, mat4_identity()), 2)
-}
-
-@(test)
-test_wgpu_meshlet_batch_membership_change_rebuilds_exact_instance_slices :: proc(t: ^testing.T) {
-	cache := WGPU_Draw_Batch_Cache {
-		valid = true,
-		batch_count = 1,
-		instance_count = 3,
-	}
-	defer delete(cache.batches)
-	append(
-		&cache.batches,
-		WGPU_Draw_Batch {
-			instance_count = 3,
-			meshlet_draw_count = 8,
-			meshlet_submission = true,
-			visible_capacity = wgpu_align_visible_capacity(3),
-		},
-	)
-	indices: [shared.MAX_GEOMETRY_LODS]u32
-	testing.expect(t, wgpu_adjust_batch_membership(&cache, indices, 0, 1))
-	testing.expect_value(t, cache.batches[0].instance_count, u32(4))
-	testing.expect_value(t, cache.instance_count, 4)
-
-	cache.batches[0].meshlet_draw_count = 0
-	cache.batches[0].meshlet_submission = false
-	testing.expect(t, !wgpu_adjust_batch_membership(&cache, indices, 0, 1))
-	testing.expect_value(t, cache.batches[0].instance_count, u32(5))
-	testing.expect_value(t, cache.instance_count, 5)
 }
 
 @(test)
@@ -2667,246 +2335,28 @@ test_wgpu_instance_upload_ranges_coalesce_nearby_dirty_slots :: proc(t: ^testing
 }
 
 @(test)
-test_wgpu_batch_membership_invalidates_layout_only_for_policy_or_capacity_changes :: proc(
-	t: ^testing.T,
-) {
+test_wgpu_batch_membership_invalidates_layout_only_for_capacity_changes :: proc(t: ^testing.T) {
 	cache: WGPU_Draw_Batch_Cache
 	defer delete(cache.batches)
 	append(
 		&cache.batches,
-		WGPU_Draw_Batch {
-			instance_count = 1,
-			visible_capacity = WGPU_VISIBLE_ALIGNMENT,
-			meshlet_draw_count = 4,
-		},
+		WGPU_Draw_Batch{instance_count = 1, visible_capacity = WGPU_VISIBLE_ALIGNMENT},
 	)
 	cache.batch_count = 1
 	cache.instance_count = 1
 	indices: [shared.MAX_GEOMETRY_LODS]u32
 	layout_changed := wgpu_adjust_batch_membership(&cache, indices, 0, 1)
-	testing.expect(t, layout_changed)
+	testing.expect(t, !layout_changed)
 	testing.expect_value(t, cache.batches[0].instance_count, u32(2))
 	testing.expect_value(t, cache.instance_count, 2)
 	layout_changed = wgpu_adjust_batch_membership(&cache, indices, 0, -1)
-	testing.expect(t, layout_changed)
+	testing.expect(t, !layout_changed)
 	testing.expect_value(t, cache.batches[0].instance_count, u32(1))
 	testing.expect_value(t, cache.instance_count, 1)
 
 	cache.batches[0].instance_count = WGPU_VISIBLE_ALIGNMENT
 	layout_changed = wgpu_adjust_batch_membership(&cache, indices, 0, 1)
 	testing.expect(t, layout_changed)
-}
-
-@(test)
-test_geometry_mode_names_and_layered_resolution_are_canonical :: proc(t: ^testing.T) {
-	candidates := [4]shared.Geometry_Mode {
-		shared.Geometry_Mode.Inherit,
-		shared.Geometry_Mode.Auto,
-		shared.Geometry_Mode.Conventional,
-		shared.Geometry_Mode.Virtual,
-	}
-	for candidate in candidates {
-		name := shared.geometry_mode_name(candidate)
-		parsed, ok := shared.geometry_mode_from_name(name)
-		testing.expect(t, ok)
-		testing.expect_value(t, parsed, candidate)
-	}
-	_, unknown_ok := shared.geometry_mode_from_name("classic-ish")
-	testing.expect(t, !unknown_ok)
-	testing.expect_value(
-		t,
-		shared.geometry_mode_resolve(.Inherit, .Virtual, .Conventional),
-		shared.Geometry_Mode.Virtual,
-	)
-	testing.expect_value(
-		t,
-		shared.geometry_mode_resolve(.Inherit, .Inherit),
-		shared.Geometry_Mode.Auto,
-	)
-	testing.expect_value(
-		t,
-		shared.geometry_mode_override(.Inherit, .Inherit),
-		shared.Geometry_Mode.Inherit,
-	)
-}
-
-@(test)
-test_wgpu_meshlet_submission_policy_amortizes_indirect_commands :: proc(t: ^testing.T) {
-	testing.expect(t, !wgpu_geometry_uses_virtual_clusters(nil))
-	groups: [2]resources.Geometry_Cluster_Group
-	one_group := resources.Geometry {
-		cluster_groups = groups[:1],
-	}
-	testing.expect(t, !wgpu_geometry_uses_virtual_clusters(&one_group))
-	one_group.cluster_max_depth = 1
-	testing.expect(t, !wgpu_geometry_uses_virtual_clusters(&one_group))
-	one_group.cluster_groups = groups[:]
-	testing.expect(t, wgpu_geometry_uses_virtual_clusters(&one_group))
-	testing.expect(t, !wgpu_virtual_geometry_submission(nil, &one_group))
-	renderer := WGPU_Renderer {
-		gpu_meshlet_supported = true,
-		geometry_mode = .Virtual,
-	}
-	testing.expect(t, wgpu_virtual_geometry_submission(&renderer, &one_group))
-	testing.expect(t, wgpu_virtual_geometry_uses_compaction(&renderer, &one_group))
-	testing.expect(t, !wgpu_virtual_geometry_submission(&renderer, &one_group, .Conventional))
-	testing.expect(t, !wgpu_virtual_geometry_uses_compaction(&renderer, &one_group, .Conventional))
-	testing.expect(t, wgpu_meshlet_submission_uses_compaction(&renderer, true))
-	testing.expect(t, !wgpu_meshlet_submission_uses_compaction(&renderer, false))
-	renderer.gpu_meshlet_native_multi_draw = true
-	testing.expect(t, wgpu_virtual_geometry_submission(&renderer, &one_group))
-	testing.expect(t, !wgpu_virtual_geometry_uses_compaction(&renderer, &one_group))
-	testing.expect(t, !wgpu_meshlet_submission_uses_compaction(&renderer, true))
-	renderer.gpu_meshlet_supported = false
-	testing.expect(t, !wgpu_virtual_geometry_submission(&renderer, &one_group))
-	testing.expect(t, !wgpu_virtual_geometry_uses_compaction(&renderer, &one_group))
-
-	testing.expect(t, !wgpu_meshlet_batch_submission(0, 8))
-	testing.expect(t, !wgpu_meshlet_batch_submission(16, 1))
-	testing.expect(t, wgpu_meshlet_batch_submission(16, 2))
-	testing.expect_value(t, wgpu_virtual_shadow_error_pixels(1, 0), f32(8))
-	testing.expect_value(t, wgpu_virtual_shadow_error_pixels(1, 1), f32(32))
-	testing.expect_value(t, wgpu_virtual_shadow_error_pixels(1, 2), f32(128))
-	testing.expect_value(t, wgpu_virtual_shadow_error_pixels(1, 3), f32(512))
-	testing.expect_value(t, wgpu_virtual_shadow_error_pixels(1, 99), f32(512))
-	renderer.dynamic_resolution.effective_virtual_error_pixels = 1
-	testing.expect_value(t, wgpu_effective_virtual_error_pixels(&renderer), f32(1))
-	renderer.gpu_compact_submission_active = true
-	renderer.gpu_virtual_batch_count = 1
-	testing.expect_value(t, wgpu_effective_virtual_error_pixels(&renderer), f32(2))
-	renderer.dynamic_resolution.effective_virtual_error_pixels = 4
-	testing.expect_value(t, wgpu_effective_virtual_error_pixels(&renderer), f32(4))
-
-	testing.expect(t, !wgpu_meshlet_debug_forces_submission(.Lit))
-	testing.expect(t, wgpu_meshlet_debug_forces_submission(.Meshlets))
-	testing.expect(t, wgpu_meshlet_debug_forces_submission(.Meshlet_Visibility))
-	testing.expect(t, wgpu_meshlet_debug_forces_submission(.Occlusion_Queries))
-
-	renderer = WGPU_Renderer {
-		gpu_meshlet_submission_active = true,
-		gpu_meshlet_selected_draw_count = 12,
-		gpu_meshlet_draw_count = 28,
-		gpu_classic_batch_count = 5,
-	}
-	testing.expect_value(t, wgpu_active_meshlet_draw_count(&renderer), 12)
-	testing.expect_value(t, wgpu_active_classic_batch_count(&renderer), 5)
-	renderer.gpu_meshlet_force_enabled = true
-	testing.expect_value(t, wgpu_active_meshlet_draw_count(&renderer), 28)
-	testing.expect_value(t, wgpu_active_classic_batch_count(&renderer), 0)
-}
-
-@(test)
-test_wgpu_compact_shadow_submission_supports_portable_conventional_meshlets :: proc(
-	t: ^testing.T,
-) {
-	conventional := WGPU_Geometry_Cache {
-		valid = true,
-		virtual_geometry = false,
-		vertex_range = {size = u64(size_of(resources.Vertex))},
-	}
-	testing.expect(t, wgpu_geometry_uses_compact_shadow_pages(&conventional))
-
-	virtual_canonical := WGPU_Geometry_Cache {
-		valid = true,
-		virtual_geometry = true,
-		vertex_range = {size = u64(size_of(resources.Vertex))},
-	}
-	testing.expect(t, !wgpu_geometry_uses_compact_shadow_pages(&virtual_canonical))
-
-	virtual_page_only := WGPU_Geometry_Cache {
-		valid = true,
-		virtual_geometry = true,
-	}
-	testing.expect(t, wgpu_geometry_uses_compact_shadow_pages(&virtual_page_only))
-}
-
-@(test)
-test_wgpu_geometry_mode_policy_is_layered_stable_and_capability_safe :: proc(t: ^testing.T) {
-	groups: [2]resources.Geometry_Cluster_Group
-	indices := make([]u32, int(WGPU_AUTO_VIRTUAL_GEOMETRY_MIN_TRIANGLES) * 3)
-	defer delete(indices)
-	geometry := resources.Geometry {
-		indices = indices,
-		canonical_index_count = u32(len(indices)),
-		cluster_groups = groups[:],
-		cluster_max_depth = 1,
-	}
-	renderer := WGPU_Renderer {
-		geometry_mode = .Auto,
-		gpu_meshlet_supported = true,
-	}
-	testing.expect_value(
-		t,
-		wgpu_resolve_geometry_mode(&renderer, &geometry),
-		shared.Geometry_Mode.Virtual,
-	)
-	testing.expect_value(
-		t,
-		wgpu_resolve_geometry_mode(&renderer, &geometry, .Conventional),
-		shared.Geometry_Mode.Conventional,
-	)
-	geometry.geometry_mode = .Conventional
-	testing.expect_value(
-		t,
-		wgpu_resolve_geometry_mode(&renderer, &geometry),
-		shared.Geometry_Mode.Conventional,
-	)
-	testing.expect_value(
-		t,
-		wgpu_resolve_geometry_mode(&renderer, &geometry, .Virtual),
-		shared.Geometry_Mode.Virtual,
-	)
-	renderer.gpu_meshlet_supported = false
-	testing.expect_value(
-		t,
-		wgpu_resolve_geometry_mode(&renderer, &geometry, .Virtual),
-		shared.Geometry_Mode.Conventional,
-	)
-}
-
-@(test)
-test_wgpu_draw_batches_split_same_asset_by_resolved_geometry_mode :: proc(t: ^testing.T) {
-	registry: resources.Registry
-	defer resources.destroy_registry(&registry)
-	desc, desc_err := resources.plane(10, 10, 64, 64)
-	defer delete(desc.vertices)
-	defer delete(desc.indices)
-	handle, register_err := resources.register_geometry(&registry, "mixed-mode-cube", desc)
-	material, material_err := resources.register_material(&registry, "mixed-mode-material", {})
-	testing.expect(t, desc_err == "" && register_err == "" && material_err == "")
-	geometry, geometry_ok := resources.get_geometry(&registry, handle)
-	testing.expect(t, geometry_ok && wgpu_geometry_uses_virtual_clusters(geometry))
-	if !geometry_ok || !wgpu_geometry_uses_virtual_clusters(geometry) {
-		return
-	}
-
-	renderer := WGPU_Renderer {
-		geometry_mode = .Auto,
-		gpu_meshlet_supported = true,
-	}
-	defer delete(renderer.draw_batch_cache.source_indices)
-	defer delete(renderer.draw_batch_cache.batches)
-	list: Render_List = {
-		world_uuid = shared.entity_uuid_from_engine_name("mixed-geometry-mode-batches"),
-		topology_revision = 1,
-	}
-	defer ecs.destroy_render_list(&list)
-	append(
-		&list.instances,
-		shared.Render_Instance {
-			geometry = {handle = handle, geometry_mode = .Conventional},
-			material = {handle = material},
-		},
-		shared.Render_Instance {
-			geometry = {handle = handle, geometry_mode = .Virtual},
-			material = {handle = material},
-		},
-	)
-	cache := wgpu_ensure_draw_batch_cache(&renderer, &list, &registry)
-	testing.expect(t, cache != nil)
-	testing.expect_value(t, cache.batch_count, 2)
-	testing.expect_value(t, cache.instance_count, 2)
-	testing.expect(t, cache.batches[0].geometry_mode != cache.batches[1].geometry_mode)
 }
 
 @(test)
@@ -2917,7 +2367,7 @@ test_wgpu_gpu_uniforms_upload_only_after_value_changes :: proc(t: ^testing.T) {
 	testing.expect(t, !wgpu_retain_render_uniform(&renderer, render_uniform))
 	render_uniform.ambient.x = 0.25
 	testing.expect(t, wgpu_retain_render_uniform(&renderer, render_uniform))
-	render_uniform.debug.x = u32(shared.Render_Debug_View.Meshlets)
+	render_uniform.debug.x = u32(shared.Render_Debug_View.LOD)
 	testing.expect(t, wgpu_retain_render_uniform(&renderer, render_uniform))
 
 	cull_uniform: WGPU_GPU_Cull_Uniform
@@ -2959,815 +2409,6 @@ test_wgpu_gpu_timing_requests_pass_timestamp_feature :: proc(t: ^testing.T) {
 
 	_, unsupported_count := wgpu_timestamp_required_features(false)
 	testing.expect_value(t, unsupported_count, 0)
-}
-
-@(test)
-test_wgpu_renderer_requests_meshlet_first_instance_feature_when_available :: proc(t: ^testing.T) {
-	features, count := wgpu_renderer_required_features(true, true, true)
-	testing.expect_value(t, count, 3)
-	testing.expect_value(t, features[0], wgpu.FeatureName.TimestampQuery)
-	testing.expect_value(t, features[1], wgpu.FeatureName.IndirectFirstInstance)
-	testing.expect_value(t, features[2], wgpu.FeatureName.MultiDrawIndirectCount)
-
-	features, count = wgpu_renderer_required_features(false, true, false)
-	testing.expect_value(t, count, 1)
-	testing.expect_value(t, features[0], wgpu.FeatureName.IndirectFirstInstance)
-
-	_, count = wgpu_renderer_required_features(false, false, false)
-	testing.expect_value(t, count, 0)
-}
-
-@(test)
-test_wgpu_expands_meshlet_local_indices_for_indexed_submission :: proc(t: ^testing.T) {
-	geometry := resources.Geometry {
-		meshlets = []resources.Meshlet {
-			{vertex_offset = 0, triangle_offset = 0, vertex_count = 3, triangle_count = 1},
-			{vertex_offset = 3, triangle_offset = 3, vertex_count = 3, triangle_count = 1},
-		},
-		meshlet_vertices = []u32{8, 3, 5, 1, 4, 7},
-		meshlet_triangles = []u8{0, 2, 1, 2, 1, 0},
-	}
-	indices, err := wgpu_expand_meshlet_indices(&geometry)
-	testing.expect_value(t, err, "")
-	expected := [?]u32{8, 5, 3, 7, 4, 1}
-	testing.expect_value(t, len(indices), len(expected))
-	for value, index in expected {
-		testing.expect_value(t, indices[index], value)
-	}
-}
-
-@(test)
-test_wgpu_expands_selected_cluster_pages_into_one_upload :: proc(t: ^testing.T) {
-	geometry := resources.Geometry {
-		cluster_groups = []resources.Geometry_Cluster_Group{{page_offset = 0, page_count = 2}},
-		clusters = []resources.Geometry_Cluster {
-			{vertex_offset = 0, triangle_offset = 0, triangle_count = 1},
-			{vertex_offset = 3, triangle_offset = 3, triangle_count = 1},
-		},
-		cluster_pages = []resources.Geometry_Cluster_Page {
-			{cluster_offset = 0, cluster_count = 1, index_count = 3},
-			{cluster_offset = 1, cluster_count = 1, index_count = 3},
-		},
-		cluster_vertices = []u32{8, 3, 5, 1, 4, 7},
-		cluster_triangles = []u8{0, 2, 1, 2, 1, 0},
-	}
-	indices, page_offsets, err := wgpu_expand_cluster_pages_indices(&geometry, []u32{0, 1})
-	testing.expect_value(t, err, "")
-	testing.expect_value(t, len(indices), 6)
-	testing.expect_value(t, len(page_offsets), 3)
-	testing.expect_value(t, page_offsets[0], u32(0))
-	testing.expect_value(t, page_offsets[1], u32(3))
-	testing.expect_value(t, page_offsets[2], u32(6))
-	expected := [?]u32{8, 5, 3, 7, 4, 1}
-	for value, index in expected {
-		testing.expect_value(t, indices[index], value)
-	}
-}
-
-@(test)
-test_wgpu_meshlet_visibility_capacity_is_exact_and_bounded :: proc(t: ^testing.T) {
-	testing.expect_value(t, wgpu_meshlet_visible_instance_capacity(0), u32(1))
-	testing.expect_value(t, wgpu_meshlet_visible_instance_capacity(65), u32(65))
-	capacity, ok := wgpu_meshlet_batch_visible_capacity(3, 65)
-	testing.expect(t, ok)
-	testing.expect_value(t, capacity, u32(195))
-	zero_instance_capacity, zero_instance_ok := wgpu_meshlet_batch_visible_capacity(3, 0)
-	testing.expect(t, zero_instance_ok)
-	testing.expect_value(t, zero_instance_capacity, u32(3))
-	testing.expect_value(
-		t,
-		wgpu_meshlet_visible_buffer_bytes(int(capacity)),
-		u64(capacity) * u64(size_of(u32)),
-	)
-	testing.expect_value(
-		t,
-		wgpu_compact_visible_buffer_bytes(int(capacity)),
-		u64(capacity) * u64(size_of(WGPU_GPU_Compact_Record)),
-	)
-	testing.expect_value(
-		t,
-		wgpu_meshlet_debug_buffer_bytes(int(capacity)),
-		u64(capacity) * u64(size_of(WGPU_GPU_Meshlet_Debug_Record)),
-	)
-	testing.expect_value(
-		t,
-		wgpu_meshlet_debug_buffer_bytes(WGPU_MESHLET_DEBUG_RECORD_CAPACITY),
-		u64(4 * 1024 * 1024),
-	)
-
-	_, ok = wgpu_meshlet_batch_visible_capacity(u32(WGPU_MAX_MESHLET_VISIBLE_ENTRIES), 2)
-	testing.expect(t, !ok)
-
-	camera := shared.camera_defaults()
-	testing.expect_value(t, wgpu_meshlet_debug_record_offset(camera, true, 4096, false), u32(0))
-	camera.debug_view = .Meshlet_Visibility
-	testing.expect_value(t, wgpu_meshlet_debug_record_offset(camera, false, 4096, false), u32(0))
-	testing.expect_value(t, wgpu_meshlet_debug_record_offset(camera, true, 4096, false), u32(1))
-	camera.debug_view = .Occlusion_Queries
-	testing.expect_value(t, wgpu_meshlet_debug_record_offset(camera, true, 4096, false), u32(1))
-	camera.debug_occlusion_freeze = true
-	testing.expect_value(t, wgpu_meshlet_debug_record_offset(camera, true, 4096, false), u32(1))
-	testing.expect_value(t, wgpu_meshlet_debug_record_offset(camera, true, 4096, true), u32(0))
-	testing.expect_value(
-		t,
-		wgpu_meshlet_debug_record_offset(camera, true, 4096, true, true),
-		u32(1),
-	)
-	testing.expect_value(
-		t,
-		wgpu_live_debug_visibility_classification(9),
-		"virtual_cluster_rejected",
-	)
-}
-
-@(test)
-test_wgpu_culling_shader_stays_within_portable_storage_binding_floor :: proc(t: ^testing.T) {
-	testing.expect_value(t, strings.count(WGPU_GPU_CULL_SHADER, "var<storage"), 8)
-	testing.expect(t, !strings.contains(WGPU_GPU_CULL_SHADER, "@binding(10)"))
-	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "virtual_page_demand_feedback"))
-	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "virtual_page_touch_feedback"))
-	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "virtual_page_prefetch_feedback"))
-	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "append_virtual_page_feedback"))
-	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "prefetch_virtual_cluster"))
-	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "predictive_camera_planes"))
-	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "meshlet.refined_resident == 0u"))
-	testing.expect(
-		t,
-		strings.contains(
-			WGPU_GPU_DRIVEN_SHADER,
-			"batch_index: u32,\n\ttransition_start: u32,\n\trefined_transition_start: u32",
-		),
-	)
-	testing.expect(
-		t,
-		strings.contains(
-			WGPU_GPU_CULL_SHADER,
-			"batch_index: u32,\n\ttransition_start: u32,\n\trefined_transition_start: u32",
-		),
-	)
-	testing.expect(t, strings.contains(WGPU_GPU_DRIVEN_SHADER, "apply_virtual_transition"))
-	testing.expect(t, strings.contains(WGPU_GPU_DRIVEN_SHADER, "Keep both opaque sides complete"))
-	testing.expect(t, !strings.contains(WGPU_GPU_DRIVEN_SHADER, "threshold < transition.x"))
-	testing.expect(t, strings.contains(WGPU_GPU_DRIVEN_SHADER, "virtual_lod_progress"))
-	testing.expect(t, strings.contains(WGPU_GPU_DRIVEN_SHADER, "virtual_transition_marker"))
-	testing.expect(
-		t,
-		strings.contains(
-			WGPU_GPU_DRIVEN_SHADER,
-			"meshlet.refined_resident != 0u || meshlet.refined_transition_start != 0u",
-		),
-	)
-	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "virtual_frontier_progress"))
-	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "cull_virtual_transition_progress"))
-	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "refined_progress < 1.0"))
-	testing.expect(
-		t,
-		strings.count(
-			WGPU_GPU_CULL_SHADER,
-			"cull_virtual_transition_progress(meshlet.refined_transition_start) < 1.0",
-		) ==
-		3,
-	)
-	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "cull_compact_candidate"))
-	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "cull_compact_camera_clusters"))
-	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "cull_compact_shadow_clusters"))
-	testing.expect(t, strings.contains(WGPU_GPU_CULL_SHADER, "batch.compact_shadow_pages == 0u"))
-	testing.expect_value(t, size_of(WGPU_GPU_Meshlet_Info) % 16, 0)
-}
-
-test_opaque_virtual_geometry_keeps_depth_only_passes_fragment_free :: proc(t: ^testing.T) {
-	testing.expect(t, !wgpu_depth_only_uses_mask_fragment(.Opaque))
-	testing.expect(t, wgpu_depth_only_uses_mask_fragment(.Mask))
-	testing.expect(t, strings.contains(WGPU_GPU_DRIVEN_SHADER, "fn compact_shadow_depth_only_vs("))
-	testing.expect(t, strings.contains(WGPU_GPU_DRIVEN_SHADER, "fn load_compact_position("))
-}
-
-@(test)
-test_wgpu_virtual_group_residency_requires_every_page :: proc(t: ^testing.T) {
-	geometry := resources.Geometry {
-		cluster_groups = []resources.Geometry_Cluster_Group{{page_offset = 0, page_count = 2}},
-	}
-	cache := WGPU_Geometry_Cache {
-		cluster_pages = make([dynamic]WGPU_Cluster_Page_Cache, 2),
-		cluster_groups = make([dynamic]WGPU_Cluster_Group_Cache, 1),
-	}
-	defer delete(cache.cluster_pages)
-	defer delete(cache.cluster_groups)
-	cache.cluster_groups[0].active = true
-	resident, missing, has_missing := wgpu_cluster_group_residency(&geometry, &cache, 0)
-	testing.expect(t, !resident)
-	testing.expect(t, has_missing)
-	testing.expect_value(t, missing, u32(0))
-	cache.cluster_pages[0].resident = true
-	resident, missing, has_missing = wgpu_cluster_group_residency(&geometry, &cache, 0)
-	testing.expect(t, !resident)
-	testing.expect(t, has_missing)
-	testing.expect_value(t, missing, u32(0))
-	cache.cluster_pages[1].resident = true
-	resident, _, has_missing = wgpu_cluster_group_residency(&geometry, &cache, 0)
-	testing.expect(t, !resident)
-	testing.expect(t, has_missing)
-	cache.cluster_groups[0].transition_complete = true
-	resident, _, has_missing = wgpu_cluster_group_residency(&geometry, &cache, 0)
-	testing.expect(t, resident)
-	testing.expect(t, !has_missing)
-}
-
-@(test)
-test_wgpu_virtual_camera_prediction_tracks_motion_and_rejects_discontinuities :: proc(
-	t: ^testing.T,
-) {
-	initial := wgpu_predict_virtual_camera({0, 0, 0}, {0, 0, -1}, {}, {}, {}, 100, false)
-	testing.expect(t, !initial.enabled)
-	testing.expect_value(t, initial.position, Vec3{})
-
-	moving := wgpu_predict_virtual_camera({2, 0, 0}, {0, 0, -1}, {}, {0, 0, -1}, {}, 100, true)
-	testing.expect(t, moving.enabled)
-	testing.expect(t, moving.position.x > 2)
-	testing.expect(t, moving.position.x <= 22)
-
-	steady := wgpu_predict_virtual_camera(
-		{4, 0, 0},
-		{0, 0, -1},
-		{2, 0, 0},
-		{0, 0, -1},
-		moving.velocity,
-		100,
-		true,
-	)
-	testing.expect(t, steady.enabled)
-	testing.expect(t, steady.position.x > moving.position.x)
-
-	turning := wgpu_predict_virtual_camera(
-		{4, 0, 0},
-		{0.1, 0, -0.9949874},
-		{4, 0, 0},
-		{0, 0, -1},
-		{},
-		100,
-		true,
-	)
-	testing.expect(t, turning.enabled)
-	testing.expect(t, turning.forward.x > 0.1)
-
-	teleport := wgpu_predict_virtual_camera(
-		{80, 0, 0},
-		{0, 0, -1},
-		{4, 0, 0},
-		{0, 0, -1},
-		steady.velocity,
-		100,
-		true,
-	)
-	testing.expect(t, !teleport.enabled)
-	testing.expect_value(t, teleport.position, Vec3{80, 0, 0})
-}
-
-@(test)
-test_wgpu_virtual_geometry_touches_and_evicts_complete_groups :: proc(t: ^testing.T) {
-	geometry := resources.Geometry {
-		cluster_groups = []resources.Geometry_Cluster_Group {
-			{page_offset = 0, page_count = 2},
-			{page_offset = 2, page_count = 2},
-		},
-		cluster_pages = make([]resources.Geometry_Cluster_Page, 4),
-	}
-	defer delete(geometry.cluster_pages)
-	cache := WGPU_Geometry_Cache {
-		handle = {index = 4, generation = 2},
-		cluster_pages = make([dynamic]WGPU_Cluster_Page_Cache, 4),
-		cluster_groups = make([dynamic]WGPU_Cluster_Group_Cache, 2),
-	}
-	defer delete(cache.cluster_pages)
-	defer delete(cache.cluster_groups)
-	for index in 0 ..< 4 {
-		cache.cluster_pages[index] = {
-			range = {offset = u64(index * 4), size = 4},
-			last_used_frame = 1 if index < 2 else 8,
-			group_index = 0 if index < 2 else 1,
-			resident = true,
-		}
-	}
-	page_offset, page_count, range_ok := wgpu_virtual_group_page_range(&geometry, 1)
-	testing.expect(t, range_ok)
-	testing.expect_value(t, page_offset, u32(2))
-	testing.expect_value(t, page_count, u32(2))
-	cache.cluster_pages[2].prefetched = true
-	cache.cluster_pages[3].prefetched = true
-	cache.cluster_groups[0] = {
-		last_used_frame = 1,
-		resident = true,
-	}
-	cache.cluster_groups[1] = {
-		last_used_frame = 8,
-		resident = true,
-		prefetched = true,
-	}
-	prefetch_hit, promoted_pages := wgpu_touch_virtual_group(&cache, &geometry, 1, 12, 3)
-	testing.expect(t, prefetch_hit)
-	testing.expect_value(t, promoted_pages, u32(2))
-	testing.expect_value(t, cache.cluster_pages[2].last_used_frame, u64(12))
-	testing.expect_value(t, cache.cluster_pages[3].last_used_frame, u64(12))
-	testing.expect(t, !cache.cluster_pages[2].prefetched)
-	testing.expect(t, !cache.cluster_pages[3].prefetched)
-
-	renderer := WGPU_Renderer {
-		geometry_cache = make([dynamic]WGPU_Geometry_Cache, 0, 1),
-		virtual_geometry_resident_bytes = 16,
-	}
-	defer delete(renderer.geometry_cache)
-	defer delete(renderer.geometry_index_arena.allocator.free_ranges)
-	defer delete(renderer.geometry_index_arena.retirements)
-	append(&renderer.geometry_cache, cache)
-	handle, group_index, evicted := wgpu_evict_virtual_group(&renderer, 40, false)
-	testing.expect(t, evicted)
-	testing.expect_value(t, handle, cache.handle)
-	testing.expect_value(t, group_index, u32(0))
-	testing.expect(t, !renderer.geometry_cache[0].cluster_pages[0].resident)
-	testing.expect(t, !renderer.geometry_cache[0].cluster_pages[1].resident)
-	testing.expect(t, renderer.geometry_cache[0].cluster_pages[2].resident)
-	testing.expect(t, renderer.geometry_cache[0].cluster_pages[3].resident)
-	testing.expect_value(t, renderer.virtual_geometry_page_eviction_count, u64(2))
-	testing.expect_value(t, renderer.virtual_geometry_group_eviction_count, u64(1))
-}
-
-@(test)
-test_wgpu_virtual_geometry_demand_reclaims_prefetch_before_visible_residency :: proc(
-	t: ^testing.T,
-) {
-	renderer := WGPU_Renderer {
-		geometry_cache = make([dynamic]WGPU_Geometry_Cache, 1),
-		virtual_geometry_resident_bytes = 8,
-	}
-	defer delete(renderer.geometry_cache)
-	defer delete(renderer.geometry_index_arena.allocator.free_ranges)
-	defer delete(renderer.geometry_vertex_arena.allocator.free_ranges)
-	defer delete(renderer.geometry_index_arena.retirements)
-	defer delete(renderer.geometry_vertex_arena.retirements)
-	cache := &renderer.geometry_cache[0]
-	cache.handle = {
-		index = 7,
-		generation = 3,
-	}
-	resize(&cache.cluster_pages, 2)
-	defer delete(cache.cluster_pages)
-	resize(&cache.cluster_groups, 2)
-	defer delete(cache.cluster_groups)
-	cache.cluster_pages[0] = {
-		range = {offset = 0, size = 4},
-		last_used_frame = 1,
-		group_index = 0,
-		resident = true,
-	}
-	cache.cluster_pages[1] = {
-		range = {offset = 4, size = 4},
-		last_used_frame = 39,
-		group_index = 1,
-		resident = true,
-		prefetched = true,
-	}
-	cache.cluster_groups[0] = {
-		last_used_frame = 1,
-		resident = true,
-	}
-	cache.cluster_groups[1] = {
-		last_used_frame = 39,
-		resident = true,
-		prefetched = true,
-	}
-
-	_, group_index, evicted := wgpu_evict_virtual_group(&renderer, 40, true)
-	testing.expect(t, evicted)
-	testing.expect_value(t, group_index, u32(1))
-	testing.expect(t, cache.cluster_pages[0].resident)
-	testing.expect(t, !cache.cluster_pages[1].resident)
-	testing.expect_value(t, renderer.virtual_geometry_prefetch_eviction_count, u64(1))
-}
-
-@(test)
-test_wgpu_virtual_geometry_prefetch_preserves_recent_residency :: proc(t: ^testing.T) {
-	renderer := WGPU_Renderer {
-		geometry_cache = make([dynamic]WGPU_Geometry_Cache, 1),
-		virtual_geometry_resident_bytes = 4,
-	}
-	defer delete(renderer.geometry_cache)
-	cache := &renderer.geometry_cache[0]
-	resize(&cache.cluster_pages, 1)
-	defer delete(cache.cluster_pages)
-	resize(&cache.cluster_groups, 1)
-	defer delete(cache.cluster_groups)
-	cache.cluster_pages[0] = {
-		range = {size = 4},
-		last_used_frame = 39,
-		group_index = 0,
-		resident = true,
-	}
-	cache.cluster_groups[0] = {
-		last_used_frame = 39,
-		resident = true,
-	}
-
-	_, _, evicted := wgpu_evict_virtual_group(&renderer, 40, false)
-	testing.expect(t, !evicted)
-	testing.expect(t, cache.cluster_pages[0].resident)
-}
-
-@(test)
-test_wgpu_virtual_geometry_admission_starts_its_grace_window_at_upload :: proc(t: ^testing.T) {
-	testing.expect_value(t, wgpu_virtual_page_admission_frame(40, 36), u64(40))
-	testing.expect_value(t, wgpu_virtual_page_admission_frame(40, 40), u64(40))
-}
-
-@(test)
-test_wgpu_virtual_geometry_activates_only_after_a_stable_window :: proc(t: ^testing.T) {
-	renderer := WGPU_Renderer {
-		geometry_cache = make([dynamic]WGPU_Geometry_Cache, 1),
-	}
-	defer delete(renderer.geometry_cache)
-	defer delete(renderer.virtual_geometry_pending_activations)
-	defer delete(renderer.virtual_geometry_transitions)
-	cache := &renderer.geometry_cache[0]
-	cache.virtual_geometry = true
-	cache.handle = {
-		index = 7,
-		generation = 2,
-	}
-	resize(&cache.cluster_groups, 2)
-	defer delete(cache.cluster_groups)
-	cache.cluster_groups[0] = {
-		resident_since_frame = 10,
-		last_demand_frame = 15,
-		resident = true,
-	}
-	cache.cluster_groups[1] = {
-		resident_since_frame = 10,
-		last_demand_frame = 15,
-		resident = true,
-	}
-	changes: [dynamic]WGPU_Virtual_Group_Change
-	defer delete(changes)
-	wgpu_append_virtual_group_change(
-		&renderer.virtual_geometry_pending_activations,
-		cache.handle,
-		0,
-	)
-	wgpu_append_virtual_group_change(
-		&renderer.virtual_geometry_pending_activations,
-		cache.handle,
-		1,
-	)
-
-	renderer.profile_frame_index = 22
-	wgpu_activate_stable_virtual_groups(&renderer, &changes)
-	testing.expect(t, !cache.cluster_groups[0].active)
-	testing.expect_value(t, len(changes), 0)
-
-	renderer.profile_frame_index = 23
-	wgpu_activate_stable_virtual_groups(&renderer, &changes)
-	testing.expect(t, cache.cluster_groups[0].active)
-	testing.expect(t, cache.cluster_groups[1].active)
-	testing.expect(t, !cache.cluster_groups[0].transition_complete)
-	testing.expect(t, !cache.cluster_groups[1].transition_complete)
-	testing.expect_value(t, len(renderer.virtual_geometry_transitions), 2)
-	testing.expect_value(t, len(changes), 2)
-
-	clear(&changes)
-	renderer.profile_frame_index = 38
-	wgpu_finish_virtual_group_transitions(&renderer, &changes)
-	testing.expect_value(t, len(changes), 0)
-	testing.expect_value(t, len(renderer.virtual_geometry_transitions), 2)
-	renderer.profile_frame_index = 39
-	wgpu_finish_virtual_group_transitions(&renderer, &changes)
-	testing.expect(t, cache.cluster_groups[0].transition_complete)
-	testing.expect(t, cache.cluster_groups[1].transition_complete)
-	testing.expect_value(t, len(changes), 2)
-	testing.expect_value(t, len(renderer.virtual_geometry_transitions), 0)
-
-	cache.cluster_groups[0].active = false
-	cache.cluster_groups[0].transition_complete = false
-	cache.cluster_groups[0].last_demand_frame = 41
-	clear(&changes)
-	wgpu_append_virtual_group_change(
-		&renderer.virtual_geometry_pending_activations,
-		cache.handle,
-		0,
-	)
-	renderer.profile_frame_index = 41
-	wgpu_activate_stable_virtual_groups(&renderer, &changes)
-	testing.expect(t, !cache.cluster_groups[0].active)
-	renderer.profile_frame_index = 42
-	wgpu_activate_stable_virtual_groups(&renderer, &changes)
-	testing.expect(t, cache.cluster_groups[0].active)
-	testing.expect(t, !cache.cluster_groups[0].transition_complete)
-	// The maximum hold bounds how long continuously demanded resident data can
-	// remain staged; it does not make admission depend on camera idleness.
-	testing.expect_value(t, len(changes), 1)
-}
-
-@(test)
-test_wgpu_virtual_geometry_serializes_nested_transitions :: proc(t: ^testing.T) {
-	renderer := WGPU_Renderer {
-		geometry_cache = make([dynamic]WGPU_Geometry_Cache, 1),
-		profile_frame_index = 40,
-	}
-	defer delete(renderer.geometry_cache)
-	defer delete(renderer.virtual_geometry_pending_activations)
-	defer delete(renderer.virtual_geometry_transitions)
-	cache := &renderer.geometry_cache[0]
-	cache.virtual_geometry = true
-	cache.handle = {
-		index = 9,
-		generation = 3,
-	}
-	cache.cluster_groups = make([dynamic]WGPU_Cluster_Group_Cache, 2)
-	defer delete(cache.cluster_groups)
-	cache.refined_group_parent_offsets = make([dynamic]u32, 3)
-	defer delete(cache.refined_group_parent_offsets)
-	cache.refined_group_parents = make([dynamic]u32, 1)
-	defer delete(cache.refined_group_parents)
-	cache.refined_group_parent_offsets[0] = 0
-	cache.refined_group_parent_offsets[1] = 0
-	cache.refined_group_parent_offsets[2] = 1
-	cache.refined_group_parents[0] = 0
-	cache.cluster_groups[0] = {
-		resident = true,
-		active = true,
-		transition_start_frame = 36,
-	}
-	cache.cluster_groups[1] = {
-		resident = true,
-		resident_since_frame = 20,
-		last_demand_frame = 20,
-	}
-	wgpu_append_virtual_group_change(
-		&renderer.virtual_geometry_pending_activations,
-		cache.handle,
-		1,
-	)
-	changes: [dynamic]WGPU_Virtual_Group_Change
-	defer delete(changes)
-	cache.cluster_groups[0].resident = false
-	wgpu_activate_stable_virtual_groups(&renderer, &changes)
-	testing.expect(t, !cache.cluster_groups[1].active)
-
-	cache.cluster_groups[0].resident = true
-	cache.cluster_groups[0].active = false
-	wgpu_activate_stable_virtual_groups(&renderer, &changes)
-	testing.expect(t, !cache.cluster_groups[1].active)
-
-	cache.cluster_groups[0].active = true
-	wgpu_activate_stable_virtual_groups(&renderer, &changes)
-	testing.expect(t, !cache.cluster_groups[1].active)
-
-	cache.cluster_groups[0].transition_complete = true
-	wgpu_activate_stable_virtual_groups(&renderer, &changes)
-	testing.expect(t, cache.cluster_groups[1].active)
-	testing.expect(t, !cache.cluster_groups[1].transition_complete)
-}
-
-@(test)
-test_wgpu_virtual_geometry_indexes_only_direct_refinement_dependencies :: proc(t: ^testing.T) {
-	geometry := resources.Geometry {
-		cluster_groups = make([]resources.Geometry_Cluster_Group, 3),
-		clusters = []resources.Geometry_Cluster {
-			{group = 2, refined_group = 1},
-			{group = 2, refined_group = 0},
-			{group = 1, refined_group = 0},
-			{group = 0, refined_group = -1},
-		},
-	}
-	defer delete(geometry.cluster_groups)
-	cluster_offsets, clusters, parent_offsets, parents := wgpu_build_refined_group_cluster_index(
-		&geometry,
-	)
-	defer delete(cluster_offsets)
-	defer delete(clusters)
-	defer delete(parent_offsets)
-	defer delete(parents)
-	expected_cluster_offsets := [?]u32{0, 2, 3, 3}
-	expected_clusters := [?]u32{1, 2, 0}
-	expected_parent_offsets := [?]u32{0, 2, 3, 3}
-	expected_parents := [?]u32{1, 2, 2}
-	testing.expect_value(t, len(cluster_offsets), len(expected_cluster_offsets))
-	testing.expect_value(t, len(clusters), len(expected_clusters))
-	testing.expect_value(t, len(parent_offsets), len(expected_parent_offsets))
-	testing.expect_value(t, len(parents), len(expected_parents))
-	for value, index in expected_cluster_offsets {
-		testing.expect_value(t, cluster_offsets[index], value)
-	}
-	for value, index in expected_clusters {
-		testing.expect_value(t, clusters[index], value)
-	}
-	for value, index in expected_parent_offsets {
-		testing.expect_value(t, parent_offsets[index], value)
-	}
-	for value, index in expected_parents {
-		testing.expect_value(t, parents[index], value)
-	}
-
-	groups := make([]WGPU_Cluster_Group_Cache, 3)
-	defer delete(groups)
-	wgpu_adjust_virtual_fallback_protection(groups, parent_offsets[:], parents[:], 0, 1)
-	testing.expect_value(t, groups[0].resident_refinement_count, u32(0))
-	testing.expect_value(t, groups[1].resident_refinement_count, u32(1))
-	testing.expect_value(t, groups[2].resident_refinement_count, u32(1))
-	wgpu_adjust_virtual_fallback_protection(groups, parent_offsets[:], parents[:], 0, -1)
-	testing.expect_value(t, groups[1].resident_refinement_count, u32(0))
-	testing.expect_value(t, groups[2].resident_refinement_count, u32(0))
-}
-
-@(test)
-test_wgpu_virtual_geometry_eviction_plan_protects_fallbacks_and_priority :: proc(t: ^testing.T) {
-	renderer := WGPU_Renderer {
-		geometry_cache = make([dynamic]WGPU_Geometry_Cache, 1),
-	}
-	defer delete(renderer.geometry_cache)
-	cache := &renderer.geometry_cache[0]
-	resize(&cache.cluster_groups, 3)
-	defer delete(cache.cluster_groups)
-	cache.cluster_groups[0] = {
-		last_used_frame = 1,
-		priority = 1,
-		resident = true,
-		resident_refinement_count = 1,
-	}
-	cache.cluster_groups[1] = {
-		last_used_frame = 1,
-		priority = 4,
-		resident = true,
-	}
-	cache.cluster_groups[2] = {
-		last_used_frame = 20,
-		priority = 2,
-		resident = true,
-		prefetched = true,
-	}
-	candidates := wgpu_build_virtual_eviction_candidates(&renderer, 50)
-	testing.expect_value(t, len(candidates), 2)
-	testing.expect_value(t, candidates[0].group_index, u32(2))
-	testing.expect_value(t, candidates[1].group_index, u32(1))
-	cursor := 1
-	_, _, evicted := wgpu_evict_virtual_candidate(&renderer, candidates[:], &cursor, 2)
-	testing.expect(t, !evicted)
-	testing.expect(t, cache.cluster_groups[0].resident)
-	testing.expect(t, cache.cluster_groups[1].resident)
-}
-
-@(test)
-test_wgpu_virtual_geometry_preloads_only_complete_resources_that_fit :: proc(t: ^testing.T) {
-	geometry := resources.Geometry {
-		vertices = []resources.Vertex{{}},
-		indices = []u32{0},
-		cluster_pages = []resources.Geometry_Cluster_Page{{index_count = 8}, {index_count = 16}},
-	}
-	required_bytes :=
-		wgpu_align_arena_offset(u64(size_of(resources.Vertex)), u64(size_of(resources.Vertex))) +
-		wgpu_align_arena_offset(u64(size_of(u32)), u64(size_of(u32))) +
-		u64(24 * size_of(u32))
-	renderer := WGPU_Renderer {
-		virtual_geometry_budget_bytes = required_bytes + 32,
-		virtual_geometry_resident_bytes = 32,
-	}
-	testing.expect(t, wgpu_virtual_geometry_should_preload_pages(&renderer, &geometry))
-	renderer.virtual_geometry_resident_bytes = 33
-	testing.expect(t, !wgpu_virtual_geometry_should_preload_pages(&renderer, &geometry))
-	renderer.virtual_geometry_resident_bytes = required_bytes + 32
-	testing.expect(t, !wgpu_virtual_geometry_should_preload_pages(&renderer, &geometry))
-	testing.expect(
-		t,
-		wgpu_virtual_geometry_should_preload_pages(&renderer, &geometry, required_bytes),
-	)
-	renderer.virtual_geometry_resident_bytes = renderer.virtual_geometry_budget_bytes + 1
-	testing.expect(t, !wgpu_virtual_geometry_should_preload_pages(&renderer, &geometry))
-}
-
-@(test)
-test_wgpu_virtual_geometry_discards_only_stale_unowned_page_payloads :: proc(t: ^testing.T) {
-	renderer := WGPU_Renderer {
-		profile_frame_index = WGPU_VIRTUAL_PAGE_STAGED_PAYLOAD_GRACE_FRAMES + 20,
-		virtual_geometry_staged_payload_bytes = 64,
-	}
-	resize(&renderer.geometry_cache, 1)
-	defer delete(renderer.geometry_cache)
-	cache := &renderer.geometry_cache[0]
-	resize(&cache.cluster_pages, 4)
-	defer {
-		for &page in cache.cluster_pages {
-			delete(page.loaded_payload, os.heap_allocator())
-		}
-		delete(cache.cluster_pages)
-	}
-	for &page in cache.cluster_pages {
-		page.loaded_payload = make([]u8, 16, os.heap_allocator())
-	}
-	cache.cluster_pages[0].last_used_frame = 1
-	cache.cluster_pages[1].last_used_frame = renderer.profile_frame_index
-	cache.cluster_pages[2].last_used_frame = 1
-	cache.cluster_pages[2].loading = true
-	cache.cluster_pages[3].last_used_frame = 1
-	cache.cluster_pages[3].resident = true
-
-	discarded_pages, discarded_bytes := wgpu_discard_stale_virtual_page_payloads(&renderer)
-	testing.expect_value(t, discarded_pages, u64(1))
-	testing.expect_value(t, discarded_bytes, u64(16))
-	testing.expect_value(t, renderer.virtual_geometry_staged_payload_bytes, u64(48))
-	testing.expect_value(t, len(cache.cluster_pages[0].loaded_payload), 0)
-	testing.expect_value(t, len(cache.cluster_pages[1].loaded_payload), 16)
-	testing.expect_value(t, len(cache.cluster_pages[2].loaded_payload), 16)
-	testing.expect_value(t, len(cache.cluster_pages[3].loaded_payload), 16)
-}
-
-@(test)
-test_wgpu_virtual_geometry_staged_payload_budget_evicts_oldest_page :: proc(t: ^testing.T) {
-	renderer: WGPU_Renderer
-	resize(&renderer.geometry_cache, 1)
-	defer delete(renderer.geometry_cache)
-	cache := &renderer.geometry_cache[0]
-	resize(&cache.cluster_pages, 2)
-	defer {
-		for &page in cache.cluster_pages {
-			delete(page.loaded_payload, os.heap_allocator())
-		}
-		delete(cache.cluster_pages)
-	}
-	cache.cluster_pages[0].last_used_frame = 2
-	cache.cluster_pages[0].loaded_payload = make(
-		[]u8,
-		int(WGPU_VIRTUAL_GEOMETRY_STAGED_PAYLOAD_BUDGET_BYTES / 2),
-		os.heap_allocator(),
-	)
-	cache.cluster_pages[1].last_used_frame = 7
-	cache.cluster_pages[1].loaded_payload = make(
-		[]u8,
-		int(WGPU_VIRTUAL_GEOMETRY_STAGED_PAYLOAD_BUDGET_BYTES / 2),
-		os.heap_allocator(),
-	)
-	renderer.virtual_geometry_staged_payload_bytes =
-		WGPU_VIRTUAL_GEOMETRY_STAGED_PAYLOAD_BUDGET_BYTES
-
-	testing.expect(t, wgpu_reserve_virtual_staged_payload(&renderer, 16))
-	testing.expect_value(t, len(cache.cluster_pages[0].loaded_payload), 0)
-	testing.expect(t, len(cache.cluster_pages[1].loaded_payload) > 0)
-	testing.expect(
-		t,
-		renderer.virtual_geometry_staged_payload_bytes + 16 <=
-		WGPU_VIRTUAL_GEOMETRY_STAGED_PAYLOAD_BUDGET_BYTES,
-	)
-}
-
-@(test)
-test_wgpu_virtual_page_io_reads_bounded_product_ranges :: proc(t: ^testing.T) {
-	root, root_err := os.make_directory_temp("", "scrapbot-page-io-*", context.allocator)
-	testing.expect(t, root_err == nil)
-	if root_err != nil {
-		return
-	}
-	defer os.remove_all(root)
-	defer delete(root)
-	path := strings.concatenate({root, "/pages.bin"})
-	defer delete(path)
-	testing.expect(t, os.write_entire_file(path, []u8{1, 2, 3, 4, 5, 6}) == nil)
-	io: WGPU_Virtual_Page_IO
-	defer wgpu_virtual_page_io_destroy(&io)
-	handle := shared.Geometry_Handle {
-		index = 7,
-		generation = 3,
-	}
-	testing.expect(t, wgpu_virtual_page_io_schedule(&io, handle, 11, 2, path, 2, 3))
-	job: ^WGPU_Virtual_Page_IO_Job
-	for _ in 0 ..< 10000 {
-		ok: bool
-		job, ok = wgpu_virtual_page_io_pop(&io)
-		if ok {
-			break
-		}
-		thread.yield()
-	}
-	testing.expect(t, job != nil)
-	if job != nil {
-		testing.expect_value(t, io.outstanding_jobs, u32(0))
-		testing.expect_value(t, io.outstanding_bytes, u64(0))
-		testing.expect(t, !job.err)
-		testing.expect_value(t, job.handle, handle)
-		testing.expect_value(t, job.geometry_version, u32(11))
-		testing.expect_value(t, job.page_index, u32(2))
-		testing.expect_value(t, len(job.bytes), 3)
-		if len(job.bytes) == 3 {
-			testing.expect(t, job.bytes[0] == 3 && job.bytes[1] == 4 && job.bytes[2] == 5)
-		}
-		wgpu_virtual_page_io_destroy_job(job)
-	}
-}
-
-@(test)
-test_wgpu_virtual_page_io_rejects_work_beyond_its_staging_budget :: proc(t: ^testing.T) {
-	io := WGPU_Virtual_Page_IO {
-		outstanding_jobs = WGPU_VIRTUAL_PAGE_IO_MAX_OUTSTANDING_JOBS,
-	}
-	testing.expect(t, !wgpu_virtual_page_io_schedule(&io, {}, 1, 0, "unused", 0, 1))
-	io.outstanding_jobs = 0
-	io.outstanding_bytes = WGPU_VIRTUAL_PAGE_IO_MAX_OUTSTANDING_BYTES
-	testing.expect(t, !wgpu_virtual_page_io_schedule(&io, {}, 1, 0, "unused", 0, 1))
 }
 
 @(test)
@@ -3900,21 +2541,6 @@ test_profile_reports_per_frame_counter_deltas_after_warmup :: proc(t: ^testing.T
 		geometry_arena_uploads = 101,
 		geometry_arena_upload_bytes = 4096,
 		geometry_arena_growths = 2,
-		virtual_geometry_page_uploads = 5,
-		virtual_geometry_page_upload_bytes = 2048,
-		virtual_geometry_page_reads = 7,
-		virtual_geometry_page_read_bytes = 3072,
-		virtual_geometry_page_read_failures = 1,
-		virtual_geometry_page_evictions = 1,
-		virtual_geometry_group_uploads = 3,
-		virtual_geometry_metadata_uploads = 30,
-		virtual_geometry_metadata_upload_bytes = 4096,
-		virtual_geometry_group_activations = 2,
-		virtual_geometry_prefetch_group_uploads = 2,
-		virtual_geometry_prefetch_hits = 4,
-		virtual_geometry_prefetch_evictions = 1,
-		virtual_geometry_group_evictions = 1,
-		virtual_geometry_deferred_groups = 4,
 		ui_vertex_rebuilds = 5,
 		ui_vertex_upload_bytes = 2048,
 	}
@@ -3932,21 +2558,6 @@ test_profile_reports_per_frame_counter_deltas_after_warmup :: proc(t: ^testing.T
 	stats.geometry_arena_uploads += 3
 	stats.geometry_arena_upload_bytes += 768
 	stats.geometry_arena_growths += 1
-	stats.virtual_geometry_page_uploads += 2
-	stats.virtual_geometry_page_upload_bytes += 512
-	stats.virtual_geometry_page_reads += 3
-	stats.virtual_geometry_page_read_bytes += 1024
-	stats.virtual_geometry_page_read_failures += 2
-	stats.virtual_geometry_page_evictions += 1
-	stats.virtual_geometry_group_uploads += 1
-	stats.virtual_geometry_metadata_uploads += 6
-	stats.virtual_geometry_metadata_upload_bytes += 768
-	stats.virtual_geometry_group_activations += 1
-	stats.virtual_geometry_prefetch_group_uploads += 1
-	stats.virtual_geometry_prefetch_hits += 2
-	stats.virtual_geometry_prefetch_evictions += 1
-	stats.virtual_geometry_group_evictions += 1
-	stats.virtual_geometry_deferred_groups += 2
 	stats.ui_vertex_rebuilds += 1
 	profile_record_frame(&collector, 1, 0, 0, 100, 100, 1, {}, &stats)
 
@@ -3964,21 +2575,6 @@ test_profile_reports_per_frame_counter_deltas_after_warmup :: proc(t: ^testing.T
 	testing.expect_value(t, first.geometry_arena_uploads, u64(3))
 	testing.expect_value(t, first.geometry_arena_upload_bytes, u64(768))
 	testing.expect_value(t, first.geometry_arena_growths, u64(1))
-	testing.expect_value(t, first.virtual_geometry_page_uploads, u64(2))
-	testing.expect_value(t, first.virtual_geometry_page_upload_bytes, u64(512))
-	testing.expect_value(t, first.virtual_geometry_page_reads, u64(3))
-	testing.expect_value(t, first.virtual_geometry_page_read_bytes, u64(1024))
-	testing.expect_value(t, first.virtual_geometry_page_read_failures, u64(2))
-	testing.expect_value(t, first.virtual_geometry_page_evictions, u64(1))
-	testing.expect_value(t, first.virtual_geometry_group_uploads, u64(1))
-	testing.expect_value(t, first.virtual_geometry_metadata_uploads, u64(6))
-	testing.expect_value(t, first.virtual_geometry_metadata_upload_bytes, u64(768))
-	testing.expect_value(t, first.virtual_geometry_group_activations, u64(1))
-	testing.expect_value(t, first.virtual_geometry_prefetch_group_uploads, u64(1))
-	testing.expect_value(t, first.virtual_geometry_prefetch_hits, u64(2))
-	testing.expect_value(t, first.virtual_geometry_prefetch_evictions, u64(1))
-	testing.expect_value(t, first.virtual_geometry_group_evictions, u64(1))
-	testing.expect_value(t, first.virtual_geometry_deferred_groups, u64(2))
 	testing.expect_value(t, first.ui_vertex_rebuilds, u64(1))
 	testing.expect_value(t, first.ui_vertex_upload_bytes, u64(0))
 
@@ -4121,69 +2717,12 @@ test_wgpu_indirect_template_uses_shared_geometry_arena_offsets :: proc(t: ^testi
 		index_count = 123,
 		valid = true,
 	}
-	template := wgpu_geometry_indirect_template(&geometry, 44, true)
+	template := wgpu_geometry_indirect_template(&geometry)
 	testing.expect_value(t, template.index_count, u32(123))
 	testing.expect_value(t, template.first_index, u32(31))
 	testing.expect_value(t, template.base_vertex, i32(17))
-	testing.expect_value(t, template.first_instance, u32(44))
-
-	template = wgpu_geometry_indirect_template(&geometry, 44, false)
 	testing.expect_value(t, template.first_instance, u32(0))
-}
 
-@(test)
-test_wgpu_streamed_virtual_geometry_uses_pinned_proxy_when_visibility_layout_falls_back :: proc(
-	t: ^testing.T,
-) {
-	renderer := WGPU_Renderer {
-		gpu_meshlet_supported = true,
-		gpu_meshlet_submission_active = false,
-		gpu_meshlet_layout_valid = false,
-	}
-	batch := WGPU_Draw_Batch {
-		meshlet_submission = true,
-		compact_submission = true,
-		virtual_geometry = true,
-	}
-	testing.expect_value(
-		t,
-		wgpu_batch_submission_mode(&renderer, batch),
-		WGPU_Submission_Mode.Classic,
-	)
-
-	geometry := WGPU_Geometry_Cache {
-		virtual_geometry = true,
-		index_count = 98_765,
-		shadow_index_range = {offset = u64(size_of(u32)) * 73, size = 4096},
-		shadow_base_vertex = 29,
-		shadow_index_count = 384,
-		valid = true,
-	}
-	template := wgpu_geometry_indirect_template(&geometry, 51, true)
-	testing.expect_value(t, template.index_count, u32(384))
-	testing.expect_value(t, template.first_index, u32(73))
-	testing.expect_value(t, template.base_vertex, i32(29))
-	testing.expect_value(t, template.first_instance, u32(51))
-
-	template = wgpu_geometry_indirect_template(&geometry, 51, false)
-	testing.expect_value(t, template.first_instance, u32(0))
-}
-
-@(test)
-test_wgpu_geometry_storage_bindings_respect_the_device_limit :: proc(t: ^testing.T) {
-	renderer := WGPU_Renderer {
-		max_storage_buffer_binding_size = 128 * 1024 * 1024,
-	}
-	testing.expect_value(
-		t,
-		wgpu_geometry_storage_binding_bytes(&renderer, 64 * 1024 * 1024),
-		u64(64 * 1024 * 1024),
-	)
-	testing.expect_value(
-		t,
-		wgpu_geometry_storage_binding_bytes(&renderer, 256 * 1024 * 1024),
-		u64(128 * 1024 * 1024),
-	)
 }
 
 @(test)
@@ -4209,175 +2748,6 @@ test_wgpu_geometry_arena_growth_never_exceeds_device_buffer_limit :: proc(t: ^te
 	capacity, ok = wgpu_geometry_arena_growth_capacity(0, 4, ~u64(0), ~u64(0))
 	testing.expect(t, ok)
 	testing.expect_value(t, capacity, ~u64(0))
-}
-
-@(test)
-test_wgpu_compact_shadows_use_pages_only_for_streamed_geometry :: proc(t: ^testing.T) {
-	renderer := WGPU_Renderer {
-		gpu_meshlet_submission_active = true,
-		geometry_cache = make([dynamic]WGPU_Geometry_Cache, 0, 1),
-	}
-	defer delete(renderer.geometry_cache)
-	batch := WGPU_Draw_Batch {
-		meshlet_submission = true,
-		compact_submission = true,
-		virtual_geometry = true,
-	}
-
-	testing.expect_value(
-		t,
-		wgpu_shadow_batch_submission_mode(&renderer, batch),
-		WGPU_Submission_Mode.Classic,
-	)
-	append(&renderer.geometry_cache, WGPU_Geometry_Cache{valid = true, virtual_geometry = true})
-	wgpu_recount_virtual_page_residency(&renderer)
-	testing.expect(t, wgpu_compact_shadow_pages_active(&renderer))
-	testing.expect_value(
-		t,
-		wgpu_shadow_batch_submission_mode(&renderer, batch),
-		WGPU_Submission_Mode.Compact,
-	)
-
-	renderer.geometry_cache[0].shadow_index_count = 3
-	wgpu_recount_virtual_page_residency(&renderer)
-	testing.expect(t, wgpu_compact_shadow_pages_active(&renderer))
-	testing.expect_value(
-		t,
-		wgpu_shadow_batch_submission_mode(&renderer, batch),
-		WGPU_Submission_Mode.Compact,
-	)
-	renderer.geometry_cache[0].shadow_index_count = 0
-
-	renderer.geometry_cache[0].vertex_range = {
-		offset = 64,
-		size = 1024,
-	}
-	wgpu_recount_virtual_page_residency(&renderer)
-	testing.expect(t, !wgpu_compact_shadow_pages_active(&renderer))
-	testing.expect_value(
-		t,
-		wgpu_shadow_batch_submission_mode(&renderer, batch),
-		WGPU_Submission_Mode.Classic,
-	)
-}
-
-@(test)
-test_wgpu_virtual_page_shadow_proxy_rebases_page_local_indices :: proc(t: ^testing.T) {
-	indices := []u32{0, 2, 1, 0, 1, 2}
-	vertex_offsets := []u64 {
-		0,
-		u64(3 * size_of(resources.Vertex)),
-		u64(6 * size_of(resources.Vertex)),
-	}
-	index_offsets := []u64{0, 3 * size_of(u32), 6 * size_of(u32)}
-	rebased := wgpu_rebase_virtual_page_indices(indices, vertex_offsets, index_offsets)
-	expected := []u32{0, 2, 1, 3, 4, 5}
-	testing.expect_value(t, len(rebased), len(expected))
-	for value, index in rebased {
-		testing.expect_value(t, value, expected[index])
-	}
-}
-
-@(test)
-test_wgpu_virtual_page_shadow_proxy_uses_terminal_frontier :: proc(t: ^testing.T) {
-	groups := [2]resources.Geometry_Cluster_Group {
-		{cluster_offset = 0, cluster_count = 1, page_offset = 0, page_count = 1},
-		{
-			cluster_offset = 1,
-			cluster_count = 2,
-			page_offset = 1,
-			page_count = 1,
-			error = 3.4028235e38,
-		},
-	}
-	clusters := [3]resources.Geometry_Cluster {
-		{triangle_count = 1, group = 0, refined_group = -1, page = 0},
-		{triangle_count = 1, group = 1, refined_group = 0, page = 1},
-		{triangle_count = 1, group = 1, refined_group = -1, page = 1, page_index_offset = 3},
-	}
-	pages := [2]resources.Geometry_Cluster_Page {
-		{cluster_offset = 0, cluster_count = 1, index_count = 3, bootstrap = true},
-		{cluster_offset = 1, cluster_count = 2, index_count = 6, pinned = true, bootstrap = true},
-	}
-	geometry := resources.Geometry {
-		cluster_groups = groups[:],
-		clusters = clusters[:],
-		cluster_pages = pages[:],
-	}
-	page_indices := []u32{0, 1}
-	upload := WGPU_Virtual_Page_Upload {
-		indices = []u32{0, 1, 2, 0, 1, 2, 3, 4, 5},
-		vertex_offsets = []u64 {
-			0,
-			u64(3 * size_of(resources.Vertex)),
-			u64(9 * size_of(resources.Vertex)),
-		},
-		index_offsets = []u64{0, 3 * size_of(u32), 9 * size_of(u32)},
-	}
-	frontier := wgpu_build_virtual_terminal_frontier_indices(&geometry, page_indices, &upload)
-	// The bootstrapped refinement participates in the first world frame but is
-	// evictable, so the permanent shadow proxy remains on the terminal group.
-	expected := []u32{3, 4, 5, 6, 7, 8}
-	testing.expect_value(t, len(frontier), len(expected))
-	for value, index in frontier {
-		testing.expect_value(t, value, expected[index])
-	}
-}
-
-@(test)
-test_wgpu_virtual_bootstrap_reserves_global_streaming_headroom :: proc(t: ^testing.T) {
-	groups := [4]resources.Geometry_Cluster_Group {
-		{cluster_offset = 0, cluster_count = 1, page_offset = 0, page_count = 1, error = 1},
-		{cluster_offset = 1, cluster_count = 1, page_offset = 1, page_count = 1, error = 2},
-		{cluster_offset = 2, cluster_count = 1, page_offset = 2, page_count = 1, error = 3},
-		{
-			cluster_offset = 3,
-			cluster_count = 1,
-			page_offset = 3,
-			page_count = 1,
-			error = 3.4028235e38,
-		},
-	}
-	clusters := [4]resources.Geometry_Cluster {
-		{group = 0, refined_group = -1, page = 0},
-		{group = 1, refined_group = 0, page = 1},
-		{group = 2, refined_group = 1, page = 2},
-		{group = 3, refined_group = 2, page = 3},
-	}
-	pages := [4]resources.Geometry_Cluster_Page {
-		{bootstrap = true},
-		{bootstrap = true},
-		{bootstrap = true},
-		{pinned = true, bootstrap = true},
-	}
-	records := [4]geometry.Page_Payload_Record {
-		{vertex_count = 1, index_count = 1},
-		{vertex_count = 1, index_count = 1},
-		{vertex_count = 1, index_count = 1},
-		{vertex_count = 1, index_count = 1},
-	}
-	resource := resources.Geometry {
-		cluster_groups = groups[:],
-		clusters = clusters[:],
-		cluster_pages = pages[:],
-		page_payload_records = records[:],
-	}
-	page_bytes := wgpu_virtual_page_allocation_bytes(&resource, 0)
-	budget :=
-		((page_bytes * 2) * WGPU_VIRTUAL_GEOMETRY_BOOTSTRAP_BUDGET_DENOMINATOR +
-			WGPU_VIRTUAL_GEOMETRY_BOOTSTRAP_BUDGET_NUMERATOR -
-			1) /
-		WGPU_VIRTUAL_GEOMETRY_BOOTSTRAP_BUDGET_NUMERATOR
-	selected := wgpu_select_virtual_bootstrap_pages(&resource, 0, budget)
-	defer delete(selected)
-	testing.expect_value(t, len(selected), 2)
-	testing.expect_value(t, selected[0], u32(2))
-	testing.expect_value(t, selected[1], u32(3))
-
-	reserved := wgpu_select_virtual_bootstrap_pages(&resource, page_bytes, budget)
-	defer delete(reserved)
-	testing.expect_value(t, len(reserved), 1)
-	testing.expect_value(t, reserved[0], u32(3))
 }
 
 test_count_frame_system :: proc(data: rawptr, world: ^World, delta_seconds: f32) -> string {
@@ -5187,7 +3557,6 @@ test_frame_budget_degrades_one_ordered_quality_axis_at_a_time :: proc(t: ^testin
 		minimum_quality = 0.25,
 		effective_scale = 1,
 		effective_shadow_resolution = FRAME_BUDGET_SHADOW_MAXIMUM,
-		effective_virtual_error_pixels = FRAME_BUDGET_VIRTUAL_ERROR_MINIMUM,
 		effective_post_quality = 1,
 	}
 	for _ in 0 ..< 4 {
@@ -5200,14 +3569,6 @@ test_frame_budget_degrades_one_ordered_quality_axis_at_a_time :: proc(t: ^testin
 		testing.expect(t, frame_budget_change(&state, true))
 	}
 	testing.expect_value(t, state.effective_scale, f32(0.6))
-	testing.expect(t, frame_budget_change(&state, true))
-	testing.expect_value(t, state.effective_virtual_error_pixels, f32(2))
-	testing.expect(t, frame_budget_change(&state, true))
-	testing.expect_value(t, state.effective_virtual_error_pixels, f32(4))
-	testing.expect(t, frame_budget_change(&state, true))
-	testing.expect_value(t, state.effective_virtual_error_pixels, f32(8))
-	testing.expect(t, frame_budget_change(&state, true))
-	testing.expect_value(t, state.effective_virtual_error_pixels, f32(16))
 	testing.expect(t, frame_budget_change(&state, true))
 	testing.expect_value(t, state.effective_post_quality, f32(0.75))
 	testing.expect(t, frame_budget_change(&state, true))
@@ -5224,15 +3585,12 @@ test_frame_budget_respects_authored_quality_floor_and_restores_in_reverse :: pro
 		minimum_quality = 0.5,
 		effective_scale = 0.6,
 		effective_shadow_resolution = 1024,
-		effective_virtual_error_pixels = 2,
 		effective_post_quality = 0.5,
 	}
 	testing.expect(t, frame_budget_change(&state, false))
 	testing.expect_value(t, state.effective_post_quality, f32(0.75))
 	testing.expect(t, frame_budget_change(&state, false))
 	testing.expect_value(t, state.effective_post_quality, f32(1))
-	testing.expect(t, frame_budget_change(&state, false))
-	testing.expect_value(t, state.effective_virtual_error_pixels, f32(1))
 	for _ in 0 ..< 4 {
 		testing.expect(t, frame_budget_change(&state, false))
 	}
@@ -5242,11 +3600,9 @@ test_frame_budget_respects_authored_quality_floor_and_restores_in_reverse :: pro
 
 	state.effective_scale = state.minimum_scale
 	state.effective_shadow_resolution = 1024
-	state.effective_virtual_error_pixels = 2
 	state.effective_post_quality = 0.5
 	for frame_budget_change(&state, true) {  }
 	testing.expect_value(t, state.effective_shadow_resolution, u32(1024))
-	testing.expect_value(t, state.effective_virtual_error_pixels, f32(2))
 	testing.expect_value(t, state.effective_post_quality, f32(0.5))
 }
 
@@ -5272,14 +3628,6 @@ test_adaptive_quality_floor_bounds_shadow_tiers :: proc(t: ^testing.T) {
 	testing.expect_value(t, frame_budget_minimum_shadow_resolution(0.5), u32(1024))
 	testing.expect_value(t, frame_budget_minimum_shadow_resolution(0.75), u32(2048))
 	testing.expect_value(t, frame_budget_minimum_shadow_resolution(1), u32(2048))
-}
-
-@(test)
-test_adaptive_quality_floor_bounds_virtual_geometry_error :: proc(t: ^testing.T) {
-	testing.expect_value(t, frame_budget_maximum_virtual_error_pixels(0.25), f32(16))
-	testing.expect_value(t, frame_budget_maximum_virtual_error_pixels(0.5), f32(2))
-	testing.expect_value(t, frame_budget_maximum_virtual_error_pixels(0.75), f32(1))
-	testing.expect_value(t, frame_budget_maximum_virtual_error_pixels(1), f32(1))
 }
 
 @(test)
@@ -5424,5 +3772,32 @@ test_world_distance_field_clipmap_shader_scrolls_only_selected_exposed_slabs :: 
 			WGPU_DISTANCE_FIELD_CLIPMAP_SHADER,
 			"CASCADE_VOXELS * propagate_uniform.control.w",
 		),
+	)
+}
+
+@(test)
+test_wgpu_object_culling_shader_stays_within_portable_storage_binding_floor :: proc(
+	t: ^testing.T,
+) {
+	testing.expect(t, strings.count(WGPU_GPU_CULL_SHADER, "var<storage") <= 8)
+	testing.expect(t, !strings.contains(WGPU_GPU_CULL_SHADER, "fn cull_compact"))
+	testing.expect(t, !strings.contains(WGPU_GPU_CULL_SHADER, "fn prefetch_virtual"))
+}
+
+@(test)
+test_object_visibility_capture_preserves_frozen_evidence :: proc(t: ^testing.T) {
+	// Ordinary rendering does no diagnostic work.
+	testing.expect(t, !wgpu_capture_object_visibility(false, false, true, false, false))
+	// A coarse depth pass must not become the frozen occlusion evidence.
+	testing.expect(t, !wgpu_capture_object_visibility(false, true, false, true, false))
+	testing.expect(t, wgpu_capture_object_visibility(false, true, true, true, false))
+	testing.expect(t, !wgpu_capture_object_visibility(false, true, true, true, true))
+	testing.expect(t, wgpu_capture_object_visibility(false, true, true, false, true))
+	// Explicit artifact capture works without changing the visible debug view.
+	testing.expect(t, wgpu_capture_object_visibility(true, false, false, false, false))
+	testing.expect_value(
+		t,
+		wgpu_object_debug_buffer_bytes(WGPU_OBJECT_DEBUG_RECORD_CAPACITY),
+		u64(4 * 1024 * 1024),
 	)
 }

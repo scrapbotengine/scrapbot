@@ -1,6 +1,6 @@
 # State Ownership and Invalidation
 
-**Last verified:** 2026-08-13
+**Last verified:** 2026-10-06
 
 ## Scene resource residency
 
@@ -25,29 +25,29 @@ Scrapbot separates authoritative project/runtime state from derived indexes, cac
 | Engine time | `render.Run_Config.engine_time` | Run-global monotonic presentation clock outside ECS | Advances from every rendered frame delta regardless of project Pause; editor and engine presentation consume it, while project APIs do not. |
 | Physical input frame and editor actions | Engine-owned ECS input singletons plus transient UI action adapter | Per-frame physical authority plus derived editor meaning | SDL commits held/pressed/released keyboard and pointer state once before systems. Luau, native systems, UI, and editor camera consume that snapshot. Focused text composition/repeat remains a UI-only side channel. The UI adapter resolves distinct Play, Pause, Stop, and Step actions—including F5–F8 aliases—with command-modified precedence; retained controls and modal tools then apply availability, capture, and propagation ownership. |
 | Project clocks | Authored `scrapbot.clock` components plus `world.time` default snapshot | ECS project-time authority with one ABI-compatible selected snapshot | Every active non-editor clock advances from permitted simulation steps at its non-negative speed. Lowest stable scene order selects the system/shader default; Paused and Stopped redraws do no clock work. |
-| Geometry/material/environment/icon-set descriptions and handles | `resources.Registry` | Runtime shared-resource authority | Generational handles plus content/topology versions. Geometry content includes LOD metadata, source- or exact-leaf-derived meshlets, a crack-aware cluster hierarchy with monotonic group errors, and a file-or-memory page source. Imported Geometry retains canonical counts and a position-only query proxy instead of complete CPU render vertices/source indices. Those structures rebuild only with that exact Geometry version, never on stable frames. See [Resource render state](#resource-render-state). |
-| Texture/Model/Environment/Icon Set imported products | `asset_import` products plus `resources.Registry` | Derived from authored UUID recipes and asset/dependency contents | Ensured at import/check/build/run or asset hot reload; schema/content/settings fingerprints reuse unchanged products and atomic writes preserve last-good files. The common product envelope validates kind and chunk ranges before type-specific decoding. Model LOD, hierarchy, distance-field compilation, and shared `KHR_texture_transform` UV baking run only on invalidation. Model v21 reads its bounded catalog, fetches images from the image chunk, pins the complete terminal refinement-DAG frontier, eagerly exposes the evictable bootstrap tail, retains other detail-page ranges, and retains quantized distance-field descriptors without decoding either bulk payload. Generated semantic handles update at registration. A model-root structural revision validates and rebuilds only incomplete derived hierarchies, preserving unaffected entity generations and GPU ownership; a Model-registry revision is the explicit global rebuild boundary. |
+| Geometry/material/environment/icon-set descriptions and handles | `resources.Registry` | Runtime shared-resource authority | Generational handles and content/topology versions. Geometry owns complete vertices, indices, and ordinary LOD metadata. See [Resource render state](#resource-render-state). |
+| Texture/Model/Environment/Icon Set imported products | `asset_import` products plus `resources.Registry` | Derived from authored recipes and asset contents | Versioned imports preserve last-good products. Model v22 loads complete indexed meshes; distance-field payloads load on demand. Model reconciliation follows registry and structural revisions. See [Resources](resources.md). |
 | Authoring history, entity clipboard, dirty UUID candidates, and staged play edits | Editor UI state | In-memory authoring authority until Save/Revert plus an editor-lifetime owned clipboard and transient per-play journal | One transaction per completed gesture or structural operation. Structural batches own ordered entity snapshots, scene order, and before/after selection so subtree Duplicate/Delete/Cut/Paste apply atomically. The clipboard owns deep authored snapshots independent of World storage; Paste allocates fresh entity UUIDs, remaps closure-local references, validates component/resource compatibility, and mutates only after validation. During playback, authored Duplicate/Paste creation and Delete/Cut removal stage ordered structural batches; eligible gestures replace one latest component snapshot keyed by entity UUID and component identity. Stop recaptures deletion snapshots from the restored baseline before transferring transactions to history. Stable frames do no clipboard or journal work. |
 | Editor shell transport and workspace visibility | Editor UI state | Transient per-run tool state | Opening the shell pauses active playback and closing resumes it. Command-modified sidebar toggles flip retained left/right visibility booleans; a visual-state comparison mutates only the affected public dock-space layout, so stable frames perform no repeated workspace mutation. Playback-state changes update the retained viewport badge, frame, and status text. |
 | Editor scene-camera pose, lens, orbit point, and focus request | Transient editor-camera ECS entity plus editor UI state | Per-run tool state with one-shot derived framing input | Captured fly/orbit movement and viewport-owned wheel input mutate only the editor camera. Camera motion comes exclusively from consecutive absolute positions in the canonical frame-local physical-input snapshot; it never enters SDL relative-mouse mode or reads SDL's independently accumulated relative-motion state. SDL confines the pointer and wraps it at window edges while the retained previous position absorbs each warp. MMB activation marks one start edge; the render path performs one canonical-geometry ray query at the initiating pointer and, on a hit, uses its distance to update the ECS camera's target along the unchanged view axis before applying orbit input. This preserves the initial framing; empty space retains the prior target. Stop captures this complete working state before authoring-world replacement and applies it to the reconciled replacement camera; project/world hot reload and explicit scene changes retain their own reset semantics. Accepted `F` input sets one request bit; the next camera phase clears it, visits retained instances for the ordered selected UUID set once, derives combined world bounds plus Transform fallbacks, updates the camera pose, and replaces the orbit point. Stable frames perform no ray query or selection-bounds traversal. |
 | Editor entity selection and transform gesture | Editor UI ordered UUID set, active entity handle, monotonic selection revision, transient viewport gesture, WGPU identity target plus three-slot readback ring, transient `EditorTransformGizmo`, and frozen transform snapshots | Authoritative per-run tool state plus backend-owned derived identity/bounds evidence | Plain selection replaces the UUID set; Shift selection toggles membership and promotes the newest member as active. A viewport press remains armed until release or four pixels of motion. WGPU snapshots slot-to-root UUID ownership, renders the requested click or marquee into an integer identity target with its own depth, and asynchronously consumes only the scissored region. A marquee intersects visible identities with complete root-level projected-bounds containment before enclosed camera/light icons join the result. Null rendering uses the CPU scene-query fallback. Each later editor frame validates only selected UUIDs; world replacement drops missing members and rebinds the active handle. One revision invalidates browser rows, inspector identity, combined bounds, and GPU mask membership. Multi-transform gestures use the shared bounds center and publish one batch Undo/Redo transaction. Stable frames encode no identity pass, perform no readback, and do no selection membership scan or bounds rebuild. |
-| Placement preview and rendered selection cue | Editor UI state plus WGPU retained instance records, dense selected slots, two-channel feedback mask, and engine-time sampling | Transient editor-derived state | An active valid Model drag resolves its frame-valued pointer through the backend-neutral scene query, rebuilds the editor overlay when contact/root changes, and reuses each primitive's resolved conventional data or virtual pinned proxy in the ghost channel. Release clears the preview. Selection revision changes scan current retained instances once and patch direct UUID or selected `model_owner` matches plus dense membership; later dirty slots update locally. The depth-independent mask redraws selected geometry from the same submission cache each frame, without changing Geometry cache policy, but stable selection performs no membership scan or instance upload. During Running and Paused, dashed selection samples run-global engine elapsed time independently of simulation; Stopped retains the solid outline. Hiding the editor retains selection but clears an active mask once, then skips stable hidden feedback passes. |
+| Placement preview and rendered selection cue | Editor UI state plus WGPU retained instance records, dense selected slots, two-channel feedback mask, and engine-time sampling | Transient editor-derived state | An active valid Model drag resolves its frame-valued pointer through the backend-neutral scene query, rebuilds the editor overlay when contact/root changes, and reuses each primitive's resolved indexed data in the ghost channel. Release clears the preview. Selection revision changes scan current retained instances once and patch direct UUID or selected `model_owner` matches plus dense membership; later dirty slots update locally. The depth-independent mask redraws selected geometry from the same submission cache each frame, without changing Geometry cache policy, but stable selection performs no membership scan or instance upload. During Running and Paused, dashed selection samples run-global engine elapsed time independently of simulation; Stopped retains the solid outline. Hiding the editor retains selection but clears an active mask once, then skips stable hidden feedback passes. |
 | Editor transform snapping and infinite grid | Editor UI state plus WGPU grid pipeline/uniform | Transient editor policy and derived backend presentation | One setting supplies placement/translation spacing plus enabled rotation and scale increments; the command modifier inverts it only for the active gesture. Gesture math quantizes against its frozen world/local basis before applying the Transform. Independently, while the editor is visible, WGPU draws six procedural plane vertices before transparency, depth-tests against the opaque world, and selects one clamped power-of-ten spacing level from camera height for the complete plane with a one-unit minimum. Minor lines crossfade into every tenth major line. Camera changes update one fixed uniform; hidden frames skip the pass, and no scene membership, line mesh, or persistent resource exists. |
 | UI theme palettes, metrics, typography, and named recipes | Shared UI composition contract plus UUID-backed `resources.Registry.ui_themes` | Ephemeral composition input with versioned lookup, not retained UI authority | Scene parsing, Luau resolution, UUID-specific native host resolution, and editor composition consume the same engine-owned recipe vocabulary before typed ECS attachment or update. The resolved `ui_*` values are authoritative for layout and paint; the registry revision refreshes resource inspection only. No theme identity, ancestry cascade, stable-frame traversal, or renderer-side style store remains. |
 | Retained UI hierarchy, authored canvas transform, intrinsic text lines, flex lines, popup rectangles, dock tabs, panel/split/control gestures, layout, interaction, and paint commands | `ui.State` | Derived from public UI ECS components and active font metrics | Structural dirty queue plus independent project/editor layout and paint revisions. World UUID replacement invalidates membership and layout even when the new world's numeric revisions coincide with the previous world. It clears entity-bound pointer captures while retaining the physical held-button baseline until release, preventing replacement content from receiving a synthetic press. Buttons activate on release-inside and cancel on release-outside. Intrinsic measurement, bounded basis/grow/shrink line packing, and direct-child dock-tab/stack-order resolution run only for an invalidated domain; the exact text breaks feed paint. The optional root `ui_canvas` slot is cached per origin; its revision resolves the logical viewport, output scale/alignment, and safe area once for all downstream consumers. Popup placement derives from the live anchor/viewport only after affected ECS open, anchor, or constraint changes. Dock transfers update authoritative item parent/active UUID; edge drops create authoritative public stack/dock topology and preserve the replaced sibling order; panel drops update authoritative parent/stack order. All reuse ordinary invalidation, and stable frames retain bounded gesture state without a World scan. |
 | Immutable UI event history | `shared.World.ui_events` | Derived ordered interaction history | The UI interaction pass first dispatches a pointer edge through the hit ancestry until a reusable control cancels propagation, then appends actual published edges to a 256-entry ring with monotonic sequences. Luau, native extensions, and editor orchestration retain independent cursors. Overflow is explicit; world replacement resets the sequence space and destruction reclaims copied action strings. |
 | `scrapbot.ui_state` components | UI reconciler | Derived, renderer-owned | Targeted interaction-dirty queue and retained node state; project code reads only. |
-| Render-instance membership and retained render list | ECS render extraction | Derived from Transform/geometry/material/shadow membership, layered geometry-submission policy, and resource resolution | Structural/static dirty queue, separate exact Transform queue, project/asset/entity policy replacement, and resource revisions. Static extraction supersedes a same-frame Transform entry. Entity and slot reverse indexes are bidirectional ownership maps: delayed removal of a stale owner must never erase a newly reused slot's mapping. Batch appearance/disappearance advances topology exactly at the membership boundary. |
-| GPU instances, conventional and virtual draw/visibility data, mesh and world distance fields, lights, shadows, postprocess targets, pipelines, and resource caches | WGPU backend | Derived backend state | Exact dirty queues, resource versions, resolved submission policy, camera/viewport revisions, target shape, capacity or meshlet-policy threshold changes, world replacement, or backend lifetime. Geometry caches are keyed by handle plus resolved path so different instances may consume both representations. The slot-addressed CPU instance mirror and compact GPU Transform source advance together; a later full-record upload for selection or static state therefore cannot restore an older transform or bounds. Meshlet index/metadata/template state follows Geometry versions and retained batch capacity; each batch retains its resolved path, while current-frame counts reset from templates. Mesh fields remain file-backed until requested, then retain one packed storage buffer through that Geometry-cache lifetime. The debug-requested world field retains three snapped 32³ seed/distance cascades. Camera-cell movement scrolls retained seed coordinates, invalidates and seeds only exposed slabs, and propagates only affected cascades; viewport, topology, Geometry, instance, or Transform changes rebuild all cascades. An actual instance-data upload rejects surface and volumetric temporal history for that frame because camera-only reprojection cannot locate a moved surface. Stable frames upload and dispatch nothing. Windowed runs add an SDL-backed surface; headless runs own an offscreen color target. Explicit live captures allocate bounded color/depth/visibility readbacks, then release them after the frame barrier. See [WGPU derived state](#wgpu-derived-state). |
+| Render-instance membership and retained render list | ECS render extraction | Derived from Transform/geometry/material/shadow membership and and resource resolution | Structural/static dirty queue, separate exact Transform queue, resource revisions. Static extraction supersedes a same-frame Transform entry. Entity and slot reverse indexes are bidirectional ownership maps: delayed removal of a stale owner must never erase a newly reused slot's mapping. Batch appearance/disappearance advances topology exactly at the membership boundary. |
+| GPU instances, draws, distance fields, lights, shadows, postprocess targets, and resource caches | WGPU backend | Derived backend state | Dirty queues, resource versions, camera/viewport revisions, capacity changes, and backend lifetime invalidate retained state. Geometry uses one indexed cache per handle/version. See [WGPU derived state](#wgpu-derived-state). |
 | WGPU frame scratch | Odin frame thread's temporary allocator | Ephemeral backend state | Reclaimed at the beginning of every surface or offscreen frame, after the previous frame's extraction, streaming, encoding, profiling, live-debug publication, and deferred cleanup have completed. Page assembly, feedback sorting, dirty-cluster lists, and upload staging may borrow this memory only inside one frame. No retained renderer, resource, ECS, profile, or live-debug state may reference it. |
-| Active-camera render policy | Authored `scrapbot.camera`; consumed by WGPU | Authoritative ECS bounds with derived world-scale, shadow-tier, virtual-geometry error, post-quality, target/execution/history, and exposure state | One controller consumes completed asynchronous scene spans exactly once, retains a fixed 20-sample p95 window plus filtered average, and advances one deterministic reversible quality step. Samples carry one generation; any output/policy change or different stable project-camera UUID clears both evidence sets and rejects delayed results. Missing timestamp support selects authored maxima. The editor fly camera contributes pose/lens but retains the project camera as policy owner. Effective scale and the physical game viewport select retained viewport-local world/depth/post targets; shadow resolution selects an active viewport inside fixed capacity; virtual error bounds the camera and shadow hierarchy frontiers; post quality bounds AO/SSR loops and fog steps. Target-size changes replace only size-dependent targets and reject temporal history. Final composition maps the local scene target into the physical game viewport before native-resolution UI. Stable outputs allocate nothing. Automatic exposure owns one persistent GPU scalar and performs no CPU readback. Disabled TAA or post features omit their history or dispatch work. Retained targets stay allocated across feature toggles. See ADR-052. |
-| Adaptive directional shadows | Unified active-camera frame-budget policy and retained WGPU cascade state | Derived quantized raster size, stabilized projections, and refresh schedule over maximum-capacity layers | The shared ladder may select 2048, 1024, or 512 pixels within the authored adaptive-quality floor. The near layer refreshes every frame; farther layers refresh at bounded 2/4/8-frame cadences and otherwise retain their previous matrix and texture contents. Light activation, world/topology/Transform changes, camera discontinuities, and resolution changes force all layers current. Stable frames keep the same texture, views, and bind groups. Viewport/scissor, cascade stabilization, PCF coordinates, and virtual-shadow hierarchy thresholds consume the active size. |
+| Active-camera render policy | Authored `scrapbot.camera`; consumed by WGPU | Authoritative ECS bounds with derived world-scale, shadow-tier, post-quality, target/execution/history, and exposure state | One controller consumes completed asynchronous scene spans exactly once, retains a fixed 20-sample p95 window plus filtered average, and advances one deterministic reversible quality step. Samples carry one generation; any output/policy change or different stable project-camera UUID clears both evidence sets and rejects delayed results. Missing timestamp support selects authored maxima. The editor fly camera contributes pose/lens but retains the project camera as policy owner. Effective scale and the physical game viewport select retained viewport-local world/depth/post targets; shadow resolution selects an active viewport inside fixed capacity; post quality bounds AO/SSR loops and fog steps. Target-size changes replace only size-dependent targets and reject temporal history. Final composition maps the local scene target into the physical game viewport before native-resolution UI. Stable outputs allocate nothing. Automatic exposure owns one persistent GPU scalar and performs no CPU readback. Disabled TAA or post features omit their history or dispatch work. Retained targets stay allocated across feature toggles. See ADR-052. |
+| Adaptive directional shadows | Unified active-camera frame-budget policy and retained WGPU cascade state | Derived quantized raster size, stabilized projections, and refresh schedule over maximum-capacity layers | The shared ladder may select 2048, 1024, or 512 pixels within the authored adaptive-quality floor. The near layer refreshes every frame; farther layers refresh at bounded 2/4/8-frame cadences and otherwise retain their previous matrix and texture contents. Light activation, world/topology/Transform changes, camera discontinuities, and resolution changes force all layers current. Stable frames keep the same texture, views, and bind groups. Viewport/scissor, cascade stabilization, PCF coordinates consume the active size. |
 | Global volumetric medium | Authored singleton `scrapbot.volumetric_fog`; consumed by WGPU | Authoritative generic ECS payload plus renderer-owned resolution-scaled scattering/transmittance target | Membership/value changes follow ordinary custom-component lifecycle and revisions. Postprocessing visits only the named storage's compact active set and copies the selected payload into the retained temporal uniform. Nonzero density dispatches the ray march; zero density skips it. A `resolution_scale` change explicitly invalidates size-dependent post targets; ordinary stable frames reuse them. |
 | Composable presentation effects | Authored singleton `scrapbot.vignette`, `scrapbot.lens_flare`, and `scrapbot.lens_dirt`; consumed by WGPU | Three independent authoritative generic ECS payloads plus one renderer-owned uniform buffer | Membership/value changes follow ordinary custom-component lifecycle and revisions. Postprocessing visits only each named storage's compact active set and clamps the selected payloads. It uploads the fixed-size uniform only when those effective values, adaptive quality, bloom state, or debug suppression change. Stable frames allocate, rebuild, and upload nothing. Absent/zero effects take early shader branches. |
 | Project/editor/overlay UI vertex buffers | WGPU backend | Derived from UI output streams | Independent monotonic stream revisions; stable streams retain CPU/GPU buffers. Target size, editor viewport, or authored canvas changes invalidate the project stream key. Project commands use the canvas's vector scale plus viewport translation and clipping; pointer input and diagnostics invert the same transform. The overlay contains projected transform handles, camera bodies/frusta, up to 256 fixed-apparent-size camera/light icons with bounded deterministic decluttering, and selected-light influence handles. Editor UI state owns world-tool pointer capture plus captured Transform/light values; active gestures retain the unfiltered window pointer across editor chrome, while writes use ordinary inspector/history ownership. Editor visibility clears overlays. The compositor paints project UI, viewport-clipped editor-world overlays, then editor chrome so docked tabs and panels occlude scene tools. |
-| Embedded UI viewport membership, live targets, and resource thumbnails | `ui.State` / WGPU backend | Derived from authored `scrapbot.ui_viewport`, layout, and resource/World state | Structural UI dirtiness maintains compact viewport-node membership. Interactive surfaces use eight independently sized live targets, quantized from 64–1024 pixels per axis. Static Texture/Model/Material Inspector scenes cache by component, target shape, exact resource version, and relevant registry revisions; World targets consume the retained render list. Passive laid-out resource rows instead request a revision-keyed, least-recently-used 256-layer 64×64 texture-array cache. A miss renders once through an otherwise-idle live target, copies into the fixed 4 MiB cache, and invalidates the retained UI stream; stable hits do no render or upload work. Model previews prefer virtual submission, reusing eligible Geometry's pinned coarse proxy instead of materializing complete conventional data. Missing, evicted, or inadmissible thumbnails retain the atlas icon fallback. |
+| Embedded UI viewport membership, live targets, and resource thumbnails | `ui.State` / WGPU backend | Derived from authored `scrapbot.ui_viewport`, layout, and resource/World state | Structural UI dirtiness maintains compact viewport-node membership. Interactive surfaces use eight independently sized live targets, quantized from 64–1024 pixels per axis. Static Texture/Model/Material Inspector scenes cache by component, target shape, exact resource version, and relevant registry revisions; World targets consume the retained render list. Passive laid-out resource rows instead request a revision-keyed, least-recently-used 256-layer 64×64 texture-array cache. A miss renders once through an otherwise-idle live target, copies into the fixed 4 MiB cache, and invalidates the retained UI stream; stable hits do no render or upload work. Model previews reuse ordinary indexed Geometry caches. Missing, evicted, or inadmissible thumbnails retain the atlas icon fallback. |
 | System profiler snapshot | Root runtime | Derived diagnostic state | Samples every frame, rolls over 50 frames, publishes every five frames. |
-| Performance diagnostics snapshot | Renderer/root runtime | Derived diagnostic state | Wall-clock frame-interval and active-CPU duration samples roll independently over 50 frames. Retained topology, asynchronous camera-visible batch and nonempty-meshlet-draw counts, visibility and retained-slice overflow counters, one full ordered pass-boundary span, one pre-UI scene span, per-pass attribution, and mutation-maintained world counters publish every five frames under one revision. |
+| Performance diagnostics snapshot | Renderer/root runtime | Derived diagnostic state | Wall-clock frame-interval and active-CPU duration samples roll independently over 50 frames. Retained topology, asynchronous camera-visible batch counts and object visibility counters, one full ordered pass-boundary span, one pre-UI scene span, per-pass attribution, and mutation-maintained world counters publish every five frames under one revision. |
 | Engine failure reports | CLI process plus platform unwinder; instrumented call stack in development builds | Process-fatal invariants and unexpected renderer task failures | CLI startup installs one assertion/panic handler and optimized/development builds retain debug symbols. Fatal reports and renderer task failures that violate an engine resource invariant print the exact detection site and a best-effort bounded native stack; fatal invariants then trap, while task failures still unwind through their ordinary error result. `scrapbot-dev` additionally instruments Odin procedure entry/exit so both paths print a reliable source-level call chain. Expected project, asset, argument, and unsupported-capability failures remain ordinary structured diagnostics without crash noise. |
 | Bounded render profile | CLI-owned `Profile_Collector`, populated by renderer/WGPU | Ephemeral diagnostic artifact | Explicit `scrapbot profile` lifetime only. Preallocated measured rows receive active CPU, frame-local counter, and structured pass-workload data directly and delayed full-frame, scene, and per-pass GPU timing by originating frame index. Profile-only feature overrides resolve a temporary camera/fog policy after ECS extraction without mutating authored data. Finalization derives summaries; destruction releases rows and adapter metadata. Ordinary runs have no collector and perform no profile work. |
 | Live debug snapshot, capture job, and artifact plan | Root-owned `live_debug.Service`; renderer-owned provider resources | Immutable derived diagnostics plus one bounded pending command | Windowed editor lifetime or explicit `--live-debug` opt-in. The engine thread replaces one owned snapshot and consumes at most one 1–16-frame capture. WGPU allocates, encodes, maps, and releases requested color/depth readbacks inside that frame and dispatches visibility diagnostics into a dedicated fixed 4 MiB non-render buffer; null supports telemetry only. A loopback HTTP worker only authenticates, encodes, serves completed files, and updates mutex-protected request state; it never reads ECS, registry, renderer, or GPU owners directly. Stable frames perform one bounded snapshot copy only while enabled and no artifact work. Shutdown removes discovery and releases captured strings. See ADR-053. |
@@ -67,6 +67,14 @@ Procedural solar elevation derives day/night presentation and fill in shaders. A
 
 ## WGPU derived state
 
+World, depth, shadow, and selection passes use indexed draws. CPU and compute
+culling share retained indirect templates, including the visible-instance origin
+for each bound batch slice. Membership changes within a retained slice do not
+rebuild layout. The object culler owns ordinary LOD selection; it has no virtual
+refinement, prefetch, or compact-cluster entry points. Each GPU batch stores only its
+visible-instance offset and capacity (8 bytes). Render and culling uniforms occupy
+640 and 672 bytes respectively; neither contains geometry-streaming policy.
+
 ### Instances and draws
 
 Transform-only slots pack one dense 64-byte update with a destination slot. One upload feeds a dirty-only compute pass that expands matrices and bounds before culling.
@@ -75,66 +83,14 @@ If lifecycle churn exposes a mismatch between authoritative render-list membersh
 
 Static instance fields remain separately retained. Batch topology, geometry capacity, and exact structural changes drive their updates.
 
-Adapters with indirect-first-instance additionally retain meshlet metadata, expanded index ranges,
-camera/shadow visibility slices, a parallel debug-identity stream, and indirect templates.
-Classic per-batch slices retain 256-byte dynamic-storage alignment. Meshlet and hierarchy-cluster
-slices share one storage binding and allocate exact `cluster count × max(instance count, 1)`
-cardinality, without multiplying every cluster by the classic alignment.
-Any membership-count change in a meshlet batch invalidates this layout even when its classic
-aligned visibility capacity still fits, because every cluster slice embeds the exact instance
-cardinality.
-Native multi-draw adapters address those templates directly. Other capable adapters retain a
-bounded stream of compact `{instance slot, meshlet index}` records plus four triangle-count lanes
-per compatible material span. Their vertex shaders pull indices and packed attributes from the
-shared geometry arenas. Conventional meshlets use the same compact representation for camera and
-shadow work. Fully resident virtual resources may retain indexed object-LOD shadows, while
-streamed resources use page-local compact shadows. Geometry versions define command topology.
-Batch membership capacity defines visibility allocation.
+Each retained batch owns aligned camera/shadow visibility slices and ordinary
+indexed indirect commands. Topology changes rebuild the necessary batch layout.
+Stable frames do not scan resources, rebuild mesh metadata, or upload unchanged
+geometry.
 
-Only batches resolved to virtual submission use the cluster hierarchy. Automatic policy requires a
-capable adapter, eligible hierarchy-bearing Geometry, and the stable source-triangle crossover;
-forced virtual requests still fall back safely when those hard capabilities are absent.
-Conventional batches select whole-primitive submission for single instances and ordinary meshlets
-for reused batches. Those meshlets use native multi-draw or portable compaction according to
-adapter capability. Policy changes invalidate only the retained batch layout, while camera motion
-never changes the resolved path. Meshlet-oriented debug views may change visualization without
-rewriting policy topology.
-
-WGPU queries the device's storage-buffer binding limit during initialization. Retained cluster
-metadata grows geometrically until another power of two would cross that limit, then uses the
-largest legal record capacity. A live topology that fits therefore remains eligible even when its
-geometric spare capacity would not; a topology whose live records do not fit retains the existing
-whole-primitive fallback.
-
-The compute culler projects monotonic hierarchy-group errors into pixels. It selects one complete
-camera frontier outside a narrow 98%-to-102% overlap around the active error target and adjacent
-levels inside it. Both complete opaque levels depth-test normally within the overlap. Native indexed
-submission starts at one pixel; portable compact virtual submission starts at its measured two-pixel
-floor because padded vertex pulling changes the cost/quality crossover. The coordinated frame-budget
-controller may raise the effective target through bounded power-of-two tiers after render scale
-reaches its floor. Shadow selection uses the same hierarchy with cascade-scaled thresholds,
-preserving near detail while bounding distant-cascade work.
-
-Stable frames copy separate active camera and shadow templates, run object-first compute culling,
-and submit matching command ranges. Portable compact submission first appends bounded batch-local
-instance candidates. Parallel camera and shadow dispatches then assign one ordinary meshlet or
-hierarchy cluster to each invocation instead of making one instance invocation loop the complete
-resource. Separate candidate, camera, and shadow bind groups reuse the baseline eight-storage-
-buffer layout.
-
-Mixed frames encode classic, native-cluster, and portable compact work in the same visibility pass.
-Stable frames do not rescan resources, rebuild cluster metadata, upload debug identities, or
-regenerate compact records on the CPU. Adapters without indirect-first-instance and layouts above
-the bounded visibility capacity use the retained whole-primitive database. Streamed virtual
-Geometry has no complete canonical allocation, so its classic command references the immutable
-indexed proxy assembled from pinned coarse pages. Capacity pressure therefore lowers detail
-without producing an empty world or depth draw.
-
-The retained batch count follows topology invalidation. Camera-visible batches, nonempty meshlet
-draws, selected virtual clusters, and hierarchy-threshold rejections are frame-valued GPU counters.
-The first surviving object atomically sets its selected batch's bit. The first surviving instance
-for a cluster command advances that indirect count from zero. CPU-reference culling derives visible
-batches from existing per-batch counts and reports no virtual-cluster selection.
+Camera-visible batches and object visibility counts are frame-valued GPU results.
+The first surviving object marks its selected batch. CPU-reference culling uses
+the same ordinary LOD resources and derives batch counts on the CPU.
 
 ### Resource caches
 
@@ -145,11 +101,7 @@ index arena own the backing buffers, aligned first-fit free lists, high-water ma
 mutation counters. Exact version hits do no allocator or upload work. Replacement commits new
 ranges only after all uploads succeed; stale handles are reclaimed when the registry's geometry
 topology revision changes. Growth is geometric and copies retained bytes before replacing the
-backing buffer. Vertex-pulling bind groups advertise no more than the device's maximum storage
-binding range even when the shared vertex/index buffers have grown beyond it. Compact virtual-page
-allocations are hard-bounded to that advertised prefix; a failed fit defers refinement instead of
-publishing shader-inaccessible arena offsets. Stable frames never scan, compact, hash, or upload
-the arenas.
+backing buffer. Stable frames never scan, compact, hash, or upload the arenas.
 
 Imported mesh-distance samples remain in their independently addressable Model-product range. A
 GPU consumer lazily invokes the canonical range loader, packs two signed 16-bit samples per storage
@@ -162,59 +114,14 @@ remain allocator-owned and unavailable for reuse until a mapped post-geometry vi
 proves their last arena read complete. Completion-driven reclamation is change-driven; stable
 frames with no retired ranges perform no retirement work.
 
-Hierarchy metadata and each Geometry's file-or-memory page source are resource-owned. WGPU owns
-canonical fast-path or page-local vertex/index arena ranges, residency, visible-use age, pending
-immutable product-range reads, and the configured combined payload budget. Outstanding reads have
-fixed job and byte ceilings. Completed-but-unadmitted payloads have a separate bounded staging
-budget and age out when demand no longer owns them. A bounded, error-prioritized bootstrap tail is
-loaded before ordinary streaming begins. Only its mandatory terminal groups remain pinned;
-additional startup refinements may be reclaimed by the global residency policy. WGPU bounds those
-optional refinements across all caches to three quarters of the configured page budget and owns the
-remaining first-camera working set.
+Geometry owns complete CPU vertex/index arrays, including ordinary LOD meshes.
+CPU queries borrow these arrays. GPU cache misses upload them directly; unchanged
+versions do not allocate, reconstruct, or read mesh data.
 
-Imported Geometry query positions and exact leaf topology remain resource-owned. Picking borrows
-them without allocation. A WGPU cache miss may request an owned canonical view reconstructed from
-leaf-containing product pages; the cache upload consumes and releases it in the same call. Stable
-cache hits neither reconstruct nor read CPU geometry. Memory-backed procedural/runtime Geometry
-instead lends its resident canonical arrays.
-
-GPU demand requests, future-camera prefetch requests, and cadence-sampled visible-use touches arrive
-through separate bounded lanes in the asynchronous visibility ring. WGPU owns smoothed camera-motion
-history; cuts, world changes, missing history, and stable cameras disable prediction. Feedback schedules
-file-backed refinement on one renderer-owned I/O worker; handle/generation/version-tagged
-completions are discarded when stale. Demand-first, group-atomic admission uses one ordered eviction
-plan per feedback batch, protects stronger recent demand, and never lets speculative prefetch evict
-demand residency.
-
-Geometry cache groups distinguish memory residency from drawable activation.
-Newly complete groups pass a bounded demand-aware settling window and require every direct parent
-to remain resident, active, and transition-complete before entering a 16-frame admission handoff.
-The GPU combines that temporal progress with its steady projected-error overlap and depth-tests complete child/parent surfaces in
-world and depth passes. Native and portable compact shadows select their resident hierarchy
-frontier directly. Streamed portable resources retain an indexed proxy of the complete terminal
-frontier for capability or capacity fallback.
-
-The internal HDR alpha channel carries a
-transition reactive marker, and temporal history encodes that marker alongside the existing
-bloom-enable bit. The temporal resolver owns its depth-tolerance adjustment. Completion is the
-point at which the child becomes the logical refinement. Active refinements retain their direct
-coarse parents until release.
-
-Feedback consumption shares fixed byte and group admission budgets across every readback completed in
-one frame. Resident touches always update recency. Once the group budget is exhausted, nonresident
-requests are counted as deferred without rebuilding missing-page or staging arrays that cannot be
-used. Frame scratch is reclaimed before the next frame, so repeated pressure remains bounded in both
-CPU work and memory.
-
-Residency owns which complete groups fit in the payload budget, not geometric quality. Pressure may
-defer refinement or evict lower-priority detail, but it cannot raise the camera error target. The
-coordinated render-quality controller owns render scale; the resulting physical viewport height is
-an explicit input to projected-error selection.
-
-WGPU owns a compact active-transition queue. It advances only those groups and patches their
-persistent group-to-cluster and refinement-to-parent dependents at transition boundaries. Stable
-frames do no page scan, file read, geometry upload, complete transition scan, or residency-table
-rebuild.
+The renderer no longer owns streaming jobs, page admission/eviction, camera
+prediction, or active refinement transitions. Visibility readbacks contain the
+frame summary without page-feedback payloads. Remaining legacy structures are
+inactive migration residue; see [ADR-062](../adr/ADR-062-return-to-conventional-indexed-geometry.md).
 
 Batch bind groups are released before cache storage is cleared. Exact lighting/background handle or content-version changes rebuild only the shared environment binding. The sky camera/projection uniform uploads only after an exact value change.
 
@@ -230,7 +137,7 @@ The layers retain 2048² capacity. A quantized active viewport bounds raster wor
 
 Frustum and LOD work uses the unjittered camera. TAA's eight projection samples remain within a quarter pixel. Retained history lives on the stable output grid, so reprojection uses unjittered current/previous camera matrices and removes the current sample offset before sampling history. A matching depth is selected from the local 2×2 history footprint, while YCoCg variance clipping limits stale color.
 
-Retained Hi-Z depth tracks the exact camera projection that produced it and expands projected bounds by one pixel to remain conservative across TAA samples. Its power-of-two allocation pads non-power-of-two render targets with far depth, preserving complete edge coverage through every native mip reduction. An unchanged camera may use that pyramid directly. Camera motion or other retained-history invalidation instead selects a complete coarse virtual frontier, renders current-camera occluder depth, builds the pyramid, and refines detailed visibility in the same command buffer. The renderer then clears coarse depth and writes final detailed depth, so the proxy frontier is never observable color or retained scene depth.
+Retained Hi-Z depth tracks the exact camera projection that produced it and expands projected bounds by one pixel to remain conservative across TAA samples. Its power-of-two allocation pads non-power-of-two targets with far depth. Previous depth is ineligible after camera or instance changes; ordinary object culling then uses conservative visibility.
 
 ### Postprocessing
 
@@ -240,11 +147,16 @@ The extracted camera's debug view, Hi-Z mip, and occlusion-evidence freeze flag 
 
 Non-lit output updates compact render/cull uniforms, skips temporal and presentation effects, and reuses existing targets. Hi-Z inspection reads the current retained pyramid after construction and adds no copy, readback, or pyramid rebuild.
 
-Meshlet identity storage follows topology/capacity invalidation rather than frames. Its visible-instance allocation reserves an aligned diagnostic tail.
+Object diagnostics use a separate bounded record buffer. An explicit diagnostic dispatch writes
+projected query rectangles, compared depths, LOD, bounds, and visibility decisions. Occlusion
+Queries draws this evidence as screen-space rectangles; live-debug captures read it asynchronously.
 
-Meshlet Visibility writes rejected bounds there during the frame-valued cull. Occlusion Queries instead writes every performed query's projected rectangle, mip, compared depths, identity, and decision. Both copy the counter into an indirect line draw and publish it asynchronously.
+While query freeze is active, the renderer preserves the latest valid occlusion evidence. Current
+visibility and Hi-Z remain frame-valued; freeze never authorizes stale depth for culling.
 
-While query freeze is active, the renderer leaves the latest valid tail and indirect count untouched. Current visibility, depth, and Hi-Z ownership remain frame-valued; freeze does not authorize stale depth reuse for culling. Leaving the view clears the diagnostic-valid flag and retained published count.
+Transparent custom surfaces own one visible-instance bind group, rebuilt with batch layout.
+It references retained instance, lighting, and uniform buffers independently of geometry arenas.
+World, depth, shadow, and selection draws use each indexed batch's bind groups.
 
 ### Project spectral surfaces
 
@@ -299,10 +211,6 @@ caustic water column, and crossing rejection from the queried height. Candidate 
 the result. Receiver caustics still
 use current depth, surface normals, directional-light state, and shadow maps inside the existing
 temporal pass, so the height query adds no image target.
-
-Virtual Geometry caches additionally own any terminal-frontier shadow-proxy index range. The proxy aliases
-the already-pinned page-vertex allocation, is rebuilt only with that Geometry version, and is
-released with the cache. It does not create another vertex authority or stable-frame upload.
 
 The active camera's effective render scale sizes the world, depth, Hi-Z, surface, temporal, AO, reflection, fog, bloom, and exposure inputs. At scale `1`, WGPU borrows the native output depth target. Lower scales lazily own one matching depth target. Final composition stretches the complete scaled grid into the native output target, preserving editor-viewport coordinates. Project UI, editor-world overlays clipped to the Game viewport, and editor chrome are then painted at native resolution in that order.
 

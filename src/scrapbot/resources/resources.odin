@@ -1,6 +1,5 @@
 package resources
 
-import geometry "../geometry"
 import project "../project"
 import shared "../shared"
 import c "core:c"
@@ -48,30 +47,6 @@ Geometry_Desc :: struct {
 	indices: []u32,
 }
 
-Geometry_Catalog_Desc :: struct {
-	query_positions: []Vec3,
-	canonical_index_count: u32,
-	geometry_mode: shared.Geometry_Mode,
-	hierarchy: ^Geometry_Hierarchy,
-	page_source: ^Geometry_Page_Source_Desc,
-	distance_field: ^Geometry_Distance_Field_Desc,
-}
-
-Geometry_Query_Proxy :: struct {
-	positions: []Vec3,
-}
-
-Geometry_Page_Source_Kind :: enum {
-	Memory,
-	File,
-}
-
-Geometry_Page_Source_Desc :: struct {
-	kind: Geometry_Page_Source_Kind,
-	path: string,
-	records: []geometry.Page_Payload_Record,
-	bytes: []u8,
-}
 
 Geometry_Distance_Field_Desc :: struct {
 	dimensions: [3]u32,
@@ -154,26 +129,10 @@ Geometry :: struct {
 	name: string,
 	source: string,
 	authored: bool,
-	geometry_mode: shared.Geometry_Mode,
 	vertices: []Vertex,
 	indices: []u32,
-	query_proxy: Geometry_Query_Proxy,
-	canonical_vertex_count: u32,
-	canonical_index_count: u32,
-	meshlets: []Meshlet,
-	meshlet_vertices: []u32,
-	meshlet_triangles: []u8,
-	cluster_groups: []Geometry_Cluster_Group,
-	clusters: []Geometry_Cluster,
-	cluster_pages: []Geometry_Cluster_Page,
-	cluster_vertices: []u32,
-	cluster_triangles: []u8,
-	page_source_kind: Geometry_Page_Source_Kind,
-	page_source_path: string,
-	page_payload_records: []geometry.Page_Payload_Record,
-	page_payload_bytes: []u8,
+	distance_field_source_path: string,
 	distance_field: Geometry_Distance_Field_Desc,
-	cluster_max_depth: u32,
 	bounds: Bounds,
 	lod_handles: [shared.MAX_GEOMETRY_LODS - 1]Geometry_Handle,
 	lod_screen_radii: [shared.MAX_GEOMETRY_LODS - 1]f32,
@@ -401,18 +360,7 @@ destroy_registry :: proc(registry: ^Registry) {
 		delete(geometry.source, allocator)
 		delete(geometry.vertices, allocator)
 		delete(geometry.indices, allocator)
-		delete(geometry.query_proxy.positions, allocator)
-		delete(geometry.meshlets, allocator)
-		delete(geometry.meshlet_vertices, allocator)
-		delete(geometry.meshlet_triangles, allocator)
-		delete(geometry.cluster_groups, allocator)
-		delete(geometry.clusters, allocator)
-		delete(geometry.cluster_pages, allocator)
-		delete(geometry.cluster_vertices, allocator)
-		delete(geometry.cluster_triangles, allocator)
-		delete(geometry.page_source_path, allocator)
-		delete(geometry.page_payload_records, allocator)
-		delete(geometry.page_payload_bytes, allocator)
+		delete(geometry.distance_field_source_path, allocator)
 	}
 	for &material in registry.materials {
 		delete(material.name, allocator)
@@ -519,18 +467,10 @@ clone_registry :: proc(source: ^Registry, destination: ^Registry) -> string {
 		cloned.source = source_path
 		cloned.vertices = clone_slice(geometry.vertices, allocator)
 		cloned.indices = clone_slice(geometry.indices, allocator)
-		cloned.query_proxy.positions = clone_slice(geometry.query_proxy.positions, allocator)
-		cloned.meshlets = clone_slice(geometry.meshlets, allocator)
-		cloned.meshlet_vertices = clone_slice(geometry.meshlet_vertices, allocator)
-		cloned.meshlet_triangles = clone_slice(geometry.meshlet_triangles, allocator)
-		cloned.cluster_groups = clone_slice(geometry.cluster_groups, allocator)
-		cloned.clusters = clone_slice(geometry.clusters, allocator)
-		cloned.cluster_pages = clone_slice(geometry.cluster_pages, allocator)
-		cloned.cluster_vertices = clone_slice(geometry.cluster_vertices, allocator)
-		cloned.cluster_triangles = clone_slice(geometry.cluster_triangles, allocator)
-		cloned.page_source_path, _ = strings.clone(geometry.page_source_path, allocator)
-		cloned.page_payload_records = clone_slice(geometry.page_payload_records, allocator)
-		cloned.page_payload_bytes = clone_slice(geometry.page_payload_bytes, allocator)
+		cloned.distance_field_source_path, _ = strings.clone(
+			geometry.distance_field_source_path,
+			allocator,
+		)
 		append(&destination.geometries, cloned)
 	}
 	for material in source.materials {
@@ -813,142 +753,38 @@ register_geometry :: proc(
 	Geometry_Handle,
 	string,
 ) {
-	return register_geometry_with_hierarchy(registry, name, desc, nil)
-}
-
-register_geometry_with_hierarchy :: proc(
-	registry: ^Registry,
-	name: string,
-	desc: Geometry_Desc,
-	prebuilt_hierarchy: ^Geometry_Hierarchy,
-	page_source: ^Geometry_Page_Source_Desc = nil,
-	geometry_mode: shared.Geometry_Mode = .Inherit,
-) -> (
-	Geometry_Handle,
-	string,
-) {
 	if registry == nil { return {}, "geometry registry is not available" }
 	ensure_allocator(registry)
 	if err := validate_geometry(desc); err != "" { return {}, err }
-	meshlet_data, meshlet_err := build_meshlets(desc, registry.allocator)
-	if meshlet_err != "" {
-		return {}, meshlet_err
-	}
-	hierarchy: Geometry_Hierarchy
-	if prebuilt_hierarchy == nil {
-		hierarchy_err: string
-		hierarchy, hierarchy_err = build_geometry_hierarchy(desc, registry.allocator)
-		if hierarchy_err != "" {
-			destroy_meshlet_data(&meshlet_data, registry.allocator)
-			return {}, hierarchy_err
-		}
-	} else {
-		if hierarchy_err := geometry.validate_hierarchy(prebuilt_hierarchy, len(desc.vertices));
-		   hierarchy_err != "" {
-			destroy_meshlet_data(&meshlet_data, registry.allocator)
-			return {}, hierarchy_err
-		}
-		hierarchy = geometry.clone_hierarchy(prebuilt_hierarchy^, registry.allocator)
-	}
-	prepared_page_source, page_source_err := prepare_geometry_page_source(
-		desc,
-		&hierarchy,
-		page_source,
-		registry.allocator,
-	)
-	if page_source_err != "" {
-		destroy_meshlet_data(&meshlet_data, registry.allocator)
-		destroy_geometry_hierarchy(&hierarchy, registry.allocator)
-		return {}, page_source_err
-	}
-	retain_canonical := prepared_page_source.kind != .File
-	query_proxy := prepare_geometry_query_proxy(desc, retain_canonical, registry.allocator)
 	if index, found := geometry_index_by_name_any(registry, name); found {
-		geometry := &registry.geometries[index]
-		if geometry.authored {
-			destroy_meshlet_data(&meshlet_data, registry.allocator)
-			destroy_geometry_hierarchy(&hierarchy, registry.allocator)
-			destroy_prepared_geometry_page_source(&prepared_page_source, registry.allocator)
-			delete(query_proxy.positions, registry.allocator)
-			return {}, fmt.tprintf("geometry name '%s' belongs to a project resource and cannot be replaced at runtime", name)
+		registered := &registry.geometries[index]
+		if registered.authored {
+			return {}, "project geometry cannot be replaced at runtime"
 		}
-		had_lods := geometry.lod_count > 0
-		delete(geometry.vertices, registry.allocator)
-		delete(geometry.indices, registry.allocator)
-		delete(geometry.query_proxy.positions, registry.allocator)
-		delete(geometry.meshlets, registry.allocator)
-		delete(geometry.meshlet_vertices, registry.allocator)
-		delete(geometry.meshlet_triangles, registry.allocator)
-		delete(geometry.cluster_groups, registry.allocator)
-		delete(geometry.clusters, registry.allocator)
-		delete(geometry.cluster_pages, registry.allocator)
-		delete(geometry.cluster_vertices, registry.allocator)
-		delete(geometry.cluster_triangles, registry.allocator)
-		destroy_geometry_page_source(geometry, registry.allocator)
-		geometry.vertices = nil
-		geometry.indices = nil
-		if retain_canonical {
-			geometry.vertices = clone_slice(desc.vertices, registry.allocator)
-			geometry.indices = clone_slice(desc.indices, registry.allocator)
-		}
-		geometry.query_proxy = query_proxy
-		geometry.canonical_vertex_count = u32(len(desc.vertices))
-		geometry.canonical_index_count = u32(len(desc.indices))
-		geometry.meshlets = meshlet_data.meshlets
-		geometry.meshlet_vertices = meshlet_data.vertices
-		geometry.meshlet_triangles = meshlet_data.triangles
-		geometry.cluster_groups = hierarchy.groups
-		geometry.clusters = hierarchy.clusters
-		geometry.cluster_pages = hierarchy.pages
-		geometry.cluster_vertices = hierarchy.vertices
-		geometry.cluster_triangles = hierarchy.triangles
-		install_geometry_page_source(geometry, &prepared_page_source)
-		geometry.cluster_max_depth = hierarchy.max_depth
-		geometry.geometry_mode = geometry_mode
-		geometry.distance_field = {}
-		geometry.bounds = calculate_bounds(desc.vertices)
-		geometry.lod_handles = {}
-		geometry.lod_screen_radii = {}
-		geometry.lod_simplification_errors = {}
-		geometry.lod_count = 0
-		geometry.alive = true
-		geometry.version += 1
-		if had_lods {
-			registry.geometry_topology_revision += 1
-		}
-		return {u32(index), geometry.generation}, ""
+		delete(registered.vertices, registry.allocator)
+		delete(registered.indices, registry.allocator)
+		destroy_geometry_distance_field_source(registered, registry.allocator)
+		registered.distance_field = {}
+		registered.vertices = clone_slice(desc.vertices, registry.allocator)
+		registered.indices = clone_slice(desc.indices, registry.allocator)
+		registered.bounds = calculate_bounds(desc.vertices)
+		registered.lod_handles = {}
+		registered.lod_screen_radii = {}
+		registered.lod_simplification_errors = {}
+		if registered.lod_count > 0 { registry.geometry_topology_revision += 1 }
+		registered.lod_count = 0
+		registered.alive = true
+		registered.version += 1
+		return {u32(index), registered.generation}, ""
 	}
-	cloned_name, clone_err := strings.clone(name, registry.allocator)
-	if clone_err != nil {
-		destroy_meshlet_data(&meshlet_data, registry.allocator)
-		destroy_geometry_hierarchy(&hierarchy, registry.allocator)
-		destroy_prepared_geometry_page_source(&prepared_page_source, registry.allocator)
-		delete(query_proxy.positions, registry.allocator)
-		return {}, "failed to allocate geometry name"
-	}
+	owned_name, err := strings.clone(name, registry.allocator)
+	if err != nil { return {}, "failed to allocate geometry name" }
 	append(
 		&registry.geometries,
 		Geometry {
-			name = cloned_name,
-			geometry_mode = geometry_mode,
-			vertices = clone_slice(desc.vertices, registry.allocator) if retain_canonical else nil,
-			indices = clone_slice(desc.indices, registry.allocator) if retain_canonical else nil,
-			query_proxy = query_proxy,
-			canonical_vertex_count = u32(len(desc.vertices)),
-			canonical_index_count = u32(len(desc.indices)),
-			meshlets = meshlet_data.meshlets,
-			meshlet_vertices = meshlet_data.vertices,
-			meshlet_triangles = meshlet_data.triangles,
-			cluster_groups = hierarchy.groups,
-			clusters = hierarchy.clusters,
-			cluster_pages = hierarchy.pages,
-			cluster_vertices = hierarchy.vertices,
-			cluster_triangles = hierarchy.triangles,
-			page_source_kind = prepared_page_source.kind,
-			page_source_path = prepared_page_source.path,
-			page_payload_records = prepared_page_source.records,
-			page_payload_bytes = prepared_page_source.bytes,
-			cluster_max_depth = hierarchy.max_depth,
+			name = owned_name,
+			vertices = clone_slice(desc.vertices, registry.allocator),
+			indices = clone_slice(desc.indices, registry.allocator),
 			bounds = calculate_bounds(desc.vertices),
 			generation = 1,
 			version = 1,
@@ -959,154 +795,6 @@ register_geometry_with_hierarchy :: proc(
 	return {u32(len(registry.geometries) - 1), 1}, ""
 }
 
-register_geometry_catalog :: proc(
-	registry: ^Registry,
-	name: string,
-	desc: Geometry_Catalog_Desc,
-) -> (
-	Geometry_Handle,
-	string,
-) {
-	if registry == nil {
-		return {}, "geometry registry is not available"
-	}
-	ensure_allocator(registry)
-	if len(desc.query_positions) == 0 {
-		return {}, "geometry catalog must contain query positions"
-	}
-	if desc.canonical_index_count == 0 || desc.canonical_index_count % 3 != 0 {
-		return {}, "geometry catalog indices must contain triangle lists"
-	}
-	for position in desc.query_positions {
-		if !finite3(position) {
-			return {}, "geometry catalog query positions must be finite"
-		}
-	}
-	if desc.hierarchy == nil || desc.page_source == nil || desc.page_source.kind != .File {
-		return {}, "geometry catalog requires a file-backed cluster hierarchy"
-	}
-	if desc.distance_field != nil {
-		if distance_field_err := validate_geometry_distance_field_desc(desc.distance_field^);
-		   distance_field_err != "" {
-			return {}, distance_field_err
-		}
-	}
-	if hierarchy_err := geometry.validate_hierarchy(desc.hierarchy, len(desc.query_positions));
-	   hierarchy_err != "" {
-		return {}, hierarchy_err
-	}
-	hierarchy := geometry.clone_hierarchy(desc.hierarchy^, registry.allocator)
-	meshlet_data, meshlet_err := build_leaf_meshlets(&hierarchy, registry.allocator)
-	if meshlet_err != "" {
-		destroy_geometry_hierarchy(&hierarchy, registry.allocator)
-		return {}, meshlet_err
-	}
-	prepared_page_source, page_source_err := prepare_geometry_page_source(
-		{},
-		&hierarchy,
-		desc.page_source,
-		registry.allocator,
-	)
-	if page_source_err != "" {
-		destroy_meshlet_data(&meshlet_data, registry.allocator)
-		destroy_geometry_hierarchy(&hierarchy, registry.allocator)
-		return {}, page_source_err
-	}
-	query_proxy := Geometry_Query_Proxy {
-		positions = clone_slice(desc.query_positions, registry.allocator),
-	}
-	bounds := calculate_position_bounds(desc.query_positions)
-	if index, found := geometry_index_by_name_any(registry, name); found {
-		registered := &registry.geometries[index]
-		if registered.authored {
-			destroy_meshlet_data(&meshlet_data, registry.allocator)
-			destroy_geometry_hierarchy(&hierarchy, registry.allocator)
-			destroy_prepared_geometry_page_source(&prepared_page_source, registry.allocator)
-			delete(query_proxy.positions, registry.allocator)
-			return {}, fmt.tprintf("geometry name '%s' belongs to a project resource and cannot be replaced at runtime", name)
-		}
-		had_lods := registered.lod_count > 0
-		delete(registered.vertices, registry.allocator)
-		delete(registered.indices, registry.allocator)
-		delete(registered.query_proxy.positions, registry.allocator)
-		delete(registered.meshlets, registry.allocator)
-		delete(registered.meshlet_vertices, registry.allocator)
-		delete(registered.meshlet_triangles, registry.allocator)
-		delete(registered.cluster_groups, registry.allocator)
-		delete(registered.clusters, registry.allocator)
-		delete(registered.cluster_pages, registry.allocator)
-		delete(registered.cluster_vertices, registry.allocator)
-		delete(registered.cluster_triangles, registry.allocator)
-		destroy_geometry_page_source(registered, registry.allocator)
-		registered.vertices = nil
-		registered.indices = nil
-		registered.query_proxy = query_proxy
-		registered.canonical_vertex_count = u32(len(desc.query_positions))
-		registered.canonical_index_count = desc.canonical_index_count
-		registered.meshlets = meshlet_data.meshlets
-		registered.meshlet_vertices = meshlet_data.vertices
-		registered.meshlet_triangles = meshlet_data.triangles
-		registered.cluster_groups = hierarchy.groups
-		registered.clusters = hierarchy.clusters
-		registered.cluster_pages = hierarchy.pages
-		registered.cluster_vertices = hierarchy.vertices
-		registered.cluster_triangles = hierarchy.triangles
-		install_geometry_page_source(registered, &prepared_page_source)
-		registered.cluster_max_depth = hierarchy.max_depth
-		registered.geometry_mode = desc.geometry_mode
-		registered.distance_field =
-			desc.distance_field^ if desc.distance_field != nil else Geometry_Distance_Field_Desc{}
-		registered.bounds = bounds
-		registered.lod_handles = {}
-		registered.lod_screen_radii = {}
-		registered.lod_simplification_errors = {}
-		registered.lod_count = 0
-		registered.alive = true
-		registered.version += 1
-		if had_lods {
-			registry.geometry_topology_revision += 1
-		}
-		return {u32(index), registered.generation}, ""
-	}
-	cloned_name, clone_err := strings.clone(name, registry.allocator)
-	if clone_err != nil {
-		destroy_meshlet_data(&meshlet_data, registry.allocator)
-		destroy_geometry_hierarchy(&hierarchy, registry.allocator)
-		destroy_prepared_geometry_page_source(&prepared_page_source, registry.allocator)
-		delete(query_proxy.positions, registry.allocator)
-		return {}, "failed to allocate geometry name"
-	}
-	append(
-		&registry.geometries,
-		Geometry {
-			name = cloned_name,
-			geometry_mode = desc.geometry_mode,
-			query_proxy = query_proxy,
-			canonical_vertex_count = u32(len(desc.query_positions)),
-			canonical_index_count = desc.canonical_index_count,
-			meshlets = meshlet_data.meshlets,
-			meshlet_vertices = meshlet_data.vertices,
-			meshlet_triangles = meshlet_data.triangles,
-			cluster_groups = hierarchy.groups,
-			clusters = hierarchy.clusters,
-			cluster_pages = hierarchy.pages,
-			cluster_vertices = hierarchy.vertices,
-			cluster_triangles = hierarchy.triangles,
-			page_source_kind = prepared_page_source.kind,
-			page_source_path = prepared_page_source.path,
-			page_payload_records = prepared_page_source.records,
-			page_payload_bytes = prepared_page_source.bytes,
-			distance_field = desc.distance_field^ if desc.distance_field != nil else Geometry_Distance_Field_Desc{},
-			cluster_max_depth = hierarchy.max_depth,
-			bounds = bounds,
-			generation = 1,
-			version = 1,
-			alive = true,
-		},
-	)
-	registry.geometry_topology_revision += 1
-	return {u32(len(registry.geometries) - 1), 1}, ""
-}
 
 validate_geometry_distance_field_desc :: proc(desc: Geometry_Distance_Field_Desc) -> string {
 	sample_count := u64(desc.dimensions[0]) * u64(desc.dimensions[1]) * u64(desc.dimensions[2])
@@ -1132,105 +820,15 @@ validate_geometry_distance_field_desc :: proc(desc: Geometry_Distance_Field_Desc
 	return ""
 }
 
-prepare_geometry_query_proxy :: proc(
-	desc: Geometry_Desc,
-	canonical_resident: bool,
-	allocator: mem.Allocator,
-) -> Geometry_Query_Proxy {
-	if canonical_resident {
-		return {}
-	}
-	result := Geometry_Query_Proxy {
-		positions = make([]Vec3, len(desc.vertices), allocator),
-	}
-	for vertex, index in desc.vertices {
-		result.positions[index] = vertex.position
-	}
-	return result
-}
 
-prepare_geometry_page_source :: proc(
-	desc: Geometry_Desc,
-	hierarchy: ^Geometry_Hierarchy,
-	source: ^Geometry_Page_Source_Desc,
-	allocator: mem.Allocator,
-) -> (
-	Geometry_Page_Source_Desc,
-	string,
-) {
-	if source == nil {
-		payloads, payload_err := geometry.build_page_payloads(
-			hierarchy,
-			raw_data(desc.vertices),
-			len(desc.vertices),
-			size_of(Vertex),
-			allocator,
-		)
-		if payload_err != "" {
-			return {}, payload_err
-		}
-		return {kind = .Memory, records = payloads.records, bytes = payloads.bytes[:]}, ""
-	}
-	if len(source.records) != len(hierarchy.pages) {
-		return {}, "geometry page source does not match cluster pages"
-	}
-	for record, page_index in source.records {
-		expected_size :=
-			u64(record.vertex_count) * u64(size_of(Vertex)) +
-			u64(record.index_count) * u64(size_of(u32))
-		if record.vertex_count == 0 ||
-		   record.index_count != hierarchy.pages[page_index].index_count ||
-		   record.size != expected_size {
-			return {}, "geometry page source record is invalid"
-		}
-		if source.kind == .Memory && record.offset + record.size > u64(len(source.bytes)) {
-			return {}, "geometry memory page source is truncated"
-		}
-	}
-	if source.kind == .File && source.path == "" {
-		return {}, "geometry file page source path is empty"
-	}
-	result := Geometry_Page_Source_Desc {
-		kind = source.kind,
-	}
-	result.path, _ = strings.clone(source.path, allocator)
-	result.records = clone_slice(source.records, allocator)
-	result.bytes = clone_slice(source.bytes, allocator)
-	return result, ""
-}
-
-destroy_prepared_geometry_page_source :: proc(
-	source: ^Geometry_Page_Source_Desc,
-	allocator: mem.Allocator,
-) {
-	if source == nil {
-		return
-	}
-	delete(source.path, allocator)
-	delete(source.records, allocator)
-	delete(source.bytes, allocator)
-	source^ = {}
-}
-
-destroy_geometry_page_source :: proc(geometry: ^Geometry, allocator: mem.Allocator) {
+destroy_geometry_distance_field_source :: proc(geometry: ^Geometry, allocator: mem.Allocator) {
 	if geometry == nil {
 		return
 	}
-	delete(geometry.page_source_path, allocator)
-	delete(geometry.page_payload_records, allocator)
-	delete(geometry.page_payload_bytes, allocator)
-	geometry.page_source_path = ""
-	geometry.page_payload_records = nil
-	geometry.page_payload_bytes = nil
+	delete(geometry.distance_field_source_path, allocator)
+	geometry.distance_field_source_path = ""
 }
 
-install_geometry_page_source :: proc(geometry: ^Geometry, source: ^Geometry_Page_Source_Desc) {
-	geometry.page_source_kind = source.kind
-	geometry.page_source_path = source.path
-	geometry.page_payload_records = source.records
-	geometry.page_payload_bytes = source.bytes
-	source^ = {}
-}
 
 set_geometry_lods :: proc(
 	registry: ^Registry,
@@ -1318,37 +916,19 @@ register_project_lod_geometry :: proc(
 		descriptions[index] = desc
 	}
 	ensure_allocator(registry)
-	base_meshlets, base_meshlet_err := build_meshlets(descriptions[0], registry.allocator)
-	if base_meshlet_err != "" {
-		return {}, base_meshlet_err
-	}
-	base_hierarchy, base_hierarchy_err := build_geometry_hierarchy(
-		descriptions[0],
-		registry.allocator,
-	)
-	if base_hierarchy_err != "" {
-		destroy_meshlet_data(&base_meshlets, registry.allocator)
-		return {}, base_hierarchy_err
-	}
 	base_index, existing := geometry_index_by_uuid_any(registry, declaration.id)
 	if !existing {
 		if collision, found := geometry_index_by_name(registry, declaration.name);
 		   found && registry.geometries[collision].id != declaration.id {
-			destroy_meshlet_data(&base_meshlets, registry.allocator)
-			destroy_geometry_hierarchy(&base_hierarchy, registry.allocator)
 			return {}, fmt.tprintf("geometry name '%s' is already registered", declaration.name)
 		}
 		cloned_name, name_err := strings.clone(declaration.name, registry.allocator)
 		if name_err != nil {
-			destroy_meshlet_data(&base_meshlets, registry.allocator)
-			destroy_geometry_hierarchy(&base_hierarchy, registry.allocator)
 			return {}, "failed to allocate project geometry name"
 		}
 		cloned_source, source_err := strings.clone(declaration.source, registry.allocator)
 		if source_err != nil {
 			delete(cloned_name, registry.allocator)
-			destroy_meshlet_data(&base_meshlets, registry.allocator)
-			destroy_geometry_hierarchy(&base_hierarchy, registry.allocator)
 			return {}, "failed to allocate project geometry source"
 		}
 		append(
@@ -1360,17 +940,6 @@ register_project_lod_geometry :: proc(
 				authored = true,
 				vertices = clone_slice(descriptions[0].vertices, registry.allocator),
 				indices = clone_slice(descriptions[0].indices, registry.allocator),
-				canonical_vertex_count = u32(len(descriptions[0].vertices)),
-				canonical_index_count = u32(len(descriptions[0].indices)),
-				meshlets = base_meshlets.meshlets,
-				meshlet_vertices = base_meshlets.vertices,
-				meshlet_triangles = base_meshlets.triangles,
-				cluster_groups = base_hierarchy.groups,
-				clusters = base_hierarchy.clusters,
-				cluster_pages = base_hierarchy.pages,
-				cluster_vertices = base_hierarchy.vertices,
-				cluster_triangles = base_hierarchy.triangles,
-				cluster_max_depth = base_hierarchy.max_depth,
 				bounds = calculate_bounds(descriptions[0].vertices),
 				generation = 1,
 				version = 1,
@@ -1383,52 +952,25 @@ register_project_lod_geometry :: proc(
 		geometry := &registry.geometries[base_index]
 		if collision, found := geometry_index_by_name(registry, declaration.name);
 		   found && collision != base_index {
-			destroy_meshlet_data(&base_meshlets, registry.allocator)
-			destroy_geometry_hierarchy(&base_hierarchy, registry.allocator)
 			return {}, fmt.tprintf("geometry name '%s' is already registered", declaration.name)
 		}
 		cloned_name, name_err := strings.clone(declaration.name, registry.allocator)
 		if name_err != nil {
-			destroy_meshlet_data(&base_meshlets, registry.allocator)
-			destroy_geometry_hierarchy(&base_hierarchy, registry.allocator)
 			return {}, "failed to allocate project geometry name"
 		}
 		cloned_source, source_err := strings.clone(declaration.source, registry.allocator)
 		if source_err != nil {
 			delete(cloned_name, registry.allocator)
-			destroy_meshlet_data(&base_meshlets, registry.allocator)
-			destroy_geometry_hierarchy(&base_hierarchy, registry.allocator)
 			return {}, "failed to allocate project geometry source"
 		}
 		delete(geometry.name, registry.allocator)
 		delete(geometry.source, registry.allocator)
 		delete(geometry.vertices, registry.allocator)
 		delete(geometry.indices, registry.allocator)
-		delete(geometry.query_proxy.positions, registry.allocator)
-		delete(geometry.meshlets, registry.allocator)
-		delete(geometry.meshlet_vertices, registry.allocator)
-		delete(geometry.meshlet_triangles, registry.allocator)
-		delete(geometry.cluster_groups, registry.allocator)
-		delete(geometry.clusters, registry.allocator)
-		delete(geometry.cluster_pages, registry.allocator)
-		delete(geometry.cluster_vertices, registry.allocator)
-		delete(geometry.cluster_triangles, registry.allocator)
 		geometry.name = cloned_name
 		geometry.source = cloned_source
 		geometry.vertices = clone_slice(descriptions[0].vertices, registry.allocator)
 		geometry.indices = clone_slice(descriptions[0].indices, registry.allocator)
-		geometry.query_proxy = {}
-		geometry.canonical_vertex_count = u32(len(descriptions[0].vertices))
-		geometry.canonical_index_count = u32(len(descriptions[0].indices))
-		geometry.meshlets = base_meshlets.meshlets
-		geometry.meshlet_vertices = base_meshlets.vertices
-		geometry.meshlet_triangles = base_meshlets.triangles
-		geometry.cluster_groups = base_hierarchy.groups
-		geometry.clusters = base_hierarchy.clusters
-		geometry.cluster_pages = base_hierarchy.pages
-		geometry.cluster_vertices = base_hierarchy.vertices
-		geometry.cluster_triangles = base_hierarchy.triangles
-		geometry.cluster_max_depth = base_hierarchy.max_depth
 		geometry.bounds = calculate_bounds(descriptions[0].vertices)
 		geometry.authored = true
 		geometry.alive = true

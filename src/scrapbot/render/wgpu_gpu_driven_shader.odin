@@ -67,11 +67,6 @@ fn scale_matrix(value: vec3<f32>) -> mat4x4<f32> {
 	);
 }
 
-fn transform_preserves_meshlet_cones(scale: vec3<f32>) -> bool {
-	let minimum = min(scale.x, min(scale.y, scale.z));
-	let maximum = max(scale.x, max(scale.y, scale.z));
-	return minimum > 0.000001 && maximum <= minimum * 1.001;
-}
 
 @compute @workgroup_size(64)
 fn expand_transforms(@builtin(global_invocation_id) invocation: vec3<u32>) {
@@ -110,11 +105,7 @@ fn expand_transforms(@builtin(global_invocation_id) invocation: vec3<u32>) {
 	instances[slot].model = model;
 	instances[slot].normal_model = rotation * scale_matrix(inverse_scale);
 	instances[slot].bounds = vec4<f32>(world_center.xyz, world_radius);
-	instances[slot].render_flags.z = select(
-		0.0,
-		1.0,
-		transform_preserves_meshlet_cones(transform.scale.xyz),
-	);
+	instances[slot].render_flags.z = 0.0;
 }
 `
 
@@ -133,8 +124,6 @@ struct Render_Uniform {
 	shadow_map_parameters: vec4<f32>,
 	debug: vec4<u32>,
 	camera_clip: vec4<f32>,
-	virtual_geometry: vec4<f32>,
-	virtual_geometry_epoch: vec4<u32>,
 };
 
 struct Point_Light {
@@ -199,36 +188,6 @@ struct GPU_Instance {
 	padding: vec2<u32>,
 };
 
-struct Meshlet_Info {
-	bounds: vec4<f32>,
-	cone_axis_cutoff: vec4<f32>,
-	group_bounds: vec4<f32>,
-	refined_bounds: vec4<f32>,
-	visible_offset: u32,
-	visible_capacity: u32,
-	flags: u32,
-	group_depth: u32,
-	group_error: f32,
-	refined_error: f32,
-	max_depth: u32,
-	virtual_geometry: u32,
-	first_index: u32,
-	base_vertex: u32,
-	triangle_count: u32,
-	identity: u32,
-	page_resident: u32,
-	refined_resident: u32,
-	request_geometry_index: u32,
-	request_geometry_generation: u32,
-	group_index: u32,
-	request_group_index: u32,
-	request_enabled: u32,
-	batch_index: u32,
-	transition_start: u32,
-	refined_transition_start: u32,
-	has_coarse_parent: u32,
-	padding: u32,
-};
 
 @group(0) @binding(0) var<uniform> render: Render_Uniform;
 @group(0) @binding(1) var shadow_map: texture_depth_2d_array;
@@ -240,10 +199,6 @@ struct Meshlet_Info {
 @group(0) @binding(7) var<storage, read> cluster_light_indices: array<u32>;
 @group(0) @binding(8) var<uniform> cluster: Cluster_Uniform;
 @group(0) @binding(9) var<uniform> shadow_cascade: Shadow_Cascade_Uniform;
-@group(0) @binding(10) var<storage, read> meshlet_identities: array<u32>;
-@group(0) @binding(11) var<storage, read> geometry_vertices: array<u32>;
-@group(0) @binding(12) var<storage, read> geometry_indices: array<u32>;
-@group(0) @binding(13) var<storage, read> meshlets: array<Meshlet_Info>;
 @group(1) @binding(0) var base_color_texture: texture_2d<f32>;
 @group(1) @binding(1) var base_color_sampler: sampler;
 @group(1) @binding(2) var metallic_roughness_texture: texture_2d<f32>;
@@ -267,10 +222,6 @@ struct Vertex_Input {
 	@location(3) tangent: vec4<f32>,
 };
 
-struct Compact_Input {
-	@location(4) instance_slot: u32,
-	@location(5) meshlet_index: u32,
-};
 
 struct Vertex_Output {
 	@builtin(position) position: vec4<f32>,
@@ -282,9 +233,7 @@ struct Vertex_Output {
 	@location(5) uv: vec2<f32>,
 	@location(6) emissive: vec3<f32>,
 	@location(7) world_tangent: vec4<f32>,
-	@location(8) @interpolate(flat) meshlet_identity: u32,
 	@location(9) @interpolate(flat) lod_level: u32,
-	@location(10) @interpolate(flat) virtual_transition: vec2<f32>,
 	@location(11) @interpolate(flat) instance_slot: u32,
 };
 
@@ -310,154 +259,30 @@ fn selected_lod(instance: GPU_Instance) -> u32 {
 	return level;
 }
 
-fn load_geometry_vertex(vertex_index: u32) -> Vertex_Input {
-	let base = vertex_index * 12u;
-	var vertex: Vertex_Input;
-	vertex.position = bitcast<vec3<f32>>(vec3<u32>(
-		geometry_vertices[base],
-		geometry_vertices[base + 1u],
-		geometry_vertices[base + 2u],
-	));
-	vertex.normal = bitcast<vec3<f32>>(vec3<u32>(
-		geometry_vertices[base + 3u],
-		geometry_vertices[base + 4u],
-		geometry_vertices[base + 5u],
-	));
-	vertex.uv = bitcast<vec2<f32>>(vec2<u32>(
-		geometry_vertices[base + 6u],
-		geometry_vertices[base + 7u],
-	));
-	vertex.tangent = bitcast<vec4<f32>>(vec4<u32>(
-		geometry_vertices[base + 8u],
-		geometry_vertices[base + 9u],
-		geometry_vertices[base + 10u],
-		geometry_vertices[base + 11u],
-	));
-	return vertex;
-}
 
-fn compact_source_vertex_index(record: Compact_Input, vertex_index: u32) -> u32 {
-	let meshlet = meshlets[record.meshlet_index];
-	let local_index = select(0u, vertex_index, vertex_index < meshlet.triangle_count * 3u);
-	let source_index = geometry_indices[meshlet.first_index + local_index];
-	return meshlet.base_vertex + source_index;
-}
 
-fn load_compact_position(record: Compact_Input, vertex_index: u32) -> vec3<f32> {
-	let source_vertex = compact_source_vertex_index(record, vertex_index);
-	let base = source_vertex * 12u;
-	return bitcast<vec3<f32>>(vec3<u32>(
-		geometry_vertices[base],
-		geometry_vertices[base + 1u],
-		geometry_vertices[base + 2u],
-	));
-}
 
-fn load_compact_vertex(record: Compact_Input, vertex_index: u32) -> Vertex_Input {
-	return load_geometry_vertex(compact_source_vertex_index(record, vertex_index));
-}
 
-fn virtual_transition_progress(start_token: u32) -> f32 {
-	if (start_token == 0u) {
-		return 1.0;
-	}
-	let start = start_token - 1u;
-	let current = render.virtual_geometry_epoch.x;
-	let duration = f32(max(render.virtual_geometry_epoch.y, 1u));
-	return clamp(f32(current - start) / duration, 0.0, 1.0);
-}
 
-fn render_virtual_projected_error(
-	instance: GPU_Instance,
-	bounds: vec4<f32>,
-	error: f32,
-) -> f32 {
-	if (error > 1.0e30) {
-		return error;
-	}
-	let center = instance.model * vec4<f32>(bounds.xyz, 1.0);
-	let scale = max(
-		max(length(instance.model[0].xyz), length(instance.model[1].xyz)),
-		length(instance.model[2].xyz),
-	);
-	let world_radius = bounds.w * scale;
-	let distance = max(
-		length(center.xyz - render.camera_position.xyz) - world_radius,
-		0.0001,
-	);
-	return error * scale / distance * abs(render.view_projection[1][1]) *
-		0.5 * render.virtual_geometry.y;
-}
 
-fn virtual_lod_progress(
-	instance: GPU_Instance,
-	bounds: vec4<f32>,
-	error: f32,
-	error_pixels: f32,
-) -> f32 {
-	if (error <= 0.0) {
-		return 0.0;
-	}
-	let projected = render_virtual_projected_error(instance, bounds, error);
-	let low = error_pixels * render.virtual_geometry.z;
-	let high = max(error_pixels * render.virtual_geometry.w, low + 0.0001);
-	return smoothstep(low, high, projected);
-}
 
-fn virtual_coverage_for_error(
-	instance: GPU_Instance,
-	meshlet: Meshlet_Info,
-	error_pixels: f32,
-) -> vec2<f32> {
-	if (meshlet.virtual_geometry == 0u) {
-		return vec2<f32>(0.0, 1.0);
-	}
-	var fade_in = 1.0;
-	if (meshlet.has_coarse_parent != 0u) {
-		fade_in = virtual_lod_progress(
-			instance,
-			meshlet.group_bounds,
-			meshlet.group_error,
-			error_pixels,
-		);
-	}
-	var fade_out = 0.0;
-	if (meshlet.refined_resident != 0u || meshlet.refined_transition_start != 0u) {
-		fade_out = virtual_lod_progress(
-			instance,
-			meshlet.refined_bounds,
-			meshlet.refined_error,
-			error_pixels,
-		);
-	}
-	if (meshlet.transition_start != 0u) {
-		fade_in = min(fade_in, virtual_transition_progress(meshlet.transition_start));
-	}
-	if (meshlet.refined_transition_start != 0u) {
-		fade_out = min(
-			fade_out,
-			virtual_transition_progress(meshlet.refined_transition_start),
-		);
-	}
-	return vec2<f32>(fade_out, fade_in);
-}
 
-fn virtual_coverage_for(instance: GPU_Instance, meshlet: Meshlet_Info) -> vec2<f32> {
-	return virtual_coverage_for_error(instance, meshlet, render.virtual_geometry.x);
-}
 
-fn render_virtual_shadow_error(cascade_index: u32) -> f32 {
-	let multipliers = array<f32, 4>(8.0, 32.0, 128.0, 512.0);
-	return render.virtual_geometry.x * multipliers[min(cascade_index, 3u)] /
-		max(render.shadow_map_parameters.x, 0.01);
-}
+
+
+
+
+
+
+
+
+
+
 
 fn transform_vertex(
 	input: Vertex_Input,
 	instance: GPU_Instance,
 	instance_slot: u32,
-	meshlet_identity: u32,
-	virtual_transition: vec2<f32>,
 ) -> Vertex_Output {
 	var output: Vertex_Output;
 	let local_position = vec4<f32>(input.position, 1.0);
@@ -473,63 +298,21 @@ fn transform_vertex(
 	output.view_depth = -(render.view * instance.model * local_position).z;
 	output.shadow_receiver = instance.render_flags.y;
 	output.uv = input.uv;
-	output.meshlet_identity = meshlet_identity;
-	output.lod_level = select(0u, selected_lod(instance), render.debug.x == 7u);
-	output.virtual_transition = virtual_transition;
+	output.lod_level = select(0u, selected_lod(instance), render.debug.x == 6u);
 	output.instance_slot = instance_slot;
 	return output;
 }
 
-fn discarded_vertex_output() -> Vertex_Output {
-	var output: Vertex_Output;
-	output.position = vec4<f32>(2.0, 2.0, 2.0, 1.0);
-	output.color = vec4<f32>(0.0);
-	output.world_position = vec3<f32>(0.0);
-	output.world_normal = vec3<f32>(0.0);
-	output.view_depth = 0.0;
-	output.shadow_receiver = 0.0;
-	output.uv = vec2<f32>(0.0);
-	output.emissive = vec3<f32>(0.0);
-	output.world_tangent = vec4<f32>(0.0);
-	output.meshlet_identity = 0u;
-	output.lod_level = 0u;
-	output.virtual_transition = vec2<f32>(0.0, 1.0);
-	output.instance_slot = 0u;
-	return output;
-}
+
 
 @vertex
 fn vs_main(input: Vertex_Input, @builtin(instance_index) visible_index: u32) -> Vertex_Output {
 	let instance_slot = visible_instances[visible_index];
 	let instance = instances[instance_slot];
-	let packed_identity = meshlet_identities[visible_index];
-	var identity = 0u;
-	if ((render.debug.x == 6u || render.debug.x == 8u || render.debug.x == 11u) && render.debug.y != 0u) {
-		identity = packed_identity;
-	}
-	var transition = vec2<f32>(0.0, 1.0);
-	let meshlet_token = packed_identity & 0x003fffffu;
-	if (meshlet_token != 0u) {
-		transition = virtual_coverage_for(instance, meshlets[meshlet_token - 1u]);
-	}
-	return transform_vertex(input, instance, instance_slot, identity, transition);
+	return transform_vertex(input, instance, instance_slot);
 }
 
-@vertex
-fn compact_vs(record: Compact_Input, @builtin(vertex_index) vertex_index: u32) -> Vertex_Output {
-	let instance = instances[record.instance_slot];
-	let meshlet = meshlets[record.meshlet_index];
-	if (vertex_index >= meshlet.triangle_count * 3u) {
-		return discarded_vertex_output();
-	}
-	return transform_vertex(
-		load_compact_vertex(record, vertex_index),
-		instance,
-		record.instance_slot,
-		meshlet.identity,
-		virtual_coverage_for(instance, meshlet),
-	);
-}
+
 
 const PI: f32 = 3.14159265359;
 
@@ -924,45 +707,18 @@ fn octahedral_encode(direction: vec3<f32>) -> vec2<f32> {
 	return encoded;
 }
 
-fn meshlet_debug_color(identity: u32) -> vec3<f32> {
-	var value = identity * 747796405u + 2891336453u;
-	value = ((value >> ((value >> 28u) + 4u)) ^ value) * 277803737u;
-	value = (value >> 22u) ^ value;
-	let hue = f32(value & 1023u) / 1023.0;
-	return 0.42 + 0.58 * cos(
-		6.28318530718 * (hue + vec3<f32>(0.0, 0.67, 0.33)),
-	);
-}
 
-const VIRTUAL_TRANSITION_MARKER: f32 = 0.25;
 
-fn apply_virtual_transition(position: vec4<f32>, transition: vec2<f32>, epoch: u32) {
-	// Adjacent simplifications can have different silhouettes and coverage,
-	// especially for thin photogrammetry sheets. Complementary stochastic
-	// discard exposes the background wherever only one side covers a pixel.
-	// Keep both opaque sides complete and let the depth buffer select the
-	// nearest sample. The interval remains available to the temporal marker.
-}
 
-fn virtual_transition_marker(transition: vec2<f32>) -> f32 {
-	return select(
-		1.0,
-		VIRTUAL_TRANSITION_MARKER,
-		transition.x > 0.0 || transition.y < 1.0,
-	);
-}
+
+
+
 
 @fragment
 fn fs_main(
 	input: Vertex_Output,
 	@builtin(front_facing) front_facing: bool,
 ) -> Fragment_Output {
-	let transition_epoch = select(
-		0u,
-		render.virtual_geometry_epoch.x,
-		render.virtual_geometry_epoch.z != 0u,
-	);
-	apply_virtual_transition(input.position, input.virtual_transition, transition_epoch);
 	let base_color_sample = textureSample(base_color_texture, base_color_sampler, input.uv);
 	if (material.flags.z > 0.5 && base_color_sample.a * input.color.a < material.alpha.x) {
 		discard;
@@ -1008,18 +764,6 @@ fn fs_main(
 				debug_color = vec3<f32>(1.0 - normalized_depth);
 			}
 			case 6u: {
-				if (render.debug.y != 0u && input.meshlet_identity != 0u) {
-					debug_color = meshlet_debug_color(input.meshlet_identity);
-				} else {
-					let checker = u32(input.position.x / 12.0) ^ u32(input.position.y / 12.0);
-					debug_color = select(
-						vec3<f32>(0.08, 0.09, 0.11),
-						vec3<f32>(0.48, 0.12, 0.24),
-						(checker & 1u) != 0u,
-					);
-				}
-			}
-			case 7u: {
 				let lod_colors = array<vec3<f32>, 4>(
 					vec3<f32>(0.22, 0.86, 0.62),
 					vec3<f32>(0.20, 0.58, 1.0),
@@ -1029,18 +773,6 @@ fn fs_main(
 				debug_color = lod_colors[min(input.lod_level, 3u)];
 			}
 			case 8u: {
-				if (render.debug.y != 0u && input.meshlet_identity != 0u) {
-					debug_color = vec3<f32>(0.18, 0.82, 0.48);
-				} else {
-					let checker = u32(input.position.x / 12.0) ^ u32(input.position.y / 12.0);
-					debug_color = select(
-						vec3<f32>(0.08, 0.09, 0.11),
-						vec3<f32>(0.48, 0.12, 0.24),
-						(checker & 1u) != 0u,
-					);
-				}
-			}
-			case 10u: {
 				if (render.debug.y != 0u) {
 					debug_color = base_color * 0.22 + vec3<f32>(0.018, 0.022, 0.03);
 				} else {
@@ -1052,34 +784,10 @@ fn fs_main(
 					);
 				}
 			}
-			case 11u: {
-				if (render.debug.y != 0u && input.meshlet_identity != 0u) {
-					let level = f32(input.meshlet_identity >> 24u) / 255.0;
-					let refinement_missing = (input.meshlet_identity & 0x00800000u) != 0u;
-					let prefetched = (input.meshlet_identity & 0x00400000u) != 0u;
-					let level_color = mix(
-						vec3<f32>(0.18, 0.82, 0.68),
-						vec3<f32>(1.0, 0.26, 0.56),
-						level,
-					);
-					let cluster_color = meshlet_debug_color(
-						input.meshlet_identity & 0x003fffffu,
-					);
-					debug_color = mix(level_color, cluster_color, 0.38);
-					if (prefetched) {
-						debug_color = mix(debug_color, vec3<f32>(0.12, 0.72, 1.0), 0.78);
-					}
-					if (refinement_missing) {
-						debug_color = mix(debug_color, vec3<f32>(1.0, 0.48, 0.08), 0.72);
-					}
-				} else {
-					debug_color = vec3<f32>(0.05, 0.055, 0.07);
-				}
-			}
 		default: {}
 		}
 		var output: Fragment_Output;
-		output.color = vec4<f32>(debug_color, virtual_transition_marker(input.virtual_transition));
+		output.color = vec4<f32>(debug_color, 1.0);
 		output.indirect_diffuse = vec4<f32>(0.0, 0.0, 0.0, 1.0);
 		let view_normal = normalize((render.view * vec4<f32>(normal, 0.0)).xyz);
 		output.surface = vec4<f32>(
@@ -1182,7 +890,7 @@ fn fs_main(
 	var output: Fragment_Output;
 	output.color = vec4<f32>(
 		(color + indirect_diffuse + emissive) * environment.exposure,
-		virtual_transition_marker(input.virtual_transition),
+		1.0,
 	);
 	output.indirect_diffuse = vec4<f32>(
 		indirect_diffuse * environment.exposure,
@@ -1201,43 +909,13 @@ struct Mask_Output {
 	@builtin(position) position: vec4<f32>,
 	@location(0) uv: vec2<f32>,
 	@location(1) alpha: f32,
-	@location(2) @interpolate(flat) virtual_transition: vec2<f32>,
-	@location(3) @interpolate(flat) virtual_transition_epoch: u32,
 };
 
-fn discarded_mask_output() -> Mask_Output {
-	var output: Mask_Output;
-	output.position = vec4<f32>(2.0, 2.0, 2.0, 1.0);
-	output.uv = vec2<f32>(0.0);
-	output.alpha = 0.0;
-	output.virtual_transition = vec2<f32>(0.0, 1.0);
-	output.virtual_transition_epoch = 0u;
-	return output;
-}
 
-fn visible_virtual_transition(instance: GPU_Instance, visible_index: u32) -> vec2<f32> {
-	let meshlet_token = meshlet_identities[visible_index] & 0x003fffffu;
-	if (meshlet_token == 0u) {
-		return vec2<f32>(0.0, 1.0);
-	}
-	return virtual_coverage_for(instance, meshlets[meshlet_token - 1u]);
-}
 
-fn visible_virtual_shadow_transition(
-	instance: GPU_Instance,
-	visible_index: u32,
-	cascade_index: u32,
-) -> vec2<f32> {
-	let meshlet_token = meshlet_identities[visible_index] & 0x003fffffu;
-	if (meshlet_token == 0u) {
-		return vec2<f32>(0.0, 1.0);
-	}
-	return virtual_coverage_for_error(
-		instance,
-		meshlets[meshlet_token - 1u],
-		render_virtual_shadow_error(cascade_index),
-	);
-}
+
+
+
 
 @vertex
 fn shadow_vs(input: Vertex_Input, @builtin(instance_index) visible_index: u32) -> Mask_Output {
@@ -1246,52 +924,13 @@ fn shadow_vs(input: Vertex_Input, @builtin(instance_index) visible_index: u32) -
 	output.position = render.shadow_view_projections[shadow_cascade.index] * instance.model * vec4<f32>(input.position, 1.0);
 	output.uv = input.uv;
 	output.alpha = instance.color.a;
-	// Shadow overlap is depth-only, so retaining both hierarchy levels is
-	// conservative and avoids stochastic light leaks where simplified
-	// silhouettes do not cover exactly the same texels.
-	output.virtual_transition = vec2<f32>(0.0, 1.0);
-	output.virtual_transition_epoch = 0u;
 	return output;
 }
 
-@vertex
-fn compact_shadow_vs(
-	record: Compact_Input,
-	@builtin(vertex_index) vertex_index: u32,
-) -> Mask_Output {
-	let instance = instances[record.instance_slot];
-	if (vertex_index >= meshlets[record.meshlet_index].triangle_count * 3u) {
-		return discarded_mask_output();
-	}
-	let input = load_compact_vertex(record, vertex_index);
-	var output: Mask_Output;
-	output.position = render.shadow_view_projections[shadow_cascade.index] * instance.model * vec4<f32>(input.position, 1.0);
-	output.uv = input.uv;
-	output.alpha = instance.color.a;
-	output.virtual_transition = vec2<f32>(0.0, 1.0);
-	output.virtual_transition_epoch = 0u;
-	return output;
-}
 
-struct Compact_Depth_Only_Output {
-	@builtin(position) position: vec4<f32>,
-};
 
-@vertex
-fn compact_shadow_depth_only_vs(
-	record: Compact_Input,
-	@builtin(vertex_index) vertex_index: u32,
-) -> Compact_Depth_Only_Output {
-	let instance = instances[record.instance_slot];
-	if (vertex_index >= meshlets[record.meshlet_index].triangle_count * 3u) {
-		return Compact_Depth_Only_Output(vec4<f32>(2.0, 2.0, 2.0, 1.0));
-	}
-	let position = load_compact_position(record, vertex_index);
-	return Compact_Depth_Only_Output(
-		render.shadow_view_projections[shadow_cascade.index] *
-		instance.model * vec4<f32>(position, 1.0),
-	);
-}
+
+
 
 @vertex
 fn depth_vs(input: Vertex_Input, @builtin(instance_index) visible_index: u32) -> Mask_Output {
@@ -1300,58 +939,15 @@ fn depth_vs(input: Vertex_Input, @builtin(instance_index) visible_index: u32) ->
 	output.position = render.view_projection * instance.model * vec4<f32>(input.position, 1.0);
 	output.uv = input.uv;
 	output.alpha = instance.color.a;
-	output.virtual_transition = visible_virtual_transition(instance, visible_index);
-	output.virtual_transition_epoch = select(
-		0u,
-		render.virtual_geometry_epoch.x,
-		render.virtual_geometry_epoch.z != 0u,
-	);
 	return output;
 }
 
-@vertex
-fn compact_depth_vs(
-	record: Compact_Input,
-	@builtin(vertex_index) vertex_index: u32,
-) -> Mask_Output {
-	let instance = instances[record.instance_slot];
-	if (vertex_index >= meshlets[record.meshlet_index].triangle_count * 3u) {
-		return discarded_mask_output();
-	}
-	let input = load_compact_vertex(record, vertex_index);
-	var output: Mask_Output;
-	output.position = render.view_projection * instance.model * vec4<f32>(input.position, 1.0);
-	output.uv = input.uv;
-	output.alpha = instance.color.a;
-	output.virtual_transition = virtual_coverage_for(instance, meshlets[record.meshlet_index]);
-	output.virtual_transition_epoch = select(
-		0u,
-		render.virtual_geometry_epoch.x,
-		render.virtual_geometry_epoch.z != 0u,
-	);
-	return output;
-}
 
-@vertex
-fn compact_depth_only_vs(
-	record: Compact_Input,
-	@builtin(vertex_index) vertex_index: u32,
-) -> Compact_Depth_Only_Output {
-	let instance = instances[record.instance_slot];
-	if (vertex_index >= meshlets[record.meshlet_index].triangle_count * 3u) {
-		return Compact_Depth_Only_Output(vec4<f32>(2.0, 2.0, 2.0, 1.0));
-	}
-	let position = load_compact_position(record, vertex_index);
-	return Compact_Depth_Only_Output(render.view_projection * instance.model * vec4<f32>(position, 1.0));
-}
+
+
 
 @fragment
 fn mask_fs(input: Mask_Output) {
-	apply_virtual_transition(
-		input.position,
-		input.virtual_transition,
-		input.virtual_transition_epoch,
-	);
 	let alpha = textureSample(base_color_texture, base_color_sampler, input.uv).a * input.alpha;
 	if (alpha < material.alpha.x) {
 		discard;
@@ -1377,47 +973,8 @@ struct GPU_Instance {
 struct Batch_Info {
 	visible_offset: u32,
 	visible_capacity: u32,
-	meshlet_offset: u32,
-	meshlet_count: u32,
-	submission_mode: u32,
-	compact_command_index: u32,
-	compact_command_count: u32,
-	compact_bucket_commands: array<u32, 4>,
-	compact_visible_offsets: array<u32, 4>,
-	compact_visible_capacities: array<u32, 4>,
-	compact_shadow_pages: u32,
 };
 
-struct Meshlet_Info {
-	bounds: vec4<f32>,
-	cone_axis_cutoff: vec4<f32>,
-	group_bounds: vec4<f32>,
-	refined_bounds: vec4<f32>,
-	visible_offset: u32,
-	visible_capacity: u32,
-	flags: u32,
-	group_depth: u32,
-	group_error: f32,
-	refined_error: f32,
-	max_depth: u32,
-	virtual_geometry: u32,
-	first_index: u32,
-	base_vertex: u32,
-	triangle_count: u32,
-	identity: u32,
-	page_resident: u32,
-	refined_resident: u32,
-	request_geometry_index: u32,
-	request_geometry_generation: u32,
-	group_index: u32,
-	request_group_index: u32,
-	request_enabled: u32,
-	batch_index: u32,
-	transition_start: u32,
-	refined_transition_start: u32,
-	has_coarse_parent: u32,
-	padding: u32,
-};
 
 struct Draw_Indexed_Indirect {
 	index_count: u32,
@@ -1429,45 +986,21 @@ struct Draw_Indexed_Indirect {
 
 struct Cull_Uniform {
 	camera_planes: array<vec4<f32>, 6>,
-	predictive_camera_planes: array<vec4<f32>, 6>,
 	shadow_planes: array<array<vec4<f32>, 6>, 4>,
 	view_projection: mat4x4<f32>,
 	hiz_view_projection: mat4x4<f32>,
 	viewport: vec4<f32>,
 	camera_position: vec4<f32>,
-	predictive_camera_position: vec4<f32>,
 	slot_count: u32,
 	batch_count: u32,
 	hiz_mip_count: u32,
 	hiz_enabled: u32,
 	shadow_visible_stride: u32,
-	meshlet_enabled: u32,
-	meshlet_shadow_visible_stride: u32,
 	indirect_command_stride: u32,
-	meshlet_debug_record_offset: u32,
-	debug_view: u32,
-	meshlet_force_enabled: u32,
-	virtual_error_pixels: f32,
-	projection_y: f32,
-	virtual_feedback_epoch: u32,
-	virtual_transition_frames: u32,
-	virtual_prefetch_enabled: u32,
-	meshlet_count: u32,
 	occlusion_depth_scale: f32,
 	occlusion_world_bias: f32,
-	virtual_blend_low_scale: f32,
-	virtual_blend_high_scale: f32,
-	virtual_shadow_error_pixels: vec4<f32>,
-	padding: vec3<u32>,
 };
 
-struct Virtual_Page_Feedback {
-	geometry_index: u32,
-	geometry_generation: u32,
-	group_index: u32,
-	priority: f32,
-	flags: u32,
-};
 
 struct Visibility_Counters {
 	visible_instances: atomic<u32>,
@@ -1476,36 +1009,11 @@ struct Visibility_Counters {
 	frustum_culled_instances: atomic<u32>,
 	occlusion_culled_instances: atomic<u32>,
 	lod_visible_instances: array<atomic<u32>, 4>,
-	visible_meshlets: atomic<u32>,
-	shadow_visible_meshlets: atomic<u32>,
-	candidate_record_overflow: atomic<u32>,
 	visible_record_overflow: atomic<u32>,
 	shadow_record_overflow: atomic<u32>,
-	frustum_culled_meshlets: atomic<u32>,
-	cone_culled_meshlets: atomic<u32>,
-	occlusion_culled_meshlets: atomic<u32>,
-	meshlet_debug_records: atomic<u32>,
-	meshlet_debug_record_overflow: atomic<u32>,
+	object_debug_records: atomic<u32>,
+	object_debug_record_overflow: atomic<u32>,
 	visible_batches: atomic<u32>,
-	visible_meshlet_draws: atomic<u32>,
-	visible_virtual_clusters: atomic<u32>,
-	visible_virtual_blend_clusters: atomic<u32>,
-	visible_virtual_triangles: atomic<u32>,
-	compact_triangles: atomic<u32>,
-	compact_vertex_invocations: atomic<u32>,
-	virtual_rejected_clusters: atomic<u32>,
-	virtual_page_request_count: atomic<u32>,
-	virtual_page_prefetch_count: atomic<u32>,
-	virtual_page_demand_feedback_count: atomic<u32>,
-	virtual_page_touch_feedback_count: atomic<u32>,
-	virtual_page_prefetch_feedback_count: atomic<u32>,
-	virtual_page_demand_feedback_overflow: atomic<u32>,
-	virtual_page_touch_feedback_overflow: atomic<u32>,
-	virtual_page_prefetch_feedback_overflow: atomic<u32>,
-	shadow_visible_meshlets_by_cascade: array<atomic<u32>, 4>,
-	virtual_page_demand_feedback: array<Virtual_Page_Feedback, 32768>,
-	virtual_page_touch_feedback: array<Virtual_Page_Feedback, 16384>,
-	virtual_page_prefetch_feedback: array<Virtual_Page_Feedback, 16384>,
 	visible_batch_words: array<atomic<u32>, 16384>,
 };
 
@@ -1518,25 +1026,12 @@ struct Visibility_Counters {
 @group(0) @binding(6) var<uniform> cull: Cull_Uniform;
 @group(0) @binding(7) var hiz_depth: texture_2d<f32>;
 @group(0) @binding(8) var<storage, read_write> counters: Visibility_Counters;
-@group(0) @binding(9) var<storage, read> meshlets: array<Meshlet_Info>;
+@group(0) @binding(9) var<storage, read_write> debug_records: array<u32>;
 
-fn render_debug_is_occlusion_queries() -> bool {
-	return cull.debug_view == 10u;
-}
 
-fn batch_submission_mode(batch: Batch_Info) -> u32 {
-	if (cull.meshlet_enabled == 0u) {
-		return 0u;
-	}
-	if (cull.meshlet_force_enabled != 0u) {
-		return 1u;
-	}
-	return batch.submission_mode;
-}
 
-fn batch_uses_meshlets(batch: Batch_Info) -> bool {
-	return batch_submission_mode(batch) != 0u;
-}
+
+
 
 fn mark_visible_batch(batch_index: u32) -> bool {
 	let word_index = batch_index >> 5u;
@@ -1548,338 +1043,36 @@ fn mark_visible_batch(batch_index: u32) -> bool {
 	return (previous & bit) == 0u;
 }
 
-fn world_meshlet_bounds(instance: GPU_Instance, meshlet: Meshlet_Info) -> vec4<f32> {
-	let center = instance.model * vec4<f32>(meshlet.bounds.xyz, 1.0);
-	let scale = max(
-		max(length(instance.model[0].xyz), length(instance.model[1].xyz)),
-		length(instance.model[2].xyz),
-	);
-	return vec4<f32>(center.xyz, meshlet.bounds.w * scale);
-}
 
-fn world_virtual_bounds(instance: GPU_Instance, bounds: vec4<f32>) -> vec4<f32> {
-	let center = instance.model * vec4<f32>(bounds.xyz, 1.0);
-	let scale = max(
-		max(length(instance.model[0].xyz), length(instance.model[1].xyz)),
-		length(instance.model[2].xyz),
-	);
-	return vec4<f32>(center.xyz, bounds.w * scale);
-}
 
-fn virtual_projected_error(
-	instance: GPU_Instance,
-	bounds: vec4<f32>,
-	error: f32,
-) -> f32 {
-	return virtual_projected_error_from(
-		instance,
-		bounds,
-		error,
-		cull.camera_position.xyz,
-	);
-}
 
-fn virtual_projected_error_from(
-	instance: GPU_Instance,
-	bounds: vec4<f32>,
-	error: f32,
-	camera_position: vec3<f32>,
-) -> f32 {
-	if (error > 1.0e30) {
-		return error;
-	}
-	let world_bounds = world_virtual_bounds(instance, bounds);
-	let scale = max(
-		max(length(instance.model[0].xyz), length(instance.model[1].xyz)),
-		length(instance.model[2].xyz),
-	);
-	let distance = max(
-		length(world_bounds.xyz - camera_position) - world_bounds.w,
-		0.0001,
-	);
-	return error * scale / distance * abs(cull.projection_y) * 0.5 * cull.viewport.w;
-}
 
-fn append_virtual_page_feedback(
-	meshlet: Meshlet_Info,
-	group_index: u32,
-	priority: f32,
-	flags: u32,
-) {
-	var feedback_index = 0u;
-	if ((flags & 1u) != 0u) {
-		feedback_index = atomicAdd(&counters.virtual_page_demand_feedback_count, 1u);
-		if (feedback_index < 32768u) {
-			counters.virtual_page_demand_feedback[feedback_index] = Virtual_Page_Feedback(
-				meshlet.request_geometry_index,
-				meshlet.request_geometry_generation,
-				group_index,
-				priority,
-				flags,
-			);
-		} else {
-			atomicAdd(&counters.virtual_page_demand_feedback_overflow, 1u);
-		}
-	} else if ((flags & 2u) != 0u) {
-		feedback_index = atomicAdd(&counters.virtual_page_touch_feedback_count, 1u);
-		if (feedback_index < 16384u) {
-			counters.virtual_page_touch_feedback[feedback_index] = Virtual_Page_Feedback(
-				meshlet.request_geometry_index,
-				meshlet.request_geometry_generation,
-				group_index,
-				priority,
-				flags,
-			);
-		} else {
-			atomicAdd(&counters.virtual_page_touch_feedback_overflow, 1u);
-		}
-	} else {
-		feedback_index = atomicAdd(&counters.virtual_page_prefetch_feedback_count, 1u);
-		if (feedback_index < 16384u) {
-			counters.virtual_page_prefetch_feedback[feedback_index] = Virtual_Page_Feedback(
-			meshlet.request_geometry_index,
-			meshlet.request_geometry_generation,
-			group_index,
-			priority,
-			flags,
-		);
-		} else {
-			atomicAdd(&counters.virtual_page_prefetch_feedback_overflow, 1u);
-		}
-	}
-}
 
-fn virtual_page_touch_sample(meshlet: Meshlet_Info, instance_slot: u32) -> bool {
-	let identity_hash =
-		meshlet.request_geometry_index * 1664525u ^
-		meshlet.request_geometry_generation * 1013904223u ^
-		meshlet.group_index * 747796405u ^
-		instance_slot * 2891336453u;
-	return ((identity_hash + cull.virtual_feedback_epoch) & 15u) == 0u;
-}
 
-fn virtual_frontier_progress(
-	instance: GPU_Instance,
-	bounds: vec4<f32>,
-	error: f32,
-	error_pixels: f32,
-) -> f32 {
-	if (error <= 0.0) {
-		return 0.0;
-	}
-	let projected = virtual_projected_error(instance, bounds, error);
-	return smoothstep(
-		error_pixels * cull.virtual_blend_low_scale,
-		error_pixels * cull.virtual_blend_high_scale,
-		projected,
-	);
-}
 
-fn cull_virtual_transition_progress(start_token: u32) -> f32 {
-	if (start_token == 0u) {
-		return 1.0;
-	}
-	let start = start_token - 1u;
-	let duration = f32(max(cull.virtual_transition_frames, 1u));
-	return clamp(f32(cull.virtual_feedback_epoch - start) / duration, 0.0, 1.0);
-}
+
+
+
+
+
+
+
 
 const COARSE_OCCLUDER_ERROR_PIXELS = 64.0;
 
-fn virtual_camera_error_pixels() -> f32 {
-	if (cull.padding.x == 2u) {
-		return max(cull.virtual_error_pixels, COARSE_OCCLUDER_ERROR_PIXELS);
-	}
-	return cull.virtual_error_pixels;
-}
 
-fn virtual_cluster_selected(
-	instance: GPU_Instance,
-	meshlet: Meshlet_Info,
-	emit_feedback: bool,
-) -> bool {
-	if (meshlet.virtual_geometry == 0u) {
-		return true;
-	}
-	if (meshlet.page_resident == 0u) {
-		return false;
-	}
-	let group_progress = virtual_frontier_progress(
-		instance,
-		meshlet.group_bounds,
-		meshlet.group_error,
-		virtual_camera_error_pixels(),
-	);
-	let refined_progress = virtual_frontier_progress(
-		instance,
-		meshlet.refined_bounds,
-		meshlet.refined_error,
-		virtual_camera_error_pixels(),
-	);
-	if (group_progress > 0.0 && refined_progress > 0.0 && meshlet.refined_resident == 0u) {
-		if (emit_feedback && meshlet.request_enabled != 0u) {
-			atomicAdd(&counters.virtual_page_request_count, 1u);
-			append_virtual_page_feedback(
-				meshlet,
-				meshlet.request_group_index,
-				virtual_projected_error(
-					instance,
-					meshlet.refined_bounds,
-					meshlet.refined_error,
-				),
-				1u,
-			);
-		}
-		return true;
-	}
-	// Residency starts a bounded admission handoff; it does not immediately
-	// make the coarse side expendable. Keep that parent drawable until the
-	// child transition completes so the fragment shader's complementary
-	// coverage intervals always have both halves available.
-	return group_progress > 0.0 &&
-		(refined_progress < 1.0 ||
-			(meshlet.refined_transition_start != 0u &&
-				cull_virtual_transition_progress(meshlet.refined_transition_start) < 1.0));
-}
 
-fn virtual_shadow_error_pixels(cascade_index: u32) -> f32 {
-	return cull.virtual_shadow_error_pixels[min(cascade_index, 3u)];
-}
 
-fn virtual_shadow_cluster_selected(
-	instance: GPU_Instance,
-	meshlet: Meshlet_Info,
-	cascade_index: u32,
-) -> bool {
-	if (meshlet.virtual_geometry == 0u) {
-		return true;
-	}
-	if (meshlet.page_resident == 0u) {
-		return false;
-	}
-	let error_pixels = virtual_shadow_error_pixels(cascade_index);
-	let group_progress = virtual_frontier_progress(
-		instance,
-		meshlet.group_bounds,
-		meshlet.group_error,
-		error_pixels,
-	);
-	let refined_progress = virtual_frontier_progress(
-		instance,
-		meshlet.refined_bounds,
-		meshlet.refined_error,
-		error_pixels,
-	);
-	if (group_progress > 0.0 && refined_progress > 0.0 && meshlet.refined_resident == 0u) {
-		return true;
-	}
-	return group_progress > 0.0 &&
-		(refined_progress < 1.0 ||
-			(meshlet.refined_transition_start != 0u &&
-				cull_virtual_transition_progress(meshlet.refined_transition_start) < 1.0));
-}
 
-fn virtual_cluster_blended(instance: GPU_Instance, meshlet: Meshlet_Info) -> bool {
-	if (meshlet.virtual_geometry == 0u) {
-		return false;
-	}
-	if (
-		(meshlet.transition_start != 0u &&
-			cull_virtual_transition_progress(meshlet.transition_start) < 1.0) ||
-		(meshlet.refined_transition_start != 0u &&
-			cull_virtual_transition_progress(meshlet.refined_transition_start) < 1.0)
-	) {
-		return true;
-	}
-	let group_progress = virtual_frontier_progress(
-		instance,
-		meshlet.group_bounds,
-		meshlet.group_error,
-		virtual_camera_error_pixels(),
-	);
-	let refined_progress = virtual_frontier_progress(
-		instance,
-		meshlet.refined_bounds,
-		meshlet.refined_error,
-		virtual_camera_error_pixels(),
-	);
-	return (meshlet.has_coarse_parent != 0u && group_progress > 0.0 && group_progress < 1.0) ||
-		(meshlet.refined_resident != 0u && refined_progress > 0.0 && refined_progress < 1.0);
-}
 
-fn prefetch_virtual_cluster(
-	instance: GPU_Instance,
-	meshlet: Meshlet_Info,
-	current_frontier: bool,
-) {
-	if (
-		cull.virtual_prefetch_enabled == 0u ||
-		meshlet.virtual_geometry == 0u ||
-		meshlet.page_resident == 0u ||
-		meshlet.refined_resident != 0u ||
-		meshlet.request_enabled == 0u ||
-		meshlet.refined_error <= 0.0
-	) {
-		return;
-	}
-	if (current_frontier &&
-		virtual_projected_error(instance, meshlet.refined_bounds, meshlet.refined_error) >
-		virtual_camera_error_pixels()
-	) {
-		return;
-	}
-	let group_over_threshold = virtual_projected_error_from(
-		instance,
-		meshlet.group_bounds,
-		meshlet.group_error,
-		cull.predictive_camera_position.xyz,
-	) > virtual_camera_error_pixels();
-	let predicted_error = virtual_projected_error_from(
-		instance,
-		meshlet.refined_bounds,
-		meshlet.refined_error,
-		cull.predictive_camera_position.xyz,
-	);
-	if (
-		group_over_threshold &&
-		// Start asynchronous page IO before the predicted frontier reaches the
-		// visible selection threshold. The readback, file read, upload, and GPU
-		// metadata refresh span several frames; waiting until 75% leaves too
-		// little runway for ordinary camera motion and exposes coarse-to-fine
-		// topology snaps in the current view.
-		predicted_error > virtual_camera_error_pixels() * 0.5 &&
-		predictive_sphere_visible(world_virtual_bounds(instance, meshlet.refined_bounds))
-	) {
-		atomicAdd(&counters.virtual_page_prefetch_count, 1u);
-		append_virtual_page_feedback(
-			meshlet,
-			meshlet.request_group_index,
-			predicted_error,
-			4u,
-		);
-	}
-}
 
-fn meshlet_cone_culled(
-	instance: GPU_Instance,
-	meshlet: Meshlet_Info,
-	bounds: vec4<f32>,
-) -> bool {
-	if (
-		instance.render_flags.z < 0.5 ||
-		(meshlet.flags & 1u) != 0u ||
-		meshlet.cone_axis_cutoff.w >= 1.0
-	) {
-		return false;
-	}
-	let axis = normalize(
-		(instance.normal_model * vec4<f32>(meshlet.cone_axis_cutoff.xyz, 0.0)).xyz,
-	);
-	let camera_offset = bounds.xyz - cull.camera_position.xyz;
-	let distance = length(camera_offset);
-	return dot(camera_offset, axis) >=
-		meshlet.cone_axis_cutoff.w * distance + bounds.w;
-}
+
+
+
+
+
+
+
 
 fn camera_sphere_visible(bounds: vec4<f32>) -> bool {
 	for (var plane_index: u32 = 0u; plane_index < 6u; plane_index = plane_index + 1u) {
@@ -1891,15 +1084,7 @@ fn camera_sphere_visible(bounds: vec4<f32>) -> bool {
 	return true;
 }
 
-fn predictive_sphere_visible(bounds: vec4<f32>) -> bool {
-	for (var plane_index: u32 = 0u; plane_index < 6u; plane_index = plane_index + 1u) {
-		let plane = cull.predictive_camera_planes[plane_index];
-		if (dot(plane.xyz, bounds.xyz) + plane.w < -bounds.w) {
-			return false;
-		}
-	}
-	return true;
-}
+
 
 fn shadow_sphere_visible(bounds: vec4<f32>, cascade_index: u32) -> bool {
 	for (var plane_index: u32 = 0u; plane_index < 6u; plane_index = plane_index + 1u) {
@@ -2022,90 +1207,42 @@ fn append_debug_record(
 	query_depths: vec4<f32>,
 	classification: u32,
 	lod_level: u32,
-	meshlet_identity: u32,
+	instance_slot: u32,
 ) {
-	if (cull.meshlet_debug_record_offset == 0u) {
-		return;
-	}
-	let record_index = atomicAdd(&counters.meshlet_debug_records, 1u);
+	let record_index = atomicAdd(&counters.object_debug_records, 1u);
 	let base = record_index * 16u;
-	if (base + 15u >= arrayLength(&visible_instances)) {
-		atomicSub(&counters.meshlet_debug_records, 1u);
-		atomicAdd(&counters.meshlet_debug_record_overflow, 1u);
+	if (base + 15u >= arrayLength(&debug_records)) {
+		atomicSub(&counters.object_debug_records, 1u);
+		atomicAdd(&counters.object_debug_record_overflow, 1u);
 		return;
 	}
-	visible_instances[base] = bitcast<u32>(bounds.x);
-	visible_instances[base + 1u] = bitcast<u32>(bounds.y);
-	visible_instances[base + 2u] = bitcast<u32>(bounds.z);
-	visible_instances[base + 3u] = bitcast<u32>(bounds.w);
-	visible_instances[base + 4u] = bitcast<u32>(query_rect.x);
-	visible_instances[base + 5u] = bitcast<u32>(query_rect.y);
-	visible_instances[base + 6u] = bitcast<u32>(query_rect.z);
-	visible_instances[base + 7u] = bitcast<u32>(query_rect.w);
-	visible_instances[base + 8u] = bitcast<u32>(query_depths.x);
-	visible_instances[base + 9u] = bitcast<u32>(query_depths.y);
-	visible_instances[base + 10u] = bitcast<u32>(query_depths.z);
-	visible_instances[base + 11u] = bitcast<u32>(query_depths.w);
-	visible_instances[base + 12u] = classification;
-	visible_instances[base + 13u] = lod_level;
-	visible_instances[base + 14u] = meshlet_identity;
-	visible_instances[base + 15u] = 0u;
+	debug_records[base] = bitcast<u32>(bounds.x);
+	debug_records[base + 1u] = bitcast<u32>(bounds.y);
+	debug_records[base + 2u] = bitcast<u32>(bounds.z);
+	debug_records[base + 3u] = bitcast<u32>(bounds.w);
+	debug_records[base + 4u] = bitcast<u32>(query_rect.x);
+	debug_records[base + 5u] = bitcast<u32>(query_rect.y);
+	debug_records[base + 6u] = bitcast<u32>(query_rect.z);
+	debug_records[base + 7u] = bitcast<u32>(query_rect.w);
+	debug_records[base + 8u] = bitcast<u32>(query_depths.x);
+	debug_records[base + 9u] = bitcast<u32>(query_depths.y);
+	debug_records[base + 10u] = bitcast<u32>(query_depths.z);
+	debug_records[base + 11u] = bitcast<u32>(query_depths.w);
+	debug_records[base + 12u] = classification;
+	debug_records[base + 13u] = lod_level;
+	debug_records[base + 14u] = instance_slot;
+	debug_records[base + 15u] = 0u;
 }
 
-fn append_captured_debug_record(
-	bounds: vec4<f32>,
-	query_rect: vec4<f32>,
-	query_depths: vec4<f32>,
-	classification: u32,
-	lod_level: u32,
-	meshlet_identity: u32,
-) {
-	let record_index = atomicAdd(&counters.meshlet_debug_records, 1u);
-	let base = record_index * 16u;
-	if (base + 15u >= arrayLength(&visible_instances)) {
-		atomicSub(&counters.meshlet_debug_records, 1u);
-		atomicAdd(&counters.meshlet_debug_record_overflow, 1u);
-		return;
-	}
-	visible_instances[base] = bitcast<u32>(bounds.x);
-	visible_instances[base + 1u] = bitcast<u32>(bounds.y);
-	visible_instances[base + 2u] = bitcast<u32>(bounds.z);
-	visible_instances[base + 3u] = bitcast<u32>(bounds.w);
-	visible_instances[base + 4u] = bitcast<u32>(query_rect.x);
-	visible_instances[base + 5u] = bitcast<u32>(query_rect.y);
-	visible_instances[base + 6u] = bitcast<u32>(query_rect.z);
-	visible_instances[base + 7u] = bitcast<u32>(query_rect.w);
-	visible_instances[base + 8u] = bitcast<u32>(query_depths.x);
-	visible_instances[base + 9u] = bitcast<u32>(query_depths.y);
-	visible_instances[base + 10u] = bitcast<u32>(query_depths.z);
-	visible_instances[base + 11u] = bitcast<u32>(query_depths.w);
-	visible_instances[base + 12u] = classification;
-	visible_instances[base + 13u] = lod_level;
-	visible_instances[base + 14u] = meshlet_identity;
-	visible_instances[base + 15u] = 0u;
-}
 
-fn append_meshlet_debug(
-	bounds: vec4<f32>,
-	classification: u32,
-	lod_level: u32,
-	meshlet_identity: u32,
-) {
-	append_debug_record(
-		bounds,
-		vec4<f32>(0.0),
-		vec4<f32>(0.0),
-		classification,
-		lod_level,
-		meshlet_identity,
-	);
-}
+
+
 
 fn append_occlusion_debug(
 	bounds: vec4<f32>,
 	result: Occlusion_Result,
 	lod_level: u32,
-	meshlet_identity: u32,
+	instance_slot: u32,
 ) {
 	if (result.tested == 0u) {
 		return;
@@ -2116,326 +1253,28 @@ fn append_occlusion_debug(
 		result.depths,
 		select(7u, 8u, result.occluded != 0u),
 		lod_level,
-		meshlet_identity,
+		instance_slot,
 	);
 }
 
-fn append_batch_meshlet_debug(
-	instance: GPU_Instance,
-	batch: Batch_Info,
-	classification: u32,
-	lod_level: u32,
-) {
-	if (cull.meshlet_debug_record_offset == 0u || !batch_uses_meshlets(batch)) {
-		return;
-	}
-	for (
-		var local_meshlet = 0u;
-		local_meshlet < batch.meshlet_count;
-		local_meshlet = local_meshlet + 1u
-	) {
-		let meshlet_index = batch.meshlet_offset + local_meshlet;
-		if (!virtual_cluster_selected(instance, meshlets[meshlet_index], false)) {
-			continue;
-		}
-		append_meshlet_debug(
-			world_meshlet_bounds(instance, meshlets[meshlet_index]),
-			classification,
-			lod_level,
-			meshlet_index + 1u,
-		);
-	}
-}
 
-const COMPACT_CANDIDATE_CAMERA = 1u;
-const COMPACT_CANDIDATE_PREDICTIVE = 2u;
-const COMPACT_CANDIDATE_SHADOW_BASE = 4u;
-const COMPACT_CLUSTER_BUCKET_TRIANGLES = array<u32, 4>(32u, 64u, 96u, 124u);
 
-fn compact_cluster_bucket(triangle_count: u32) -> u32 {
-	for (var bucket_index = 0u; bucket_index < 4u; bucket_index = bucket_index + 1u) {
-		if (triangle_count <= COMPACT_CLUSTER_BUCKET_TRIANGLES[bucket_index]) {
-			return bucket_index;
-		}
-	}
-	return 3u;
-}
 
-fn cull_compact_candidate(invocation: vec3<u32>) {
-	let slot = invocation.x;
-	if (slot >= cull.slot_count) {
-		return;
-	}
-	let instance = instances[slot];
-	let lod_level = select_lod(instance);
-	let batch_index = instance.batch_indices[lod_level];
-	if (instance.enabled == 0u || batch_index >= cull.batch_count) {
-		return;
-	}
-	let batch = batches[batch_index];
-	if (batch_submission_mode(batch) != 2u) {
-		return;
-	}
-	var flags = 0u;
-	let camera_visible = camera_sphere_visible(instance.bounds);
-	let predictive_visible =
-		cull.virtual_prefetch_enabled != 0u &&
-		predictive_sphere_visible(instance.bounds);
-	if (camera_visible) {
-		atomicAdd(&counters.frustum_candidates, 1u);
-		let instance_occlusion = camera_sphere_occlusion(instance.bounds);
-		if (instance_occlusion.occluded != 0u) {
-			atomicAdd(&counters.occlusion_culled_instances, 1u);
-			if (render_debug_is_occlusion_queries()) {
-				append_occlusion_debug(instance.bounds, instance_occlusion, lod_level, 0u);
-			} else if (cull.debug_view != 0u) {
-				append_batch_meshlet_debug(instance, batch, 3u, lod_level);
-			}
-		} else {
-			flags = flags | COMPACT_CANDIDATE_CAMERA;
-			mark_visible_batch(batch_index);
-			atomicAdd(&counters.visible_instances, 1u);
-			atomicAdd(&counters.lod_visible_instances[lod_level], 1u);
-		}
-	} else {
-		atomicAdd(&counters.frustum_culled_instances, 1u);
-		if (cull.debug_view != 0u) {
-			append_batch_meshlet_debug(instance, batch, 2u, lod_level);
-		}
-	}
-	if (predictive_visible) {
-		flags = flags | COMPACT_CANDIDATE_PREDICTIVE;
-	}
-	if (instance.render_flags.x > 0.5) {
-		for (var cascade_index = 0u; cascade_index < 4u; cascade_index = cascade_index + 1u) {
-			if (shadow_sphere_visible(instance.bounds, cascade_index)) {
-				flags = flags | (COMPACT_CANDIDATE_SHADOW_BASE << cascade_index);
-				atomicAdd(&counters.shadow_visible_instances, 1u);
-			}
-		}
-	}
-	if (flags == 0u) {
-		return;
-	}
-	let candidate_index = atomicAdd(&shadow_indirect[batch_index].instance_count, 1u);
-	if (candidate_index < batch.visible_capacity) {
-		visible_instances[batch.visible_offset + candidate_index] =
-			(slot & 0x00ffffffu) | (flags << 24u);
-	} else {
-		atomicAdd(&counters.candidate_record_overflow, 1u);
-	}
-}
 
-fn cull_compact_camera_meshlet(
-	instance: GPU_Instance,
-	slot: u32,
-	batch: Batch_Info,
-	meshlet: Meshlet_Info,
-	meshlet_index: u32,
-	lod_level: u32,
-	predictive_visible: bool,
-) {
-	if (!virtual_cluster_selected(instance, meshlet, true)) {
-		if (meshlet.virtual_geometry != 0u) {
-			atomicAdd(&counters.virtual_rejected_clusters, 1u);
-			let rejected_bounds = world_meshlet_bounds(instance, meshlet);
-			if (camera_sphere_visible(rejected_bounds)) {
-				append_meshlet_debug(
-					rejected_bounds,
-					9u,
-					lod_level,
-					meshlet_index + 1u,
-				);
-			}
-		}
-		return;
-	}
-	if (predictive_visible) {
-		prefetch_virtual_cluster(instance, meshlet, true);
-	}
-	let bounds = world_meshlet_bounds(instance, meshlet);
-	if (!camera_sphere_visible(bounds)) {
-		atomicAdd(&counters.frustum_culled_meshlets, 1u);
-		append_meshlet_debug(bounds, 4u, lod_level, meshlet_index + 1u);
-		return;
-	}
-	if (meshlet_cone_culled(instance, meshlet, bounds)) {
-		atomicAdd(&counters.cone_culled_meshlets, 1u);
-		append_meshlet_debug(bounds, 5u, lod_level, meshlet_index + 1u);
-		return;
-	}
-	let meshlet_occlusion = camera_sphere_occlusion(bounds);
-	if (render_debug_is_occlusion_queries()) {
-		append_occlusion_debug(bounds, meshlet_occlusion, lod_level, meshlet_index + 1u);
-	}
-	if (meshlet_occlusion.occluded != 0u) {
-		atomicAdd(&counters.occlusion_culled_meshlets, 1u);
-		if (!render_debug_is_occlusion_queries()) {
-			append_meshlet_debug(bounds, 6u, lod_level, meshlet_index + 1u);
-		}
-		return;
-	}
-	if (
-		meshlet.virtual_geometry != 0u &&
-		virtual_page_touch_sample(meshlet, slot)
-	) {
-		append_virtual_page_feedback(
-			meshlet,
-			meshlet.group_index,
-			virtual_projected_error(instance, meshlet.group_bounds, meshlet.group_error),
-			2u,
-		);
-	}
-	let bucket_index = compact_cluster_bucket(meshlet.triangle_count);
-	let command_index = batch.compact_bucket_commands[bucket_index];
-	let local_index = atomicAdd(&indirect[command_index].instance_count, 1u);
-	atomicAdd(&counters.compact_triangles, meshlet.triangle_count);
-	atomicAdd(
-		&counters.compact_vertex_invocations,
-		COMPACT_CLUSTER_BUCKET_TRIANGLES[bucket_index] * 3u,
-	);
-	if (local_index == 0u) {
-		atomicAdd(&counters.visible_meshlet_draws, 1u);
-	}
-	if (meshlet.virtual_geometry != 0u) {
-		atomicAdd(&counters.visible_virtual_clusters, 1u);
-		atomicAdd(&counters.visible_virtual_triangles, meshlet.triangle_count);
-		if (virtual_cluster_blended(instance, meshlet)) {
-			atomicAdd(&counters.visible_virtual_blend_clusters, 1u);
-		}
-	}
-	let record_offset = batch.compact_visible_offsets[bucket_index] + local_index;
-	if (local_index < batch.compact_visible_capacities[bucket_index]) {
-		visible_instances[record_offset * 2u] = slot;
-		visible_instances[record_offset * 2u + 1u] = meshlet_index;
-		atomicAdd(&counters.visible_meshlets, 1u);
-	} else {
-		atomicAdd(&counters.visible_record_overflow, 1u);
-	}
-}
 
-fn cull_compact_shadow_meshlet(
-	instance: GPU_Instance,
-	slot: u32,
-	batch: Batch_Info,
-	meshlet: Meshlet_Info,
-	meshlet_index: u32,
-	cascade_index: u32,
-) {
-	if (!virtual_shadow_cluster_selected(instance, meshlet, cascade_index)) {
-		return;
-	}
-	let bounds = world_meshlet_bounds(instance, meshlet);
-	if (!shadow_sphere_visible(bounds, cascade_index)) {
-		return;
-	}
-	let bucket_index = compact_cluster_bucket(meshlet.triangle_count);
-	let indirect_index =
-		cascade_index * cull.indirect_command_stride +
-		batch.compact_bucket_commands[bucket_index];
-	let local_index = atomicAdd(&indirect[indirect_index].instance_count, 1u);
-	let record_offset =
-		cascade_index * cull.meshlet_shadow_visible_stride +
-		batch.compact_visible_offsets[bucket_index] + local_index;
-	if (local_index < batch.compact_visible_capacities[bucket_index]) {
-		visible_instances[record_offset * 2u] = slot;
-		visible_instances[record_offset * 2u + 1u] = meshlet_index;
-		atomicAdd(&counters.shadow_visible_meshlets, 1u);
-		atomicAdd(&counters.shadow_visible_meshlets_by_cascade[cascade_index], 1u);
-	} else {
-		atomicAdd(&counters.shadow_record_overflow, 1u);
-	}
-}
 
-fn compact_cluster_batch(meshlet_index: u32) -> u32 {
-	if (meshlet_index >= cull.meshlet_count) {
-		return cull.batch_count;
-	}
-	return meshlets[meshlet_index].batch_index;
-}
 
-fn cull_compact_camera_clusters(invocation: vec3<u32>) {
-	let meshlet_index = invocation.x;
-	let batch_index = compact_cluster_batch(meshlet_index);
-	if (batch_index >= cull.batch_count) {
-		return;
-	}
-	let meshlet = meshlets[meshlet_index];
-	let batch = batches[batch_index];
-	if (batch_submission_mode(batch) != 2u) {
-		return;
-	}
-	let candidate_count = min(
-		atomicLoad(&shadow_indirect[batch_index].instance_count),
-		batch.visible_capacity,
-	);
-	for (var candidate_index = 0u; candidate_index < candidate_count; candidate_index = candidate_index + 1u) {
-		let candidate = shadow_visible_instances[batch.visible_offset + candidate_index];
-		let slot = candidate & 0x00ffffffu;
-		let flags = candidate >> 24u;
-		let instance = instances[slot];
-		let lod_level = select_lod(instance);
-		if (instance.batch_indices[lod_level] != batch_index) {
-			continue;
-		}
-		let camera_visible = (flags & COMPACT_CANDIDATE_CAMERA) != 0u;
-		let predictive_visible = (flags & COMPACT_CANDIDATE_PREDICTIVE) != 0u;
-		if (camera_visible) {
-			cull_compact_camera_meshlet(
-				instance,
-				slot,
-				batch,
-				meshlet,
-				meshlet_index,
-				lod_level,
-				predictive_visible,
-			);
-		} else if (predictive_visible) {
-			prefetch_virtual_cluster(instance, meshlet, false);
-		}
-	}
-}
 
-fn cull_compact_shadow_clusters(invocation: vec3<u32>) {
-	let meshlet_index = invocation.x;
-	let cascade_index = invocation.y;
-	let batch_index = compact_cluster_batch(meshlet_index);
-	if (batch_index >= cull.batch_count || cascade_index >= 4u) {
-		return;
-	}
-	let meshlet = meshlets[meshlet_index];
-	let batch = batches[batch_index];
-	if (batch_submission_mode(batch) != 2u || batch.compact_shadow_pages == 0u) {
-		return;
-	}
-	let candidate_count = min(
-		atomicLoad(&shadow_indirect[batch_index].instance_count),
-		batch.visible_capacity,
-	);
-	for (var candidate_index = 0u; candidate_index < candidate_count; candidate_index = candidate_index + 1u) {
-		let candidate = shadow_visible_instances[batch.visible_offset + candidate_index];
-		let slot = candidate & 0x00ffffffu;
-		let flags = candidate >> 24u;
-		let instance = instances[slot];
-		let lod_level = select_lod(instance);
-		if (instance.batch_indices[lod_level] != batch_index) {
-			continue;
-		}
-		let shadow_flag = COMPACT_CANDIDATE_SHADOW_BASE << cascade_index;
-		if ((flags & shadow_flag) != 0u) {
-			cull_compact_shadow_meshlet(
-				instance,
-				slot,
-				batch,
-				meshlet,
-				meshlet_index,
-				cascade_index,
-			);
-		}
-	}
-}
 
-fn cull_instances(invocation: vec3<u32>, submission_mode: u32) {
+
+
+
+
+
+
+
+
+fn cull_instances(invocation: vec3<u32>) {
 	let slot = invocation.x;
 	let cascade_index = invocation.y;
 	if (slot >= cull.slot_count || cascade_index >= 4u) {
@@ -2448,387 +1287,76 @@ fn cull_instances(invocation: vec3<u32>, submission_mode: u32) {
 		return;
 	}
 	let batch = batches[batch_index];
-	let active_submission_mode = batch_submission_mode(batch);
-	let compact_shadow_fallback =
-		batch.compact_shadow_pages == 0u &&
-		submission_mode == 0u &&
-		active_submission_mode == 2u;
-	if (active_submission_mode != submission_mode && !compact_shadow_fallback) {
-		return;
-	}
-	var current_camera_visible = false;
-	var predictive_instance_visible = false;
 	if (cascade_index == 0u) {
-		current_camera_visible = camera_sphere_visible(instance.bounds);
-		predictive_instance_visible =
-			cull.virtual_prefetch_enabled != 0u &&
-			predictive_sphere_visible(instance.bounds);
-	}
-	if (
-		cascade_index == 0u &&
-		active_submission_mode == submission_mode &&
-		predictive_instance_visible &&
-		!current_camera_visible &&
-		batch_uses_meshlets(batch)
-	) {
-		for (
-			var local_meshlet = 0u;
-			local_meshlet < batch.meshlet_count;
-			local_meshlet = local_meshlet + 1u
-		) {
-			prefetch_virtual_cluster(
-				instance,
-				meshlets[batch.meshlet_offset + local_meshlet],
-				false,
-			);
-		}
-	}
-	let owns_camera = active_submission_mode == submission_mode;
-	if (owns_camera && cascade_index == 0u && current_camera_visible) {
-		atomicAdd(&counters.frustum_candidates, 1u);
-		let instance_occlusion = camera_sphere_occlusion(instance.bounds);
-		if (instance_occlusion.occluded != 0u) {
-			atomicAdd(&counters.occlusion_culled_instances, 1u);
-			if (render_debug_is_occlusion_queries()) {
-				append_occlusion_debug(instance.bounds, instance_occlusion, lod_level, 0u);
+		if (camera_sphere_visible(instance.bounds)) {
+			atomicAdd(&counters.frustum_candidates, 1u);
+			let occlusion = camera_sphere_occlusion(instance.bounds);
+			if (occlusion.occluded != 0u) {
+				atomicAdd(&counters.occlusion_culled_instances, 1u);
 			} else {
-				append_batch_meshlet_debug(instance, batch, 3u, lod_level);
-			}
-		} else if (batch_uses_meshlets(batch)) {
-			mark_visible_batch(batch_index);
-			for (
-				var local_meshlet = 0u;
-				local_meshlet < batch.meshlet_count;
-				local_meshlet = local_meshlet + 1u
-			) {
-				let meshlet_index = batch.meshlet_offset + local_meshlet;
-				let meshlet = meshlets[meshlet_index];
-				if (!virtual_cluster_selected(instance, meshlet, true)) {
-					if (meshlet.virtual_geometry != 0u) {
-						atomicAdd(&counters.virtual_rejected_clusters, 1u);
-						let rejected_bounds = world_meshlet_bounds(instance, meshlet);
-						if (camera_sphere_visible(rejected_bounds)) {
-							append_meshlet_debug(
-								rejected_bounds,
-								9u,
-								lod_level,
-								meshlet_index + 1u,
-							);
-						}
-					}
-					continue;
-				}
-				if (predictive_instance_visible) {
-					prefetch_virtual_cluster(instance, meshlet, true);
-				}
-				let bounds = world_meshlet_bounds(instance, meshlet);
-				if (!camera_sphere_visible(bounds)) {
-					atomicAdd(&counters.frustum_culled_meshlets, 1u);
-					append_meshlet_debug(bounds, 4u, lod_level, meshlet_index + 1u);
-					continue;
-				}
-				if (meshlet_cone_culled(instance, meshlet, bounds)) {
-					atomicAdd(&counters.cone_culled_meshlets, 1u);
-					append_meshlet_debug(bounds, 5u, lod_level, meshlet_index + 1u);
-					continue;
-				}
-				let meshlet_occlusion = camera_sphere_occlusion(bounds);
-				if (render_debug_is_occlusion_queries()) {
-					append_occlusion_debug(
-						bounds,
-						meshlet_occlusion,
-						lod_level,
-						meshlet_index + 1u,
-					);
-				}
-				if (meshlet_occlusion.occluded != 0u) {
-					atomicAdd(&counters.occlusion_culled_meshlets, 1u);
-					if (!render_debug_is_occlusion_queries()) {
-						append_meshlet_debug(bounds, 6u, lod_level, meshlet_index + 1u);
-					}
-					continue;
-				}
-				if (
-					meshlet.virtual_geometry != 0u &&
-					virtual_page_touch_sample(meshlet, slot)
-				) {
-					append_virtual_page_feedback(
-						meshlet,
-						meshlet.group_index,
-						virtual_projected_error(
-							instance,
-							meshlet.group_bounds,
-							meshlet.group_error,
-						),
-						2u,
-					);
-				}
-				var local_index = 0u;
-				let compact_bucket_index = compact_cluster_bucket(meshlet.triangle_count);
-				if (submission_mode == 2u) {
-					local_index = atomicAdd(
-						&indirect[batch.compact_bucket_commands[compact_bucket_index]].instance_count,
-						1u,
-					);
-				} else {
-					local_index = atomicAdd(&indirect[meshlet_index].instance_count, 1u);
-				}
-				if (local_index == 0u) {
-					atomicAdd(&counters.visible_meshlet_draws, 1u);
-					if (submission_mode != 2u && meshlet.virtual_geometry != 0u) {
-						atomicAdd(&counters.visible_virtual_clusters, 1u);
-						if (virtual_cluster_blended(instance, meshlet)) {
-							atomicAdd(&counters.visible_virtual_blend_clusters, 1u);
-						}
-					}
-				}
-				if (submission_mode == 2u && meshlet.virtual_geometry != 0u) {
-					atomicAdd(&counters.visible_virtual_clusters, 1u);
-					atomicAdd(&counters.visible_virtual_triangles, meshlet.triangle_count);
-					if (virtual_cluster_blended(instance, meshlet)) {
-						atomicAdd(&counters.visible_virtual_blend_clusters, 1u);
-					}
-				}
-				if (submission_mode == 2u) {
-					atomicAdd(&counters.compact_triangles, meshlet.triangle_count);
-					atomicAdd(
-						&counters.compact_vertex_invocations,
-						COMPACT_CLUSTER_BUCKET_TRIANGLES[compact_bucket_index] * 3u,
-					);
-				}
-				if (submission_mode == 2u) {
-					let record_offset =
-						batch.compact_visible_offsets[compact_bucket_index] + local_index;
-					if (local_index < batch.compact_visible_capacities[compact_bucket_index]) {
-						visible_instances[record_offset * 2u] = slot;
-						visible_instances[record_offset * 2u + 1u] = meshlet_index;
-						atomicAdd(&counters.visible_meshlets, 1u);
-					} else {
-						atomicAdd(&counters.visible_record_overflow, 1u);
-					}
-				} else if (local_index < meshlet.visible_capacity) {
-					visible_instances[meshlet.visible_offset + local_index] = slot;
-					atomicAdd(&counters.visible_meshlets, 1u);
+				let local_index = atomicAdd(&indirect[batch_index].instance_count, 1u);
+				mark_visible_batch(batch_index);
+				if (local_index < batch.visible_capacity) {
+					visible_instances[batch.visible_offset + local_index] = slot;
+					atomicAdd(&counters.visible_instances, 1u);
+					atomicAdd(&counters.lod_visible_instances[lod_level], 1u);
 				} else {
 					atomicAdd(&counters.visible_record_overflow, 1u);
 				}
 			}
-			atomicAdd(&counters.visible_instances, 1u);
-			atomicAdd(&counters.lod_visible_instances[lod_level], 1u);
 		} else {
-			let local_index = atomicAdd(&indirect[batch_index].instance_count, 1u);
-			mark_visible_batch(batch_index);
-			if (local_index < batch.visible_capacity) {
-				visible_instances[batch.visible_offset + local_index] = slot;
-				atomicAdd(&counters.visible_instances, 1u);
-				atomicAdd(&counters.lod_visible_instances[lod_level], 1u);
-			} else {
-				atomicAdd(&counters.visible_record_overflow, 1u);
-			}
-		}
-	} else if (owns_camera && cascade_index == 0u) {
-		atomicAdd(&counters.frustum_culled_instances, 1u);
-		if (cull.debug_view != 0u) {
-			append_batch_meshlet_debug(instance, batch, 2u, lod_level);
+			atomicAdd(&counters.frustum_culled_instances, 1u);
 		}
 	}
-	let owns_shadow = active_submission_mode != 2u || compact_shadow_fallback ||
-		(batch.compact_shadow_pages != 0u && active_submission_mode == 2u);
-	if (owns_shadow && instance.render_flags.x > 0.5 && shadow_sphere_visible(instance.bounds, cascade_index)) {
-		if (batch_uses_meshlets(batch) && !compact_shadow_fallback) {
-			for (
-				var local_meshlet = 0u;
-				local_meshlet < batch.meshlet_count;
-				local_meshlet = local_meshlet + 1u
-			) {
-				let meshlet_index = batch.meshlet_offset + local_meshlet;
-				let meshlet = meshlets[meshlet_index];
-				if (!virtual_shadow_cluster_selected(instance, meshlet, cascade_index)) {
-					continue;
-				}
-				let bounds = world_meshlet_bounds(instance, meshlet);
-				if (!shadow_sphere_visible(bounds, cascade_index)) {
-					continue;
-				}
-				var indirect_index = cascade_index * arrayLength(&meshlets) + meshlet_index;
-				let compact_bucket_index = compact_cluster_bucket(meshlet.triangle_count);
-				if (submission_mode == 2u) {
-					indirect_index =
-						cascade_index * cull.indirect_command_stride +
-						batch.compact_bucket_commands[compact_bucket_index];
-				}
-				let local_index = atomicAdd(&shadow_indirect[indirect_index].instance_count, 1u);
-				if (submission_mode == 2u) {
-					let record_offset =
-						cascade_index * cull.meshlet_shadow_visible_stride +
-						batch.compact_visible_offsets[compact_bucket_index] + local_index;
-					if (local_index < batch.compact_visible_capacities[compact_bucket_index]) {
-						shadow_visible_instances[record_offset * 2u] = slot;
-						shadow_visible_instances[record_offset * 2u + 1u] = meshlet_index;
-						atomicAdd(&counters.shadow_visible_meshlets, 1u);
-						atomicAdd(&counters.shadow_visible_meshlets_by_cascade[cascade_index], 1u);
-					} else {
-						atomicAdd(&counters.shadow_record_overflow, 1u);
-					}
-				} else if (local_index < meshlet.visible_capacity) {
-					shadow_visible_instances[
-						cascade_index * cull.meshlet_shadow_visible_stride +
-						meshlet.visible_offset + local_index
-					] = slot;
-					atomicAdd(&counters.shadow_visible_meshlets, 1u);
-					atomicAdd(&counters.shadow_visible_meshlets_by_cascade[cascade_index], 1u);
-				} else {
-					atomicAdd(&counters.shadow_record_overflow, 1u);
-				}
-			}
+	if (instance.render_flags.x > 0.5 && shadow_sphere_visible(instance.bounds, cascade_index)) {
+		let indirect_index = cascade_index * cull.indirect_command_stride + batch_index;
+		let local_index = atomicAdd(&shadow_indirect[indirect_index].instance_count, 1u);
+		if (local_index < batch.visible_capacity) {
+			shadow_visible_instances[
+				cascade_index * cull.shadow_visible_stride + batch.visible_offset + local_index
+			] = slot;
 			atomicAdd(&counters.shadow_visible_instances, 1u);
 		} else {
-			let indirect_index = cascade_index * cull.indirect_command_stride + batch_index;
-			let local_index = atomicAdd(&shadow_indirect[indirect_index].instance_count, 1u);
-			if (local_index < batch.visible_capacity) {
-				shadow_visible_instances[
-					cascade_index * cull.shadow_visible_stride + batch.visible_offset + local_index
-				] = slot;
-				atomicAdd(&counters.shadow_visible_instances, 1u);
-			} else {
-				atomicAdd(&counters.shadow_record_overflow, 1u);
-			}
+			atomicAdd(&counters.shadow_record_overflow, 1u);
 		}
 	}
 }
 
-fn capture_meshlet_debug(invocation: vec3<u32>) {
+
+
+@compute @workgroup_size(64)
+fn capture_object_visibility(@builtin(global_invocation_id) invocation: vec3<u32>) {
 	let slot = invocation.x;
-	if (slot >= cull.slot_count) {
-		return;
-	}
+	if (slot >= cull.slot_count) { return; }
 	let instance = instances[slot];
-	let lod_level = select_lod(instance);
-	let batch_index = instance.batch_indices[lod_level];
-	if (instance.enabled == 0u || batch_index >= cull.batch_count) {
+	if (instance.enabled == 0u) { return; }
+	let lod = select_lod(instance);
+	if (!camera_sphere_visible(instance.bounds)) {
+		append_debug_record(instance.bounds, vec4<f32>(0.0), vec4<f32>(0.0), 2u, lod, slot);
 		return;
 	}
-	let batch = batches[batch_index];
-	if (!batch_uses_meshlets(batch)) {
-		return;
-	}
-	let instance_visible = camera_sphere_visible(instance.bounds);
-	if (!instance_visible && cull.debug_view == 0u) {
-		return;
-	}
-	let instance_occlusion = camera_sphere_occlusion(instance.bounds);
-	for (
-		var local_meshlet = 0u;
-		local_meshlet < batch.meshlet_count;
-		local_meshlet = local_meshlet + 1u
-	) {
-		let meshlet_index = batch.meshlet_offset + local_meshlet;
-		let meshlet = meshlets[meshlet_index];
-		let bounds = world_meshlet_bounds(instance, meshlet);
-		if (!instance_visible) {
-			if (virtual_cluster_selected(instance, meshlet, false)) {
-				append_captured_debug_record(
-					bounds,
-					vec4<f32>(0.0),
-					vec4<f32>(0.0),
-					2u,
-					lod_level,
-					meshlet_index + 1u,
-				);
-			}
-			continue;
-		}
-		if (instance_occlusion.occluded != 0u) {
-			if (virtual_cluster_selected(instance, meshlet, false)) {
-				append_captured_debug_record(
-					bounds,
-					instance_occlusion.query_rect,
-					instance_occlusion.depths,
-					select(3u, 8u, render_debug_is_occlusion_queries()),
-					lod_level,
-					meshlet_index + 1u,
-				);
-			}
-			continue;
-		}
-		if (!virtual_cluster_selected(instance, meshlet, true)) {
-			if (meshlet.virtual_geometry != 0u && camera_sphere_visible(bounds)) {
-				append_captured_debug_record(
-					bounds,
-					vec4<f32>(0.0),
-					vec4<f32>(0.0),
-					9u,
-					lod_level,
-					meshlet_index + 1u,
-				);
-			}
-			continue;
-		}
-		if (!camera_sphere_visible(bounds)) {
-			append_captured_debug_record(
-				bounds,
-				vec4<f32>(0.0),
-				vec4<f32>(0.0),
-				4u,
-				lod_level,
-				meshlet_index + 1u,
-			);
-			continue;
-		}
-		if (meshlet_cone_culled(instance, meshlet, bounds)) {
-			append_captured_debug_record(
-				bounds,
-				vec4<f32>(0.0),
-				vec4<f32>(0.0),
-				5u,
-				lod_level,
-				meshlet_index + 1u,
-			);
-			continue;
-		}
-		let meshlet_occlusion = camera_sphere_occlusion(bounds);
-		if (render_debug_is_occlusion_queries() || meshlet_occlusion.occluded != 0u) {
-			append_captured_debug_record(
-				bounds,
-				meshlet_occlusion.query_rect,
-				meshlet_occlusion.depths,
-				select(6u, select(7u, 8u, meshlet_occlusion.occluded != 0u), render_debug_is_occlusion_queries()),
-				lod_level,
-				meshlet_index + 1u,
-			);
-		}
+	let result = camera_sphere_occlusion(instance.bounds);
+	if (result.tested != 0u) {
+		append_occlusion_debug(instance.bounds, result, lod, slot);
+	} else {
+		append_debug_record(instance.bounds, vec4<f32>(0.0), vec4<f32>(0.0), 1u, lod, slot);
 	}
 }
 
 @compute @workgroup_size(64)
 fn cull_classic_instances(@builtin(global_invocation_id) invocation: vec3<u32>) {
-	cull_instances(invocation, 0u);
+	cull_instances(invocation);
 }
 
-@compute @workgroup_size(64)
-fn capture_meshlet_debug_instances(@builtin(global_invocation_id) invocation: vec3<u32>) {
-	capture_meshlet_debug(invocation);
-}
 
-@compute @workgroup_size(64)
-fn cull_meshlet_instances(@builtin(global_invocation_id) invocation: vec3<u32>) {
-	cull_instances(invocation, 1u);
-}
 
-@compute @workgroup_size(64)
-fn cull_compact_instances(@builtin(global_invocation_id) invocation: vec3<u32>) {
-	cull_compact_candidate(invocation);
-}
 
-@compute @workgroup_size(64)
-fn cull_compact_cluster_instances(@builtin(global_invocation_id) invocation: vec3<u32>) {
-	cull_compact_camera_clusters(invocation);
-}
 
-@compute @workgroup_size(64)
-fn cull_compact_shadow_cluster_instances(@builtin(global_invocation_id) invocation: vec3<u32>) {
-	cull_compact_shadow_clusters(invocation);
-}
+
+
+
+
+
 `
 
 WGPU_HIZ_COPY_SHADER :: `
@@ -2937,7 +1465,7 @@ fn hiz_debug_fs(input: Fullscreen_Output) -> @location(0) vec4<f32> {
 }
 `
 
-WGPU_MESHLET_DEBUG_SHADER :: `
+WGPU_OBJECT_DEBUG_SHADER :: `
 struct Render_Uniform {
 	view_projection: mat4x4<f32>,
 	view: mat4x4<f32>,
@@ -2954,18 +1482,18 @@ struct Render_Uniform {
 	camera_clip: vec4<f32>,
 };
 
-struct Meshlet_Debug_Record {
+struct Object_Debug_Record {
 	bounds: vec4<f32>,
 	query_rect: vec4<f32>,
 	query_depths: vec4<f32>,
 	classification: u32,
 	lod_level: u32,
-	meshlet_identity: u32,
+	instance_slot: u32,
 	padding: u32,
 };
 
 @group(0) @binding(0) var<uniform> render: Render_Uniform;
-@group(0) @binding(1) var<storage, read> records: array<Meshlet_Debug_Record>;
+@group(0) @binding(1) var<storage, read> records: array<Object_Debug_Record>;
 
 struct Vertex_Output {
 	@builtin(position) position: vec4<f32>,
@@ -2980,68 +1508,21 @@ fn debug_vs(
 	let record = records[instance_index];
 	var output: Vertex_Output;
 	output.classification = record.classification;
-	if (render.debug.x == 10u) {
-		if (vertex_index < 144u) {
-			output.position = vec4<f32>(-2.0, -2.0, 0.0, 1.0);
-			return output;
-		}
-		let rectangle_vertex = vertex_index - 144u;
-		let corner_indices = array<u32, 8>(0u, 1u, 1u, 2u, 2u, 3u, 3u, 0u);
-		let corner = corner_indices[rectangle_vertex];
-		let x = select(record.query_rect.x, record.query_rect.z, corner == 1u || corner == 2u);
-		let y = select(record.query_rect.y, record.query_rect.w, corner >= 2u);
-		output.position = vec4<f32>(x, y, 0.0, 1.0);
-		return output;
-	}
-	if (vertex_index >= 144u) {
+	if (record.classification != 7u && record.classification != 8u) {
 		output.position = vec4<f32>(-2.0, -2.0, 0.0, 1.0);
 		return output;
 	}
-	let circle_vertex = vertex_index % 48u;
-	let circle = vertex_index / 48u;
-	let segment = circle_vertex / 2u;
-	let endpoint = circle_vertex & 1u;
-	let angle = 6.28318530718 * f32(segment + endpoint) / 24.0;
-	let sine = sin(angle);
-	let cosine = cos(angle);
-	var unit = vec3<f32>(cosine, sine, 0.0);
-	if (circle == 1u) {
-		unit = vec3<f32>(cosine, 0.0, sine);
-	} else if (circle == 2u) {
-		unit = vec3<f32>(0.0, cosine, sine);
-	}
-	output.position = render.view_projection *
-		vec4<f32>(record.bounds.xyz + unit * record.bounds.w, 1.0);
+	let corner_indices = array<u32, 8>(0u, 1u, 1u, 2u, 2u, 3u, 3u, 0u);
+	let corner = corner_indices[vertex_index];
+	let x = select(record.query_rect.x, record.query_rect.z, corner == 1u || corner == 2u);
+	let y = select(record.query_rect.y, record.query_rect.w, corner >= 2u);
+	output.position = vec4<f32>(x, y, 0.0, 1.0);
 	return output;
 }
 
 @fragment
 fn debug_fs(input: Vertex_Output) -> @location(0) vec4<f32> {
-	var color = vec3<f32>(1.0, 0.18, 0.18);
-	switch input.classification {
-		case 2u: {
-			color = vec3<f32>(1.0, 0.22, 0.16);
-		}
-		case 3u: {
-			color = vec3<f32>(0.78, 0.25, 1.0);
-		}
-		case 4u: {
-			color = vec3<f32>(1.0, 0.62, 0.12);
-		}
-		case 5u: {
-			color = vec3<f32>(0.14, 0.72, 1.0);
-		}
-		case 6u: {
-			color = vec3<f32>(1.0, 0.18, 0.68);
-		}
-		case 7u: {
-			color = vec3<f32>(0.24, 0.95, 0.68);
-		}
-		case 8u: {
-			color = vec3<f32>(1.0, 0.18, 0.58);
-		}
-		default: {}
-	}
+	let color = select(vec3<f32>(0.18, 0.95, 0.68), vec3<f32>(1.0, 0.22, 0.48), input.classification == 8u);
 	return vec4<f32>(color, 1.0);
 }
 `

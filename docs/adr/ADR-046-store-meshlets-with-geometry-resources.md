@@ -3,6 +3,8 @@
 **Date:** 2026-07-30
 **Updated:** 2026-08-08
 
+**Status:** Superseded by [ADR-062](ADR-062-return-to-conventional-indexed-geometry.md). The implementation described below is historical.
+
 ## Context
 
 Scrapbot's GPU-driven renderer culls and submits complete geometry/material/LOD batches. Large

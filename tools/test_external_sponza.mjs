@@ -80,7 +80,7 @@ function main() {
     readFileSync(join(importedDirectory, metadataName), "utf8"),
   );
   if (
-    metadata.schema !== "scrapbot.model.v21.bootstrap-resident-tail" ||
+    metadata.schema !== "scrapbot.model.v22.indexed-geometry" ||
     metadata.node_count !== 1 ||
     metadata.mesh_count !== 1 ||
     metadata.primitive_count !== 103 ||
@@ -94,9 +94,6 @@ function main() {
     metadata.lod_vertex_count <= 0 ||
     metadata.lod_index_count <= 0 ||
     metadata.lod_index_count >= metadata.index_count ||
-    metadata.cluster_count !== 15097 ||
-    metadata.cluster_group_count !== 1698 ||
-    metadata.cluster_page_count !== 1698 ||
     metadata.distance_field_count !== metadata.primitive_count ||
     metadata.signed_distance_field_count < 0 ||
     metadata.signed_distance_field_count > metadata.distance_field_count ||
@@ -155,7 +152,7 @@ function main() {
     `[external-sponza] imported ${metadata.primitive_count} primitives with ` +
       `${metadata.lod_count} generated LODs, ${metadata.index_count / 3} source triangles, ` +
       `${metadata.lod_index_count / 3} LOD triangles, ${metadata.material_count} materials, ` +
-      `${metadata.texture_count} PBR textures, ${metadata.cluster_page_count} cluster pages, and ` +
+      `${metadata.texture_count} PBR textures and ` +
       `${metadata.distance_field_count} mesh distance fields (${metadata.distance_field_byte_count} bytes)`,
   );
 }

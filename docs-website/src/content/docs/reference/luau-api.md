@@ -195,15 +195,12 @@ scrapbot.spawn({
 	components = {
 		["scrapbot.geometry"] = {
 			resource = rock,
-			geometry_mode = "virtual",
 		},
 	},
 })
 ```
 
-`geometry_mode` is `inherit`, `auto`, `conventional`, or `virtual`. The direct-handle form remains
-equivalent to `{ resource = handle, geometry_mode = "inherit" }`. Geometry and mesh query payloads
-return the resolved authored mode alongside their resource or primitive field.
+The direct-handle form is equivalent to `{ resource = handle }`. Geometry queries expose the resource handle; mesh queries expose the primitive name.
 
 ## Queries and views
 

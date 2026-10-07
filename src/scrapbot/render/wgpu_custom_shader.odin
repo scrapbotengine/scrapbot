@@ -23,8 +23,6 @@ struct Render_Uniform {
 	shadow_map_parameters: vec4<f32>,
 	debug: vec4<u32>,
 	camera_clip: vec4<f32>,
-	virtual_geometry: vec4<f32>,
-	virtual_geometry_epoch: vec4<u32>,
 };
 struct GPU_Instance {
 	model: mat4x4<f32>,
@@ -2055,10 +2053,6 @@ wgpu_rebuild_transparent_world_bind_group :: proc(renderer: ^WGPU_Renderer) -> s
 		wgpu.BindGroupRelease(renderer.transparent_world_bind_group)
 		renderer.transparent_world_bind_group = nil
 	}
-	if renderer.geometry_vertex_arena.buffer == nil ||
-	   renderer.geometry_index_arena.buffer == nil {
-		return ""
-	}
 	renderer.transparent_world_bind_group = wgpu_make_batch_bind_group(
 		renderer,
 		renderer.transparent_visible_buffer,
@@ -2338,12 +2332,7 @@ wgpu_encode_transparent_pass :: proc(
 	for draw, draw_index in renderer.transparent_draws {
 		material, material_ok := resources.get_material(registry, draw.material)
 		if !material_ok { return "transparent draw references an unavailable material" }
-		geometry, geometry_err := wgpu_geometry_cache(
-			renderer,
-			registry,
-			draw.geometry,
-			.Conventional,
-		)
+		geometry, geometry_err := wgpu_geometry_cache(renderer, registry, draw.geometry)
 		if geometry_err != "" { return geometry_err }
 		geometry_resource, geometry_ok := resources.get_geometry(registry, draw.geometry)
 		if !geometry_ok { return "transparent draw references unavailable geometry" }
@@ -2356,7 +2345,7 @@ wgpu_encode_transparent_pass :: proc(
 		wgpu.RenderPassEncoderSetBindGroup(pass, 3, custom.render_bind_group)
 		wgpu.RenderPassEncoderDrawIndexed(
 			pass,
-			u32(resources.geometry_fallback_index_count(geometry_resource)),
+			u32(resources.geometry_index_count(geometry_resource)),
 			1,
 			u32(geometry.index_range.offset / u64(size_of(u32))),
 			i32(geometry.vertex_range.offset / u64(size_of(resources.Vertex))),
