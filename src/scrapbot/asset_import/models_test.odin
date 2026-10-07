@@ -76,24 +76,6 @@ test_model_offline_lods_are_deterministic_compact_and_round_trip :: proc(t: ^tes
 			testing.expect_value(t, second.lods[level].vertices[vertex_index], vertex)
 		}
 	}
-	hierarchy_err := build_model_primitive_hierarchies(&primitive)
-	testing.expectf(t, hierarchy_err == "", "hierarchy build failed: %s", hierarchy_err)
-	testing.expect(t, len(primitive.hierarchy.pages) > 0)
-	pinned_pages := 0
-	bootstrap_refinement_pages := 0
-	for group in primitive.hierarchy.groups {
-		for page_index in group.page_offset ..< group.page_offset + group.page_count {
-			if primitive.hierarchy.pages[page_index].pinned {
-				pinned_pages += 1
-			}
-			if primitive.hierarchy.pages[page_index].bootstrap &&
-			   !geometry.cluster_group_is_terminal(group) {
-				bootstrap_refinement_pages += 1
-			}
-		}
-	}
-	testing.expect(t, pinned_pages > 0)
-	testing.expect(t, bootstrap_refinement_pages > 0)
 	model: Model_Product
 	mesh := Model_Mesh{}
 	mesh.key, _ = strings.clone("mesh:grid")
@@ -143,27 +125,15 @@ test_model_offline_lods_are_deterministic_compact_and_round_trip :: proc(t: ^tes
 		&product_directory,
 		.Model_Material_Images,
 	)
-	coarse_chunk, coarse_found := asset_product_find_chunk(
-		&product_directory,
-		.Model_Coarse_Geometry,
-	)
-	detail_chunk, detail_found := asset_product_find_chunk(
-		&product_directory,
-		.Model_Detail_Geometry,
-	)
 	distance_field_chunk, distance_field_found := asset_product_find_chunk(
 		&product_directory,
 		.Model_Distance_Fields,
 	)
 	catalog_chunk, catalog_found := asset_product_find_chunk(&product_directory, .Model_Catalog)
 	testing.expect(t, image_found)
-	testing.expect(t, coarse_found)
-	testing.expect(t, detail_found)
 	testing.expect(t, distance_field_found)
 	testing.expect(t, catalog_found)
-	testing.expect(t, image_chunk.offset < coarse_chunk.offset)
-	testing.expect(t, coarse_chunk.offset < detail_chunk.offset)
-	testing.expect(t, detail_chunk.offset < distance_field_chunk.offset)
+	testing.expect(t, image_chunk.offset < distance_field_chunk.offset)
 	testing.expect(t, distance_field_chunk.offset < catalog_chunk.offset)
 	decoded, decode_err := read_model_product(path)
 	defer destroy_model_product(&decoded)
@@ -189,54 +159,25 @@ test_model_offline_lods_are_deterministic_compact_and_round_trip :: proc(t: ^tes
 		invalid_field.value_scale = 0
 		_, invalid_scale_err := read_model_distance_field_samples(path, invalid_field)
 		testing.expect(t, invalid_scale_err != "")
-		testing.expect_value(
-			t,
-			len(decoded_primitive.page_payloads),
-			len(decoded_primitive.hierarchy.pages),
-		)
-		for record, page_index in decoded_primitive.page_payloads {
-			expected_size :=
-				u64(record.vertex_count) * u64(size_of(Model_Vertex)) +
-				u64(record.index_count) * u64(size_of(u32))
-			testing.expect_value(t, record.size, expected_size)
-			testing.expect_value(
-				t,
-				record.index_count,
-				decoded_primitive.hierarchy.pages[page_index].index_count,
-			)
-			testing.expect(t, record.offset + record.size <= u64(len(encoded)))
-			expected_chunk := detail_chunk
-			if decoded_primitive.hierarchy.pages[page_index].bootstrap {
-				expected_chunk = coarse_chunk
-			}
-			testing.expect(t, model_chunk_contains(expected_chunk, record.offset, record.size))
+		source_primitive := model.meshes[0].primitives[0]
+		testing.expect_value(t, len(decoded_primitive.vertices), len(source_primitive.vertices))
+		for vertex, index in source_primitive.vertices {
+			testing.expect_value(t, decoded_primitive.vertices[index], vertex)
 		}
-		testing.expect_value(
-			t,
-			len(decoded_primitive.hierarchy.pages),
-			len(model.meshes[0].primitives[0].hierarchy.pages),
-		)
-		testing.expect_value(
-			t,
-			len(decoded_primitive.hierarchy.clusters),
-			len(model.meshes[0].primitives[0].hierarchy.clusters),
-		)
-		for page, page_index in decoded_primitive.hierarchy.pages {
-			source_page := model.meshes[0].primitives[0].hierarchy.pages[page_index]
-			testing.expect_value(t, page.pinned, source_page.pinned)
-			testing.expect_value(t, page.bootstrap, source_page.bootstrap)
+		for index, offset in source_primitive.indices {
+			testing.expect_value(t, decoded_primitive.indices[offset], index)
 		}
 		testing.expect_value(t, len(decoded.meshes[0].primitives[0].lods), 3)
 		decoded_lod := decoded.meshes[0].primitives[0].lods[2]
 		source_lod := model.meshes[0].primitives[0].lods[2]
 		testing.expect_value(t, decoded_lod.index_count, u32(len(source_lod.indices)))
 		testing.expect_value(t, decoded_lod.vertex_count, u32(len(source_lod.vertices)))
-		testing.expect_value(t, len(decoded_lod.query_positions), len(source_lod.vertices))
+		testing.expect_value(t, len(decoded_lod.vertices), len(source_lod.vertices))
 		for vertex, index in source_lod.vertices {
-			testing.expect_value(t, decoded_lod.query_positions[index], vertex.position)
+			testing.expect_value(t, decoded_lod.vertices[index], vertex)
 		}
-		for lod in decoded_primitive.lods {
-			testing.expect(t, len(lod.hierarchy.pages) > 0)
+		for index, offset in source_lod.indices {
+			testing.expect_value(t, decoded_lod.indices[offset], index)
 		}
 	}
 }
@@ -511,9 +452,6 @@ test_static_gltf_import_is_incremental_and_round_trips_product :: proc(t: ^testi
 	testing.expect_value(t, product.vertex_count, 3)
 	testing.expect_value(t, product.index_count, 3)
 	testing.expect_value(t, product.material_count, 1)
-	testing.expect_value(t, product.cluster_count, 1)
-	testing.expect_value(t, product.cluster_group_count, 1)
-	testing.expect_value(t, product.cluster_page_count, 1)
 	testing.expect_value(t, product.distance_field_count, 1)
 	testing.expect_value(t, product.signed_distance_field_count, 0)
 	testing.expect(t, product.distance_field_sample_count > 0)
@@ -532,10 +470,9 @@ test_static_gltf_import_is_incremental_and_round_trips_product :: proc(t: ^testi
 		primitive := model.meshes[0].primitives[0]
 		testing.expect_value(t, primitive.vertex_count, u32(3))
 		testing.expect_value(t, primitive.index_count, u32(3))
-		testing.expect_value(t, len(primitive.query_positions), 3)
-		testing.expect_value(t, primitive.query_positions[0], shared.Vec3{0, 1, 0})
-		testing.expect_value(t, len(primitive.hierarchy.clusters), 1)
-		testing.expect_value(t, primitive.hierarchy.clusters[0].triangle_count, u32(1))
+		testing.expect_value(t, len(primitive.vertices), 3)
+		testing.expect_value(t, primitive.vertices[0].position, shared.Vec3{0, 1, 0})
+		testing.expect_value(t, len(primitive.indices), 3)
 		testing.expect_value(t, model.nodes[0].name, "Triangle Node")
 		testing.expect_value(t, model.nodes[0].mesh_index, i32(0))
 		testing.expect_value(t, model.nodes[0].transform.position.x, f32(1))

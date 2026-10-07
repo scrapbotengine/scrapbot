@@ -1,6 +1,0 @@
-name = "GPU Virtual Geometry Pressure Fixture"
-default_scene = "b3000000-0000-4000-8000-000000000005"
-
-[render]
-geometry_mode = "virtual"
-virtual_geometry_budget_mb = 0.5

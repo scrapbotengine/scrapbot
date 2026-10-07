@@ -1039,7 +1039,7 @@ wgpu_encode_viewport_draws :: proc(
 	valid_draws := make([]bool, len(draws), context.temp_allocator)
 	valid_draw_count := 0
 	for draw, index in draws {
-		geometry, geometry_err := wgpu_geometry_cache(renderer, registry, draw.geometry, .Virtual)
+		geometry, geometry_err := wgpu_geometry_cache(renderer, registry, draw.geometry)
 		if geometry_err != "" || geometry == nil {
 			continue
 		}
@@ -1047,7 +1047,7 @@ wgpu_encode_viewport_draws :: proc(
 		if material_err != "" || material == nil {
 			continue
 		}
-		command := wgpu_geometry_indirect_template(geometry, 0, false)
+		command := wgpu_geometry_indirect_template(geometry)
 		if command.index_count == 0 {
 			continue
 		}
@@ -1117,7 +1117,7 @@ wgpu_encode_viewport_draws :: proc(
 		if !valid_draws[index] {
 			continue
 		}
-		geometry, _ := wgpu_geometry_cache(renderer, registry, draw.geometry, .Virtual)
+		geometry, _ := wgpu_geometry_cache(renderer, registry, draw.geometry)
 		material, _ := wgpu_material_cache(renderer, registry, draw.material)
 		wgpu.RenderPassEncoderSetBindGroup(pass, 1, material.bind_group)
 		wgpu.RenderPassEncoderSetVertexBuffer(
@@ -1134,7 +1134,7 @@ wgpu_encode_viewport_draws :: proc(
 			0,
 			wgpu.WHOLE_SIZE,
 		)
-		command := wgpu_geometry_indirect_template(geometry, 0, false)
+		command := wgpu_geometry_indirect_template(geometry)
 		if command.index_count == 0 {
 			continue
 		}

@@ -147,20 +147,10 @@ description = "Import and render the pinned Khronos Sponza fixture"
 depends = ["build"]
 run = 'node tools/test_external_sponza.mjs --framegrab "${TMPDIR:-/tmp}/scrapbot-sponza.png"'
 
-[tasks.test-virtual-wilds]
-description = "Import and validate the pinned Poly Haven virtual-geometry fixture"
-depends = ["build"]
-run = "node tools/test_external_virtual_wilds.mjs"
-
-[tasks.test-virtual-geometry-cliff]
+[tasks.test-coastal-cliff]
 description = "Import and validate the isolated Poly Haven cliff fixture"
 depends = ["build"]
-run = "node tools/test_external_virtual_geometry_cliff.mjs"
-
-[tasks.test-virtual-wilds-gpu]
-description = "Import and verify Virtual Wilds coverage and refinement sequences"
-depends = ["build"]
-run = 'node tools/test_external_virtual_wilds.mjs --sequence-out "${TMPDIR:-/tmp}/scrapbot-virtual-wilds-sequence"'
+run = "node tools/test_external_coastal_cliff.mjs"
 
 [tasks.build]
 description = "Build the Scrapbot CLI when its optimized binary is stale"
@@ -285,14 +275,12 @@ fi
 
 [tasks.meshoptimizer]
 description = "Build the pinned meshoptimizer library and Scrapbot's offline geometry compilers"
-sources = ["third_party/meshoptimizer/src/**/*", "third_party/meshoptimizer/Makefile", "native/clusterlod/clusterlod.cpp", "native/distance_field/distance_field.cpp"]
+sources = ["third_party/meshoptimizer/src/**/*", "third_party/meshoptimizer/Makefile", "native/distance_field/distance_field.cpp"]
 outputs = ["third_party/meshoptimizer/build/release/libmeshoptimizer.a"]
 run = '''
 make -C third_party/meshoptimizer config=release build/release/libmeshoptimizer.a
 mkdir -p third_party/meshoptimizer/build/release/scrapbot
-${CXX:-c++} -O3 -std=c++11 -Ithird_party/meshoptimizer/src -c native/clusterlod/clusterlod.cpp -o third_party/meshoptimizer/build/release/scrapbot/clusterlod.o
 ${CXX:-c++} -O3 -std=c++11 -c native/distance_field/distance_field.cpp -o third_party/meshoptimizer/build/release/scrapbot/distance_field.o
-ar rcs third_party/meshoptimizer/build/release/libmeshoptimizer.a third_party/meshoptimizer/build/release/scrapbot/clusterlod.o
 ar rcs third_party/meshoptimizer/build/release/libmeshoptimizer.a third_party/meshoptimizer/build/release/scrapbot/distance_field.o
 '''
 
@@ -468,9 +456,19 @@ description = "Run the lifecycle-heavy CPU/RAM growth soak"
 depends = ["build"]
 run = "node tools/runtime_soak.mjs"
 
+[tasks.test-indexed-transforms-gpu]
+description = "Compare indexed transform rendering with CPU culling across five frames"
+depends = ["build"]
+run = 'node tools/test_render_sequence.mjs --project tests/fixtures/gpu-indexed-transforms --warmup 10 --frames 20 --capture-range 15:19 --resolution 960x540 --cpu-reference --minimum-psnr 44 --out "${TMPDIR:-/tmp}/scrapbot-indexed-transforms"'
+
+[tasks.test-custom-surface-gpu]
+description = "Verify indexed custom vertex and transparent fragment hooks without opaque batches"
+depends = ["build"]
+run = 'node tools/test_render_sequence.mjs --project tests/fixtures/gpu-custom-surface --warmup 10 --frames 20 --capture-range 15:19 --resolution 960x540 --cpu-reference --minimum-psnr 44 --out "${TMPDIR:-/tmp}/scrapbot-custom-surface"'
+
 [tasks.test-gpu]
 description = "Verify WGPU visibility paths and deterministic material output"
-depends = ["build", "test-virtual-geometry-gpu", "test-virtual-geometry-transforms-gpu"]
+depends = ["build", "test-indexed-transforms-gpu", "test-custom-surface-gpu"]
 run = '''
 COMPUTE_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-compute.png"
 CPU_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-cpu.png"
@@ -484,7 +482,6 @@ ATMOSPHERE_BASELINE_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-world-environment-baseli
 ATMOSPHERE_DUMP="${TMPDIR:-/tmp}/scrapbot-gpu-world-environment.json"
 LOD_COMPUTE_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-lod-compute.png"
 LOD_CPU_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-lod-cpu.png"
-MESHLET_VISIBILITY_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-meshlet-visibility.png"
 HIZ_DEBUG_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-hiz-debug.png"
 OCCLUSION_DEBUG_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-occlusion-debug.png"
 DISTANCE_FIELD_DEBUG_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-distance-field-debug.png"
@@ -502,7 +499,7 @@ CLUSTER_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-cluster-capacity.png"
 CLUSTER_PAUSED_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-cluster-paused.png"
 CLUSTER_STOPPED_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-cluster-stopped.png"
 CLUSTER_RESTART_FRAME="${TMPDIR:-/tmp}/scrapbot-gpu-cluster-restart.png"
-trap 'rm -f "$COMPUTE_FRAME" "$CPU_FRAME" "$UI_FRAME" "$RESPONSIVE_UI_FRAME" "$RESPONSIVE_UI_DUMP" "$OVERLAY_FRAME" "$OVERLAY_DUMP" "$ATMOSPHERE_FRAME" "$ATMOSPHERE_BASELINE_FRAME" "$ATMOSPHERE_DUMP" "$LOD_COMPUTE_FRAME" "$LOD_CPU_FRAME" "$MESHLET_VISIBILITY_FRAME" "$HIZ_DEBUG_FRAME" "$OCCLUSION_DEBUG_FRAME" "$DISTANCE_FIELD_DEBUG_FRAME" "$WORLD_DISTANCE_FIELD_DEBUG_FRAME" "$WORLD_DISTANCE_FIELD_SCROLL_FRAME" "$WORLD_DISTANCE_FIELD_REFERENCE_FRAME" "$TRANSFORM_COMPUTE_FRAME" "$TRANSFORM_CPU_FRAME" "$MASK_FRAME" "$LIGHTING_FRAME" "$PBR_FRAME" "$TAA_FRAME_A" "$TAA_FRAME_B" "$CLUSTER_FRAME" "$CLUSTER_PAUSED_FRAME" "$CLUSTER_STOPPED_FRAME" "$CLUSTER_RESTART_FRAME"' EXIT
+trap 'rm -f "$COMPUTE_FRAME" "$CPU_FRAME" "$UI_FRAME" "$RESPONSIVE_UI_FRAME" "$RESPONSIVE_UI_DUMP" "$OVERLAY_FRAME" "$OVERLAY_DUMP" "$ATMOSPHERE_FRAME" "$ATMOSPHERE_BASELINE_FRAME" "$ATMOSPHERE_DUMP" "$LOD_COMPUTE_FRAME" "$LOD_CPU_FRAME" "$HIZ_DEBUG_FRAME" "$OCCLUSION_DEBUG_FRAME" "$DISTANCE_FIELD_DEBUG_FRAME" "$WORLD_DISTANCE_FIELD_DEBUG_FRAME" "$WORLD_DISTANCE_FIELD_SCROLL_FRAME" "$WORLD_DISTANCE_FIELD_REFERENCE_FRAME" "$TRANSFORM_COMPUTE_FRAME" "$TRANSFORM_CPU_FRAME" "$MASK_FRAME" "$LIGHTING_FRAME" "$PBR_FRAME" "$TAA_FRAME_A" "$TAA_FRAME_B" "$CLUSTER_FRAME" "$CLUSTER_PAUSED_FRAME" "$CLUSTER_STOPPED_FRAME" "$CLUSTER_RESTART_FRAME"' EXIT
 COMPUTE_JSON="$(bin/scrapbot run tests/fixtures/gpu-driven --headless --no-hot-reload --frames 20 --framegrab "$COMPUTE_FRAME" --json)"
 CPU_JSON="$(bin/scrapbot run tests/fixtures/gpu-driven --headless --no-hot-reload --cpu-culling --frames 20 --framegrab "$CPU_FRAME" --json)"
 UI_JSON="$(bin/scrapbot run examples/ecs-showcase --headless --editor --no-hot-reload --frames 2 --framegrab "$UI_FRAME" --json)"
@@ -512,7 +509,6 @@ ATMOSPHERE_BASELINE_JSON="$(bin/scrapbot run examples/ecs-showcase --headless --
 ATMOSPHERE_JSON="$(bin/scrapbot run examples/ecs-showcase --headless --editor --no-hot-reload --frames 80 --ui-script tests/fixtures/ui/world-environment.json --ui-dump "$ATMOSPHERE_DUMP" --framegrab "$ATMOSPHERE_FRAME" --json)"
 LOD_COMPUTE_JSON="$(bin/scrapbot run tests/fixtures/gpu-lod --headless --no-hot-reload --frames 5 --framegrab "$LOD_COMPUTE_FRAME" --json)"
 LOD_CPU_JSON="$(bin/scrapbot run tests/fixtures/gpu-lod --headless --no-hot-reload --cpu-culling --frames 5 --framegrab "$LOD_CPU_FRAME" --json)"
-MESHLET_VISIBILITY_JSON="$(bin/scrapbot run examples/ecs-showcase --headless --editor --no-hot-reload --frames 20 --ui-script tests/fixtures/ui/game-debug-visibility.json --framegrab "$MESHLET_VISIBILITY_FRAME" --json)"
 HIZ_DEBUG_JSON="$(bin/scrapbot run examples/ecs-showcase --headless --editor --no-hot-reload --frames 60 --ui-script tests/fixtures/ui/game-debug-hiz.json --framegrab "$HIZ_DEBUG_FRAME" --json)"
 OCCLUSION_DEBUG_JSON="$(bin/scrapbot run tests/fixtures/gpu-driven --headless --editor --no-hot-reload --frames 60 --ui-script tests/fixtures/ui/game-debug-occlusion.json --framegrab "$OCCLUSION_DEBUG_FRAME" --json)"
 DISTANCE_FIELD_DEBUG_JSON="$(bin/scrapbot run tests/fixtures/gltf-materials --headless --editor --no-hot-reload --frames 60 --ui-script tests/fixtures/ui/game-debug-distance-field.json --framegrab "$DISTANCE_FIELD_DEBUG_FRAME" --json)"
@@ -564,10 +560,7 @@ for (const [label, raw, expectedCompute] of [["compute", process.argv[1], true],
       stats.instance_uploads < 1 ||
       stats.instance_uploads - stats.instance_transform_uploads >= 10 ||
       stats.instance_upload_bytes <= 0 || stats.frustum_culled_instances < 1 ||
-      stats.visible_batches < 1 || stats.visible_batches > stats.draw_batches ||
-      (expectedCompute && (stats.meshlet_draws < 1 ||
-        stats.visible_meshlet_draws > stats.meshlet_draws)) ||
-      (!expectedCompute && stats.visible_meshlet_draws !== 0)) {
+      stats.visible_batches < 1 || stats.visible_batches > stats.draw_batches) {
     console.error(`unexpected ${label} GPU renderer diagnostics`);
     process.exit(1);
   }
@@ -654,9 +647,10 @@ node -e '
 const result = JSON.parse(process.argv[1]);
 const stats = result.result?.render_stats;
 if (result.schema_version !== 1 || result.command !== "run" || result.ok !== true ||
-    stats?.ui_vertex_rebuilds !== 1 || stats.ui_vertex_uploads !== 1 ||
+    // One retained editor stream plus two frame-valued scene-icon overlays.
+    stats?.ui_vertex_rebuilds !== 3 || stats.ui_vertex_uploads !== 3 ||
     stats.ui_project_vertex_rebuilds !== 0 || stats.ui_editor_vertex_rebuilds !== 1 ||
-    stats.ui_overlay_vertex_rebuilds !== 0 ||
+    stats.ui_overlay_vertex_rebuilds !== 2 ||
     stats.ui_vertex_upload_bytes <= 0) {
   console.error("unexpected retained UI renderer diagnostics");
   process.exit(1);
@@ -698,42 +692,15 @@ for (const [label, raw, expectedCompute] of [["compute", process.argv[1], true],
     console.error(`unexpected ${label} GPU LOD diagnostics`);
     process.exit(1);
   }
-  if (expectedCompute && (result.result.draw_batches !== 1 ||
-      !stats.virtual_geometry || !stats.virtual_geometry_compacted ||
-      stats.visible_virtual_clusters < 1)) {
-    console.error("compute LOD fixture did not submit a compact virtual-geometry frontier");
-    process.exit(1);
-  }
-  if (!expectedCompute && (result.result.draw_batches !== 3 ||
+  if (result.result.draw_batches !== 3 ||
       stats.lod0_visible_instances !== 1 || stats.lod1_visible_instances !== 1 ||
-      stats.lod2_visible_instances !== 1 || stats.lod3_visible_instances !== 0)) {
-    console.error("CPU LOD fixture did not select the expected classic LOD tiers");
+      stats.lod2_visible_instances !== 1 || stats.lod3_visible_instances !== 0) {
+    console.error("LOD fixture did not select the expected indexed LOD tiers");
     process.exit(1);
   }
 }
 ' "$LOD_COMPUTE_JSON" "$LOD_CPU_JSON"
-node -e '
-const result = JSON.parse(process.argv[1]);
-const stats = result.result?.render_stats;
-const rejected =
-  stats?.frustum_culled_meshlets +
-  stats?.cone_culled_meshlets +
-  stats?.occlusion_culled_meshlets;
-if (result.schema_version !== 1 || result.command !== "run" || result.ok !== true ||
-    !stats?.meshlet_culling || stats.meshlet_debug_records <= 0 ||
-    stats.visible_batches < 1 || stats.visible_batches > stats.draw_batches ||
-    stats.visible_meshlet_draws < 1 ||
-    stats.visible_meshlet_draws > stats.meshlet_draws ||
-    stats.meshlet_debug_records < rejected ||
-    stats.gpu_ambient_occlusion_ms !== 0 ||
-    stats.gpu_screen_space_reflections_ms !== 0 ||
-    stats.gpu_volumetric_fog_ms !== 0 ||
-    stats.gpu_bloom_ms !== 0 ||
-    stats.gpu_automatic_exposure_ms !== 0) {
-  console.error("meshlet visibility debug stream did not cover GPU rejection results");
-  process.exit(1);
-}
-' "$MESHLET_VISIBILITY_JSON"
+
 node -e '
 const result = JSON.parse(process.argv[1]);
 const stats = result.result?.render_stats;
@@ -754,8 +721,7 @@ const stats = result.result?.render_stats;
 if (result.schema_version !== 1 || result.command !== "run" || result.ok !== true ||
     !stats?.hiz_occlusion || !stats.hiz_valid ||
     stats.hiz_occlusion_status !== 5 ||
-    stats.meshlet_debug_records <= 0 ||
-    stats.occlusion_culled_instances + stats.occlusion_culled_meshlets <= 0 ||
+    stats.occlusion_culled_instances <= 0 ||
     stats.gpu_ambient_occlusion_ms !== 0 ||
     stats.gpu_screen_space_reflections_ms !== 0 ||
     stats.gpu_volumetric_fog_ms !== 0 ||
@@ -843,83 +809,6 @@ node tools/assert_png_contract.mjs "$WORLD_DISTANCE_FIELD_DEBUG_FRAME" tests/fix
 description = "Run the bounded artifact-preserving offscreen WGPU acceptance gate"
 depends = ["build"]
 run = 'node tools/test_gpu_offscreen.mjs "$@"'
-
-[tasks.test-virtual-geometry-gpu]
-description = "Exercise bounded virtual-geometry streaming under residency pressure"
-depends = ["build"]
-run = '''
-FRAME="${TMPDIR:-/tmp}/scrapbot-virtual-geometry-pressure.png"
-trap 'rm -f "$FRAME"' EXIT
-RESULT="$(bin/scrapbot run tests/fixtures/gpu-virtual-geometry-pressure --headless --no-hot-reload --frames 320 --framegrab "$FRAME" --json)"
-node -e '
-const result = JSON.parse(process.argv[1]);
-const stats = result.result?.render_stats;
-if (result.schema_version !== 1 || result.command !== "run" || result.ok !== true ||
-    !stats?.virtual_geometry || stats.virtual_geometry_pages < 3 ||
-    stats.virtual_geometry_resident_pages >= stats.virtual_geometry_pages ||
-    stats.virtual_geometry_page_feedback < 1 ||
-	stats.virtual_geometry_group_uploads < 2 ||
-	stats.virtual_geometry_prefetch_group_uploads < 1 ||
-	stats.virtual_geometry_prefetch_evictions < 1 ||
-	stats.virtual_geometry_group_evictions < 1 ||
-    stats.virtual_geometry_page_evictions < stats.virtual_geometry_group_evictions ||
-    stats.virtual_geometry_page_upload_bytes <= 0) {
-  console.error("virtual geometry pressure fixture did not predict, stream, and evict complete groups");
-  console.error(JSON.stringify(stats, null, 2));
-  process.exit(1);
-}
-' "$RESULT"
-node tools/assert_png_variance.mjs "$FRAME"
-node tools/test_render_sequence.mjs \
-  --project tests/fixtures/gpu-virtual-geometry-pressure \
-  --warmup 0 --frames 80 --capture-range 36:52 \
-  --resolution 960x540 --require-transition \
-  --out "${TMPDIR:-/tmp}/scrapbot-virtual-geometry-transition"
-'''
-
-[tasks.test-virtual-geometry-transforms-gpu]
-description = "Reject meshlet holes under non-uniform instance transforms"
-depends = ["build"]
-run = '''
-GPU_FRAME="${TMPDIR:-/tmp}/scrapbot-virtual-geometry-transforms-gpu.png"
-CPU_FRAME="${TMPDIR:-/tmp}/scrapbot-virtual-geometry-transforms-cpu.png"
-SEQUENCE_DIR="${TMPDIR:-/tmp}/scrapbot-virtual-geometry-transforms-sequence"
-trap 'rm -f "$GPU_FRAME" "$CPU_FRAME"' EXIT
-GPU_JSON="$(bin/scrapbot run tests/fixtures/gpu-virtual-geometry-transforms --headless --no-hot-reload --frames 90 --framegrab "$GPU_FRAME" --json)"
-CPU_JSON="$(bin/scrapbot run tests/fixtures/gpu-virtual-geometry-transforms --headless --no-hot-reload --cpu-culling --frames 90 --framegrab "$CPU_FRAME" --json)"
-node -e '
-for (const [label, raw, expectedCompute] of [["gpu", process.argv[1], true], ["cpu", process.argv[2], false]]) {
-  const result = JSON.parse(raw);
-  const stats = result.result?.render_stats;
-  if (result.schema_version !== 1 || result.command !== "run" || result.ok !== true ||
-      result.result?.renderables !== 3 || stats?.compute_culling !== expectedCompute ||
-      (expectedCompute && (stats?.virtual_geometry_clusters < 3 ||
-        stats?.cone_culled_meshlets !== 0))) {
-    console.error(`unexpected ${label} virtual-geometry transform diagnostics`);
-    console.error(JSON.stringify(result, null, 2));
-    process.exit(1);
-  }
-}
-' "$GPU_JSON" "$CPU_JSON"
-node tools/assert_png_psnr.mjs "$GPU_FRAME" "$CPU_FRAME" 55
-node tools/test_render_sequence.mjs \
-  --project tests/fixtures/gpu-virtual-geometry-transforms \
-  --warmup 0 --frames 96 --capture-range 72:80 \
-  --resolution 960x540 --stable-frontier \
-  --out "$SEQUENCE_DIR"
-'''
-
-[tasks.test-virtual-geometry-coverage-gpu]
-description = "Compare near-camera virtual geometry coverage with full-index rendering"
-depends = ["build"]
-run = '''
-node tools/test_render_sequence.mjs \
-  --project examples/virtual-geometry-lab \
-  --warmup 0 --frames 180 --capture-range 145:153 \
-  --resolution 960x540 --cpu-reference --minimum-psnr 48 \
-  --require-residency-pressure \
-  --out "${TMPDIR:-/tmp}/scrapbot-virtual-geometry-coverage"
-'''
 
 [tasks.test-sanitize]
 description = "Run Odin tests with AddressSanitizer on Linux"

@@ -231,12 +231,7 @@ wgpu_encode_distance_field_debug_view :: proc(
 			continue
 		}
 		cache_err: string
-		cached, cache_err = wgpu_geometry_cache(
-			renderer,
-			registry,
-			batch.geometry,
-			batch.geometry_mode,
-		)
+		cached, cache_err = wgpu_geometry_cache(renderer, registry, batch.geometry)
 		if cache_err != "" {
 			return cache_err
 		}

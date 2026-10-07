@@ -220,7 +220,7 @@ resource = "d4000000-0000-4000-8000-000000000001"
       readFileSync(join(importedDirectory, metadataName), "utf8"),
     );
     if (
-      metadata.schema !== "scrapbot.model.v21.bootstrap-resident-tail" ||
+      metadata.schema !== "scrapbot.model.v22.indexed-geometry" ||
       metadata.node_count !== 1 ||
       metadata.mesh_count !== 1 ||
       metadata.primitive_count !== 1 ||

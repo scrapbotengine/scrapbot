@@ -33,7 +33,6 @@ Product :: struct {
 	node_count, mesh_count, primitive_count: int,
 	vertex_count, index_count, material_count, texture_count: int,
 	lod_count, lod_vertex_count, lod_index_count: int,
-	cluster_count, cluster_group_count, cluster_page_count: int,
 	distance_field_count, signed_distance_field_count, distance_field_sample_count: int,
 	distance_field_byte_count: int,
 	ignored_texture_count: int,

@@ -669,7 +669,6 @@ editor_authoring_place_model :: proc(
 	snapshot.entity.transform.scale = {1, 1, 1}
 	snapshot.entity.has_model = true
 	snapshot.entity.model.resource = ecs.clone_snapshot_string(resource)
-	snapshot.entity.model.geometry_mode = .Inherit
 	entity_index, ok := ecs.apply_entity_snapshot(world, snapshot)
 	if !ok {
 		ecs.destroy_entity_snapshot(snapshot)

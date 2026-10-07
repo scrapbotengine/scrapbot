@@ -72,7 +72,6 @@ wgpu_distance_field_clipmap_selected_cascade_count :: proc "contextless" (mask: 
 
 WGPU_Distance_Field_Clipmap_Group :: struct {
 	handle: shared.Geometry_Handle,
-	virtual_geometry: bool,
 	instance_offset: int,
 	instance_count: int,
 	sample_count: int,
@@ -619,13 +618,9 @@ wgpu_encode_distance_field_clipmap :: proc(
 		if !alive || geometry.distance_field.product_size == 0 {
 			continue
 		}
-		virtual_geometry :=
-			wgpu_resolve_geometry_mode(renderer, geometry, instance.geometry.geometry_mode) ==
-			.Virtual
 		group_index := -1
 		for group, index in groups {
-			if group.handle == instance.geometry.handle &&
-			   group.virtual_geometry == virtual_geometry {
+			if group.handle == instance.geometry.handle {
 				group_index = index
 				break
 			}
@@ -635,7 +630,6 @@ wgpu_encode_distance_field_clipmap :: proc(
 				&groups,
 				WGPU_Distance_Field_Clipmap_Group {
 					handle = instance.geometry.handle,
-					virtual_geometry = virtual_geometry,
 					sample_count = int(geometry.distance_field.product_size / size_of(i16)),
 				},
 			)
@@ -661,12 +655,8 @@ wgpu_encode_distance_field_clipmap :: proc(
 		if !alive || geometry.distance_field.product_size == 0 {
 			continue
 		}
-		virtual_geometry :=
-			wgpu_resolve_geometry_mode(renderer, geometry, instance.geometry.geometry_mode) ==
-			.Virtual
 		for &group in groups {
-			if group.handle != instance.geometry.handle ||
-			   group.virtual_geometry != virtual_geometry {
+			if group.handle != instance.geometry.handle {
 				continue
 			}
 			slots[group.instance_offset + group.instance_count] = u32(instance.slot)
@@ -780,11 +770,7 @@ wgpu_encode_distance_field_clipmap :: proc(
 	)
 	for group, index in groups {
 		geometry, _ := resources.get_geometry(registry, group.handle)
-		cache_index := wgpu_geometry_cache_slot_for_submission(
-			renderer.geometry_cache[:],
-			group.handle,
-			group.virtual_geometry,
-		)
+		cache_index := wgpu_geometry_cache_slot(renderer.geometry_cache[:], group.handle)
 		if cache_index < 0 {
 			wgpu.ComputePassEncoderRelease(raster_pass)
 			return "world distance-field geometry was not prepared for rendering"

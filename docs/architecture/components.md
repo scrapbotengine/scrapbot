@@ -110,7 +110,7 @@ These entries deliberately omit exhaustive field/default documentation. Follow t
 - **Contract:** Perspective projection and per-view rendering policy attached to an entity whose Transform supplies the project-camera pose.
 - **Frame-budget policy:** A bounded `0.5`–`1` world-scale ceiling/floor, positive millisecond target, and `0.25`–`1` post-quality floor drive one coordinated world/shadow/post ladder.
 - **Exposure and effects:** Positive fixed exposure or opt-in GPU-adaptive exposure, plus temporal AA, fast AA, ambient occlusion, screen-space reflections, and bloom. Automatic exposure clamps to positive authored bounds, adapts at a positive inverse-seconds rate, and treats manual exposure as compensation. TAA takes precedence over fast AA; AO and SSR expose bounded `0.25`–`1` quality tiers.
-- **Debug views:** Lit output, material inputs, mapped normals, logarithmic depth, retained meshlet identity, selected LOD, selected virtual-geometry clusters/hierarchy depth, GPU visibility classification, false-color inspection of a selected retained Hi-Z mip, and freezeable screen-space Hi-Z query evidence.
+- **Debug views:** Lit, material inputs, mapped normals, logarithmic depth, selected object LOD, Hi-Z mip, freezeable object-query evidence, mesh distance fields, and the world distance field.
 - **Defaults:** Zero-valued legacy/programmatic components normalize to lit output, render scale `1`, dynamic floor `0.5`, dynamic target `16.667` ms, adaptive-quality floor `0.25`, fixed exposure `1`, automatic bounds `0.125`–`8`, speed `2`, and balanced AO/SSR quality `0.5`. Authored TOML defaults adaptation and automatic exposure off, TAA/AO/bloom on, and fast AA/SSR off.
 - **Storage/lifecycle:** Dedicated typed ECS storage; authored.
 - **Producers:** Scene loading, editor/component authoring, validated Luau query writeback, and native membership commands.
@@ -152,7 +152,7 @@ These entries deliberately omit exhaustive field/default documentation. Follow t
 - **Invalidation:** Ordinary custom-component and Transform changes feed the next bounded candidate selection. The GPU query rejects TAA history when current and previous displaced-surface submersion straddle the midpoint; changing or removing the selected candidate rejects post history once on the CPU. Stable volume values allocate no image target, and a camera outside every candidate bound takes the shader no-op branch.
 - **Boundaries:** The current volume is horizontal and affects the active camera only. It does not yet tilt with Transform rotation, classify arbitrary closed meshes, supply water-aware object motion vectors, or replace the project shader that draws the surface.
 - **Surfaces:** Public in scene TOML, generated Luau query data/writeback, native membership, runtime-generated editor inspection, history, and persistence; see the [public component reference](../../docs-website/src/content/docs/reference/components.md#scrapbotwater_volume).
-- **Source/tests:** `component/registry.odin`, `render/wgpu_post.odin`, `render/wgpu_shader.odin`; `component/registry_test.odin`, `render/render_test.odin`, Virtual Wilds above/below-water framegrabs.
+- **Source/tests:** `component/registry.odin`, `render/wgpu_post.odin`, `render/wgpu_shader.odin`; `component/registry_test.odin`, `render/render_test.odin`, Coastal Wilds above/below-water framegrabs.
 
 ### `scrapbot.vignette`
 
@@ -162,7 +162,7 @@ These entries deliberately omit exhaustive field/default documentation. Follow t
 - **Consumers:** WGPU's final HDR composite clamps the selected compact payload and applies it after tone mapping but before fixed presentation dithering.
 - **Invalidation:** Ordinary custom-component membership/value revisions contribute to one retained composite uniform. WGPU uploads it only when the effective clamped stack or render policy changes; stable frames reuse the pipeline, bind group, and buffer without an upload.
 - **Surfaces:** Public in scene TOML, generated Luau query data/writeback, native membership, editor authoring, history, and persistence; see the [public component reference](../../docs-website/src/content/docs/reference/components.md#scrapbotvignette).
-- **Source/tests:** `component/registry.odin`, `project/project.odin`, `render/wgpu_post.odin`, `render/wgpu_shader.odin`; `component/registry_test.odin`, `project/project_test.odin`, `render/render_test.odin`, Virtual Wilds WGPU framegrabs.
+- **Source/tests:** `component/registry.odin`, `project/project.odin`, `render/wgpu_post.odin`, `render/wgpu_shader.odin`; `component/registry_test.odin`, `project/project_test.odin`, `render/render_test.odin`, Coastal Wilds WGPU framegrabs.
 
 ### `scrapbot.lens_flare`
 
@@ -172,7 +172,7 @@ These entries deliberately omit exhaustive field/default documentation. Follow t
 - **Consumers:** WGPU's final composite samples the retained bloom pyramid. The active camera's adaptive post quality reduces the effective ghost count; disabled bloom and non-lit debug views suppress the effect.
 - **Invalidation:** Ordinary custom-component membership/value revisions contribute to one retained composite uniform. The fixed eight-iteration shader bound allocates no targets or pipelines, and unchanged effective values produce no upload.
 - **Surfaces:** Public in scene TOML, generated Luau query data/writeback, native membership, editor authoring, history, and persistence; see the [public component reference](../../docs-website/src/content/docs/reference/components.md#scrapbotlens_flare).
-- **Source/tests:** `component/registry.odin`, `project/project.odin`, `render/wgpu_post.odin`, `render/wgpu_shader.odin`; `component/registry_test.odin`, `project/project_test.odin`, `render/render_test.odin`, Virtual Wilds WGPU framegrabs.
+- **Source/tests:** `component/registry.odin`, `project/project.odin`, `render/wgpu_post.odin`, `render/wgpu_shader.odin`; `component/registry_test.odin`, `project/project_test.odin`, `render/render_test.odin`, Coastal Wilds WGPU framegrabs.
 
 ### `scrapbot.lens_dirt`
 
@@ -182,7 +182,7 @@ These entries deliberately omit exhaustive field/default documentation. Follow t
 - **Consumers:** WGPU's final composite evaluates the mask only when intensity and camera bloom are nonzero, then modulates the composited optical-energy term before tone mapping.
 - **Invalidation:** Ordinary custom-component membership/value revisions contribute to one retained composite uniform. Seed, scale, contrast, tint, and intensity changes allocate and rebuild nothing; unchanged effective values produce no upload.
 - **Surfaces:** Public in scene TOML, generated Luau query data/writeback, native membership, editor authoring, history, and persistence; see the [public component reference](../../docs-website/src/content/docs/reference/components.md#scrapbotlens_dirt).
-- **Source/tests:** `component/registry.odin`, `project/project.odin`, `render/wgpu_post.odin`, `render/wgpu_shader.odin`; `component/registry_test.odin`, `project/project_test.odin`, `render/render_test.odin`, Virtual Wilds WGPU framegrabs.
+- **Source/tests:** `component/registry.odin`, `project/project.odin`, `render/wgpu_post.odin`, `render/wgpu_shader.odin`; `component/registry_test.odin`, `project/project_test.odin`, `render/render_test.odin`, Coastal Wilds WGPU framegrabs.
 
 ### `scrapbot.ambient_light`
 
@@ -216,10 +216,10 @@ These entries deliberately omit exhaustive field/default documentation. Follow t
 
 ### `scrapbot.mesh`
 
-- **Contract:** Primitive-name shortcut plus an inherited/automatic/conventional/virtual geometry-submission preference.
+- **Contract:** Primitive-name shortcut for a complete indexed Geometry resource.
 - **Storage/lifecycle:** Dedicated typed ECS storage; authored.
 - **Producers:** Scene loading, spawn/deferred commands, editor component authoring.
-- **Consumers:** Render-instance reconciliation, layered submission-policy resolution, and resource render-list extraction.
+- **Consumers:** Render-instance reconciliation, and resource render-list extraction.
 - **Invalidation:** Attach/remove, primitive replacement, or submission-policy replacement is structural and re-evaluates the entity's retained render slot.
 - **Surfaces:** Public across scene TOML, Luau, native Odin, and editor authoring; see the [public component reference](../../docs-website/src/content/docs/reference/components.md#scrapbotmesh).
 - **Source/tests:** `ecs/world.odin`, `ecs/commands.odin`, `render/render.odin`; `ecs/world_test.odin`, `ecs/registered_components_test.odin`.
@@ -229,7 +229,7 @@ These entries deliberately omit exhaustive field/default documentation. Follow t
 - **Contract:** Generational handle to a shared geometry resource plus an inherited/automatic/conventional/virtual submission preference.
 - **Storage/lifecycle:** Dedicated typed ECS storage; authored reference to registry-owned data.
 - **Producers:** Scene resource resolution, Luau/native resource APIs, editor authoring and playback restore.
-- **Consumers:** Render-instance reconciliation, layered submission-policy resolution, retained render list, and GPU draw/batch database.
+- **Consumers:** Render-instance reconciliation, retained render list, and GPU draw/batch database.
 - **Invalidation:** Membership, handle, or submission-policy changes are structural; resource topology/content versions invalidate affected retained/GPU state.
 - **Surfaces:** Public; persistent scenes store a resource name while ECS stores a resolved handle; see the [public component reference](../../docs-website/src/content/docs/reference/components.md#scrapbotgeometry-and-scrapbotmaterial).
 - **Source/tests:** `ecs/world.odin`, `resources/`, `render/wgpu_gpu_driven.odin`; `ecs/world_test.odin`, `resources/resources_test.odin`.

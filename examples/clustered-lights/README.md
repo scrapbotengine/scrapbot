@@ -27,9 +27,9 @@ Cluster Cathedral is also Scrapbot's dense occlusion-debugging lab:
 3. Choose **Occlusion Queries** and wait one frame for a reusable Hi-Z pyramid.
 4. Click **Freeze** to keep the current GPU evidence while inspecting the image.
 
-The dim world remains as spatial context. Mint rectangles survived their conservative Hi-Z query; pink rectangles were rejected. Each rectangle is the exact projected screen-space footprint sampled by an object or meshlet query, not a CPU approximation.
+The dim world remains as spatial context. Mint rectangles survived their conservative Hi-Z query; pink rectangles were rejected. Each rectangle is the exact projected screen-space footprint sampled by an object query, not a CPU approximation.
 
-The Performance panel distinguishes whole-object and meshlet occlusion. Its **Hi-Z Culling** row also explains when queries are unavailable, below the normal scene-size threshold, invalidated by scene or camera changes, warming up, or active.
+The Performance panel reports whole-object occlusion. Its **Hi-Z Culling** row also explains when queries are unavailable, below the normal scene-size threshold, invalidated by scene or camera changes, warming up, or active.
 
 The checked-in semantic replay automates the complete workflow and captures only the Game viewport:
 

@@ -31,48 +31,26 @@ schemas version the contents of each chunk independently from the common envelop
 
 ## Model products
 
-The current Model product divides one `.model.bin` file into independently addressable regions:
+Model v22 stores three independently addressable chunks:
 
 1. Material image mip payloads.
-2. Bootstrap-tail Geometry pages, including the permanently pinned terminal fallback.
-3. Evictable detail Geometry pages requested by virtual-Geometry feedback.
-4. A catalog containing materials, nodes, LODs, hierarchy data, query positions, and payload ranges.
+2. Quantized mesh distance-field samples.
+3. A catalog with materials, nodes, complete indexed meshes, ordinary LODs, and payload ranges.
 
-The catalog is physically last because its exact ranges are known only after the payload chunks
-have been written. Its directory entry makes its location immediate; the runtime does not scan the
-preceding bytes.
+The catalog is written last so its image and field ranges are known. Loading
+reads complete meshes and material images. Distance-field samples remain lazy.
+The registry owns the decoded vertex/index arrays for exact queries and direct
+GPU upload.
 
-At startup, Scrapbot reads the catalog and material images. It registers ordinary engine Geometry
-and Material resources while retaining validated file ranges for page payloads. The rendering
-backend asks the shared asynchronous page reader for detail only when visibility feedback needs it.
+Virtual Geometry pages, bootstrap tails, and refinement streaming are retired.
+Older imported caches are rebuilt automatically.
 
-The bootstrap tail always contains every mandatory terminal fallback and then adds reachable
-refinements in descending geometric-error order. Its extra data targets 1/32 of each hierarchy,
-with a 256 KiB minimum and 2 MiB maximum. The initial model is therefore complete and recognizable;
-streaming improves genuinely fine detail rather than revealing the asset level by level.
+## Import memory
 
-Terminal pages stay pinned for the resource lifetime. Additional bootstrap refinements are loaded
-for the first frame but remain evictable, so loading many assets does not turn the per-asset startup
-allowance into an unbounded permanent GPU-memory floor. The WGPU backend also caps optional
-bootstrap detail across all streamed resources at three quarters of the configured page budget.
-Mandatory fallback remains uncapped; the remainder is working space for the first camera and later
-movement.
-
-## Bounded import memory
-
-Large Model products are written sequentially instead of being assembled as one giant byte array.
-Bootstrap pages stream directly into the final product. Detail pages use a temporary disk spool so
-they can form one contiguous chunk without rebuilding them or retaining all of them in RAM.
-
-Peak serialization memory is therefore bounded by:
-
-- the current primitive-level page build;
-- the current primitive-level catalog record;
-- a fixed-size spool copy buffer.
-
-The decoded source model and offline hierarchy construction still have their own memory cost.
-Future work can reduce that independently through staged source processing and incremental catalog
-construction.
+The sequential writer emits image and distance-field payloads directly, then
+writes one primitive catalog record at a time. It does not construct a second
+complete product-sized byte array or spool geometry pages. The decoded source
+model and offline LOD generation still have their own memory cost.
 
 ## Caching and invalidation
 
@@ -97,7 +75,7 @@ stdout.
 
 ## Compression boundary
 
-Model v21 also compiles one padded mesh distance field per primitive. Watertight meshes retain
+Model v22 also compiles one padded mesh distance field per primitive. Watertight meshes retain
 signed distances; open or non-manifold meshes retain conservative unsigned surface distances. The
 samples use signed 16-bit quantization and live in their own chunk, so runtime catalog loading
 validates their descriptors without reading the voxel payload. Import progress reports both the
@@ -122,12 +100,11 @@ replacement, topology changes, and relevant instance/Transform dirtiness still t
 rebuild. Renderer diagnostics distinguish full rebuilds from scrolls and report exposed voxels.
 This is currently a diagnostic foundation; HZB still owns production occlusion.
 
-The chunk directory can describe encoded data, but Model v21 stores its chunks uncompressed.
+The chunk directory can describe encoded data, but Model v22 stores its chunks uncompressed.
 Compression must preserve the runtime access pattern:
 
 - catalogs and images may use whole-chunk codecs when measurement justifies eager decoding;
-- virtual-Geometry pages need independent records so one request never decompresses the complete
-  detail chunk;
+- distance-field payloads must retain independent access from eager mesh loading;
 - decoded sizes and codec flags must be validated before allocation or upload.
 
 This separation lets compression evolve without changing resource declarations, ECS components,

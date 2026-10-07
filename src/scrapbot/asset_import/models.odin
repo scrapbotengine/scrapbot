@@ -13,13 +13,11 @@ import "core:path/filepath"
 import "core:strings"
 import cgltf "vendor:cgltf"
 
-MODEL_IMPORTER_SCHEMA :: "scrapbot.model.v21.bootstrap-resident-tail"
-MODEL_CATALOG_MAGIC :: [8]u8{'S', 'B', 'M', 'C', 'A', 'T', '2', '0'}
+MODEL_IMPORTER_SCHEMA :: "scrapbot.model.v22.indexed-geometry"
+MODEL_CATALOG_MAGIC :: [8]u8{'S', 'B', 'M', 'C', 'A', 'T', '2', '2'}
 MODEL_IMAGE_CHUNK_MAGIC :: [8]u8{'S', 'B', 'M', 'I', 'M', 'G', '2', '0'}
-MODEL_COARSE_CHUNK_MAGIC :: [8]u8{'S', 'B', 'M', 'C', 'R', 'S', '2', '0'}
-MODEL_DETAIL_CHUNK_MAGIC :: [8]u8{'S', 'B', 'M', 'D', 'T', 'L', '2', '0'}
 MODEL_DISTANCE_FIELD_CHUNK_MAGIC :: [8]u8{'S', 'B', 'M', 'S', 'D', 'F', '2', '0'}
-MODEL_PRODUCT_CHUNK_COUNT :: 5
+MODEL_PRODUCT_CHUNK_COUNT :: 3
 MODEL_READER_BUFFER_SIZE :: 64 * 1024
 
 Model_Vertex :: struct {
@@ -58,10 +56,7 @@ Model_Primitive :: struct {
 	material_index: i32,
 	vertices: [dynamic]Model_Vertex,
 	indices: [dynamic]u32,
-	query_positions: []shared.Vec3,
 	vertex_count, index_count: u32,
-	hierarchy: geometry.Hierarchy,
-	page_payloads: []geometry.Page_Payload_Record,
 	distance_field: Model_Distance_Field,
 	lods: [dynamic]Model_Primitive_LOD,
 }
@@ -78,10 +73,7 @@ Model_Distance_Field :: struct {
 Model_Primitive_LOD :: struct {
 	vertices: [dynamic]Model_Vertex,
 	indices: [dynamic]u32,
-	query_positions: []shared.Vec3,
 	vertex_count, index_count: u32,
-	hierarchy: geometry.Hierarchy,
-	page_payloads: []geometry.Page_Payload_Record,
 	level: u32,
 	screen_radius: f32,
 	simplification_error: f32,
@@ -114,7 +106,6 @@ Model_Metadata :: struct {
 	node_count, mesh_count, primitive_count: int,
 	vertex_count, index_count, material_count, texture_count: int,
 	lod_count, lod_vertex_count, lod_index_count: int,
-	cluster_count, cluster_group_count, cluster_page_count: int,
 	distance_field_count, signed_distance_field_count, distance_field_sample_count: int,
 	distance_field_byte_count: int,
 	ignored_texture_count: int,
@@ -254,9 +245,6 @@ ensure_model_import :: proc(
 			lod_count = metadata.lod_count,
 			lod_vertex_count = metadata.lod_vertex_count,
 			lod_index_count = metadata.lod_index_count,
-			cluster_count = metadata.cluster_count,
-			cluster_group_count = metadata.cluster_group_count,
-			cluster_page_count = metadata.cluster_page_count,
 			distance_field_count = metadata.distance_field_count,
 			signed_distance_field_count = metadata.signed_distance_field_count,
 			distance_field_sample_count = metadata.distance_field_sample_count,
@@ -745,13 +733,6 @@ build_model_product :: proc(
 			if settings.generate_lods {
 				build_model_primitive_lods(&imported_primitive, settings)
 			}
-			if hierarchy_err := build_model_primitive_hierarchies(&imported_primitive);
-			   hierarchy_err != "" {
-				destroy_model_primitive(&imported_primitive)
-				destroy_model_product(&model)
-				destroy_model_mesh(&imported_mesh)
-				return {}, hierarchy_err
-			}
 			append(&imported_mesh.primitives, imported_primitive)
 		}
 		delete(imported_mesh.key)
@@ -1237,51 +1218,15 @@ destroy_model_primitive :: proc(primitive: ^Model_Primitive) {
 	delete(primitive.key)
 	delete(primitive.vertices)
 	delete(primitive.indices)
-	delete(primitive.query_positions)
-	delete(primitive.page_payloads)
 	delete(primitive.distance_field.samples)
-	geometry.destroy_hierarchy(&primitive.hierarchy)
 	for &lod in primitive.lods {
 		delete(lod.vertices)
 		delete(lod.indices)
-		delete(lod.query_positions)
-		delete(lod.page_payloads)
-		geometry.destroy_hierarchy(&lod.hierarchy)
 	}
 	delete(primitive.lods)
 	primitive^ = {}
 }
 
-build_model_primitive_hierarchies :: proc(primitive: ^Model_Primitive) -> string {
-	if primitive == nil {
-		return "imported model primitive is unavailable"
-	}
-	hierarchy, hierarchy_err := geometry.build_hierarchy(
-		primitive.indices[:],
-		raw_data(primitive.vertices[:]),
-		len(primitive.vertices),
-		size_of(Model_Vertex),
-	)
-	if hierarchy_err != "" {
-		return hierarchy_err
-	}
-	geometry.destroy_hierarchy(&primitive.hierarchy)
-	primitive.hierarchy = hierarchy
-	for &lod in primitive.lods {
-		lod_hierarchy, lod_hierarchy_err := geometry.build_hierarchy(
-			lod.indices[:],
-			raw_data(lod.vertices[:]),
-			len(lod.vertices),
-			size_of(Model_Vertex),
-		)
-		if lod_hierarchy_err != "" {
-			return lod_hierarchy_err
-		}
-		geometry.destroy_hierarchy(&lod.hierarchy)
-		lod.hierarchy = lod_hierarchy
-	}
-	return ""
-}
 
 destroy_model_mesh :: proc(mesh: ^Model_Mesh) {
 	if mesh == nil {
@@ -1461,9 +1406,6 @@ model_metadata :: proc(
 		for primitive in mesh.primitives {
 			metadata.vertex_count += len(primitive.vertices)
 			metadata.index_count += len(primitive.indices)
-			metadata.cluster_count += len(primitive.hierarchy.clusters)
-			metadata.cluster_group_count += len(primitive.hierarchy.groups)
-			metadata.cluster_page_count += len(primitive.hierarchy.pages)
 			if primitive.distance_field.product_size > 0 ||
 			   len(primitive.distance_field.samples) > 0 {
 				distance_field_sample_count := len(primitive.distance_field.samples)
@@ -1485,9 +1427,6 @@ model_metadata :: proc(
 			for lod in primitive.lods {
 				metadata.lod_vertex_count += len(lod.vertices)
 				metadata.lod_index_count += len(lod.indices)
-				metadata.cluster_count += len(lod.hierarchy.clusters)
-				metadata.cluster_group_count += len(lod.hierarchy.groups)
-				metadata.cluster_page_count += len(lod.hierarchy.pages)
 			}
 		}
 	}
@@ -1575,10 +1514,7 @@ encode_model_product_for_test :: proc(model: ^Model_Product) -> []u8 {
 	path, path_err := filepath.join({root, "model.bin"})
 	assert(path_err == nil)
 	defer delete(path)
-	detail_path, detail_path_err := filepath.join({root, "detail.pages"})
-	assert(detail_path_err == nil)
-	defer delete(detail_path)
-	_, write_err := write_model_product_file(path, detail_path, model)
+	_, write_err := write_model_product_file(path, model)
 	assert(write_err == "")
 	bytes, read_err := os.read_entire_file(path, context.allocator)
 	assert(read_err == nil)
@@ -1594,12 +1530,10 @@ write_model_product_atomically :: proc(
 	err: string,
 ) {
 	artifact_temp := fmt.tprintf("%s.tmp", artifact_path)
-	detail_temp := fmt.tprintf("%s.pages.tmp", artifact_path)
 	metadata_temp := fmt.tprintf("%s.tmp", metadata_path)
 	defer os.remove(artifact_temp)
-	defer os.remove(detail_temp)
 	defer os.remove(metadata_temp)
-	byte_count, product_err := write_model_product_file(artifact_temp, detail_temp, model)
+	byte_count, product_err := write_model_product_file(artifact_temp, model)
 	if product_err != "" {
 		return {}, product_err
 	}
@@ -1621,13 +1555,7 @@ write_model_product_atomically :: proc(
 	return metadata, ""
 }
 
-write_model_product_file :: proc(
-	path, detail_path: string,
-	model: ^Model_Product,
-) -> (
-	int,
-	string,
-) {
+write_model_product_file :: proc(path: string, model: ^Model_Product) -> (int, string) {
 	if model == nil {
 		return 0, "imported model product is unavailable"
 	}
@@ -1642,11 +1570,6 @@ write_model_product_file :: proc(
 	defer if file_open {
 		os.close(file)
 	}
-	detail_file, detail_err := os.create(detail_path)
-	if detail_err != nil {
-		return 0, fmt.tprintf("failed to create imported model page spool: %v", detail_err)
-	}
-	defer os.close(detail_file)
 	writer, begin_err := asset_product_stream_begin(file, .Model, MODEL_PRODUCT_CHUNK_COUNT)
 	if begin_err != "" {
 		return 0, begin_err
@@ -1660,31 +1583,6 @@ write_model_product_file :: proc(
 	   !model_stream_images(&writer, model) ||
 	   !asset_product_stream_finish_chunk(&writer) {
 		return 0, "failed to write imported model image chunk"
-	}
-	if !asset_product_stream_begin_chunk(&writer, .Model_Coarse_Geometry) {
-		return 0, "failed to begin imported model coarse-geometry chunk"
-	}
-	coarse_magic := MODEL_COARSE_CHUNK_MAGIC
-	if !asset_product_stream_write(&writer, coarse_magic[:]) {
-		return 0, "failed to write imported model coarse-geometry chunk"
-	}
-	detail_size, pages_err := model_stream_geometry_pages(&writer, detail_file, model)
-	if pages_err != "" || !asset_product_stream_finish_chunk(&writer) {
-		return 0,
-			pages_err if pages_err != "" else "failed to finish imported model coarse-geometry chunk"
-	}
-	if !asset_product_stream_begin_chunk(&writer, .Model_Detail_Geometry) {
-		return 0, "failed to begin imported model detail-geometry chunk"
-	}
-	detail_magic := MODEL_DETAIL_CHUNK_MAGIC
-	if !asset_product_stream_write(&writer, detail_magic[:]) {
-		return 0, "failed to write imported model detail-geometry chunk"
-	}
-	detail_base := writer.offset
-	model_rebase_detail_page_records(model, detail_base)
-	if !model_copy_page_spool(&writer, detail_file, detail_size) ||
-	   !asset_product_stream_finish_chunk(&writer) {
-		return 0, "failed to write imported model detail-geometry chunk"
 	}
 	if !asset_product_stream_begin_chunk(&writer, .Model_Distance_Fields) {
 		return 0, "failed to begin imported model distance-field chunk"
@@ -1809,137 +1707,6 @@ model_stream_images :: proc(writer: ^Asset_Product_Stream_Writer, model: ^Model_
 	return true
 }
 
-model_stream_geometry_pages :: proc(
-	writer: ^Asset_Product_Stream_Writer,
-	detail_file: ^os.File,
-	model: ^Model_Product,
-) -> (
-	detail_size: u64,
-	err: string,
-) {
-	for &mesh in model.meshes {
-		for &primitive in mesh.primitives {
-			detail_size, err = model_stream_page_payloads(
-				writer,
-				detail_file,
-				primitive.hierarchy,
-				raw_data(primitive.vertices[:]),
-				len(primitive.vertices),
-				&primitive.page_payloads,
-				detail_size,
-			)
-			if err != "" {
-				return detail_size, err
-			}
-			for &lod in primitive.lods {
-				detail_size, err = model_stream_page_payloads(
-					writer,
-					detail_file,
-					lod.hierarchy,
-					raw_data(lod.vertices[:]),
-					len(lod.vertices),
-					&lod.page_payloads,
-					detail_size,
-				)
-				if err != "" {
-					return detail_size, err
-				}
-			}
-		}
-	}
-	return detail_size, ""
-}
-
-model_stream_page_payloads :: proc(
-	writer: ^Asset_Product_Stream_Writer,
-	detail_file: ^os.File,
-	hierarchy: geometry.Hierarchy,
-	vertices: rawptr,
-	vertex_count: int,
-	records: ^[]geometry.Page_Payload_Record,
-	detail_offset: u64,
-) -> (
-	u64,
-	string,
-) {
-	detail_cursor := detail_offset
-	hierarchy_copy := hierarchy
-	payloads, payload_err := geometry.build_page_payloads(
-		&hierarchy_copy,
-		vertices,
-		vertex_count,
-		size_of(Model_Vertex),
-	)
-	if payload_err != "" {
-		return detail_offset, payload_err
-	}
-	defer geometry.destroy_page_payloads(&payloads)
-	delete(records^)
-	records^ = make([]geometry.Page_Payload_Record, len(payloads.records))
-	for source_record, page_index in payloads.records {
-		start := int(source_record.offset)
-		payload := payloads.bytes[start:start + int(source_record.size)]
-		record := source_record
-		if hierarchy.pages[page_index].bootstrap {
-			record.offset = writer.offset
-			if !asset_product_stream_write(writer, payload) {
-				return detail_cursor, "failed to stream imported model coarse page"
-			}
-		} else {
-			record.offset = detail_cursor
-			written, write_err := os.write(detail_file, payload)
-			if write_err != nil || written != len(payload) {
-				return detail_cursor, "failed to spool imported model detail page"
-			}
-			detail_cursor += u64(written)
-		}
-		records^[page_index] = record
-	}
-	return detail_cursor, ""
-}
-
-model_rebase_detail_page_records :: proc(model: ^Model_Product, detail_base: u64) {
-	for &mesh in model.meshes {
-		for &primitive in mesh.primitives {
-			model_rebase_page_records(primitive.hierarchy, primitive.page_payloads, detail_base)
-			for &lod in primitive.lods {
-				model_rebase_page_records(lod.hierarchy, lod.page_payloads, detail_base)
-			}
-		}
-	}
-}
-
-model_rebase_page_records :: proc(
-	hierarchy: geometry.Hierarchy,
-	records: []geometry.Page_Payload_Record,
-	detail_base: u64,
-) {
-	for &record, page_index in records {
-		if !hierarchy.pages[page_index].bootstrap {
-			record.offset += detail_base
-		}
-	}
-}
-
-model_copy_page_spool :: proc(
-	writer: ^Asset_Product_Stream_Writer,
-	detail_file: ^os.File,
-	detail_size: u64,
-) -> bool {
-	buffer := make([]u8, 1024 * 1024, context.temp_allocator)
-	offset: u64
-	for offset < detail_size {
-		count := int(min(u64(len(buffer)), detail_size - offset))
-		read_count, read_err := os.read_at(detail_file, buffer[:count], i64(offset))
-		if read_err != nil ||
-		   read_count != count ||
-		   !asset_product_stream_write(writer, buffer[:count]) {
-			return false
-		}
-		offset += u64(count)
-	}
-	return true
-}
 
 model_stream_catalog :: proc(writer: ^Asset_Product_Stream_Writer, model: ^Model_Product) -> bool {
 	bytes: [dynamic]u8
@@ -2019,9 +1786,13 @@ model_write_primitive_record :: proc(bytes: ^[dynamic]u8, primitive: Model_Primi
 	model_write_u32(bytes, u32(len(primitive.indices)))
 	for vertex in primitive.vertices {
 		model_write_vec3(bytes, vertex.position)
+		model_write_vec3(bytes, vertex.normal)
+		model_write_vec2(bytes, vertex.uv)
+		model_write_vec4(bytes, vertex.tangent)
 	}
-	model_write_hierarchy(bytes, primitive.hierarchy)
-	model_write_page_records(bytes, primitive.page_payloads)
+	for index in primitive.indices {
+		model_write_u32(bytes, index)
+	}
 	model_write_distance_field_record(bytes, primitive.distance_field)
 	model_write_u32(bytes, u32(len(primitive.lods)))
 	for lod in primitive.lods {
@@ -2032,9 +1803,13 @@ model_write_primitive_record :: proc(bytes: ^[dynamic]u8, primitive: Model_Primi
 		model_write_u32(bytes, u32(len(lod.indices)))
 		for vertex in lod.vertices {
 			model_write_vec3(bytes, vertex.position)
+			model_write_vec3(bytes, vertex.normal)
+			model_write_vec2(bytes, vertex.uv)
+			model_write_vec4(bytes, vertex.tangent)
 		}
-		model_write_hierarchy(bytes, lod.hierarchy)
-		model_write_page_records(bytes, lod.page_payloads)
+		for index in lod.indices {
+			model_write_u32(bytes, index)
+		}
 	}
 }
 
@@ -2061,62 +1836,6 @@ model_write_node_record :: proc(bytes: ^[dynamic]u8, node: Model_Node) {
 	model_write_vec3(bytes, node.transform.scale)
 }
 
-model_write_page_records :: proc(bytes: ^[dynamic]u8, records: []geometry.Page_Payload_Record) {
-	model_write_u32(bytes, u32(len(records)))
-	for record in records {
-		model_write_u32(bytes, record.vertex_count)
-		model_write_u32(bytes, record.index_count)
-		model_write_u64(bytes, record.offset)
-		model_write_u64(bytes, record.size)
-	}
-}
-
-model_write_hierarchy :: proc(bytes: ^[dynamic]u8, hierarchy: geometry.Hierarchy) {
-	model_write_u32(bytes, hierarchy.max_depth)
-	model_write_u32(bytes, u32(len(hierarchy.groups)))
-	model_write_u32(bytes, u32(len(hierarchy.clusters)))
-	model_write_u32(bytes, u32(len(hierarchy.pages)))
-	model_write_u32(bytes, u32(len(hierarchy.vertices)))
-	model_write_u32(bytes, u32(len(hierarchy.triangles)))
-	for group in hierarchy.groups {
-		for value in group.bounds {
-			model_write_f32(bytes, value)
-		}
-		model_write_f32(bytes, group.error)
-		model_write_u32(bytes, group.depth)
-		model_write_u32(bytes, group.cluster_offset)
-		model_write_u32(bytes, group.cluster_count)
-		model_write_u32(bytes, group.page_offset)
-		model_write_u32(bytes, group.page_count)
-	}
-	for cluster in hierarchy.clusters {
-		model_write_u32(bytes, cluster.vertex_offset)
-		model_write_u32(bytes, cluster.triangle_offset)
-		model_write_u32(bytes, cluster.vertex_count)
-		model_write_u32(bytes, cluster.triangle_count)
-		for value in cluster.bounds {
-			model_write_f32(bytes, value)
-		}
-		for value in cluster.cone_axis_cutoff {
-			model_write_f32(bytes, value)
-		}
-		model_write_i32(bytes, cluster.group)
-		model_write_i32(bytes, cluster.refined_group)
-		model_write_u32(bytes, cluster.page)
-		model_write_u32(bytes, cluster.page_index_offset)
-	}
-	for page in hierarchy.pages {
-		model_write_u32(bytes, page.cluster_offset)
-		model_write_u32(bytes, page.cluster_count)
-		model_write_u32(bytes, page.index_count)
-		model_write_u32(bytes, 1 if page.pinned else 0)
-		model_write_u32(bytes, 1 if page.bootstrap else 0)
-	}
-	for vertex in hierarchy.vertices {
-		model_write_u32(bytes, vertex)
-	}
-	model_write_bytes(bytes, hierarchy.triangles)
-}
 
 model_validate_chunk_magic :: proc(
 	file: ^os.File,
@@ -2168,19 +1887,15 @@ read_model_product :: proc(path: string) -> (model: Model_Product, err: string) 
 		return {}, "imported model product chunk count is invalid"
 	}
 	image_chunk, image_found := asset_product_find_chunk(&directory, .Model_Material_Images)
-	coarse_chunk, coarse_found := asset_product_find_chunk(&directory, .Model_Coarse_Geometry)
-	detail_chunk, detail_found := asset_product_find_chunk(&directory, .Model_Detail_Geometry)
 	distance_field_chunk, distance_field_found := asset_product_find_chunk(
 		&directory,
 		.Model_Distance_Fields,
 	)
 	catalog_chunk, catalog_found := asset_product_find_chunk(&directory, .Model_Catalog)
-	if !image_found || !coarse_found || !detail_found || !distance_field_found || !catalog_found {
+	if !image_found || !distance_field_found || !catalog_found {
 		return {}, "imported model product chunks are missing"
 	}
 	if !model_validate_chunk_magic(file, image_chunk, MODEL_IMAGE_CHUNK_MAGIC) ||
-	   !model_validate_chunk_magic(file, coarse_chunk, MODEL_COARSE_CHUNK_MAGIC) ||
-	   !model_validate_chunk_magic(file, detail_chunk, MODEL_DETAIL_CHUNK_MAGIC) ||
 	   !model_validate_chunk_magic(file, distance_field_chunk, MODEL_DISTANCE_FIELD_CHUNK_MAGIC) {
 		return {}, "imported model product has an invalid chunk header"
 	}
@@ -2339,7 +2054,7 @@ read_model_product :: proc(path: string) -> (model: Model_Product, err: string) 
 			index_count: u32
 			index_count, ok = model_read_u32(&reader)
 			remaining_bytes := u64(reader.size - reader.offset)
-			required_bytes := u64(vertex_count) * 12
+			required_bytes := u64(vertex_count) * 48 + u64(index_count) * 4
 			if !ok ||
 			   vertex_count > 10000000 ||
 			   index_count > 30000000 ||
@@ -2351,28 +2066,13 @@ read_model_product :: proc(path: string) -> (model: Model_Product, err: string) 
 			}
 			primitive.vertex_count = vertex_count
 			primitive.index_count = index_count
-			primitive.query_positions = make([]shared.Vec3, int(vertex_count))
-			for &position in primitive.query_positions {
-				position, ok = model_read_vec3(&reader)
-				if !ok {
-					destroy_model_primitive(&primitive)
-					destroy_model_mesh(&mesh)
-					destroy_model_product(&model)
-					return {}, "imported model query positions are truncated"
-				}
-			}
-			if ok {
-				ok = model_read_hierarchy(&reader, &primitive.hierarchy, int(vertex_count))
-			}
-			if ok {
-				ok = model_read_page_payloads(
-					&reader,
-					&primitive.hierarchy,
-					&primitive.page_payloads,
-					coarse_chunk,
-					detail_chunk,
-				)
-			}
+			ok = model_read_indexed_geometry(
+				&reader,
+				vertex_count,
+				index_count,
+				&primitive.vertices,
+				&primitive.indices,
+			)
 			if ok {
 				ok = model_read_distance_field_record(
 					&reader,
@@ -2384,7 +2084,7 @@ read_model_product :: proc(path: string) -> (model: Model_Product, err: string) 
 				destroy_model_primitive(&primitive)
 				destroy_model_mesh(&mesh)
 				destroy_model_product(&model)
-				return {}, "imported model cluster hierarchy is invalid"
+				return {}, "imported model geometry is invalid"
 			}
 			lod_count: u32
 			lod_count, ok = model_read_u32(&reader)
@@ -2412,7 +2112,7 @@ read_model_product :: proc(path: string) -> (model: Model_Product, err: string) 
 					lod_index_count, ok = model_read_u32(&reader)
 				}
 				remaining_lod_bytes := u64(reader.size - reader.offset)
-				required_lod_bytes := u64(lod_vertex_count) * 12
+				required_lod_bytes := u64(lod_vertex_count) * 48 + u64(lod_index_count) * 4
 				if !ok ||
 				   lod_vertex_count > vertex_count ||
 				   lod_index_count >= index_count ||
@@ -2427,35 +2127,18 @@ read_model_product :: proc(path: string) -> (model: Model_Product, err: string) 
 				}
 				lod.vertex_count = lod_vertex_count
 				lod.index_count = lod_index_count
-				lod.query_positions = make([]shared.Vec3, int(lod_vertex_count))
-				for &position in lod.query_positions {
-					position, ok = model_read_vec3(&reader)
-					if !ok {
-						destroy_model_lod(&lod)
-						destroy_model_primitive(&primitive)
-						destroy_model_mesh(&mesh)
-						destroy_model_product(&model)
-						return {}, "imported model LOD query positions are truncated"
-					}
-				}
-				if ok {
-					ok = model_read_hierarchy(&reader, &lod.hierarchy, int(lod_vertex_count))
-				}
-				if ok {
-					ok = model_read_page_payloads(
-						&reader,
-						&lod.hierarchy,
-						&lod.page_payloads,
-						coarse_chunk,
-						detail_chunk,
-					)
-				}
-				if !ok {
+				if !model_read_indexed_geometry(
+					&reader,
+					lod_vertex_count,
+					lod_index_count,
+					&lod.vertices,
+					&lod.indices,
+				) {
 					destroy_model_lod(&lod)
 					destroy_model_primitive(&primitive)
 					destroy_model_mesh(&mesh)
 					destroy_model_product(&model)
-					return {}, "imported model LOD cluster hierarchy is invalid"
+					return {}, "imported model LOD geometry is invalid"
 				}
 				append(&primitive.lods, lod)
 			}
@@ -2633,202 +2316,35 @@ read_model_distance_field_samples :: proc(
 	return result, ""
 }
 
-model_read_page_payloads :: proc(
-	reader: ^Model_Reader,
-	hierarchy: ^geometry.Hierarchy,
-	records: ^[]geometry.Page_Payload_Record,
-	coarse_chunk, detail_chunk: Asset_Product_Chunk,
-) -> bool {
-	if reader == nil || hierarchy == nil || records == nil {
-		return false
-	}
-	page_count, ok := model_read_u32(reader)
-	if !ok || int(page_count) != len(hierarchy.pages) {
-		return false
-	}
-	result := make([]geometry.Page_Payload_Record, int(page_count))
-	for &record, page_index in result {
-		header: [24]u8
-		ok = model_read_exact(reader, header[:])
-		record.vertex_count = endian.unchecked_get_u32le(header[0:])
-		record.index_count = endian.unchecked_get_u32le(header[4:])
-		record.offset = endian.unchecked_get_u64le(header[8:])
-		record.size = endian.unchecked_get_u64le(header[16:])
-		expected_size :=
-			u64(record.vertex_count) * u64(size_of(Model_Vertex)) +
-			u64(record.index_count) * u64(size_of(u32))
-		expected_chunk := detail_chunk
-		if hierarchy.pages[page_index].bootstrap {
-			expected_chunk = coarse_chunk
-		}
-		if !ok ||
-		   record.vertex_count == 0 ||
-		   record.index_count != hierarchy.pages[page_index].index_count ||
-		   record.size != expected_size ||
-		   !model_chunk_contains(expected_chunk, record.offset, record.size) {
-			delete(result)
-			return false
-		}
-	}
-	records^ = result
-	return true
-}
 
-model_read_hierarchy :: proc(
+model_read_indexed_geometry :: proc(
 	reader: ^Model_Reader,
-	hierarchy: ^geometry.Hierarchy,
-	canonical_vertex_count: int,
+	vertex_count, index_count: u32,
+	vertices: ^[dynamic]Model_Vertex,
+	indices: ^[dynamic]u32,
 ) -> bool {
-	if reader == nil || hierarchy == nil {
+	if vertex_count == 0 || index_count == 0 || index_count % 3 != 0 {
 		return false
 	}
-	ok: bool
-	max_depth: u32
-	max_depth, ok = model_read_u32(reader)
-	if !ok {
-		return false
+	for _ in 0 ..< vertex_count {
+		vertex: Model_Vertex
+		ok: bool
+		vertex.position, ok = model_read_vec3(reader)
+		if !ok { return false }
+		vertex.normal, ok = model_read_vec3(reader)
+		if !ok { return false }
+		vertex.uv, ok = model_read_vec2(reader)
+		if !ok { return false }
+		vertex.tangent, ok = model_read_vec4(reader)
+		if !ok { return false }
+		append(vertices, vertex)
 	}
-	group_count, group_ok := model_read_u32(reader)
-	cluster_count, cluster_ok := model_read_u32(reader)
-	page_count, page_ok := model_read_u32(reader)
-	vertex_count, vertex_ok := model_read_u32(reader)
-	triangle_byte_count, triangle_ok := model_read_u32(reader)
-	if !group_ok ||
-	   !cluster_ok ||
-	   !page_ok ||
-	   !vertex_ok ||
-	   !triangle_ok ||
-	   group_count == 0 ||
-	   group_count > 4_000_000 ||
-	   cluster_count == 0 ||
-	   cluster_count > 16_000_000 ||
-	   page_count == 0 ||
-	   page_count > cluster_count ||
-	   vertex_count == 0 ||
-	   vertex_count > 64_000_000 ||
-	   triangle_byte_count == 0 ||
-	   triangle_byte_count > 256_000_000 {
-		return false
+	for _ in 0 ..< index_count {
+		index, ok := model_read_u32(reader)
+		if !ok || index >= vertex_count { return false }
+		append(indices, index)
 	}
-	required_bytes :=
-		u64(group_count) * 40 +
-		u64(cluster_count) * 64 +
-		u64(page_count) * 16 +
-		u64(vertex_count) * 4 +
-		u64(triangle_byte_count)
-	if required_bytes > u64(reader.size - reader.offset) {
-		return false
-	}
-	hierarchy.max_depth = max_depth
-	hierarchy.groups = make([]geometry.Cluster_Group, int(group_count))
-	hierarchy.clusters = make([]geometry.Cluster, int(cluster_count))
-	hierarchy.pages = make([]geometry.Cluster_Page, int(page_count))
-	hierarchy.vertices = make([]u32, int(vertex_count))
-	for &group in hierarchy.groups {
-		for &value in group.bounds {
-			value, ok = model_read_f32(reader)
-			if !ok {
-				geometry.destroy_hierarchy(hierarchy)
-				return false
-			}
-		}
-		group.error, ok = model_read_f32(reader)
-		if ok {
-			group.depth, ok = model_read_u32(reader)
-		}
-		if ok {
-			group.cluster_offset, ok = model_read_u32(reader)
-		}
-		if ok {
-			group.cluster_count, ok = model_read_u32(reader)
-		}
-		if ok {
-			group.page_offset, ok = model_read_u32(reader)
-		}
-		if ok {
-			group.page_count, ok = model_read_u32(reader)
-		}
-		if !ok {
-			geometry.destroy_hierarchy(hierarchy)
-			return false
-		}
-	}
-	for &cluster in hierarchy.clusters {
-		cluster.vertex_offset, ok = model_read_u32(reader)
-		if ok {
-			cluster.triangle_offset, ok = model_read_u32(reader)
-		}
-		if ok {
-			cluster.vertex_count, ok = model_read_u32(reader)
-		}
-		if ok {
-			cluster.triangle_count, ok = model_read_u32(reader)
-		}
-		for &value in cluster.bounds {
-			if !ok {
-				break
-			}
-			value, ok = model_read_f32(reader)
-		}
-		for &value in cluster.cone_axis_cutoff {
-			if !ok {
-				break
-			}
-			value, ok = model_read_f32(reader)
-		}
-		if ok {
-			cluster.group, ok = model_read_i32(reader)
-		}
-		if ok {
-			cluster.refined_group, ok = model_read_i32(reader)
-		}
-		if ok {
-			cluster.page, ok = model_read_u32(reader)
-		}
-		if ok {
-			cluster.page_index_offset, ok = model_read_u32(reader)
-		}
-		if !ok {
-			geometry.destroy_hierarchy(hierarchy)
-			return false
-		}
-	}
-	for &page in hierarchy.pages {
-		page.cluster_offset, ok = model_read_u32(reader)
-		if ok {
-			page.cluster_count, ok = model_read_u32(reader)
-		}
-		if ok {
-			page.index_count, ok = model_read_u32(reader)
-		}
-		pinned: u32
-		if ok {
-			pinned, ok = model_read_u32(reader)
-		}
-		bootstrap: u32
-		if ok {
-			bootstrap, ok = model_read_u32(reader)
-		}
-		if !ok || pinned > 1 || bootstrap > 1 {
-			geometry.destroy_hierarchy(hierarchy)
-			return false
-		}
-		page.pinned = pinned == 1
-		page.bootstrap = bootstrap == 1
-	}
-	for &vertex in hierarchy.vertices {
-		vertex, ok = model_read_u32(reader)
-		if !ok {
-			geometry.destroy_hierarchy(hierarchy)
-			return false
-		}
-	}
-	hierarchy.triangles = make([]u8, int(triangle_byte_count))
-	if !model_read_exact(reader, hierarchy.triangles) {
-		geometry.destroy_hierarchy(hierarchy)
-		return false
-	}
-	return geometry.validate_hierarchy(hierarchy, canonical_vertex_count) == ""
+	return true
 }
 
 validate_decoded_model :: proc(model: ^Model_Product) -> string {

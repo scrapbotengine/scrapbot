@@ -4,6 +4,8 @@
 
 **Updated:** 2026-08-09
 
+**Status:** Superseded by [ADR-062](ADR-062-return-to-conventional-indexed-geometry.md). The implementation described below is historical.
+
 ## Context
 
 Scrapbot's imported LODs select one independently simplified Geometry at object granularity. Its

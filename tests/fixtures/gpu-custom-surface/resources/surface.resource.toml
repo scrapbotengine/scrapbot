@@ -1,0 +1,8 @@
+id = "bc000000-0000-4000-8000-000000000004"
+type = "scrapbot.material"
+name = "Transparent Surface"
+[material]
+base_color = [0.1, 0.8, 0.9, 0.7]
+shader = "bc000000-0000-4000-8000-000000000005"
+alpha_mode = "blend"
+double_sided = true

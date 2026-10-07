@@ -122,7 +122,6 @@ export type ScrapbotPointerSnapshot = {
 
 export type ScrapbotGeometryResource = {kind: "geometry", index: number, generation: number}
 export type ScrapbotMaterialResource = {kind: "material", index: number, generation: number}
-export type ScrapbotGeometryMode = "inherit" | "auto" | "conventional" | "virtual"
 export type ScrapbotUiThemeName = "reduced_dark"
 export type ScrapbotUiThemeReference = ScrapbotUiThemeName | string
 export type ScrapbotUiThemeRecipe = "canvas" | "region" | "panel_surface" | "raised" | "control" | "overlay" | "primary_text" | "secondary_text" | "muted_text" | "accent_text" | "warning_text" | "danger_text" | "quiet_button" | "standard_button" | "primary_button" | "destructive_button" | "input" | "panel" | "list" | "scroll_area" | "checkbox" | "color_picker" | "chrome_bar" | "selected_button" | "warning_button" | "warning_frame"
@@ -322,7 +321,7 @@ write_luau_component_type :: proc(builder: ^strings.Builder, definition: Definit
 			continue
 		}
 		optional := ""
-		if strings.has_prefix(definition.name, "scrapbot.ui_") || field.name == "geometry_mode" {
+		if strings.has_prefix(definition.name, "scrapbot.ui_") {
 			optional = "?"
 		}
 		fmt.sbprintf(
@@ -362,9 +361,7 @@ luau_component_field_type_name :: proc(
 	field: Field_Definition,
 	readonly: bool,
 ) -> string {
-	if field.name == "geometry_mode" {
-		return "ScrapbotGeometryMode"
-	}
+
 	if component_name == "scrapbot.geometry" && field.name == "resource" && !readonly {
 		return "ScrapbotGeometryResource"
 	}

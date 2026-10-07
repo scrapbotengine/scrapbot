@@ -1,0 +1,8 @@
+name = "Coastal Wilds"
+default_scene = "b2000000-0000-4000-8000-000000000014"
+
+[window]
+width = 1600
+height = 900
+
+[render]

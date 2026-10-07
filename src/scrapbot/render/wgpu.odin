@@ -45,24 +45,6 @@ WGPU_CLUSTER_COUNT_Y :: 9
 WGPU_CLUSTER_COUNT_Z :: 24
 WGPU_CLUSTER_COUNT :: WGPU_CLUSTER_COUNT_X * WGPU_CLUSTER_COUNT_Y * WGPU_CLUSTER_COUNT_Z
 WGPU_CLUSTER_INITIAL_LIGHT_CAPACITY :: 256
-WGPU_VIRTUAL_GEOMETRY_BUDGET_BYTES :: u64(64 * 1024 * 1024)
-// Bootstrap detail must leave room for the first camera's exact working set.
-// Terminal fallback is never capped, but optional camera-independent detail
-// may consume at most three quarters of the configured residency budget.
-WGPU_VIRTUAL_GEOMETRY_BOOTSTRAP_BUDGET_NUMERATOR :: u64(3)
-WGPU_VIRTUAL_GEOMETRY_BOOTSTRAP_BUDGET_DENOMINATOR :: u64(4)
-WGPU_VIRTUAL_GEOMETRY_UPLOAD_BUDGET_BYTES :: u64(512 * 1024)
-WGPU_VIRTUAL_GEOMETRY_UPLOAD_GROUP_BUDGET :: 4
-WGPU_VIRTUAL_GEOMETRY_STAGED_PAYLOAD_BUDGET_BYTES :: u64(16 * 1024 * 1024)
-WGPU_VIRTUAL_GEOMETRY_MIN_ERROR_PIXELS :: f32(1)
-// Portable compact submission vertex-pulls a padded triangle lane. Do not spend
-// that path's bandwidth on hierarchy detail below its measured pixel payoff.
-WGPU_PORTABLE_COMPACT_VIRTUAL_ERROR_MINIMUM :: f32(2)
-WGPU_VIRTUAL_GROUP_ACTIVATION_GRACE_FRAMES :: u64(8)
-WGPU_VIRTUAL_GROUP_ACTIVATION_MAX_HOLD_FRAMES :: u64(32)
-WGPU_VIRTUAL_GROUP_TRANSITION_FRAMES :: u64(16)
-WGPU_VIRTUAL_GEOMETRY_BLEND_LOW_SCALE :: f32(0.98)
-WGPU_VIRTUAL_GEOMETRY_BLEND_HIGH_SCALE :: f32(1.02)
 WGPU_HIZ_OCCLUSION_WORLD_BIAS :: f32(0.005)
 
 wgpu_depth_only_uses_mask_fragment :: proc(alpha_mode: shared.Material_Alpha_Mode) -> bool {
@@ -129,63 +111,18 @@ WGPU_GPU_Visibility_Summary :: struct {
 	frustum_culled_instances: u32,
 	occlusion_culled_instances: u32,
 	lod_visible_instances: [shared.MAX_GEOMETRY_LODS]u32,
-	visible_meshlets: u32,
-	shadow_visible_meshlets: u32,
-	candidate_record_overflow: u32,
 	visible_record_overflow: u32,
 	shadow_record_overflow: u32,
-	frustum_culled_meshlets: u32,
-	cone_culled_meshlets: u32,
-	occlusion_culled_meshlets: u32,
-	meshlet_debug_records: u32,
-	meshlet_debug_record_overflow: u32,
+	object_debug_records: u32,
+	object_debug_record_overflow: u32,
 	visible_batches: u32,
-	visible_meshlet_draws: u32,
-	visible_virtual_clusters: u32,
-	visible_virtual_blend_clusters: u32,
-	visible_virtual_triangles: u32,
-	compact_triangles: u32,
-	compact_vertex_invocations: u32,
-	virtual_rejected_clusters: u32,
-	virtual_page_request_count: u32,
-	virtual_page_prefetch_count: u32,
-	virtual_page_demand_feedback_count: u32,
-	virtual_page_touch_feedback_count: u32,
-	virtual_page_prefetch_feedback_count: u32,
-	virtual_page_demand_feedback_overflow: u32,
-	virtual_page_touch_feedback_overflow: u32,
-	virtual_page_prefetch_feedback_overflow: u32,
-	shadow_visible_meshlets_by_cascade: [WGPU_SHADOW_CASCADE_COUNT]u32,
 }
 
 WGPU_GPU_Visibility_Counters :: struct {
 	summary: WGPU_GPU_Visibility_Summary,
-	virtual_page_demand_feedback: [WGPU_VIRTUAL_PAGE_DEMAND_FEEDBACK_CAPACITY]WGPU_GPU_Virtual_Page_Feedback,
-	virtual_page_touch_feedback: [WGPU_VIRTUAL_PAGE_FEEDBACK_CAPACITY]WGPU_GPU_Virtual_Page_Feedback,
-	virtual_page_prefetch_feedback: [WGPU_VIRTUAL_PAGE_FEEDBACK_CAPACITY]WGPU_GPU_Virtual_Page_Feedback,
 }
-#assert(
-	offset_of(WGPU_GPU_Visibility_Counters, virtual_page_demand_feedback) ==
-	size_of(WGPU_GPU_Visibility_Summary),
-)
-// Demand feedback is intentionally larger than the sampled touch and prefetch
-// lanes. A high-detail frontier can expose many missing child groups at once;
-// dropping the tail would repeatedly starve groups that occur later in the
-// stable GPU traversal order. This remains a bounded 640 KiB lane.
-WGPU_VIRTUAL_PAGE_DEMAND_FEEDBACK_CAPACITY :: 32_768
-// Touch and prefetch feedback can exceed the number of resident pages while a
-// moving camera crosses several dense virtual assets. Keep the lane large
-// enough to preserve the complete working-set signal instead of silently
-// biasing residency toward whichever clusters append first.
-WGPU_VIRTUAL_PAGE_FEEDBACK_CAPACITY :: 16_384
-WGPU_GPU_Virtual_Page_Feedback :: struct {
-	geometry_index: u32,
-	geometry_generation: u32,
-	group_index: u32,
-	priority: f32,
-	flags: u32,
-}
-#assert(size_of(WGPU_GPU_Virtual_Page_Feedback) == 20)
+#assert(size_of(WGPU_GPU_Visibility_Counters) == size_of(WGPU_GPU_Visibility_Summary))
+
 WGPU_GPU_VISIBLE_BATCH_WORD_COUNT :: (WGPU_MAX_GPU_INSTANCES * shared.MAX_GEOMETRY_LODS + 31) / 32
 #assert(WGPU_GPU_VISIBLE_BATCH_WORD_COUNT == 16_384)
 WGPU_GPU_VISIBILITY_COUNTER_BUFFER_SIZE ::
@@ -230,10 +167,8 @@ WGPU_GPU_Render_Uniform :: struct {
 	shadow_map_parameters: [4]f32,
 	debug: [4]u32,
 	camera_clip: [4]f32,
-	virtual_geometry: [4]f32,
-	virtual_geometry_epoch: [4]u32,
 }
-#assert(size_of(WGPU_GPU_Render_Uniform) == 672)
+#assert(size_of(WGPU_GPU_Render_Uniform) == 640)
 
 WGPU_GPU_Point_Light :: struct {
 	position_range: [4]f32,
@@ -378,24 +313,11 @@ WGPU_Automatic_Exposure_State :: struct {
 WGPU_Draw_Batch :: struct {
 	geometry: shared.Geometry_Handle,
 	material: shared.Material_Handle,
-	geometry_mode: shared.Geometry_Mode,
 	first_instance: u32,
 	instance_count: u32,
-	meshlet_submission: bool,
 	custom_shader: bool,
-	virtual_geometry: bool,
-	compact_submission: bool,
-	compact_command_index: u32,
-	compact_command_count: u32,
-	compact_bucket_commands: [WGPU_COMPACT_CLUSTER_BUCKET_COUNT]u32,
-	compact_visible_offsets: [WGPU_COMPACT_CLUSTER_BUCKET_COUNT]u32,
-	compact_visible_capacities: [WGPU_COMPACT_CLUSTER_BUCKET_COUNT]u32,
 	visible_offset: u32,
 	visible_capacity: u32,
-	meshlet_draw_offset: u32,
-	meshlet_draw_count: u32,
-	meshlet_visible_offset: u32,
-	meshlet_visible_capacity: u32,
 	world_bind_group: wgpu.BindGroup,
 	shadow_bind_groups: [WGPU_SHADOW_CASCADE_COUNT]wgpu.BindGroup,
 }
@@ -437,39 +359,21 @@ WGPU_GPU_Instance_Transform :: struct {
 
 WGPU_GPU_Cull_Uniform :: struct {
 	camera_planes: [6][4]f32,
-	predictive_camera_planes: [6][4]f32,
 	shadow_planes: [WGPU_SHADOW_CASCADE_COUNT][6][4]f32,
 	view_projection: Mat4,
 	hiz_view_projection: Mat4,
 	viewport: [4]f32,
 	camera_position: [4]f32,
-	predictive_camera_position: [4]f32,
 	slot_count: u32,
 	batch_count: u32,
 	hiz_mip_count: u32,
 	hiz_enabled: u32,
 	shadow_visible_stride: u32,
-	meshlet_enabled: u32,
-	meshlet_shadow_visible_stride: u32,
 	indirect_command_stride: u32,
-	meshlet_debug_record_offset: u32,
-	debug_view: u32,
-	meshlet_force_enabled: u32,
-	virtual_error_pixels: f32,
-	projection_y: f32,
-	virtual_feedback_epoch: u32,
-	virtual_transition_frames: u32,
-	virtual_prefetch_enabled: u32,
-	meshlet_count: u32,
 	occlusion_depth_scale: f32,
 	occlusion_world_bias: f32,
-	virtual_blend_low_scale: f32,
-	virtual_blend_high_scale: f32,
-	_virtual_shadow_alignment: [3]u32,
-	virtual_shadow_error_pixels: [4]f32,
-	_padding: [4]u32,
 }
-#assert(size_of(WGPU_GPU_Cull_Uniform) == 880)
+#assert(size_of(WGPU_GPU_Cull_Uniform) == 672)
 
 WGPU_Draw_Indexed_Indirect :: struct {
 	index_count: u32,
@@ -488,70 +392,22 @@ WGPU_Draw_Indirect :: struct {
 }
 #assert(size_of(WGPU_Draw_Indirect) == 16)
 
-WGPU_GPU_Meshlet_Debug_Record :: struct {
+WGPU_GPU_Object_Debug_Record :: struct {
 	bounds: [4]f32,
 	query_rect: [4]f32,
 	query_depths: [4]f32,
 	classification: u32,
 	lod_level: u32,
-	meshlet_identity: u32,
+	instance_slot: u32,
 	_padding: u32,
 }
-#assert(size_of(WGPU_GPU_Meshlet_Debug_Record) == 64)
+#assert(size_of(WGPU_GPU_Object_Debug_Record) == 64)
 
 WGPU_GPU_Batch_Info :: struct {
 	visible_offset: u32,
 	visible_capacity: u32,
-	meshlet_offset: u32,
-	meshlet_count: u32,
-	submission_mode: u32,
-	compact_command_index: u32,
-	compact_command_count: u32,
-	compact_bucket_commands: [WGPU_COMPACT_CLUSTER_BUCKET_COUNT]u32,
-	compact_visible_offsets: [WGPU_COMPACT_CLUSTER_BUCKET_COUNT]u32,
-	compact_visible_capacities: [WGPU_COMPACT_CLUSTER_BUCKET_COUNT]u32,
-	compact_shadow_pages: u32,
 }
-#assert(size_of(WGPU_GPU_Batch_Info) == 80)
-
-WGPU_GPU_Meshlet_Info :: struct {
-	bounds: [4]f32,
-	cone_axis_cutoff: [4]f32,
-	group_bounds: [4]f32,
-	refined_bounds: [4]f32,
-	visible_offset: u32,
-	visible_capacity: u32,
-	flags: u32,
-	group_depth: u32,
-	group_error: f32,
-	refined_error: f32,
-	max_depth: u32,
-	virtual_geometry: u32,
-	first_index: u32,
-	base_vertex: u32,
-	triangle_count: u32,
-	identity: u32,
-	page_resident: u32,
-	refined_resident: u32,
-	request_geometry_index: u32,
-	request_geometry_generation: u32,
-	group_index: u32,
-	request_group_index: u32,
-	request_enabled: u32,
-	batch_index: u32,
-	transition_start: u32,
-	refined_transition_start: u32,
-	has_coarse_parent: u32,
-	_padding: u32,
-}
-// WGSL storage-array elements round this vec4-bearing structure to a 16-byte stride.
-#assert(size_of(WGPU_GPU_Meshlet_Info) == 160)
-
-WGPU_GPU_Compact_Record :: struct {
-	instance_slot: u32,
-	meshlet_index: u32,
-}
-#assert(size_of(WGPU_GPU_Compact_Record) == 8)
+#assert(size_of(WGPU_GPU_Batch_Info) == 8)
 
 WGPU_Instance_Source_State :: struct {
 	geometry: shared.Geometry_Handle,
@@ -570,16 +426,6 @@ WGPU_Geometry_Cache :: struct {
 	version: u32,
 	vertex_range: WGPU_Arena_Range,
 	index_range: WGPU_Arena_Range,
-	shadow_index_range: WGPU_Arena_Range,
-	shadow_base_vertex: i32,
-	shadow_index_count: u32,
-	meshlet_index_range: WGPU_Arena_Range,
-	cluster_pages: [dynamic]WGPU_Cluster_Page_Cache,
-	cluster_groups: [dynamic]WGPU_Cluster_Group_Cache,
-	refined_group_cluster_offsets: [dynamic]u32,
-	refined_group_clusters: [dynamic]u32,
-	refined_group_parent_offsets: [dynamic]u32,
-	refined_group_parents: [dynamic]u32,
 	vertex_count: u32,
 	index_count: u32,
 	distance_field_buffer: wgpu.Buffer,
@@ -587,33 +433,6 @@ WGPU_Geometry_Cache :: struct {
 	distance_field_bind_group: wgpu.BindGroup,
 	distance_field_bytes: u64,
 	valid: bool,
-	virtual_geometry: bool,
-}
-
-WGPU_Cluster_Group_Cache :: struct {
-	last_used_frame: u64,
-	resident_since_frame: u64,
-	last_demand_frame: u64,
-	transition_start_frame: u64,
-	priority: f32,
-	resident: bool,
-	active: bool,
-	transition_complete: bool,
-	pinned: bool,
-	prefetched: bool,
-	resident_refinement_count: u32,
-}
-
-WGPU_Cluster_Page_Cache :: struct {
-	range: WGPU_Arena_Range,
-	vertex_range: WGPU_Arena_Range,
-	last_used_frame: u64,
-	group_index: u32,
-	resident: bool,
-	pinned: bool,
-	prefetched: bool,
-	loading: bool,
-	loaded_payload: []u8,
 }
 
 WGPU_Material_Cache :: struct {
@@ -744,13 +563,12 @@ wgpu_texture_cache_slot :: proc(
 	return -1
 }
 
-wgpu_geometry_cache_slot_for_submission :: proc "contextless" (
+wgpu_geometry_cache_slot :: proc "contextless" (
 	cache: []WGPU_Geometry_Cache,
 	handle: shared.Geometry_Handle,
-	virtual_geometry: bool,
 ) -> int {
 	for cached, index in cache {
-		if cached.handle.index == handle.index && cached.virtual_geometry == virtual_geometry {
+		if cached.handle.index == handle.index {
 			return index
 		}
 	}
@@ -911,30 +729,18 @@ WGPU_Renderer :: struct {
 	gpu_driven_shader: wgpu.ShaderModule,
 	gpu_driven_pipeline: wgpu.RenderPipeline,
 	gpu_driven_double_sided_pipeline: wgpu.RenderPipeline,
-	gpu_compact_pipeline: wgpu.RenderPipeline,
-	gpu_compact_double_sided_pipeline: wgpu.RenderPipeline,
 	gpu_selection_pipeline: wgpu.RenderPipeline,
 	gpu_selection_double_sided_pipeline: wgpu.RenderPipeline,
-	gpu_compact_selection_pipeline: wgpu.RenderPipeline,
-	gpu_compact_selection_double_sided_pipeline: wgpu.RenderPipeline,
 	gpu_driven_depth_pipeline: wgpu.RenderPipeline,
 	gpu_driven_depth_double_sided_pipeline: wgpu.RenderPipeline,
 	gpu_driven_depth_mask_pipeline: wgpu.RenderPipeline,
 	gpu_driven_depth_mask_double_sided_pipeline: wgpu.RenderPipeline,
-	gpu_compact_depth_pipeline: wgpu.RenderPipeline,
-	gpu_compact_depth_double_sided_pipeline: wgpu.RenderPipeline,
-	gpu_compact_depth_mask_pipeline: wgpu.RenderPipeline,
-	gpu_compact_depth_mask_double_sided_pipeline: wgpu.RenderPipeline,
 	gpu_driven_depth_pipeline_layout: wgpu.PipelineLayout,
 	gpu_driven_depth_mask_pipeline_layout: wgpu.PipelineLayout,
 	gpu_driven_shadow_pipeline: wgpu.RenderPipeline,
 	gpu_driven_shadow_double_sided_pipeline: wgpu.RenderPipeline,
 	gpu_driven_shadow_mask_pipeline: wgpu.RenderPipeline,
 	gpu_driven_shadow_mask_double_sided_pipeline: wgpu.RenderPipeline,
-	gpu_compact_shadow_pipeline: wgpu.RenderPipeline,
-	gpu_compact_shadow_double_sided_pipeline: wgpu.RenderPipeline,
-	gpu_compact_shadow_mask_pipeline: wgpu.RenderPipeline,
-	gpu_compact_shadow_mask_double_sided_pipeline: wgpu.RenderPipeline,
 	gpu_driven_pipeline_layout: wgpu.PipelineLayout,
 	gpu_driven_shadow_pipeline_layout: wgpu.PipelineLayout,
 	gpu_driven_shadow_mask_pipeline_layout: wgpu.PipelineLayout,
@@ -942,24 +748,16 @@ WGPU_Renderer :: struct {
 	gpu_driven_shadow_bind_group_layout: wgpu.BindGroupLayout,
 	gpu_cull_shader: wgpu.ShaderModule,
 	gpu_cull_pipeline: wgpu.ComputePipeline,
-	gpu_meshlet_cull_pipeline: wgpu.ComputePipeline,
-	gpu_compact_cull_pipeline: wgpu.ComputePipeline,
-	gpu_compact_cluster_cull_pipeline: wgpu.ComputePipeline,
-	gpu_compact_shadow_cluster_cull_pipeline: wgpu.ComputePipeline,
-	gpu_meshlet_debug_cull_pipeline: wgpu.ComputePipeline,
+	gpu_object_debug_cull_pipeline: wgpu.ComputePipeline,
 	gpu_cull_pipeline_layout: wgpu.PipelineLayout,
 	gpu_cull_bind_group_layout: wgpu.BindGroupLayout,
 	gpu_cull_bind_group: wgpu.BindGroup,
-	gpu_meshlet_cull_bind_group: wgpu.BindGroup,
-	gpu_compact_cull_bind_group: wgpu.BindGroup,
-	gpu_compact_camera_cull_bind_group: wgpu.BindGroup,
-	gpu_compact_shadow_cull_bind_group: wgpu.BindGroup,
-	gpu_meshlet_debug_cull_bind_group: wgpu.BindGroup,
-	gpu_meshlet_debug_shader: wgpu.ShaderModule,
-	gpu_meshlet_debug_pipeline: wgpu.RenderPipeline,
-	gpu_meshlet_debug_pipeline_layout: wgpu.PipelineLayout,
-	gpu_meshlet_debug_bind_group_layout: wgpu.BindGroupLayout,
-	gpu_meshlet_debug_bind_group: wgpu.BindGroup,
+	gpu_object_debug_cull_bind_group: wgpu.BindGroup,
+	gpu_object_debug_shader: wgpu.ShaderModule,
+	gpu_object_debug_pipeline: wgpu.RenderPipeline,
+	gpu_object_debug_pipeline_layout: wgpu.PipelineLayout,
+	gpu_object_debug_bind_group_layout: wgpu.BindGroupLayout,
+	gpu_object_debug_bind_group: wgpu.BindGroup,
 	gpu_transform_shader: wgpu.ShaderModule,
 	gpu_transform_pipeline: wgpu.ComputePipeline,
 	gpu_transform_pipeline_layout: wgpu.PipelineLayout,
@@ -1029,26 +827,11 @@ WGPU_Renderer :: struct {
 	gpu_shadow_indirect_template_buffer: wgpu.Buffer,
 	gpu_indirect_buffer: wgpu.Buffer,
 	gpu_shadow_indirect_buffer: wgpu.Buffer,
-	gpu_meshlet_info_buffer: wgpu.Buffer,
-	gpu_meshlet_visible_buffer: wgpu.Buffer,
-	gpu_meshlet_identity_buffer: wgpu.Buffer,
-	gpu_zero_identity_buffer: wgpu.Buffer,
-	gpu_meshlet_debug_indirect_buffer: wgpu.Buffer,
-	gpu_meshlet_debug_record_buffer: wgpu.Buffer,
+	gpu_object_debug_indirect_buffer: wgpu.Buffer,
+	gpu_object_debug_record_buffer: wgpu.Buffer,
 	live_debug_visibility_capture: bool,
 	gpu_occlusion_debug_evidence_valid: bool,
 	gpu_occlusion_debug_record_count: u32,
-	gpu_meshlet_shadow_visible_buffer: wgpu.Buffer,
-	gpu_compact_visible_buffer: wgpu.Buffer,
-	gpu_compact_shadow_visible_buffer: wgpu.Buffer,
-	gpu_compact_candidate_count_buffer: wgpu.Buffer,
-	gpu_meshlet_indirect_template_buffer: wgpu.Buffer,
-	gpu_meshlet_indirect_buffer: wgpu.Buffer,
-	gpu_meshlet_shadow_indirect_buffer: wgpu.Buffer,
-	gpu_world_bind_group: wgpu.BindGroup,
-	gpu_shadow_bind_groups: [WGPU_SHADOW_CASCADE_COUNT]wgpu.BindGroup,
-	gpu_meshlet_world_bind_group: wgpu.BindGroup,
-	gpu_meshlet_shadow_bind_groups: [WGPU_SHADOW_CASCADE_COUNT]wgpu.BindGroup,
 	gpu_cull_uniform_buffer: wgpu.Buffer,
 	gpu_cull_initial_uniform_buffer: wgpu.Buffer,
 	gpu_cull_refine_uniform_buffer: wgpu.Buffer,
@@ -1095,32 +878,10 @@ WGPU_Renderer :: struct {
 	gpu_cpu_shadow_visible: [dynamic]u32,
 	gpu_indirect_templates: [dynamic]WGPU_Draw_Indexed_Indirect,
 	gpu_shadow_indirect_templates: [dynamic]WGPU_Draw_Indexed_Indirect,
-	gpu_meshlet_infos: [dynamic]WGPU_GPU_Meshlet_Info,
-	gpu_meshlet_indirect_templates: [dynamic]WGPU_Draw_Indexed_Indirect,
 	gpu_draw_capacity: int,
 	gpu_visible_buffer_capacity: int,
-	gpu_meshlet_draw_capacity: int,
-	gpu_meshlet_visible_buffer_capacity: int,
-	gpu_meshlet_draw_count: int,
-	gpu_meshlet_selected_draw_count: int,
-	gpu_meshlet_selected_batch_count: int,
-	gpu_compact_selected_batch_count: int,
-	gpu_compact_selected_instance_count: int,
-	gpu_virtual_cluster_draw_count: int,
 	gpu_classic_batch_count: int,
-	gpu_conventional_batch_count: int,
-	gpu_virtual_batch_count: int,
-	gpu_conventional_instance_count: int,
-	gpu_virtual_instance_count: int,
-	gpu_meshlet_visible_capacity: int,
 	gpu_indirect_command_count: int,
-	gpu_meshlet_supported: bool,
-	gpu_meshlet_native_multi_draw: bool,
-	gpu_meshlet_layout_valid: bool,
-	gpu_meshlet_submission_active: bool,
-	gpu_native_meshlet_submission_active: bool,
-	gpu_compact_submission_active: bool,
-	gpu_meshlet_force_enabled: bool,
 	gpu_draw_database_rebuild_count: u64,
 	gpu_slot_count: int,
 	gpu_visible_capacity: int,
@@ -1279,39 +1040,6 @@ WGPU_Renderer :: struct {
 	geometry_cache: [dynamic]WGPU_Geometry_Cache,
 	geometry_vertex_arena: WGPU_Geometry_Arena,
 	geometry_index_arena: WGPU_Geometry_Arena,
-	geometry_mode: shared.Geometry_Mode,
-	virtual_geometry_budget_bytes: u64,
-	virtual_geometry_resident_bytes: u64,
-	virtual_geometry_page_count: int,
-	virtual_geometry_resident_page_count: int,
-	virtual_geometry_pinned_page_count: int,
-	virtual_geometry_prefetched_page_count: int,
-	virtual_geometry_page_upload_count: u64,
-	virtual_geometry_page_upload_bytes: u64,
-	virtual_geometry_page_read_count: u64,
-	virtual_geometry_page_read_bytes: u64,
-	virtual_geometry_page_read_failure_count: u64,
-	virtual_geometry_staged_payload_bytes: u64,
-	virtual_geometry_page_eviction_count: u64,
-	virtual_geometry_group_upload_count: u64,
-	virtual_geometry_metadata_upload_count: u64,
-	virtual_geometry_metadata_upload_bytes: u64,
-	virtual_geometry_group_activation_count: u64,
-	virtual_geometry_prefetch_group_upload_count: u64,
-	virtual_geometry_prefetch_hit_count: u64,
-	virtual_geometry_prefetch_eviction_count: u64,
-	virtual_geometry_group_eviction_count: u64,
-	virtual_geometry_deferred_group_count: u64,
-	virtual_geometry_page_io: WGPU_Virtual_Page_IO,
-	virtual_geometry_pending_activations: [dynamic]WGPU_Virtual_Group_Change,
-	virtual_geometry_transitions: [dynamic]WGPU_Virtual_Group_Change,
-	virtual_geometry_prefetch_enabled: bool,
-	virtual_geometry_camera_position: Vec3,
-	virtual_geometry_camera_forward: Vec3,
-	virtual_geometry_camera_velocity: Vec3,
-	virtual_geometry_camera_frame: u64,
-	virtual_geometry_camera_valid: bool,
-	gpu_compact_shadow_pages: bool,
 	cpu_culling: bool,
 	texture_cache: [dynamic]WGPU_Texture_Cache,
 	material_cache: [dynamic]WGPU_Material_Cache,
@@ -1620,13 +1348,11 @@ wgpu_profile_workload :: proc(
 	shadow_draws := u64(0)
 	visible_instances := u64(0)
 	shadow_instances := u64(0)
-	compact_vertex_invocations := u64(0)
 	if stats != nil {
 		geometry_draws = u64(max(stats.draw_submissions, 0))
 		shadow_draws = geometry_draws
 		visible_instances = u64(stats.visible_instances)
 		shadow_instances = u64(stats.shadow_visible_instances)
-		compact_vertex_invocations = u64(stats.compact_vertex_invocations)
 	}
 	if renderer.draw_batch_cache.valid {
 		shadow_draws = u64(
@@ -1651,16 +1377,10 @@ wgpu_profile_workload :: proc(
 	if stats != nil && stats.compute_culling && renderer.gpu_slot_count > 0 {
 		workgroups_per_lane := u64((renderer.gpu_slot_count + 63) / 64)
 		workgroups := u64(0)
-		if wgpu_active_classic_batch_count(renderer) > 0 ||
-		   renderer.gpu_compact_submission_active {
+		if renderer.draw_batch_cache.batch_count > 0 {
 			workgroups += workgroups_per_lane * u64(WGPU_SHADOW_CASCADE_COUNT)
 		}
-		if renderer.gpu_native_meshlet_submission_active {
-			workgroups += workgroups_per_lane * u64(WGPU_SHADOW_CASCADE_COUNT)
-		}
-		if renderer.gpu_compact_submission_active {
-			workgroups += workgroups_per_lane
-		}
+
 		pass_count := max(renderer.gpu_cull_pass_count, u64(1))
 		cull = {
 			enabled = true,
@@ -1698,9 +1418,6 @@ wgpu_profile_workload :: proc(
 			}
 			cascade_draws := shadow_draws
 			cascade_instances := shadow_instances
-			if stats != nil && stats.shadow_visible_meshlets_by_cascade[cascade_index] > 0 {
-				cascade_instances = u64(stats.shadow_visible_meshlets_by_cascade[cascade_index])
-			}
 			shadow_cascade_workloads[cascade_index] = {
 				enabled = cascade_enabled,
 				width = shadow.width,
@@ -1797,7 +1514,6 @@ wgpu_profile_workload :: proc(
 			height = viewport_height,
 			passes = 2 if renderer.gpu_hiz_refinement_requested else 1,
 			draws = geometry_draws,
-			invocations = compact_vertex_invocations,
 			instances = visible_instances,
 		},
 		world = {
@@ -1806,7 +1522,6 @@ wgpu_profile_workload :: proc(
 			height = viewport_height,
 			passes = 1,
 			draws = geometry_draws,
-			invocations = compact_vertex_invocations,
 			instances = visible_instances,
 		},
 		hiz = hiz,
@@ -2734,17 +2449,8 @@ wgpu_rebuild_draw_batch_cache :: proc(
 		handles: [shared.MAX_GEOMETRY_LODS]shared.Geometry_Handle
 		handles[0] = candidate.geometry.handle
 		handle_count := 1
-		geometry_mode := shared.geometry_mode_resolve(
-			candidate.geometry.geometry_mode,
-			renderer.geometry_mode,
-		)
 		if geometry, alive := resources.get_geometry(registry, candidate.geometry.handle); alive {
-			geometry_mode = wgpu_resolve_geometry_mode(
-				renderer,
-				geometry,
-				candidate.geometry.geometry_mode,
-			)
-			lod_count := wgpu_geometry_draw_lod_count(renderer, geometry, geometry_mode)
+			lod_count := wgpu_geometry_draw_lod_count(renderer, geometry)
 			for handle in geometry.lod_handles[:lod_count] {
 				handles[handle_count] = handle
 				handle_count += 1
@@ -2754,9 +2460,7 @@ wgpu_rebuild_draw_batch_cache :: proc(
 			found := false
 			for batch_index in 0 ..< cache.batch_count {
 				batch := cache.batches[batch_index]
-				if batch.geometry == handle &&
-				   batch.material == candidate.material.handle &&
-				   batch.geometry_mode == geometry_mode {
+				if batch.geometry == handle && batch.material == candidate.material.handle {
 					found = true
 					break
 				}
@@ -2766,11 +2470,7 @@ wgpu_rebuild_draw_batch_cache :: proc(
 			}
 			append(
 				&cache.batches,
-				WGPU_Draw_Batch {
-					geometry = handle,
-					material = candidate.material.handle,
-					geometry_mode = geometry_mode,
-				},
+				WGPU_Draw_Batch{geometry = handle, material = candidate.material.handle},
 			)
 			cache.batch_count += 1
 		}
@@ -2786,28 +2486,13 @@ wgpu_rebuild_draw_batch_cache :: proc(
 				registry,
 				candidate.geometry.handle,
 			)
-			candidate_mode := shared.geometry_mode_resolve(
-				candidate.geometry.geometry_mode,
-				renderer.geometry_mode,
-			)
 			if candidate_alive {
-				candidate_mode = wgpu_resolve_geometry_mode(
-					renderer,
-					candidate_geometry,
-					candidate.geometry.geometry_mode,
-				)
 			}
-			if candidate_mode != batch.geometry_mode {
-				continue
-			}
+
 			matches := candidate.geometry.handle == batch.geometry
 			if !matches {
 				if candidate_alive {
-					lod_count := wgpu_geometry_draw_lod_count(
-						renderer,
-						candidate_geometry,
-						batch.geometry_mode,
-					)
+					lod_count := wgpu_geometry_draw_lod_count(renderer, candidate_geometry)
 					for handle in candidate_geometry.lod_handles[:lod_count] {
 						if handle == batch.geometry {
 							matches = true
@@ -2870,41 +2555,6 @@ wgpu_release_geometry_cache_ranges :: proc(
 		cached.index_range,
 		retire_after_frame,
 	)
-	wgpu_geometry_arena_retire(
-		&renderer.geometry_index_arena,
-		cached.shadow_index_range,
-		retire_after_frame,
-	)
-	wgpu_geometry_arena_retire(
-		&renderer.geometry_index_arena,
-		cached.meshlet_index_range,
-		retire_after_frame,
-	)
-	for page in cached.cluster_pages {
-		renderer.virtual_geometry_staged_payload_bytes -= min(
-			renderer.virtual_geometry_staged_payload_bytes,
-			u64(len(page.loaded_payload)),
-		)
-		delete(page.loaded_payload, os.heap_allocator())
-		if page.resident {
-			wgpu_geometry_arena_retire(
-				&renderer.geometry_index_arena,
-				page.range,
-				retire_after_frame,
-			)
-			wgpu_geometry_arena_retire(
-				&renderer.geometry_vertex_arena,
-				page.vertex_range,
-				retire_after_frame,
-			)
-		}
-	}
-	delete(cached.cluster_pages)
-	delete(cached.cluster_groups)
-	delete(cached.refined_group_cluster_offsets)
-	delete(cached.refined_group_clusters)
-	delete(cached.refined_group_parent_offsets)
-	delete(cached.refined_group_parents)
 	cached^ = {}
 }
 
@@ -2925,27 +2575,21 @@ wgpu_reclaim_stale_geometry_cache :: proc(
 		}
 		wgpu_release_geometry_cache_ranges(renderer, cached)
 	}
-	wgpu_recount_virtual_page_residency(renderer)
 }
 
 wgpu_geometry_cache :: proc(
 	renderer: ^WGPU_Renderer,
 	registry: ^resources.Registry,
 	handle: shared.Geometry_Handle,
-	geometry_mode: shared.Geometry_Mode = .Inherit,
 ) -> (
 	^WGPU_Geometry_Cache,
 	string,
 ) {
 	geometry, ok := resources.get_geometry(registry, handle)
-	if !ok { return nil, "render geometry handle is stale" }
-	virtual_submission := wgpu_virtual_geometry_submission(renderer, geometry, geometry_mode)
-	compact_submission := wgpu_virtual_geometry_uses_compaction(renderer, geometry, geometry_mode)
-	cache_index := wgpu_geometry_cache_slot_for_submission(
-		renderer.geometry_cache[:],
-		handle,
-		virtual_submission,
-	)
+	if !ok {
+		return nil, "render geometry handle is stale"
+	}
+	cache_index := wgpu_geometry_cache_slot(renderer.geometry_cache[:], handle)
 	if cache_index < 0 {
 		cache_index = len(renderer.geometry_cache)
 		append(&renderer.geometry_cache, WGPU_Geometry_Cache{})
@@ -2964,460 +2608,56 @@ wgpu_geometry_cache :: proc(
 		renderer.geometry_index_arena.usage = {.Index, .Storage}
 		renderer.geometry_index_arena.label = "Scrapbot Shared Geometry Index Arena"
 	}
-	preload_virtual_geometry :=
-		virtual_submission &&
-		wgpu_virtual_geometry_should_preload_pages(
-			renderer,
-			geometry,
-			wgpu_cached_virtual_geometry_bytes(cached),
-		)
-	canonical: resources.Geometry_Canonical_View
-	if !virtual_submission || preload_virtual_geometry {
-		canonical_err: string
-		canonical, canonical_err = resources.load_geometry_canonical(geometry)
-		if canonical_err != "" {
-			return nil, canonical_err
-		}
-	}
-	defer resources.destroy_geometry_canonical_view(&canonical)
-	vertex_bytes := u64(len(canonical.vertices)) * u64(size_of(resources.Vertex))
-	index_bytes := u64(len(canonical.indices)) * u64(size_of(u32))
-	if virtual_submission && !preload_virtual_geometry {
-		vertex_bytes = 0
-	}
-	if virtual_submission && !preload_virtual_geometry {
-		index_bytes = 0
-	}
-	vertex_range := cached.vertex_range
-	vertex_range_reused :=
-		vertex_range.size >= vertex_bytes &&
-		vertex_range.size > 0 &&
-		(!compact_submission ||
-				wgpu_arena_range_within_limit(
-					vertex_range,
-					renderer.max_storage_buffer_binding_size,
-				))
-	if vertex_bytes == 0 {
-		vertex_range = {}
-		vertex_range_reused = false
-	} else if !vertex_range_reused {
-		if compact_submission {
-			addressable: bool
-			vertex_range, addressable = wgpu_arena_allocate_bounded(
-				&renderer.geometry_vertex_arena.allocator,
-				wgpu_align_arena_offset(vertex_bytes, u64(size_of(resources.Vertex))),
-				u64(size_of(resources.Vertex)),
-				renderer.max_storage_buffer_binding_size,
-			)
-			if !addressable {
-				return nil, "compact geometry vertices exceed the device storage-binding window"
-			}
-		} else {
-			vertex_range = wgpu_arena_allocate(
-				&renderer.geometry_vertex_arena.allocator,
-				wgpu_align_arena_offset(vertex_bytes, u64(size_of(resources.Vertex))),
-				u64(size_of(resources.Vertex)),
-			)
-		}
-	}
-	index_range := cached.index_range
-	index_range_reused := index_range.size >= index_bytes && index_range.size > 0
-	if index_bytes == 0 {
-		index_range = {}
-		index_range_reused = false
-	} else if !index_range_reused {
-		index_range = wgpu_arena_allocate(
-			&renderer.geometry_index_arena.allocator,
-			wgpu_align_arena_offset(index_bytes, u64(size_of(u32))),
-			u64(size_of(u32)),
-		)
-	}
-	meshlet_indices: []u32
-	shadow_index_range: WGPU_Arena_Range
-	shadow_base_vertex: i32
-	shadow_index_count: u32
-	meshlet_index_range := cached.meshlet_index_range
-	meshlet_range_reused := true
-	shadow_range_committed := false
-	cluster_pages: [dynamic]WGPU_Cluster_Page_Cache
-	cluster_groups: [dynamic]WGPU_Cluster_Group_Cache
-	refined_group_cluster_offsets: [dynamic]u32
-	refined_group_clusters: [dynamic]u32
-	refined_group_parent_offsets: [dynamic]u32
-	refined_group_parents: [dynamic]u32
+	vertex_bytes := u64(len(geometry.vertices)) * u64(size_of(resources.Vertex))
+	index_bytes := u64(len(geometry.indices)) * u64(size_of(u32))
+	vertex_range := wgpu_arena_allocate(
+		&renderer.geometry_vertex_arena.allocator,
+		wgpu_align_arena_offset(vertex_bytes, u64(size_of(resources.Vertex))),
+		u64(size_of(resources.Vertex)),
+	)
+	index_range := wgpu_arena_allocate(
+		&renderer.geometry_index_arena.allocator,
+		wgpu_align_arena_offset(index_bytes, u64(size_of(u32))),
+		u64(size_of(u32)),
+	)
 	committed := false
 	defer if !committed {
-		if !vertex_range_reused {
-			wgpu_arena_release(&renderer.geometry_vertex_arena.allocator, vertex_range)
-		}
-		if !index_range_reused {
-			wgpu_arena_release(&renderer.geometry_index_arena.allocator, index_range)
-		}
-		if !meshlet_range_reused {
-			wgpu_arena_release(&renderer.geometry_index_arena.allocator, meshlet_index_range)
-		}
-		if !shadow_range_committed {
-			wgpu_arena_release(&renderer.geometry_index_arena.allocator, shadow_index_range)
-		}
-		for page in cluster_pages {
-			if page.resident {
-				wgpu_arena_release(&renderer.geometry_index_arena.allocator, page.range)
-				wgpu_arena_release(&renderer.geometry_vertex_arena.allocator, page.vertex_range)
-			}
-		}
-		delete(cluster_pages)
-		delete(cluster_groups)
-		delete(refined_group_cluster_offsets)
-		delete(refined_group_clusters)
-		delete(refined_group_parent_offsets)
-		delete(refined_group_parents)
-	}
-	if renderer.gpu_meshlet_supported {
-		meshlet_err: string
-		if virtual_submission {
-			resize(&cluster_pages, len(geometry.cluster_pages))
-			resize(&cluster_groups, len(geometry.cluster_groups))
-			refined_group_cluster_offsets, refined_group_clusters, refined_group_parent_offsets, refined_group_parents =
-				wgpu_build_refined_group_cluster_index(geometry)
-			for group, group_index in geometry.cluster_groups {
-				page_end := group.page_offset + group.page_count
-				for page_index in group.page_offset ..< page_end {
-					cluster_pages[page_index].group_index = u32(group_index)
-				}
-				cluster_groups[group_index].pinned = true
-				for page_index in group.page_offset ..< page_end {
-					cluster_groups[group_index].pinned =
-						cluster_groups[group_index].pinned &&
-						geometry.cluster_pages[page_index].pinned
-				}
-			}
-			preload_geometry := preload_virtual_geometry
-			selected_pages: [dynamic]u32
-			for page, page_index in geometry.cluster_pages {
-				cluster_pages[page_index].pinned = page.pinned
-			}
-			if preload_geometry {
-				selected_pages = make(
-					[dynamic]u32,
-					0,
-					len(geometry.cluster_pages),
-					context.temp_allocator,
-				)
-				for _, page_index in geometry.cluster_pages {
-					append(&selected_pages, u32(page_index))
-				}
-			} else {
-				selected_pages = wgpu_select_virtual_bootstrap_pages(
-					geometry,
-					renderer.virtual_geometry_resident_bytes,
-					renderer.virtual_geometry_budget_bytes,
-				)
-			}
-			page_vertex_bytes: u64
-			page_index_bytes: u64
-			if preload_geometry {
-				page_indices, page_offsets, page_err := wgpu_expand_cluster_pages_indices(
-					geometry,
-					selected_pages[:],
-				)
-				if page_err != "" {
-					return nil, page_err
-				}
-				page_index_bytes = u64(len(page_indices)) * u64(size_of(u32))
-				page_index_range, page_indices_addressable := wgpu_arena_allocate_bounded(
-					&renderer.geometry_index_arena.allocator,
-					wgpu_align_arena_offset(page_index_bytes, u64(size_of(u32))),
-					u64(size_of(u32)),
-					renderer.max_storage_buffer_binding_size,
-				)
-				if !page_indices_addressable {
-					return nil, "compact geometry indices exceed the device storage-binding window"
-				}
-				for page_index, selection_index in selected_pages {
-					page_start := u64(page_offsets[selection_index]) * u64(size_of(u32))
-					page_end := u64(page_offsets[selection_index + 1]) * u64(size_of(u32))
-					cluster_pages[page_index].range = {
-						offset = page_index_range.offset + page_start,
-						size = page_end - page_start,
-					}
-					cluster_pages[page_index].vertex_range.offset = vertex_range.offset
-					cluster_pages[page_index].resident = true
-				}
-				if upload_err := wgpu_geometry_arena_upload(
-					renderer,
-					&renderer.geometry_index_arena,
-					page_index_range,
-					raw_data(page_indices),
-					page_index_bytes,
-				); upload_err != "" {
-					return nil, upload_err
-				}
-				page_vertex_bytes = vertex_bytes
-			} else {
-				page_upload, page_err := wgpu_read_virtual_pages(geometry, selected_pages[:])
-				if page_err != "" {
-					return nil, page_err
-				}
-				page_vertex_bytes = u64(len(page_upload.vertices))
-				page_index_bytes = u64(len(page_upload.indices)) * u64(size_of(u32))
-				page_vertex_range, page_vertices_addressable := wgpu_arena_allocate_bounded(
-					&renderer.geometry_vertex_arena.allocator,
-					wgpu_align_arena_offset(page_vertex_bytes, u64(size_of(resources.Vertex))),
-					u64(size_of(resources.Vertex)),
-					renderer.max_storage_buffer_binding_size,
-				)
-				if !page_vertices_addressable {
-					return nil, diagnostic.engine_task_failure(
-						"pinned virtual-geometry vertices exceed the device storage-binding window",
-					)
-				}
-				page_index_range, page_indices_addressable := wgpu_arena_allocate_bounded(
-					&renderer.geometry_index_arena.allocator,
-					wgpu_align_arena_offset(page_index_bytes, u64(size_of(u32))),
-					u64(size_of(u32)),
-					renderer.max_storage_buffer_binding_size,
-				)
-				if !page_indices_addressable {
-					wgpu_arena_release(
-						&renderer.geometry_vertex_arena.allocator,
-						page_vertex_range,
-					)
-					return nil, diagnostic.engine_task_failure(
-						"pinned virtual-geometry indices exceed the device storage-binding window",
-					)
-				}
-				shadow_indices := wgpu_build_virtual_terminal_frontier_indices(
-					geometry,
-					selected_pages[:],
-					&page_upload,
-				)
-				if len(shadow_indices) == 0 {
-					return nil, "pinned virtual-geometry frontier is empty"
-				}
-				shadow_index_bytes := u64(len(shadow_indices)) * u64(size_of(u32))
-				shadow_index_range = wgpu_arena_allocate(
-					&renderer.geometry_index_arena.allocator,
-					wgpu_align_arena_offset(shadow_index_bytes, u64(size_of(u32))),
-					u64(size_of(u32)),
-				)
-				if page_vertex_range.offset / u64(size_of(resources.Vertex)) > 0x7fff_ffff {
-					return nil,
-						"shared geometry shadow-proxy vertex offset exceeds indexed-draw limits"
-				}
-				shadow_base_vertex = i32(page_vertex_range.offset / u64(size_of(resources.Vertex)))
-				shadow_index_count = u32(len(shadow_indices))
-				for page_index, selection_index in selected_pages {
-					cluster_pages[page_index].range = {
-						offset = page_index_range.offset + page_upload.index_offsets[selection_index],
-						size = page_upload.index_offsets[selection_index + 1] - page_upload.index_offsets[selection_index],
-					}
-					cluster_pages[page_index].vertex_range = {
-						offset = page_vertex_range.offset + page_upload.vertex_offsets[selection_index],
-						size = page_upload.vertex_offsets[selection_index + 1] - page_upload.vertex_offsets[selection_index],
-					}
-					cluster_pages[page_index].resident = true
-				}
-				if upload_err := wgpu_geometry_arena_upload(
-					renderer,
-					&renderer.geometry_vertex_arena,
-					page_vertex_range,
-					raw_data(page_upload.vertices),
-					page_vertex_bytes,
-				); upload_err != "" {
-					return nil, upload_err
-				}
-				if upload_err := wgpu_geometry_arena_upload(
-					renderer,
-					&renderer.geometry_index_arena,
-					page_index_range,
-					raw_data(page_upload.indices),
-					page_index_bytes,
-				); upload_err != "" {
-					return nil, upload_err
-				}
-				if upload_err := wgpu_geometry_arena_upload(
-					renderer,
-					&renderer.geometry_index_arena,
-					shadow_index_range,
-					raw_data(shadow_indices),
-					shadow_index_bytes,
-				); upload_err != "" {
-					return nil, upload_err
-				}
-			}
-			renderer.virtual_geometry_page_upload_count += u64(len(selected_pages))
-			renderer.virtual_geometry_page_upload_bytes +=
-				page_vertex_bytes + page_index_bytes + shadow_index_range.size
-			for &group, group_index in cluster_groups {
-				resource_group := geometry.cluster_groups[group_index]
-				group.resident = true
-				for page_index in resource_group.page_offset ..< resource_group.page_offset + resource_group.page_count {
-					group.resident = group.resident && cluster_pages[page_index].resident
-				}
-				group.resident_since_frame = renderer.profile_frame_index if group.resident else 0
-				group.active = group.resident
-				group.transition_complete = group.resident
-			}
-			for group in cluster_groups {
-				if group.resident {
-					renderer.virtual_geometry_group_upload_count += 1
-				}
-			}
-			for group, group_index in cluster_groups {
-				if group.resident {
-					wgpu_adjust_virtual_fallback_protection(
-						cluster_groups[:],
-						refined_group_parent_offsets[:],
-						refined_group_parents[:],
-						u32(group_index),
-						1,
-					)
-				}
-			}
-			meshlet_range_reused = false
-			meshlet_index_range = {}
-		} else {
-			meshlet_indices, meshlet_err = wgpu_expand_meshlet_indices(geometry)
-			if meshlet_err != "" {
-				return nil, meshlet_err
-			}
-			meshlet_bytes := u64(len(meshlet_indices)) * u64(size_of(u32))
-			meshlet_range_reused =
-				meshlet_index_range.size >= meshlet_bytes && meshlet_index_range.size > 0
-			if !meshlet_range_reused {
-				meshlet_index_range = wgpu_arena_allocate(
-					&renderer.geometry_index_arena.allocator,
-					wgpu_align_arena_offset(meshlet_bytes, u64(size_of(u32))),
-					u64(size_of(u32)),
-				)
-			}
-		}
+		wgpu_arena_release(&renderer.geometry_vertex_arena.allocator, vertex_range)
+		wgpu_arena_release(&renderer.geometry_index_arena.allocator, index_range)
 	}
 	if vertex_range.offset / u64(size_of(resources.Vertex)) > 0x7fff_ffff ||
-	   index_range.offset / u64(size_of(u32)) > 0xffff_ffff ||
-	   shadow_index_range.offset / u64(size_of(u32)) > 0xffff_ffff ||
-	   meshlet_index_range.offset / u64(size_of(u32)) > 0xffff_ffff {
+	   index_range.offset / u64(size_of(u32)) > 0xffff_ffff {
 		return nil, "shared geometry arena offsets exceed indexed-draw limits"
 	}
-	if vertex_bytes > 0 {
-		if upload_err := wgpu_geometry_arena_upload(
-			renderer,
-			&renderer.geometry_vertex_arena,
-			vertex_range,
-			raw_data(canonical.vertices),
-			vertex_bytes,
-		); upload_err != "" {
-			return nil, upload_err
-		}
+	if err := wgpu_geometry_arena_upload(
+		renderer,
+		&renderer.geometry_vertex_arena,
+		vertex_range,
+		raw_data(geometry.vertices),
+		vertex_bytes,
+	); err != "" {
+		return nil, err
 	}
-	if index_bytes > 0 {
-		if upload_err := wgpu_geometry_arena_upload(
-			renderer,
-			&renderer.geometry_index_arena,
-			index_range,
-			raw_data(canonical.indices),
-			index_bytes,
-		); upload_err != "" {
-			return nil, upload_err
-		}
-	}
-	if renderer.gpu_meshlet_supported && len(meshlet_indices) > 0 {
-		meshlet_bytes := u64(len(meshlet_indices)) * u64(size_of(u32))
-		if upload_err := wgpu_geometry_arena_upload(
-			renderer,
-			&renderer.geometry_index_arena,
-			meshlet_index_range,
-			raw_data(meshlet_indices),
-			meshlet_bytes,
-		); upload_err != "" {
-			return nil, upload_err
-		}
-	}
-	retire_after_frame := u64(0)
-	if renderer.profile_frame_index > 0 {
-		retire_after_frame = renderer.profile_frame_index - 1
-	}
-	if !vertex_range_reused {
-		wgpu_geometry_arena_retire(
-			&renderer.geometry_vertex_arena,
-			cached.vertex_range,
-			retire_after_frame,
-		)
-	}
-	if !index_range_reused {
-		wgpu_geometry_arena_retire(
-			&renderer.geometry_index_arena,
-			cached.index_range,
-			retire_after_frame,
-		)
-	}
-	wgpu_geometry_arena_retire(
+	if err := wgpu_geometry_arena_upload(
+		renderer,
 		&renderer.geometry_index_arena,
-		cached.shadow_index_range,
-		retire_after_frame,
-	)
-	if !meshlet_range_reused {
-		wgpu_geometry_arena_retire(
-			&renderer.geometry_index_arena,
-			cached.meshlet_index_range,
-			retire_after_frame,
-		)
+		index_range,
+		raw_data(geometry.indices),
+		index_bytes,
+	); err != "" {
+		return nil, err
 	}
-	for page in cached.cluster_pages {
-		renderer.virtual_geometry_staged_payload_bytes -= min(
-			renderer.virtual_geometry_staged_payload_bytes,
-			u64(len(page.loaded_payload)),
-		)
-		delete(page.loaded_payload, os.heap_allocator())
-		if page.resident {
-			wgpu_geometry_arena_retire(
-				&renderer.geometry_index_arena,
-				page.range,
-				retire_after_frame,
-			)
-			wgpu_geometry_arena_retire(
-				&renderer.geometry_vertex_arena,
-				page.vertex_range,
-				retire_after_frame,
-			)
-		}
-	}
-	delete(cached.cluster_pages)
-	delete(cached.cluster_groups)
-	delete(cached.refined_group_cluster_offsets)
-	delete(cached.refined_group_clusters)
-	delete(cached.refined_group_parent_offsets)
-	delete(cached.refined_group_parents)
-	wgpu_release_geometry_distance_field(cached)
+	wgpu_release_geometry_cache_ranges(renderer, cached)
 	cached^ = {
 		handle = handle,
 		version = geometry.version,
 		vertex_range = vertex_range,
 		index_range = index_range,
-		shadow_index_range = shadow_index_range,
-		shadow_base_vertex = shadow_base_vertex,
-		shadow_index_count = shadow_index_count,
-		meshlet_index_range = meshlet_index_range,
-		cluster_pages = cluster_pages,
-		cluster_groups = cluster_groups,
-		refined_group_cluster_offsets = refined_group_cluster_offsets,
-		refined_group_clusters = refined_group_clusters,
-		refined_group_parent_offsets = refined_group_parent_offsets,
-		refined_group_parents = refined_group_parents,
-		vertex_count = u32(resources.geometry_canonical_vertex_count(geometry)),
-		index_count = u32(resources.geometry_fallback_index_count(geometry)),
+		vertex_count = u32(len(geometry.vertices)),
+		index_count = u32(len(geometry.indices)),
 		valid = true,
-		virtual_geometry = virtual_submission,
 	}
-	cluster_pages = nil
-	cluster_groups = nil
-	refined_group_cluster_offsets = nil
-	refined_group_clusters = nil
-	refined_group_parent_offsets = nil
-	refined_group_parents = nil
-	shadow_range_committed = true
 	committed = true
-	wgpu_recount_virtual_page_residency(renderer)
 	return cached, ""
 }
 
@@ -3560,52 +2800,12 @@ wgpu_encode_render_pass :: proc(
 			if material_cached.double_sided {
 				pipeline = renderer.gpu_driven_double_sided_pipeline
 			}
-			if span.mode == .Compact {
-				pipeline = renderer.gpu_compact_pipeline
-				if material_cached.double_sided {
-					pipeline = renderer.gpu_compact_double_sided_pipeline
-				}
-			}
+
 			wgpu.RenderPassEncoderSetPipeline(render_pass, pipeline)
-			world_bind_group := renderer.gpu_world_bind_group
-			if !renderer.gpu_meshlet_supported {
-				world_bind_group = batch.world_bind_group
-			} else if span.mode != .Classic {
-				world_bind_group = renderer.gpu_meshlet_world_bind_group
-			}
+			world_bind_group := batch.world_bind_group
 			wgpu.RenderPassEncoderSetBindGroup(render_pass, 0, world_bind_group)
 			wgpu.RenderPassEncoderSetBindGroup(render_pass, 1, material_cached.bind_group)
-			if span.mode == .Compact {
-				wgpu.RenderPassEncoderSetVertexBuffer(
-					render_pass,
-					0,
-					renderer.gpu_compact_visible_buffer,
-					0,
-					wgpu.WHOLE_SIZE,
-				)
-				for command_offset in 0 ..< span.indirect_count {
-					wgpu.RenderPassEncoderDrawIndirect(
-						render_pass,
-						renderer.gpu_indirect_buffer,
-						u64(span.first_indirect + command_offset) *
-						u64(size_of(WGPU_Draw_Indexed_Indirect)),
-					)
-				}
-			} else if span.mode == .Meshlet {
-				wgpu.RenderPassEncoderSetVertexBuffer(
-					render_pass,
-					0,
-					renderer.geometry_vertex_arena.buffer,
-					0,
-					wgpu.WHOLE_SIZE,
-				)
-				wgpu.RenderPassEncoderMultiDrawIndexedIndirect(
-					render_pass,
-					renderer.gpu_meshlet_indirect_buffer,
-					u64(span.first_indirect) * u64(size_of(WGPU_Draw_Indexed_Indirect)),
-					span.indirect_count,
-				)
-			} else if span.indirect_count > 1 {
+			if span.indirect_count > 1 {
 				wgpu.RenderPassEncoderSetVertexBuffer(
 					render_pass,
 					0,
@@ -3690,7 +2890,7 @@ wgpu_encode_render_pass :: proc(
 	); err != "" {
 		return err
 	}
-	if err := wgpu_encode_meshlet_debug_overlay(renderer, encoder, layout.render_viewport);
+	if err := wgpu_encode_object_debug_overlay(renderer, encoder, layout.render_viewport);
 	   err != "" {
 		return err
 	}
@@ -4024,25 +3224,9 @@ wgpu_encode_depth_prepass :: proc(
 				pipeline = renderer.gpu_driven_depth_mask_double_sided_pipeline
 			}
 		}
-		if span.mode == .Compact {
-			pipeline = renderer.gpu_compact_depth_pipeline
-			if uses_mask_fragment {
-				pipeline = renderer.gpu_compact_depth_mask_pipeline
-			}
-			if material.desc.double_sided {
-				pipeline = renderer.gpu_compact_depth_double_sided_pipeline
-				if uses_mask_fragment {
-					pipeline = renderer.gpu_compact_depth_mask_double_sided_pipeline
-				}
-			}
-		}
+
 		wgpu.RenderPassEncoderSetPipeline(pass, pipeline)
-		world_bind_group := renderer.gpu_world_bind_group
-		if !renderer.gpu_meshlet_supported {
-			world_bind_group = batch.world_bind_group
-		} else if span.mode != .Classic {
-			world_bind_group = renderer.gpu_meshlet_world_bind_group
-		}
+		world_bind_group := batch.world_bind_group
 		wgpu.RenderPassEncoderSetBindGroup(pass, 0, world_bind_group)
 		if uses_mask_fragment {
 			material_cached, material_err := wgpu_material_cache(
@@ -4055,37 +3239,7 @@ wgpu_encode_depth_prepass :: proc(
 			}
 			wgpu.RenderPassEncoderSetBindGroup(pass, 1, material_cached.bind_group)
 		}
-		if span.mode == .Compact {
-			wgpu.RenderPassEncoderSetVertexBuffer(
-				pass,
-				0,
-				renderer.gpu_compact_visible_buffer,
-				0,
-				wgpu.WHOLE_SIZE,
-			)
-			for command_offset in 0 ..< span.indirect_count {
-				wgpu.RenderPassEncoderDrawIndirect(
-					pass,
-					renderer.gpu_indirect_buffer,
-					u64(span.first_indirect + command_offset) *
-					u64(size_of(WGPU_Draw_Indexed_Indirect)),
-				)
-			}
-		} else if span.mode == .Meshlet {
-			wgpu.RenderPassEncoderSetVertexBuffer(
-				pass,
-				0,
-				renderer.geometry_vertex_arena.buffer,
-				0,
-				wgpu.WHOLE_SIZE,
-			)
-			wgpu.RenderPassEncoderMultiDrawIndexedIndirect(
-				pass,
-				renderer.gpu_meshlet_indirect_buffer,
-				u64(span.first_indirect) * u64(size_of(WGPU_Draw_Indexed_Indirect)),
-				span.indirect_count,
-			)
-		} else if span.indirect_count > 1 {
+		if span.indirect_count > 1 {
 			wgpu.RenderPassEncoderSetVertexBuffer(
 				pass,
 				0,
@@ -4317,25 +3471,9 @@ wgpu_encode_shadow_cascade_pass :: proc(
 					pipeline = renderer.gpu_driven_shadow_mask_double_sided_pipeline
 				}
 			}
-			if span.mode == .Compact {
-				pipeline = renderer.gpu_compact_shadow_pipeline
-				if uses_mask_fragment {
-					pipeline = renderer.gpu_compact_shadow_mask_pipeline
-				}
-				if material.desc.double_sided {
-					pipeline = renderer.gpu_compact_shadow_double_sided_pipeline
-					if uses_mask_fragment {
-						pipeline = renderer.gpu_compact_shadow_mask_double_sided_pipeline
-					}
-				}
-			}
+
 			wgpu.RenderPassEncoderSetPipeline(pass, pipeline)
-			shadow_bind_group := renderer.gpu_shadow_bind_groups[cascade_index]
-			if !renderer.gpu_meshlet_supported {
-				shadow_bind_group = batch.shadow_bind_groups[cascade_index]
-			} else if span.mode != .Classic {
-				shadow_bind_group = renderer.gpu_meshlet_shadow_bind_groups[cascade_index]
-			}
+			shadow_bind_group := batch.shadow_bind_groups[cascade_index]
 			wgpu.RenderPassEncoderSetBindGroup(pass, 0, shadow_bind_group)
 			if uses_mask_fragment {
 				material_cached, material_err := wgpu_material_cache(
@@ -4348,46 +3486,7 @@ wgpu_encode_shadow_cascade_pass :: proc(
 				}
 				wgpu.RenderPassEncoderSetBindGroup(pass, 1, material_cached.bind_group)
 			}
-			if span.mode == .Compact {
-				wgpu.RenderPassEncoderSetVertexBuffer(
-					pass,
-					0,
-					renderer.gpu_compact_shadow_visible_buffer,
-					u64(cascade_index * renderer.gpu_meshlet_visible_buffer_capacity) *
-					u64(size_of(WGPU_GPU_Compact_Record)),
-					u64(renderer.gpu_meshlet_visible_buffer_capacity) *
-					u64(size_of(WGPU_GPU_Compact_Record)),
-				)
-				for command_offset in 0 ..< span.indirect_count {
-					wgpu.RenderPassEncoderDrawIndirect(
-						pass,
-						renderer.gpu_shadow_indirect_buffer,
-						u64(
-							cascade_index * renderer.gpu_indirect_command_count +
-							int(span.first_indirect + command_offset),
-						) *
-						u64(size_of(WGPU_Draw_Indexed_Indirect)),
-					)
-				}
-			} else if span.mode == .Meshlet {
-				wgpu.RenderPassEncoderSetVertexBuffer(
-					pass,
-					0,
-					renderer.geometry_vertex_arena.buffer,
-					0,
-					wgpu.WHOLE_SIZE,
-				)
-				wgpu.RenderPassEncoderMultiDrawIndexedIndirect(
-					pass,
-					renderer.gpu_meshlet_shadow_indirect_buffer,
-					u64(
-						cascade_index * renderer.gpu_meshlet_draw_capacity +
-						int(span.first_indirect),
-					) *
-					u64(size_of(WGPU_Draw_Indexed_Indirect)),
-					span.indirect_count,
-				)
-			} else if span.indirect_count > 1 {
+			if span.indirect_count > 1 {
 				wgpu.RenderPassEncoderSetVertexBuffer(
 					pass,
 					0,
@@ -4575,23 +3674,6 @@ wgpu_draw_frame :: proc(
 		config.stats.dynamic_resolution_tail_gpu_ms = renderer.dynamic_resolution.tail_gpu_ms
 		config.stats.adaptive_post_quality = renderer.dynamic_resolution.effective_post_quality
 		config.stats.compute_culling = !config.cpu_culling
-		config.stats.meshlet_culling = renderer.gpu_meshlet_submission_active
-		config.stats.meshlet_supported = renderer.gpu_meshlet_supported
-		config.stats.meshlet_native_multi_draw =
-			renderer.gpu_meshlet_submission_active && renderer.gpu_meshlet_native_multi_draw
-		config.stats.meshlet_draws = wgpu_active_meshlet_draw_count(renderer)
-		config.stats.meshlet_compacted = renderer.gpu_compact_submission_active
-		config.stats.meshlet_compact_batches = renderer.gpu_compact_selected_batch_count
-		config.stats.meshlet_compact_instances = renderer.gpu_compact_selected_instance_count
-		config.stats.virtual_geometry = renderer.gpu_virtual_cluster_draw_count > 0
-		config.stats.virtual_geometry_compacted =
-			renderer.gpu_compact_submission_active && renderer.gpu_virtual_batch_count > 0
-		config.stats.virtual_cluster_draws = renderer.gpu_virtual_cluster_draw_count
-		config.stats.conventional_batches = renderer.gpu_conventional_batch_count
-		config.stats.virtual_batches = renderer.gpu_virtual_batch_count
-		config.stats.conventional_instances = renderer.gpu_conventional_instance_count
-		config.stats.virtual_instances = renderer.gpu_virtual_instance_count
-		config.stats.meshlet_visible_capacity = renderer.gpu_meshlet_visible_capacity
 		config.stats.clustered_lighting = true
 		config.stats.shadow_cascades =
 			WGPU_SHADOW_CASCADE_COUNT if renderer.render_list.directional_light_count > 0 else 0
@@ -4934,23 +4016,6 @@ wgpu_render_offscreen_frame :: proc(
 		config.stats.dynamic_resolution_tail_gpu_ms = renderer.dynamic_resolution.tail_gpu_ms
 		config.stats.adaptive_post_quality = renderer.dynamic_resolution.effective_post_quality
 		config.stats.compute_culling = !config.cpu_culling
-		config.stats.meshlet_culling = renderer.gpu_meshlet_submission_active
-		config.stats.meshlet_supported = renderer.gpu_meshlet_supported
-		config.stats.meshlet_native_multi_draw =
-			renderer.gpu_meshlet_submission_active && renderer.gpu_meshlet_native_multi_draw
-		config.stats.meshlet_draws = wgpu_active_meshlet_draw_count(renderer)
-		config.stats.meshlet_compacted = renderer.gpu_compact_submission_active
-		config.stats.meshlet_compact_batches = renderer.gpu_compact_selected_batch_count
-		config.stats.meshlet_compact_instances = renderer.gpu_compact_selected_instance_count
-		config.stats.virtual_geometry = renderer.gpu_virtual_cluster_draw_count > 0
-		config.stats.virtual_geometry_compacted =
-			renderer.gpu_compact_submission_active && renderer.gpu_virtual_batch_count > 0
-		config.stats.virtual_cluster_draws = renderer.gpu_virtual_cluster_draw_count
-		config.stats.conventional_batches = renderer.gpu_conventional_batch_count
-		config.stats.virtual_batches = renderer.gpu_virtual_batch_count
-		config.stats.conventional_instances = renderer.gpu_conventional_instance_count
-		config.stats.virtual_instances = renderer.gpu_virtual_instance_count
-		config.stats.meshlet_visible_capacity = renderer.gpu_meshlet_visible_capacity
 		config.stats.clustered_lighting = true
 		config.stats.shadow_cascades =
 			WGPU_SHADOW_CASCADE_COUNT if renderer.render_list.directional_light_count > 0 else 0
@@ -5272,13 +4337,7 @@ wgpu_run_headless :: proc(world: ^World, config: ^Run_Config) -> string {
 		return init_err
 	}
 	wgpu_configure_profile(&renderer, config.profile)
-	renderer.geometry_mode = config.geometry_mode
-	renderer.virtual_geometry_budget_bytes = config.virtual_geometry_budget_bytes
-	renderer.virtual_geometry_prefetch_enabled = config.virtual_geometry_prefetch
 	renderer.cpu_culling = config.cpu_culling
-	if renderer.virtual_geometry_budget_bytes == 0 {
-		renderer.virtual_geometry_budget_bytes = WGPU_VIRTUAL_GEOMETRY_BUDGET_BYTES
-	}
 
 	width := u32(WGPU_OFFSCREEN_WIDTH)
 	height := u32(WGPU_OFFSCREEN_HEIGHT)
@@ -5526,13 +4585,7 @@ wgpu_run_window :: proc(world: ^World, config: ^Run_Config) -> string {
 		return init_err
 	}
 	wgpu_configure_profile(&renderer, config.profile)
-	renderer.geometry_mode = config.geometry_mode
-	renderer.virtual_geometry_budget_bytes = config.virtual_geometry_budget_bytes
-	renderer.virtual_geometry_prefetch_enabled = config.virtual_geometry_prefetch
 	renderer.cpu_culling = config.cpu_culling
-	if renderer.virtual_geometry_budget_bytes == 0 {
-		renderer.virtual_geometry_budget_bytes = WGPU_VIRTUAL_GEOMETRY_BUDGET_BYTES
-	}
 	defer wgpu_gpu_timing_drain(&renderer)
 
 	frame_count: u32

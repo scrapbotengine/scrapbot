@@ -56,21 +56,6 @@ Profile_Counter_Deltas :: struct {
 	geometry_arena_uploads: u64,
 	geometry_arena_upload_bytes: u64,
 	geometry_arena_growths: u64,
-	virtual_geometry_page_uploads: u64,
-	virtual_geometry_page_upload_bytes: u64,
-	virtual_geometry_page_reads: u64,
-	virtual_geometry_page_read_bytes: u64,
-	virtual_geometry_page_read_failures: u64,
-	virtual_geometry_page_evictions: u64,
-	virtual_geometry_group_uploads: u64,
-	virtual_geometry_metadata_uploads: u64,
-	virtual_geometry_metadata_upload_bytes: u64,
-	virtual_geometry_group_activations: u64,
-	virtual_geometry_prefetch_group_uploads: u64,
-	virtual_geometry_prefetch_hits: u64,
-	virtual_geometry_prefetch_evictions: u64,
-	virtual_geometry_group_evictions: u64,
-	virtual_geometry_deferred_groups: u64,
 	cluster_dispatches: u64,
 	spectral_surface_dispatches: u64,
 	instance_uploads: u64,
@@ -339,66 +324,6 @@ profile_counter_deltas :: proc(current, previous: Render_Stats) -> Profile_Count
 		geometry_arena_growths = profile_counter_delta(
 			current.geometry_arena_growths,
 			previous.geometry_arena_growths,
-		),
-		virtual_geometry_page_uploads = profile_counter_delta(
-			current.virtual_geometry_page_uploads,
-			previous.virtual_geometry_page_uploads,
-		),
-		virtual_geometry_page_upload_bytes = profile_counter_delta(
-			current.virtual_geometry_page_upload_bytes,
-			previous.virtual_geometry_page_upload_bytes,
-		),
-		virtual_geometry_page_reads = profile_counter_delta(
-			current.virtual_geometry_page_reads,
-			previous.virtual_geometry_page_reads,
-		),
-		virtual_geometry_page_read_bytes = profile_counter_delta(
-			current.virtual_geometry_page_read_bytes,
-			previous.virtual_geometry_page_read_bytes,
-		),
-		virtual_geometry_page_read_failures = profile_counter_delta(
-			current.virtual_geometry_page_read_failures,
-			previous.virtual_geometry_page_read_failures,
-		),
-		virtual_geometry_page_evictions = profile_counter_delta(
-			current.virtual_geometry_page_evictions,
-			previous.virtual_geometry_page_evictions,
-		),
-		virtual_geometry_group_uploads = profile_counter_delta(
-			current.virtual_geometry_group_uploads,
-			previous.virtual_geometry_group_uploads,
-		),
-		virtual_geometry_metadata_uploads = profile_counter_delta(
-			current.virtual_geometry_metadata_uploads,
-			previous.virtual_geometry_metadata_uploads,
-		),
-		virtual_geometry_metadata_upload_bytes = profile_counter_delta(
-			current.virtual_geometry_metadata_upload_bytes,
-			previous.virtual_geometry_metadata_upload_bytes,
-		),
-		virtual_geometry_group_activations = profile_counter_delta(
-			current.virtual_geometry_group_activations,
-			previous.virtual_geometry_group_activations,
-		),
-		virtual_geometry_prefetch_group_uploads = profile_counter_delta(
-			current.virtual_geometry_prefetch_group_uploads,
-			previous.virtual_geometry_prefetch_group_uploads,
-		),
-		virtual_geometry_prefetch_hits = profile_counter_delta(
-			current.virtual_geometry_prefetch_hits,
-			previous.virtual_geometry_prefetch_hits,
-		),
-		virtual_geometry_prefetch_evictions = profile_counter_delta(
-			current.virtual_geometry_prefetch_evictions,
-			previous.virtual_geometry_prefetch_evictions,
-		),
-		virtual_geometry_group_evictions = profile_counter_delta(
-			current.virtual_geometry_group_evictions,
-			previous.virtual_geometry_group_evictions,
-		),
-		virtual_geometry_deferred_groups = profile_counter_delta(
-			current.virtual_geometry_deferred_groups,
-			previous.virtual_geometry_deferred_groups,
 		),
 		cluster_dispatches = profile_counter_delta(
 			current.cluster_dispatches,

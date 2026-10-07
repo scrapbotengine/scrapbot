@@ -19,10 +19,6 @@ Scene_Ray_Hit :: struct {
 Scene_Raycast_Stats :: struct {
 	instance_tests: u64,
 	instance_bounds_rejections: u64,
-	group_tests: u64,
-	group_bounds_rejections: u64,
-	cluster_tests: u64,
-	cluster_bounds_rejections: u64,
 	triangle_tests: u64,
 }
 
@@ -557,88 +553,17 @@ scene_raycast_nearest :: proc(
 			}
 			continue
 		}
-		if !resources.geometry_has_resident_canonical(geometry) && len(geometry.clusters) > 0 {
-			for group in geometry.cluster_groups {
-				if stats != nil {
-					stats.group_tests += 1
-				}
-				group_center := pick_transform_point(
-					model,
-					{group.bounds[0], group.bounds[1], group.bounds[2]},
-				)
-				group_radius :=
-					group.bounds[3] *
-					max(
-						math.abs(instance.transform.scale.x),
-						math.abs(instance.transform.scale.y),
-						math.abs(instance.transform.scale.z),
-					)
-				group_entry, group_hit := pick_ray_sphere(ray, group_center, group_radius)
-				if !group_hit || group_entry > nearest {
-					if stats != nil {
-						stats.group_bounds_rejections += 1
-					}
-					continue
-				}
-				cluster_start := int(group.cluster_offset)
-				cluster_end := min(
-					cluster_start + int(group.cluster_count),
-					len(geometry.clusters),
-				)
-				for cluster, cluster_offset in geometry.clusters[cluster_start:cluster_end] {
-					if cluster.refined_group != -1 {
-						continue
-					}
-					if stats != nil {
-						stats.cluster_tests += 1
-					}
-					center := pick_transform_point(
-						model,
-						{cluster.bounds[0], cluster.bounds[1], cluster.bounds[2]},
-					)
-					radius :=
-						cluster.bounds[3] *
-						max(
-							math.abs(instance.transform.scale.x),
-							math.abs(instance.transform.scale.y),
-							math.abs(instance.transform.scale.z),
-						)
-					cluster_entry, cluster_hit := pick_ray_sphere(ray, center, radius)
-					if !cluster_hit || cluster_entry > nearest {
-						if stats != nil {
-							stats.cluster_bounds_rejections += 1
-						}
-						continue
-					}
-					iterator := resources.geometry_query_cluster_iterator(
-						geometry,
-						cluster_start + cluster_offset,
-					)
-					pick_query_triangles(
-						&iterator,
-						model,
-						ray,
-						instance.entity.id,
-						&nearest,
-						&result,
-						&found,
-						stats,
-					)
-				}
-			}
-		} else {
-			iterator := resources.geometry_query_iterator(geometry)
-			pick_query_triangles(
-				&iterator,
-				model,
-				ray,
-				instance.entity.id,
-				&nearest,
-				&result,
-				&found,
-				stats,
-			)
-		}
+		iterator := resources.geometry_query_iterator(geometry)
+		pick_query_triangles(
+			&iterator,
+			model,
+			ray,
+			instance.entity.id,
+			&nearest,
+			&result,
+			&found,
+			stats,
+		)
 	}
 	return result, found
 }

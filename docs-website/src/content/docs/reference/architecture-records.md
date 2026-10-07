@@ -58,12 +58,13 @@ Current decisions:
 | ADR-043 | Model responsive UI as an authored canvas transform |
 | ADR-044 | Resolve intrinsic and flex UI layout in retained passes |
 | ADR-045 | Compose docking from public groups and layout |
-| ADR-046 | Store meshlets with Geometry resources |
+| ADR-046 | Store meshlets with Geometry resources (superseded by ADR-062) |
 | ADR-047 | Generate imported mesh LODs in asset products |
 | ADR-048 | Suballocate Geometry in shared WGPU arenas |
-| ADR-049 | Select virtual Geometry frontiers on the GPU |
-| ADR-050 | Page virtual Geometry payloads |
+| ADR-049 | Select virtual Geometry frontiers on the GPU (superseded by ADR-062) |
+| ADR-050 | Page virtual Geometry payloads (superseded by ADR-062) |
 | ADR-051 | Wrap runtime assets in chunked products |
+| ADR-062 | Return to conventional indexed geometry |
 
 ## FDRs
 

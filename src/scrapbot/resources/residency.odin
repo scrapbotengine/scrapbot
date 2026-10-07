@@ -164,27 +164,9 @@ release_geometry_payload :: proc(geometry: ^Geometry, allocator: mem.Allocator) 
 	}
 	delete(geometry.vertices, allocator)
 	delete(geometry.indices, allocator)
-	delete(geometry.query_proxy.positions, allocator)
-	delete(geometry.meshlets, allocator)
-	delete(geometry.meshlet_vertices, allocator)
-	delete(geometry.meshlet_triangles, allocator)
-	delete(geometry.cluster_groups, allocator)
-	delete(geometry.clusters, allocator)
-	delete(geometry.cluster_pages, allocator)
-	delete(geometry.cluster_vertices, allocator)
-	delete(geometry.cluster_triangles, allocator)
-	destroy_geometry_page_source(geometry, allocator)
+	destroy_geometry_distance_field_source(geometry, allocator)
 	geometry.vertices = nil
 	geometry.indices = nil
-	geometry.query_proxy.positions = nil
-	geometry.meshlets = nil
-	geometry.meshlet_vertices = nil
-	geometry.meshlet_triangles = nil
-	geometry.cluster_groups = nil
-	geometry.clusters = nil
-	geometry.cluster_pages = nil
-	geometry.cluster_vertices = nil
-	geometry.cluster_triangles = nil
 	geometry.lod_handles = {}
 	geometry.lod_count = 0
 }

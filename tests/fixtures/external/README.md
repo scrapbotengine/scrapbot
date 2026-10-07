@@ -39,14 +39,14 @@ The ordinary test suite must remain independent of external downloads. Tests tha
 - Pinned shape: 71 files, 103 primitives, 25 materials, 192,496 vertices, and 262,267 triangles
 - Licensing: model files use the Cryengine Limited License Agreement (`LicenseRef-CRYENGINE-Agreement`); repository metadata uses CC BY 4.0. Read the pinned upstream `LICENSE.md` before redistributing any model bytes.
 
-Sponza is a manifest bundle: every file has an individual byte count and SHA-256, while setup downloads up to six files concurrently. The verified files are copied into ignored `examples/sponza/assets/` state. Neither the bundle nor its 393 MiB uncompressed Scrapbot import product belongs in Git or engine distributions.
+Sponza is a manifest bundle: every file has an individual byte count and SHA-256, while setup downloads up to six files concurrently. The verified files are copied into ignored `examples/sponza/assets/` state. Neither the bundle nor its generated Scrapbot import products belongs in Git or engine distributions.
 
-## Poly Haven coastal collection and Virtual Wilds
+## Poly Haven coastal collection and Coastal Wilds
 
 - Local path: `downloads/gltf/VirtualWilds/`
 - Upstream: [Poly Haven models](https://polyhaven.com/models)
-- Purpose: high-density photogrammetry import, generated LODs, virtual-geometry paging, bounded residency, and temporal streaming development
-- Pinned shape: 12 models, 4,609,249 vertices, 8,347,283 source triangles, and 22,266 streamable photogrammetry pages
+- Purpose: high-density photogrammetry import, generated LODs, indexed mesh rendering, object culling, and ordinary LOD development
+- Pinned shape: 12 models, 4,609,249 vertices, 8,347,283 source triangles
 - Licensing: CC0
 
 The bundle contains [Coastal Cliff 04](https://polyhaven.com/a/coastal_cliff_04), [Coast Rocks
@@ -75,10 +75,10 @@ The scene generator samples the fir roots directly from
 upward-facing triangles of the transformed cliff scans and validates the complete three-tree
 footprint against neighboring surface samples.
 
-`mise setup-assets` copies the complete verified bundle into ignored `examples/virtual-wilds/assets/`
-state. It also copies only Coastal Cliff 04 into `examples/virtual-geometry-cliff/assets/` for the
-single-instance streaming regression project. Both examples compile these ordinary glTF inputs
-into Scrapbot's versioned split model products. Neither source nor imported products belong in Git
+`mise setup-assets` copies the complete verified bundle into ignored `examples/coastal-wilds/assets/`
+state. It also copies only Coastal Cliff 04 into `examples/coastal-cliff/assets/` for the
+single-instance indexed-rendering project. Both examples compile these ordinary glTF inputs
+into Scrapbot's versioned indexed model products. Neither source nor imported products belong in Git
 or Scrapbot distributions.
 
 Run `mise test-gltf` to validate the real-world import product. `mise test-gltf-gpu` additionally
@@ -90,15 +90,9 @@ Run `mise test-sponza` for the explicit heavyweight import contract. `mise test-
 additionally imports it and captures a bounded WGPU frame. Launch the persistent example with
 `mise scrapbot run examples/sponza --editor`.
 
-Run `mise test-virtual-wilds` for the pinned twelve-model import contract.
-`mise test-virtual-wilds-gpu` additionally drives the camera long enough to require detail-page
-reads, checks the 192 MiB residency bound, and captures consecutive WGPU frames. Its editor-camera
-residency tour crosses several high-detail regions, returns to the cliff, and preserves frames both
-during and after heavy eviction churn. A separate 7,000-frame editor replay keeps the Virtual
-Geometry debug validator active while compact storage crosses sustained address pressure; any
-resident page outside the adapter's storage-binding window fails the run. Launch the interactive tour with
-`mise scrapbot -- run examples/virtual-wilds --editor`.
+The former Coastal Wilds streaming and residency acceptance tasks have been removed.
+The source assets remain available for indexed-renderer workloads within adapter memory limits.
 
-Run `mise test-virtual-geometry-cliff` for the isolated Coastal Cliff 04 import contract. Launch
+Run `mise test-coastal-cliff` for the isolated Coastal Cliff 04 import contract. Launch
 the focused interactive reproduction with
-`mise scrapbot run examples/virtual-geometry-cliff --live-debug`.
+`mise scrapbot run examples/coastal-cliff --live-debug`.

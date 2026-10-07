@@ -28,7 +28,6 @@ parse_project_resource :: proc(
 	resource.texture.color_space = .SRGB
 	resource.texture.generate_mipmaps = true
 	resource.model.generate_lods = true
-	resource.model.geometry_mode = .Inherit
 	resource.model.lod_ratios = {0.5, 0.25, 0.125}
 	resource.model.lod_screen_radii = {0.18, 0.07, 0.025}
 	resource.model.lod_count = shared.MAX_GEOMETRY_LODS - 1
@@ -171,15 +170,6 @@ parse_project_resource :: proc(
 					}
 				case "generate_lods":
 					resource.model.generate_lods, found = parse_bool(value)
-				case "geometry_mode":
-					mode_name: string
-					mode_name, found = parse_basic_string(value)
-					if found {
-						resource.model.geometry_mode, found = shared.geometry_mode_from_name(
-							mode_name,
-						)
-						found = found && resource.model.geometry_mode != .Inherit
-					}
 				case "lod_ratios":
 					model_lod_ratio_count, found = parse_fixed_f32_list(
 						value,
@@ -901,9 +891,6 @@ parse_project_config :: proc(source: string) -> (config: Project_Config, result:
 		height = shared.DEFAULT_WINDOW_HEIGHT,
 	}
 	config.render.environment_intensity = 1
-	config.render.geometry_mode = .Auto
-	config.render.virtual_geometry_budget_mb = 64
-	config.render.virtual_geometry_prefetch = true
 	config.render.environment_reflection_intensity = 1
 	config.render.exposure = 1
 	config.render.background_intensity = 1
@@ -1039,19 +1026,6 @@ parse_project_config :: proc(source: string) -> (config: Project_Config, result:
 		}
 		if section == "render" {
 			switch key {
-				case "geometry_mode":
-					mode_name: string
-					mode_name, found = parse_basic_string(value)
-					if found {
-						config.render.geometry_mode, found = shared.geometry_mode_from_name(
-							mode_name,
-						)
-						found = found && config.render.geometry_mode != .Inherit
-					}
-				case "virtual_geometry_budget_mb", "virtual_geometry_index_budget_mb":
-					config.render.virtual_geometry_budget_mb, found = parse_f32(value)
-				case "virtual_geometry_prefetch":
-					config.render.virtual_geometry_prefetch, found = parse_bool(value)
 				case "environment":
 					raw_environment: string
 					raw_environment, found = parse_basic_string(value)
@@ -1093,8 +1067,6 @@ parse_project_config :: proc(source: string) -> (config: Project_Config, result:
 					)
 			}
 			if !found ||
-			   config.render.virtual_geometry_budget_mb < 0.015625 ||
-			   config.render.virtual_geometry_budget_mb > 16_384 ||
 			   !finite_render_config(config.render) ||
 			   config.render.environment_intensity < 0 ||
 			   config.render.environment_reflection_intensity < 0 ||
@@ -1105,7 +1077,7 @@ parse_project_config :: proc(source: string) -> (config: Project_Config, result:
 			   config.render.background_blur > 1 {
 				return config, fail(
 					.Invalid_Field,
-					"render values must be finite; the virtual geometry payload budget must be 0.015625..16384 MiB, intensities non-negative, exposures positive, and background blur between 0 and 1",
+					"render values must be finite; intensities non-negative, exposures positive, and background blur between 0 and 1",
 				)
 			}
 			continue
@@ -1678,14 +1650,6 @@ parse_scene :: proc(
 								"mesh.primitive must be a non-empty basic string",
 							)
 						}
-					case "geometry_mode":
-						mode_name: string
-						mode_name, found = parse_basic_string(value)
-						if found {
-							current.mesh.geometry_mode, found = shared.geometry_mode_from_name(
-								mode_name,
-							)
-						}
 					case:
 						return scene, fail(
 							.Invalid_Field,
@@ -1704,14 +1668,6 @@ parse_scene :: proc(
 							return scene, fail(
 								.Invalid_Field,
 								"geometry.resource must be a non-empty basic string",
-							)
-						}
-					case "geometry_mode":
-						mode_name: string
-						mode_name, found = parse_basic_string(value)
-						if found {
-							current.geometry.geometry_mode, found = shared.geometry_mode_from_name(
-								mode_name,
 							)
 						}
 					case:
@@ -1740,14 +1696,6 @@ parse_scene :: proc(
 							return scene, fail(
 								.Invalid_Field,
 								"model.resource must be a non-empty resource UUID",
-							)
-						}
-					case "geometry_mode":
-						mode_name: string
-						mode_name, found = parse_basic_string(value)
-						if found {
-							current.model.geometry_mode, found = shared.geometry_mode_from_name(
-								mode_name,
 							)
 						}
 					case:
@@ -3563,8 +3511,6 @@ parse_shader_parameters :: proc(value: string) -> (result: [4]shared.Vec4, ok: b
 
 finite_render_config :: proc(value: shared.Project_Render_Config) -> bool {
 	return(
-		!math.is_nan(value.virtual_geometry_budget_mb) &&
-		!math.is_inf(value.virtual_geometry_budget_mb) &&
 		!math.is_nan(value.environment_intensity) &&
 		!math.is_inf(value.environment_intensity) &&
 		!math.is_nan(value.environment_reflection_intensity) &&

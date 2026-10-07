@@ -43,16 +43,15 @@ During development, use `mise build` to compile the optimized CLI and `mise scra
 
 - Pluggable backends: a deterministic `null` backend for simulation smoke tests, and a full `wgpu` backend with independent surface and offscreen execution.
 - GPU-driven submission: persistent slot-addressed instances, dirty-only transform uploads, a growing retained draw database, compute camera/shadow culling, adaptive Hi-Z occlusion, screen-radius object LODs, indirect draws, and asynchronous GPU timing readback.
-- Crack-aware virtual Geometry: projected error selects resident detail. Adjacent levels overlap through a narrow error band, and streamed refinements join through a bounded 16-frame world/depth handoff. Complete opaque surfaces remain depth-testable; TAA marks the handoff as reactive.
-- Bounded virtual-Geometry streaming: every Geometry product starts with an error-prioritized, byte-capped bootstrap tail, while demand and future-camera prefetch stream only finer groups atomically. Terminal safety geometry stays pinned; the additional startup detail may yield under global memory pressure. Native multi-draw retains per-cluster commands, while portable adapters compact selected clusters into shared record streams. An indexed terminal-frontier proxy keeps world, depth, and shadows recognizable when streamed detail is unavailable.
-- Compact imported Geometry: runtime catalogs retain a position-only CPU query proxy instead of complete render vertices and source indices. Exact leaf topology is reconstructed from pages only while establishing a compatibility GPU cache.
+- Conventional indexed meshes with ordinary object LODs; imported Model v22 products store complete vertex attributes and triangle indices.
+- Imported Geometry retains complete CPU meshes for exact queries and direct GPU upload. Unchanged versions do no geometry reconstruction or upload.
 - Shared WGPU vertex/index arenas suballocate every Geometry and generated LOD version. Arena-global indirect offsets let compatible same-material commands share fixed multi-draw submissions while structured diagnostics distinguish logical batches from encoded spans and report residency/mutation counters.
 - Imported glTF primitives generate deterministic, compact meshoptimizer LOD chains in versioned asset products by default. Projects can tune triangle ratios and screen thresholds or disable generation; runtime selection uses the same generic Geometry contract as procedural and future project-authored levels.
 - HDR lighting and post: shared metallic-roughness GGX materials with mipmapped PBR maps, ambient/directional/point lights, GPU-clustered point lighting, four stabilized shadow cascades, imported image-based lighting with independent diffuse/specular strength or roughness-aware analytic environment lighting from a procedural haze sky via one `scrapbot.world_environment` component, authored global height/distance fog with shadowed directional scattering, scalable thickness-aware visibility-bitmask ambient occlusion over indirect diffuse light, temporal antialiasing with reprojection, screen-space reflections, a compute bloom pyramid, composable vignette, ghost-lens-flare, and procedural lens-dirt components, and one ACES-style composite.
 - Per-camera render policy: a bounded manual world-resolution scale, optional GPU-budgeted adaptive world/shadow/post quality, TAA, fast AA, AO, SSR, and bloom are authored on `scrapbot.camera`; UI stays native-resolution, AO and SSR have bounded quality tiers, and disabled effects skip their GPU work.
 - UUID-backed resources in `resources/**/*.resource.toml` (materials, textures, glTF models, HDR environments, SVG icon sets, generated LOD chains, and composition-time UI themes) with hot reload, targeted reimport where applicable, and import diagnostics; scenes serialize stable UUID references that the runtime resolves to generational registry handles.
-- Every registered geometry owns deterministic meshoptimizer-built meshlets with bounded local vertex/triangle streams, conservative sphere bounds, and normal cones. Capable WGPU adapters cull clusters for reused batches and mix their indirect counts with whole-primitive draws across world, depth, and shadow submission. Meshlet debug views force cluster submission; unsupported adapters and `--cpu-culling` retain whole-primitive indexed draws.
-- Camera debug views expose material inputs, meshlet identity, selected LOD, GPU visibility decisions, false-color inspection of every retained Hi-Z pyramid mip, freezeable screen-space Hi-Z query footprints, lazily resident mesh-distance-field slices, and change-driven camera-relative world-distance-field clipmaps through the same project/editor contract.
+- Virtual geometry streaming and meshlet submission have been removed from the active renderer. The decision is recorded in [ADR-062](docs/adr/ADR-062-return-to-conventional-indexed-geometry.md).
+- Camera debug views expose material inputs, selected LOD, GPU visibility decisions, false-color inspection of every retained Hi-Z pyramid mip, freezeable screen-space Hi-Z query footprints, lazily resident mesh-distance-field slices, and change-driven camera-relative world-distance-field clipmaps through the same project/editor contract.
 
 ### Retained UI
 
@@ -69,7 +68,7 @@ During development, use `mise build` to compile the optimized CLI and `mise scra
 - RMB-captured WASD fly camera with Shift boost, MMB point-of-interest orbit, viewport wheel dolly, selected-entity framing, a depth-tested infinite world grid, decluttered pickable billboard icons for cameras and lights, window-captured point-range and directional-light handles, precise entity picking, consumable UI interaction propagation, and window-captured snapped translation/rotation/scale gizmos with pointer handles plus Blender-style free modal transforms and later axis constraints.
 - System profiler publishing engine, project-Odin, Luau, and CPU render-phase timings from a rolling window.
 - Bounded headless render profiler with exact frame-correlated GPU pass timestamps, active-CPU timing, per-frame upload/rebuild counters, resolution metadata, and optional lossless replay captures.
-- Token-authenticated loopback live debug API with JSON/CBOR camera, viewport, renderer, and virtual-geometry snapshots plus bounded frame-matched color, raw depth, depth-preview, and meshlet-visibility evidence. Windowed editor runs enable it automatically.
+- Token-authenticated loopback live debug API with JSON/CBOR camera, viewport, renderer snapshots plus bounded frame-matched color, raw depth, depth-preview, and object-visibility evidence. Windowed editor runs enable it automatically.
 
 ### Examples
 
@@ -83,10 +82,9 @@ Example projects live in [`examples/`](examples/):
 - `gltf-showcase` — the pinned Khronos Damaged Helmet through the real glTF importer, lit by a pinned CC0 HDR environment.
 - `pbr-materials` — deterministic authored metallic/roughness reference grid for isolating material and lighting changes.
 - `sponza` — the Khronos Sponza atrium as 103 ECS renderables with 25 PBR materials, directional shadows, and clustered point lights.
-- `impossible-archive` — a deterministically generated carved megastructure for virtual-geometry residency, predictive streaming, and cluster-frontier debug views.
-- `virtual-wilds` — twelve full-detail CC0 scans and 356 public-API renderables arranged as a moving coastal route, with three-band spectral/Gerstner coastal water, refracted wave caustics, a water-owned underwater medium, and 8.35 million unique source triangles competing for a 192 MiB virtual-geometry residency budget.
-- `virtual-geometry-cliff` — one real 1.54-million-triangle CC0 cliff at the captured Wilds failure pose, isolated behind a 32 MiB residency budget for streaming-coverage diagnosis.
-- `virtual-geometry-lab` — a deterministic, synthetic close-approach scene for inspecting virtual-geometry hierarchy coverage and comparing GPU-selected clusters with full-index rendering.
+- `impossible-archive` — a deterministically generated carved megastructure for indexed geometry, LOD, and camera-motion testing.
+- `coastal-wilds` — a coastal photogrammetry scene with project-authored water. Complete meshes remain resident.
+- `coastal-cliff` — an isolated high-density indexed mesh for import and rendering diagnostics.
 
 ### Testing
 
@@ -208,8 +206,7 @@ trends; they are not portable performance thresholds.
   - [x] Dirty-only retained render extraction and incremental existing-batch membership
   - [x] Depth prepass and adaptive Hi-Z occlusion culling
   - [x] GPU screen-radius LOD selection
-  - [x] Feature-gated GPU meshlet culling with native multi-draw and portable GPU-compacted submission
-  - [x] Camera and transient editor Game-view diagnostics for base color, normals, roughness, metallic, depth, and meshlets
+  - [x] Camera and transient editor Game-view diagnostics for base color, normals, roughness, metallic, depth, and LOD
   - [x] Asynchronous per-pass GPU timestamps and visibility/LOD counters
   - [x] Ambient, directional, and point-light rendering
 - Assets
@@ -223,11 +220,10 @@ trends; they are not portable performance thresholds.
   - [x] Targeted live Reimport, import diagnostics, texture thumbnails, and stale model-product retirement
   - [x] UUID-backed material resources
   - [x] UUID-backed generated geometry LOD resources
-  - [x] Resource-owned meshlet clustering and bounds for every geometry
   - [x] Compiled UUID-backed SVG icon-set resources and embedded control catalog
 - Tooling
   - [x] Resource hot reload
-  - [x] GPU-selected LOD heatmap and object/meshlet visibility-classification overlays
+  - [x] GPU-selected LOD heatmap and object visibility overlays
   - [x] Hi-Z pyramid and mip inspection
   - [x] Freezeable GPU-native Hi-Z occlusion-query inspection
 

@@ -7,6 +7,24 @@ import "core:path/filepath"
 import "core:testing"
 
 @(test)
+test_project_rejects_removed_virtual_geometry_settings :: proc(t: ^testing.T) {
+	settings := []string {
+		"virtual_geometry_budget_mb = 64",
+		"virtual_geometry_index_budget_mb = 64",
+		"virtual_geometry_prefetch = true",
+	}
+	for setting in settings {
+		source := fmt.tprintf(
+			"name = \"Removed Setting\"\ndefault_scene = \"b0000000-0000-4000-8000-000000000001\"\n[render]\n%s\n",
+			setting,
+		)
+		config, result := parse_project_config(source)
+		defer destroy_project_config(&config)
+		testing.expect_value(t, result.err, Parse_Error.Invalid_Field)
+	}
+}
+
+@(test)
 test_project_scene_discovery_is_recursive_and_rejects_duplicate_ids :: proc(t: ^testing.T) {
 	root, root_err := os.make_directory_temp("", "scrapbot-scenes-*", context.temp_allocator)
 	testing.expect(t, root_err == nil)
@@ -142,7 +160,6 @@ name = "Ship"
 
 [model]
 source = "assets/ship.glb"
-geometry_mode = "virtual"
 lod_ratios = [0.6, 0.3]
 lod_screen_radii = [0.2, 0.05]
 `,
@@ -150,7 +167,6 @@ lod_screen_radii = [0.2, 0.05]
 	testing.expect(t, result.err == .None)
 	testing.expect(t, resource.kind == .Model)
 	testing.expect_value(t, resource.model.source, "assets/ship.glb")
-	testing.expect_value(t, resource.model.geometry_mode, shared.Geometry_Mode.Virtual)
 	testing.expect(t, resource.model.generate_lods)
 	testing.expect_value(t, resource.model.lod_count, 2)
 	testing.expect_value(t, resource.model.lod_ratios[0], f32(0.6))
@@ -275,9 +291,6 @@ source = "assets/studio.hdr"
 default_scene = "b0000000-0000-4000-8000-000000000001"
 
 [render]
-geometry_mode = "auto"
-virtual_geometry_budget_mb = 96.5
-virtual_geometry_prefetch = false
 environment = "a1000000-0000-4000-8000-000000000021"
 environment_intensity = 1.25
 environment_rotation = 90
@@ -292,9 +305,6 @@ background_blur = 0.25
 	)
 	defer destroy_project_config(&config)
 	testing.expect(t, config_result.err == .None)
-	testing.expect_value(t, config.render.geometry_mode, shared.Geometry_Mode.Auto)
-	testing.expect_value(t, config.render.virtual_geometry_budget_mb, f32(96.5))
-	testing.expect(t, !config.render.virtual_geometry_prefetch)
 	testing.expect_value(t, config.render.environment, resource.id)
 	testing.expect_value(t, config.render.environment_intensity, f32(1.25))
 	testing.expect_value(t, config.render.environment_rotation, f32(90))
@@ -371,39 +381,6 @@ background_blur = 1.5
 	)
 	defer destroy_project_config(&invalid_background)
 	testing.expect(t, invalid_background_result.err == .Invalid_Field)
-
-	invalid_budget, invalid_budget_result := parse_project_config(
-		`name = "Invalid Budget"
-default_scene = "b0000000-0000-4000-8000-000000000001"
-[render]
-virtual_geometry_budget_mb = 0
-`,
-	)
-	defer destroy_project_config(&invalid_budget)
-	testing.expect(t, invalid_budget_result.err == .Invalid_Field)
-
-	tiny_budget, tiny_budget_result := parse_project_config(
-		`name = "Tiny Valid Budget"
-default_scene = "b0000000-0000-4000-8000-000000000001"
-[render]
-virtual_geometry_budget_mb = 0.015625
-`,
-	)
-	defer destroy_project_config(&tiny_budget)
-	testing.expect(t, tiny_budget_result.err == .None)
-	testing.expect_value(t, tiny_budget.render.virtual_geometry_budget_mb, f32(0.015625))
-	testing.expect(t, tiny_budget.render.virtual_geometry_prefetch)
-
-	legacy_budget, legacy_budget_result := parse_project_config(
-		`name = "Legacy Budget"
-default_scene = "b0000000-0000-4000-8000-000000000001"
-[render]
-virtual_geometry_index_budget_mb = 32
-`,
-	)
-	defer destroy_project_config(&legacy_budget)
-	testing.expect(t, legacy_budget_result.err == .None)
-	testing.expect_value(t, legacy_budget.render.virtual_geometry_budget_mb, f32(32))
 
 	missing_background, missing_background_result := parse_project_config(
 		`name = "Missing Background"
@@ -2589,7 +2566,6 @@ rotation = [0, 0, 0]
 scale = [1, 1, 1]
 [entities.model]
 resource = "a7000000-0000-4000-8000-000000000001"
-geometry_mode = "conventional"
 `,
 	)
 	defer destroy_scene(&scene)
@@ -2602,19 +2578,12 @@ geometry_mode = "conventional"
 			scene.entities[0].model.resource,
 			"a7000000-0000-4000-8000-000000000001",
 		)
-		testing.expect_value(
-			t,
-			scene.entities[0].model.geometry_mode,
-			shared.Geometry_Mode.Conventional,
-		)
 	}
 }
 
 @(test)
-test_geometry_mode_configuration_rejects_unknown_and_explicit_inherit_modes :: proc(
-	t: ^testing.T,
-) {
-	modes := [2]string{"inherit", "definitely-not-a-mode"}
+test_project_rejects_retired_geometry_modes :: proc(t: ^testing.T) {
+	modes := [?]string{"inherit", "auto", "conventional", "virtual", "definitely-not-a-mode"}
 	for mode in modes {
 		config, result := parse_project_config(
 			fmt.tprintf(
@@ -2627,6 +2596,56 @@ geometry_mode = "%s"
 			),
 		)
 		destroy_project_config(&config)
+		testing.expect(t, result.err == .Invalid_Field)
+		_, resource_result := parse_project_resource(
+			fmt.tprintf(
+				`id = "a1000000-0000-4000-8000-000000000020"
+type = "scrapbot.model"
+name = "Model"
+[model]
+source = "assets/model.glb"
+geometry_mode = "%s"
+`,
+				mode,
+			),
+		)
+		testing.expect(t, resource_result.err == .Invalid_Field)
+		component_names := [?]string{"mesh", "geometry", "model"}
+		for component_name in component_names {
+			scene, scene_result := parse_scene(
+				fmt.tprintf(
+					`[[entities]]
+id = "a6000000-0000-4000-8000-000000000020"
+name = "Model"
+[entities.%s]
+geometry_mode = "%s"
+`,
+					component_name,
+					mode,
+				),
+			)
+			destroy_scene(&scene)
+			testing.expect(t, scene_result.err == .Invalid_Field)
+		}
+	}
+}
+
+@(test)
+test_scene_rejects_retired_geometry_debug_views :: proc(t: ^testing.T) {
+	views := [?]string{"meshlets", "meshlet_visibility", "virtual_geometry"}
+	for view in views {
+		scene, result := parse_scene(
+			fmt.tprintf(
+				`[[entities]]
+id = "a6000000-0000-4000-8000-000000000020"
+name = "Camera"
+[entities.camera]
+debug_view = "%s"
+`,
+				view,
+			),
+		)
+		destroy_scene(&scene)
 		testing.expect(t, result.err == .Invalid_Field)
 	}
 }

@@ -114,8 +114,5 @@ destroy_model_lod :: proc(lod: ^Model_Primitive_LOD) {
 	}
 	delete(lod.vertices)
 	delete(lod.indices)
-	delete(lod.query_positions)
-	delete(lod.page_payloads)
-	geometry.destroy_hierarchy(&lod.hierarchy)
 	lod^ = {}
 }

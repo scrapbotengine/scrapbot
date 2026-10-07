@@ -5,7 +5,6 @@ This example loads Khronos's glTF 2.0 Sponza scene through Scrapbot's real incre
 It exercises:
 
 - 103 textured primitives with importer-generated mesh LOD chains;
-- resource-owned meshlets and crack-aware cluster hierarchies;
 - 25 metallic-roughness materials and alpha-cutout surfaces;
 - low-contrast outdoor image-based lighting from Poly Haven's Kloppenheim 01 Pure Sky;
 - cascaded shadows, depth-aware temporal antialiasing, and dynamic resolution;
@@ -14,13 +13,7 @@ It exercises:
 
 Choose **LOD** in the Game debug-view selector to see the exact GPU-selected imported level. Green is source geometry; blue, purple, and orange are progressively simplified product levels. The ordinary camera view uses the same selection without Sponza-specific renderer code.
 
-Choose **Virtual Geometry** to see the resident cluster frontier selected inside those ordinary
-Geometry resources. Cluster identity varies within a mint-to-pink hierarchy-depth palette. Amber
-marks a branch whose finer page group is not completely resident.
-
-Sponza uses the normal project renderer budget so the showcase converges to its intended geometric
-detail. Hierarchy construction, page identity, feedback, fallback, and residency are engine paths
-shared by procedural, Luau, native, and built-in Geometry.
+Complete indexed meshes and their LODs remain resident in shared geometry arenas.
 
 On Metal and other adapters without native multi-draw, the GPU compacts camera-selected
 instance/cluster records into compatible material spans and vertex-pulls them from the shared

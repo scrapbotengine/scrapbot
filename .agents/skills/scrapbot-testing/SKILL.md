@@ -136,7 +136,7 @@ mise profile-sweep -- examples/sponza \
 
 The default matrix is 960×540, 1280×720, and 1920×1080. Repeat `--resolution WIDTHxHEIGHT` to use an explicit bounded matrix. Read `sweep.json`, not the aligned human table, from automation.
 
-Use `examples/minimal` to prove the pipeline and artifact contract. Use `examples/ecs-showcase` for retained instances and ordinary engine features. Use `examples/sponza` only after `mise setup-assets` when the question requires a representative architectural workload. Use `examples/virtual-wilds` after asset setup when the question requires real photogrammetry, generated cluster hierarchies, bounded virtual-geometry residency, or streaming under camera motion.
+Use `examples/minimal` to prove the pipeline and artifact contract. Use `examples/ecs-showcase` for retained instances and ordinary engine features. Use `examples/sponza` only after `mise setup-assets` when the question requires a representative architectural workload. Use `examples/coastal-wilds` after asset setup when the question requires large indexed photogrammetry meshes and ordinary LOD selection under camera motion.
 
 ## Temporal Render Verification
 
@@ -163,11 +163,8 @@ Then:
    visible discontinuity can be tied to an upload, eviction, rebuild, camera cut, or history reset.
 3. Capture the real moving workload first. If the cause remains ambiguous, repeat with a fixed
    camera and the most discriminating view: depth for topology/z-fighting, world normals for vertex
-   or winding errors, LOD for object-level selection, or Virtual Geometry for the resident cluster
-   frontier.
-4. For a static camera, treat unexplained pixel changes as a failure. Expected refinement must
-   remain crack-free and respect its projected-error bound; page admission is not permission for
-   popping triangles, invalid indices, or depth-scale changes.
+   or winding errors, LOD for object-level selection.
+4. For a static camera, treat unexplained pixel changes as a failure. Check LOD transitions for missing triangles, invalid indices, or depth-scale changes.
 5. Preserve the smallest failing consecutive range and report its artifact directory. Do not call
    temporal rendering correct from process success, nonblank pixels, or one visually plausible
    endpoint.
@@ -179,23 +176,18 @@ Use the reusable sequence gate when the scenario should remain in the suite:
 
 ```sh
 node tools/test_render_sequence.mjs \
-  --project examples/virtual-wilds \
+  --project tests/fixtures/gpu-indexed-transforms \
   --warmup 120 \
   --frames 120 \
   --capture-range 56:63 \
-  --stable-frontier \
-  --out /tmp/scrapbot-virtual-wilds-sequence
+  --cpu-reference \
+  --out /tmp/scrapbot-indexed-transforms-sequence
 ```
 
-`--stable-frontier` requires one settled projected-error policy, no feedback overflow or page-read
-failure, no active virtual-geometry admission transition, and no group upload or eviction inside the
-captured range. The runner preserves the profile, every PNG, and `sequence-manifest.json`.
-
-Use `--require-transition` for a transition-focused sequence. It requires at least one active
-virtual-geometry admission handoff, a visible blended cluster inside the range, and a settled
-zero-transition endpoint. Do not combine it with `--stable-frontier`. Pass `--golden-dir` and
-`--minimum-psnr` for a platform-qualified image
-baseline; do not use exact pixel equality across GPU vendors.
+The runner preserves the profile, every PNG, and `sequence-manifest.json`.
+`--cpu-reference` compares compute culling with CPU culling. Use `--golden-dir` and
+`--minimum-psnr` for a platform-qualified image baseline; do not require exact pixel equality
+across GPU vendors.
 
 ### Historical GPU benchmark bundles
 
@@ -233,7 +225,7 @@ for a controlled same-machine before/after reproduction.
 - Use `examples/minimal` for fast CLI, project loading, scheduling, Luau/Odin integration, null backend, and basic WGPU smoke tests.
 - Use `examples/ecs-showcase` for geometry, materials, render reconciliation, batching, lighting, lifecycle-heavy ECS behavior, and visual renderer changes.
 - Use `examples/sponza` for explicit heavyweight external-file glTF, generated-material, architectural-shadow, and clustered-lighting integration after `mise setup-assets`.
-- Use `examples/virtual-wilds` for explicit heavyweight photogrammetry import, generated LOD/cluster products, virtual-geometry page demand, and temporal streaming after `mise setup-assets`. Use `mise test-virtual-wilds-gpu` for its bounded consecutive-frame profile and stable-frontier assertion.
+- Use `examples/coastal-wilds` for explicit heavyweight photogrammetry import and ordinary LOD rendering after `mise setup-assets`. Use `mise test-indexed-transforms-gpu` for the self-contained nonuniform-transform comparison.
 - Use `examples/ui-showcase` for retained ECS UI hierarchy, box-model layout, horizontal/vertical stacks, smooth clipped scroll areas, SDF-rounded backgrounds, pointer-styled buttons, MTSDF text, and overlay/framegrab changes. Use `--ui-script` for deterministic headless hover, active, focus, typing, scrolling, and editor workflows; do not rely on OS pointer automation.
 
 Validate an example with:

@@ -15,6 +15,10 @@ asynchronous product reads. Coarse geometry must remain drawable while finer dat
 
 ## Decision
 
+The active geometry storage contract is superseded by
+[ADR-062](ADR-062-return-to-conventional-indexed-geometry.md).
+Model v22 stores complete indexed meshes without geometry pages.
+
 The engine-owned `geometry` package builds deterministic, group-aligned pages. Each page contains:
 
 - the unique canonical vertices referenced by its clusters;

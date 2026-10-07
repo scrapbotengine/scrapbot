@@ -1,0 +1,26 @@
+id = "bc000000-0000-4000-8000-000000000001"
+name = "Transparent Custom Surface"
+
+[[entities]]
+id = "bc000000-0000-4000-8000-000000000002"
+name = "Camera"
+[entities.components.scrapbot.clock]
+speed = 1
+[entities.transform]
+position = [0, 0, 5]
+[entities.camera]
+dynamic_resolution = false
+temporal_antialiasing = false
+ambient_occlusion = false
+screen_space_reflections = false
+bloom = false
+
+[[entities]]
+id = "bc000000-0000-4000-8000-000000000003"
+name = "Transparent Cube"
+[entities.transform]
+rotation = [0.2, 0.4, 0]
+[entities.mesh]
+primitive = "cube"
+[entities.material]
+resource = "bc000000-0000-4000-8000-000000000004"

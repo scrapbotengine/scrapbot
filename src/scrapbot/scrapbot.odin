@@ -288,11 +288,10 @@ asset_import_product_summary :: proc(product: ^Asset_Import_Product) -> string {
 			)
 		case .Model:
 			return fmt.tprintf(
-				"%d primitive(s), %d vertices, %d LOD(s), %d cluster page(s), %d SDF(s) / %s, %s",
+				"%d primitive(s), %d vertices, %d LOD(s), %d SDF(s) / %s, %s",
 				product.primitive_count,
 				product.vertex_count,
 				product.lod_count,
-				product.cluster_page_count,
 				product.distance_field_count,
 				asset_import_byte_count(product.distance_field_byte_count),
 				asset_import_byte_count(product.byte_count),
@@ -766,11 +765,6 @@ run_project_internal_untracked :: proc(
 		run_config.window_width = loaded.config.window.width
 		run_config.window_height = loaded.config.window.height
 	}
-	run_config.virtual_geometry_budget_bytes = u64(
-		loaded.config.render.virtual_geometry_budget_mb * 1024 * 1024,
-	)
-	run_config.geometry_mode = loaded.config.render.geometry_mode
-	run_config.virtual_geometry_prefetch = loaded.config.render.virtual_geometry_prefetch
 	if err := project.prepare_project_fonts(root, &loaded.config); err != "" {
 		result.err = err
 		return result
@@ -1207,7 +1201,7 @@ reconcile_model_instances :: proc(world: ^shared.World, registry: ^resources.Reg
 					primitive_entity,
 					{scale = {1, 1, 1}, parent = world.entities[entity_index].uuid},
 				)
-				ecs.add_geometry(world, primitive_entity, primitive.geometry, root.geometry_mode)
+				ecs.add_geometry(world, primitive_entity, primitive.geometry)
 				material := primitive.material
 				if material == (shared.Material_Handle{}) {
 					material, _ = resources.material_by_name(registry, "default")

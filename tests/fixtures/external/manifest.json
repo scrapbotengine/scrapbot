@@ -43,8 +43,8 @@
       "source": "https://polyhaven.com/a/coastal_cliff_04",
       "license": "CC0",
       "placements": [
-        "examples/virtual-wilds/assets",
-        "examples/virtual-geometry-cliff/assets"
+        "examples/coastal-wilds/assets",
+        "examples/coastal-cliff/assets"
       ],
       "files": [
         {
@@ -85,7 +85,7 @@
       "source": "https://polyhaven.com/models",
       "license": "CC0",
       "placements": [
-        "examples/virtual-wilds/assets"
+        "examples/coastal-wilds/assets"
       ],
       "files": [
         {
